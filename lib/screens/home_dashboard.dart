@@ -66,7 +66,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
-  // --- 更新检查与下载逻辑 (从旧文件迁移过来) ---
+  // --- 更新检查与下载逻辑 ---
 
   Future<void> _startBackgroundDownload(String url) async {
     if (!Platform.isAndroid) {
@@ -134,6 +134,45 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
+  // 核心修改：版本比对逻辑
+  bool _shouldUpdate({
+    required int localBuild,
+    required String localVersion,
+    required int remoteBuild,
+    required String remoteVersion
+  }) {
+    // 1. 优先比较构建号 (Integer)
+    if (remoteBuild > localBuild) return true;
+
+    // 2. 如果构建号相同 (可能是忘记改构建号)，尝试比较语义化版本号 (x.y.z)
+    if (remoteBuild == localBuild) {
+      return _compareSemVer(remoteVersion, localVersion) > 0;
+    }
+
+    return false;
+  }
+
+  // 比较语义化版本: 返回 1 (v1>v2), -1 (v1<v2), 0 (equal)
+  int _compareSemVer(String v1, String v2) {
+    try {
+      List<int> v1Parts = v1.split('.').map(int.parse).toList();
+      List<int> v2Parts = v2.split('.').map(int.parse).toList();
+      int len = v1Parts.length < v2Parts.length ? v1Parts.length : v2Parts.length;
+
+      for (int i = 0; i < len; i++) {
+        if (v1Parts[i] > v2Parts[i]) return 1;
+        if (v1Parts[i] < v2Parts[i]) return -1;
+      }
+
+      if (v1Parts.length > v2Parts.length) return 1;
+      if (v1Parts.length < v2Parts.length) return -1;
+    } catch (e) {
+      // 解析失败，无法比较
+      return 0;
+    }
+    return 0;
+  }
+
   Future<void> _checkUpdatesAndNotices({bool isManual = false}) async {
     if (isManual) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,7 +195,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
     int localBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
     String localVersionName = packageInfo.version;
 
-    bool hasUpdate = manifest.versionCode > localBuild;
+    // 修改：使用更完善的版本判断逻辑
+    bool hasUpdate = _shouldUpdate(
+      localBuild: localBuild,
+      localVersion: localVersionName,
+      remoteBuild: manifest.versionCode,
+      remoteVersion: manifest.versionName,
+    );
+
     bool hasNotice = manifest.announcement.show;
     bool hasWallpaper = manifest.wallpaper.show;
 

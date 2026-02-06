@@ -88,7 +88,7 @@ class UpdateService {
   // 获取当前版本号
   static Future<int> getCurrentBuildNumber() async {
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
-    // pubspec.yaml 中的 version: 1.0.0+1，这里获取的是 + 号后面的数字
+    // pubspec.yaml 中的 version: 1.0.0，这里获取的是 + 号后面的数字
     return int.tryParse(packageInfo.buildNumber) ?? 0;
   }
 
