@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 class StorageService {
   static const String KEY_USERS = "users_data";
   static const String KEY_LEADERBOARD = "leaderboard_data";
+  static const String KEY_SETTINGS = "quiz_settings"; // 新增配置Key
 
   // 注册用户
   static Future<bool> register(String username, String password) async {
@@ -90,5 +91,31 @@ class StorageService {
     String? jsonStr = prefs.getString(KEY_LEADERBOARD);
     if (jsonStr == null) return [];
     return List<Map<String, dynamic>>.from(jsonDecode(jsonStr));
+  }
+
+  // --- 新增: 设置相关方法 ---
+
+  // 保存设置
+  static Future<void> saveSettings(Map<String, dynamic> settings) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(KEY_SETTINGS, jsonEncode(settings));
+  }
+
+  // 获取设置 (带默认值)
+  static Future<Map<String, dynamic>> getSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonStr = prefs.getString(KEY_SETTINGS);
+
+    if (jsonStr != null) {
+      return Map<String, dynamic>.from(jsonDecode(jsonStr));
+    }
+
+    // 默认设置
+    return {
+      'operators': ['+', '-'], // 默认加减
+      'min_num1': 0, 'max_num1': 50,
+      'min_num2': 0, 'max_num2': 50,
+      'max_result': 100,
+    };
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'quiz_screen.dart';
 import 'other_screens.dart';
 import 'login_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   final String username;
@@ -14,7 +15,15 @@ class HomeScreen extends StatelessWidget {
         title: const Text("数学测验系统"),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: "设置",
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.exit_to_app),
+            tooltip: "退出登录",
             onPressed: () {
               Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
             },
@@ -34,6 +43,13 @@ class HomeScreen extends StatelessWidget {
                 color: Colors.blue,
                 icon: Icons.play_arrow,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => QuizScreen(username: username))),
+              ),
+
+              _MenuButton(
+                text: "题目设置",
+                color: Colors.teal,
+                icon: Icons.settings_applications,
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
               ),
 
               _MenuButton(

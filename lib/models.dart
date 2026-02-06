@@ -17,15 +17,17 @@ class Question {
     this.isAnswered = false,
   });
 
-  // 验证答案
   bool checkAnswer() {
     return isAnswered && userAnswer == correctAnswer;
   }
 
-  // 转换为字符串便于存储或显示
   @override
   String toString() {
-    String result = "$num1 $operatorSymbol $num2 = ${userAnswer ?? '?'}";
+    String opStr = operatorSymbol;
+    if (opStr == '*') opStr = '×';
+    if (opStr == '/') opStr = '÷';
+
+    String result = "$num1 $opStr $num2 = ${userAnswer ?? '?'}";
     if (isAnswered) {
       result += (userAnswer == correctAnswer) ? " (正确)" : " (错误, 正解: $correctAnswer)";
     } else {
@@ -36,38 +38,64 @@ class Question {
 }
 
 class QuestionGenerator {
-  static List<Question> generate(int count) {
+  static List<Question> generate(int count, Map<String, dynamic> settings) {
     List<Question> questions = [];
     Random rng = Random();
 
-    int i = 0;
-    while (i < count) {
-      int n1 = rng.nextInt(50); // 0-49
-      int n2 = rng.nextInt(50);
-      bool isPlus = rng.nextBool();
-      String op = isPlus ? '+' : '-';
-      int ans;
+    // 从设置中读取参数
+    List<String> operators = List<String>.from(settings['operators'] ?? ['+']);
+    if (operators.isEmpty) operators = ['+']; // 防止为空
 
-      if (isPlus) {
+    int minN1 = settings['min_num1'] ?? 0;
+    int maxN1 = settings['max_num1'] ?? 50;
+    int minN2 = settings['min_num2'] ?? 0;
+    int maxN2 = settings['max_num2'] ?? 50;
+    int maxRes = settings['max_result'] ?? 100;
+
+    int attempts = 0; // 防止死循环
+    while (questions.length < count && attempts < count * 100) {
+      attempts++;
+
+      // 随机选择运算符
+      String op = operators[rng.nextInt(operators.length)];
+
+      // 生成操作数
+      int n1 = minN1 + rng.nextInt(maxN1 - minN1 + 1);
+      int n2 = minN2 + rng.nextInt(maxN2 - minN2 + 1);
+      int ans = 0;
+      bool isValid = false;
+
+      if (op == '+') {
         ans = n1 + n2;
-        if (ans > 50) continue; // 结果不能超过50
-      } else {
-        if (n1 < n2) {
-          int temp = n1;
-          n1 = n2;
-          n2 = temp;
+        if (ans <= maxRes) isValid = true;
+      } else if (op == '-') {
+        // 减法：结果不能为负
+        if (n1 >= n2) {
+          ans = n1 - n2;
+          isValid = true;
         }
-        ans = n1 - n2;
+      } else if (op == '*') {
+        ans = n1 * n2;
+        if (ans <= maxRes) isValid = true;
+      } else if (op == '/') {
+        // 除法：除数不能为0，且必须整除
+        if (n2 != 0 && n1 % n2 == 0) {
+          ans = n1 ~/ n2;
+          isValid = true;
+        }
       }
 
-      questions.add(Question(
-        num1: n1,
-        num2: n2,
-        operatorSymbol: op,
-        correctAnswer: ans,
-      ));
-      i++;
+      if (isValid) {
+        questions.add(Question(
+          num1: n1,
+          num2: n2,
+          operatorSymbol: op,
+          correctAnswer: ans,
+        ));
+      }
     }
+
+    // 如果尝试多次仍无法生成足够的题目（例如设置范围太小），则返回已生成的题目
     return questions;
   }
 }
