@@ -1,10 +1,9 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'models.dart'; // 必须引用这个文件
+import 'models.dart';
 
 class StorageService {
-  // 忽略大写命名警告 (Dart Lint)
   // ignore: constant_identifier_names
   static const String KEY_USERS = "users_data";
   // ignore: constant_identifier_names
@@ -115,12 +114,22 @@ class StorageService {
     int totalCorrect = 0;
     int bestTime = 999999;
     bool hasPerfectScore = false;
+    int todayCount = 0; // 新增：今日完成次数
+    DateTime now = DateTime.now();
 
     for (var item in rawList) {
       try {
         var map = jsonDecode(item);
         int score = map['score'];
         int duration = map['duration'];
+
+        // 统计今日次数
+        if (map['date'] != null) {
+          DateTime date = DateTime.parse(map['date']);
+          if (date.year == now.year && date.month == now.month && date.day == now.day) {
+            todayCount++;
+          }
+        }
 
         totalQuestions += 10;
         totalCorrect += (score ~/ 10);
@@ -146,6 +155,7 @@ class StorageService {
     return {
       'accuracy': accuracy,
       'bestTime': hasPerfectScore ? bestTime : null,
+      'todayCount': todayCount, // 返回今日次数
     };
   }
 

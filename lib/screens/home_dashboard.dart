@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
+import 'dart:math'; // 新增：用于随机数
+import 'dart:convert'; // 新增：用于解析JSON
+import 'package:http/http.dart' as http; // 新增：用于请求API
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 新增：缓存图片库
 import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
@@ -26,6 +30,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
   List<TodoItem> _todos = [];
   Map<String, dynamic> _mathStats = {};
 
+  // 壁纸状态
+  String? _wallpaperUrl;
+
   // 待办折叠状态
   bool _isTodoExpanded = true;
 
@@ -33,6 +40,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void initState() {
     super.initState();
     _loadAllData();
+    _fetchRandomWallpaper(); // 启动时获取随机壁纸
+
     // 页面加载完成后自动检查更新 (静默模式)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkUpdatesAndNotices(isManual: false);
@@ -55,7 +64,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _todos = todos;
         _mathStats = stats;
 
-        // 自动折叠逻辑：如果所有待办都完成了，且列表不为空，则折叠
         bool allDone = _todos.isNotEmpty && _todos.every((t) => t.isDone);
         if (allDone) {
           _isTodoExpanded = false;
@@ -63,6 +71,45 @@ class _HomeDashboardState extends State<HomeDashboard> {
           _isTodoExpanded = true;
         }
       });
+    }
+  }
+
+  // --- 壁纸逻辑 ---
+
+  Future<void> _fetchRandomWallpaper() async {
+    // GitHub API 地址，获取 wallpaper 目录下的文件列表
+    const String repoApiUrl = "https://api.github.com/repos/Junpgle/math_quiz_app/contents/wallpaper";
+
+    try {
+      final response = await http.get(Uri.parse(repoApiUrl));
+      if (response.statusCode == 200) {
+        // 解析 JSON 列表
+        List<dynamic> files = jsonDecode(response.body);
+
+        // 筛选图片文件 (jpg, png, jpeg)
+        List<String> imageUrls = files
+            .where((file) {
+          String name = file['name'].toString().toLowerCase();
+          return name.endsWith('.jpg') || name.endsWith('.png') || name.endsWith('.jpeg');
+        })
+            .map((file) => file['download_url'].toString())
+            .toList();
+
+        if (imageUrls.isNotEmpty) {
+          // 随机选择一张
+          final random = Random();
+          String selectedUrl = imageUrls[random.nextInt(imageUrls.length)];
+
+          if (mounted) {
+            setState(() {
+              _wallpaperUrl = selectedUrl;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print("获取随机壁纸失败: $e");
+      // 可以在这里设置一个本地兜底图，或者保持 null 使用默认背景
     }
   }
 
@@ -74,7 +121,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
       return;
     }
 
-    // 下载前再次确保有通知权限
     var status = await Permission.notification.status;
     if (!status.isGranted) {
       status = await Permission.notification.request();
@@ -134,25 +180,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
-  // 核心修改：版本比对逻辑
   bool _shouldUpdate({
     required int localBuild,
     required String localVersion,
     required int remoteBuild,
     required String remoteVersion
   }) {
-    // 1. 优先比较构建号 (Integer)
     if (remoteBuild > localBuild) return true;
-
-    // 2. 如果构建号相同 (可能是忘记改构建号)，尝试比较语义化版本号 (x.y.z)
     if (remoteBuild == localBuild) {
       return _compareSemVer(remoteVersion, localVersion) > 0;
     }
-
     return false;
   }
 
-  // 比较语义化版本: 返回 1 (v1>v2), -1 (v1<v2), 0 (equal)
   int _compareSemVer(String v1, String v2) {
     try {
       List<int> v1Parts = v1.split('.').map(int.parse).toList();
@@ -167,7 +207,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (v1Parts.length > v2Parts.length) return 1;
       if (v1Parts.length < v2Parts.length) return -1;
     } catch (e) {
-      // 解析失败，无法比较
       return 0;
     }
     return 0;
@@ -191,11 +230,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
       return;
     }
 
+    // 注意：不再从 manifest 获取壁纸，改用随机 API 逻辑
+    // 但如果 API 获取失败，manifest 里的可以作为备选，这里暂不处理备选逻辑以保持随机性
+
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
     int localBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
     String localVersionName = packageInfo.version;
 
-    // 修改：使用更完善的版本判断逻辑
     bool hasUpdate = _shouldUpdate(
       localBuild: localBuild,
       localVersion: localVersionName,
@@ -204,9 +245,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
 
     bool hasNotice = manifest.announcement.show;
-    bool hasWallpaper = manifest.wallpaper.show;
 
-    if (!hasUpdate && !hasNotice && !hasWallpaper) {
+    if (!hasUpdate && !hasNotice) {
       if (isManual && mounted) {
         showDialog(
           context: context,
@@ -235,27 +275,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (hasWallpaper && manifest.wallpaper.imageUrl.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                    child: Image.network(
-                      manifest.wallpaper.imageUrl,
-                      height: 200,
-                      fit: BoxFit.cover,
-                      errorBuilder: (ctx, err, stack) => const SizedBox(
-                          height: 100,
-                          child: Center(child: Icon(Icons.broken_image))
-                      ),
-                      loadingBuilder: (ctx, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const SizedBox(
-                            height: 200,
-                            child: Center(child: CircularProgressIndicator())
-                        );
-                      },
-                    ),
-                  ),
-
                 Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Column(
@@ -454,9 +473,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     recurrenceEndDate: endDate,
                     lastUpdated: DateTime.now(),
                   );
-                  // 使用 HomeDashboard 的 setState
                   this.setState(() {
-                    _todos.insert(0, newTodo); // 新增的在最前
+                    _todos.insert(0, newTodo);
                   });
                   StorageService.saveTodos(widget.username, _todos);
                   _loadAllData();
@@ -475,10 +493,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
     setState(() {
       _todos[index].isDone = !_todos[index].isDone;
       _todos[index].lastUpdated = DateTime.now();
-      // 重新排序：完成的沉底
       _todos.sort((a, b) {
-        if (a.isDone == b.isDone) return 0; // 保持相对顺序
-        return a.isDone ? 1 : -1; // 完成的(true)排后面
+        if (a.isDone == b.isDone) return 0;
+        return a.isDone ? 1 : -1;
       });
     });
     StorageService.saveTodos(widget.username, _todos);
@@ -494,214 +511,253 @@ class _HomeDashboardState extends State<HomeDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("早安, ${widget.username}", style: const TextStyle(fontSize: 16)),
-            Text(DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()),
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        toolbarHeight: 80,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.system_update),
-            tooltip: "检查更新",
-            onPressed: () => _checkUpdatesAndNotices(isManual: true),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: "退出登录",
-            onPressed: () async {
-              await StorageService.clearLoginSession();
-              if (context.mounted) {
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-              }
-            },
-          )
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. 倒计时板块
-            _buildSectionHeader("重要日", Icons.timer, onAdd: _addCountdown),
-            if (_countdowns.isEmpty)
-              _buildEmptyState("暂无倒计时")
-            else
-              SizedBox(
-                height: 110,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _countdowns.length,
-                  itemBuilder: (context, index) {
-                    final item = _countdowns[index];
-                    final diff = item.targetDate.difference(DateTime.now()).inDays + 1;
-                    return Dismissible(
-                      key: ValueKey(item.title + index.toString()),
-                      direction: DismissDirection.up,
-                      onDismissed: (_) => _deleteCountdown(index),
-                      child: Card(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        margin: const EdgeInsets.only(right: 12),
-                        child: Container(
-                          width: 140,
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)),
-                              const Spacer(),
-                              Text("$diff天",
-                                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold,
-                                      color: Theme.of(context).colorScheme.onPrimaryContainer)),
-                              Text("目标日: ${DateFormat('MM-dd').format(item.targetDate)}",
-                                  style: const TextStyle(fontSize: 10)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+      backgroundColor: _wallpaperUrl != null ? Colors.transparent : Theme.of(context).colorScheme.surface,
+      // 使用 Stack 将壁纸放在最底层
+      body: Stack(
+        children: [
+          // 1. 壁纸层 (使用 CachedNetworkImage)
+          if (_wallpaperUrl != null)
+            Positioned.fill(
+              child: CachedNetworkImage(
+                imageUrl: _wallpaperUrl!,
+                fit: BoxFit.cover,
+                // 渐显时间
+                fadeInDuration: const Duration(milliseconds: 800),
+                placeholder: (context, url) => Container(color: Theme.of(context).colorScheme.surface),
+                errorWidget: (context, url, error) => Container(color: Theme.of(context).colorScheme.surface),
               ),
-
-            const SizedBox(height: 24),
-
-            // 2. 今日待办板块
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: _buildSectionHeader("今日待办", Icons.check_circle_outline, onAdd: _addTodo),
-                ),
-                IconButton(
-                  icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more),
-                  onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded),
-                )
-              ],
             ),
-            if (_todos.isEmpty)
-              _buildEmptyState("今日无待办")
-            else if (!_isTodoExpanded)
-            // 修改：折叠时显示详细状态
-              Builder(
-                  builder: (context) {
-                    int pendingCount = _todos.where((t) => !t.isDone).length;
-                    bool isAllDone = pendingCount == 0;
-                    return Card(
-                      elevation: 0,
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                      child: ListTile(
-                        leading: Icon(
-                            isAllDone ? Icons.check_circle : Icons.pending_actions,
-                            color: isAllDone ? Colors.green : Colors.orange
-                        ),
-                        title: Text(isAllDone ? "所有待办均已完成" : "还有 $pendingCount 个待办未完成"),
-                        trailing: const Icon(Icons.expand_more),
-                        onTap: () => setState(() => _isTodoExpanded = true),
-                      ),
-                    );
-                  }
-              )
-            else
-              Column(
-                children: _todos.asMap().entries.map((entry) {
-                  int idx = entry.key;
-                  TodoItem todo = entry.value;
-                  return Dismissible(
-                    key: Key(todo.id),
-                    background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
-                    onDismissed: (_) => _deleteTodo(todo.id),
-                    child: Card(
-                      elevation: 0,
-                      color: todo.isDone ? Theme.of(context).disabledColor.withValues(alpha: 0.1) : Theme.of(context).colorScheme.surfaceContainer,
-                      child: ListTile(
-                        leading: Checkbox(
-                          value: todo.isDone,
-                          onChanged: (_) => _toggleTodo(idx),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                        ),
-                        title: Text(
-                          todo.title,
-                          style: TextStyle(
-                            decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                            color: todo.isDone ? Colors.grey : null,
-                          ),
-                        ),
-                        subtitle: todo.recurrence != RecurrenceType.none ?
-                        Row(
-                          children: [
-                            const Icon(Icons.repeat, size: 12),
-                            const SizedBox(width: 4),
-                            Text(todo.recurrence == RecurrenceType.daily ? "每天" : "每${todo.customIntervalDays}天", style: const TextStyle(fontSize: 12))
-                          ],
-                        ) : null,
-                      ),
-                    ),
-                  );
-                }).toList(),
+
+          // 2. 压暗遮罩层 (实现轻微压暗，防止按钮看不清)
+          if (_wallpaperUrl != null)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.4), // 40% 不透明度的黑色遮罩
+              ),
+            ),
+
+          // 3. 内容层
+          Column(
+            children: [
+              AppBar(
+                backgroundColor: _wallpaperUrl != null ? Colors.transparent : null,
+                elevation: 0,
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("早安, ${widget.username}",
+                        style: TextStyle(fontSize: 16, color: _wallpaperUrl != null ? Colors.white : null)),
+                    Text(DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()),
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _wallpaperUrl != null ? Colors.white : null)),
+                  ],
+                ),
+                toolbarHeight: 80,
+                actions: [
+                  IconButton(
+                    icon: Icon(Icons.system_update, color: _wallpaperUrl != null ? Colors.white : null),
+                    tooltip: "检查更新",
+                    onPressed: () => _checkUpdatesAndNotices(isManual: true),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.logout, color: _wallpaperUrl != null ? Colors.white : null),
+                    tooltip: "退出登录",
+                    onPressed: () async {
+                      await StorageService.clearLoginSession();
+                      if (context.mounted) {
+                        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                      }
+                    },
+                  )
+                ],
               ),
 
-            const SizedBox(height: 24),
-
-            // 3. 数学测验板块
-            _buildSectionHeader("数学测验", Icons.functions),
-            Card(
-              elevation: 2,
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () async {
-                  await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username))
-                  );
-                  _refreshData(); // 返回后刷新数据
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("最佳战绩 (全对)", style: TextStyle(color: Theme.of(context).colorScheme.secondary)),
-                            Text(
-                              _mathStats['bestTime'] != null ? "${_mathStats['bestTime']}秒" : "--",
-                              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                      // 1. 倒计时板块
+                      _buildSectionHeader("重要日", Icons.timer, onAdd: _addCountdown),
+                      if (_countdowns.isEmpty)
+                        _buildEmptyState("暂无倒计时")
+                      else
+                        SizedBox(
+                          height: 110,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _countdowns.length,
+                            itemBuilder: (context, index) {
+                              final item = _countdowns[index];
+                              final diff = item.targetDate.difference(DateTime.now()).inDays + 1;
+                              return Dismissible(
+                                key: ValueKey(item.title + index.toString()),
+                                direction: DismissDirection.up,
+                                onDismissed: (_) => _deleteCountdown(index),
+                                child: Card(
+                                  color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.9),
+                                  margin: const EdgeInsets.only(right: 12),
+                                  child: Container(
+                                    width: 140,
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)),
+                                        const Spacer(),
+                                        Text("$diff天",
+                                            style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold,
+                                                color: Theme.of(context).colorScheme.onPrimaryContainer)),
+                                        Text("目标日: ${DateFormat('MM-dd').format(item.targetDate)}",
+                                            style: const TextStyle(fontSize: 10)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+
+                      const SizedBox(height: 24),
+
+                      // 2. 今日待办板块
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: _buildSectionHeader("今日待办", Icons.check_circle_outline, onAdd: _addTodo),
+                          ),
+                          IconButton(
+                            icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: _wallpaperUrl != null ? Colors.white70 : null),
+                            onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded),
+                          )
+                        ],
+                      ),
+                      if (_todos.isEmpty)
+                        _buildEmptyState("今日无待办")
+                      else if (!_isTodoExpanded)
+                        Builder(
+                            builder: (context) {
+                              int pendingCount = _todos.where((t) => !t.isDone).length;
+                              bool isAllDone = pendingCount == 0;
+                              return Card(
+                                elevation: 0,
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+                                child: ListTile(
+                                  leading: Icon(
+                                      isAllDone ? Icons.check_circle : Icons.pending_actions,
+                                      color: isAllDone ? Colors.green : Colors.orange
+                                  ),
+                                  title: Text(isAllDone ? "所有待办均已完成" : "还有 $pendingCount 个待办未完成"),
+                                  trailing: const Icon(Icons.expand_more),
+                                  onTap: () => setState(() => _isTodoExpanded = true),
+                                ),
+                              );
+                            }
+                        )
+                      else
+                        Column(
+                          children: _todos.asMap().entries.map((entry) {
+                            int idx = entry.key;
+                            TodoItem todo = entry.value;
+                            return Dismissible(
+                              key: Key(todo.id),
+                              background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
+                              onDismissed: (_) => _deleteTodo(todo.id),
+                              child: Card(
+                                elevation: 0,
+                                color: todo.isDone
+                                    ? Theme.of(context).disabledColor.withValues(alpha: 0.1)
+                                    : Theme.of(context).colorScheme.surfaceContainer.withValues(alpha: 0.95),
+                                child: ListTile(
+                                  leading: Checkbox(
+                                    value: todo.isDone,
+                                    onChanged: (_) => _toggleTodo(idx),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                  ),
+                                  title: Text(
+                                    todo.title,
+                                    style: TextStyle(
+                                      decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                                      color: todo.isDone ? Colors.grey : null,
+                                    ),
+                                  ),
+                                  subtitle: todo.recurrence != RecurrenceType.none ?
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.repeat, size: 12),
+                                      const SizedBox(width: 4),
+                                      Text(todo.recurrence == RecurrenceType.daily ? "每天" : "每${todo.customIntervalDays}天", style: const TextStyle(fontSize: 12))
+                                    ],
+                                  ) : null,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+
+                      const SizedBox(height: 24),
+
+                      // 3. 数学测验板块
+                      _buildSectionHeader("数学测验", Icons.functions),
+                      Card(
+                        elevation: 2,
+                        clipBehavior: Clip.antiAlias,
+                        color: Theme.of(context).cardColor.withValues(alpha: 0.95),
+                        child: InkWell(
+                          onTap: () async {
+                            await Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username))
+                            );
+                            _refreshData();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text("最佳战绩 (全对)", style: TextStyle(color: Theme.of(context).colorScheme.secondary)),
+                                      Text(
+                                        _mathStats['bestTime'] != null ? "${_mathStats['bestTime']}秒" : "--",
+                                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text("总正确率", style: TextStyle(color: Theme.of(context).colorScheme.secondary)),
+                                      LinearProgressIndicator(value: _mathStats['accuracy'] ?? 0.0, borderRadius: BorderRadius.circular(4)),
+                                      const SizedBox(height: 4),
+                                      Text("${((_mathStats['accuracy'] ?? 0.0) * 100).toStringAsFixed(1)}%", style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 20),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.arrow_forward, color: Colors.white),
+                                )
+                              ],
                             ),
-                            const SizedBox(height: 10),
-                            Text("总正确率", style: TextStyle(color: Theme.of(context).colorScheme.secondary)),
-                            LinearProgressIndicator(value: _mathStats['accuracy'] ?? 0.0, borderRadius: BorderRadius.circular(4)),
-                            const SizedBox(height: 4),
-                            Text("${((_mathStats['accuracy'] ?? 0.0) * 100).toStringAsFixed(1)}%", style: const TextStyle(fontWeight: FontWeight.bold)),
-                          ],
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 20),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.arrow_forward, color: Colors.white),
-                      )
+                      const SizedBox(height: 40),
                     ],
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 40),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addTodo,
@@ -712,18 +768,21 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildSectionHeader(String title, IconData icon, {VoidCallback? onAdd}) {
+    Color? textColor = _wallpaperUrl != null ? Colors.white : null;
+    Color iconColor = _wallpaperUrl != null ? Colors.white70 : Theme.of(context).colorScheme.primary;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+          Icon(icon, size: 20, color: iconColor),
           const SizedBox(width: 8),
-          Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: textColor)),
           if (onAdd != null) ...[
             const Spacer(),
             IconButton(
               onPressed: onAdd,
-              icon: const Icon(Icons.add_circle_outline),
+              icon: Icon(Icons.add_circle_outline, color: iconColor),
               tooltip: "添加",
             )
           ]
@@ -733,14 +792,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildEmptyState(String text) {
+    Color borderColor = _wallpaperUrl != null ? Colors.white30 : Colors.grey.withValues(alpha: 0.3);
+    Color textColor = _wallpaperUrl != null ? Colors.white70 : Colors.grey;
+
     return Container(
       padding: const EdgeInsets.all(20),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+        border: Border.all(color: borderColor),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(text, style: const TextStyle(color: Colors.grey)),
+      child: Text(text, style: TextStyle(color: textColor)),
     );
   }
 }
