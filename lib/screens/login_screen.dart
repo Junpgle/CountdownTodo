@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '/Storage_Service.dart';
+import '../storage_service.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -12,21 +12,31 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _userController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
+  bool _isLoading = false;
 
   void _handleLogin() async {
     String user = _userController.text.trim();
     String pass = _passController.text.trim();
     if (user.isEmpty || pass.isEmpty) return;
 
+    setState(() => _isLoading = true);
+
+    // 1. 验证账号密码
     bool success = await StorageService.login(user, pass);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
     if (success) {
+      // 2. 核心修改：登录成功后，必须调用保存状态的方法
+      await StorageService.saveLoginSession(user);
+
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => HomeScreen(username: user)),
       );
     } else {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('登录失败：用户名不存在或密码错误')),
       );
@@ -74,13 +84,16 @@ class _LoginScreenState extends State<LoginScreen> {
               obscureText: true,
             ),
             const SizedBox(height: 30),
-            Row(
-              children: [
-                Expanded(child: ElevatedButton(onPressed: _handleLogin, child: const Text("登录"))),
-                const SizedBox(width: 10),
-                Expanded(child: OutlinedButton(onPressed: _handleRegister, child: const Text("注册"))),
-              ],
-            )
+            if (_isLoading)
+              const CircularProgressIndicator()
+            else
+              Row(
+                children: [
+                  Expanded(child: ElevatedButton(onPressed: _handleLogin, child: const Text("登录"))),
+                  const SizedBox(width: 10),
+                  Expanded(child: OutlinedButton(onPressed: _handleRegister, child: const Text("注册"))),
+                ],
+              )
           ],
         ),
       ),

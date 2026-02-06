@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../Storage_Service.dart';
+import '../storage_service.dart';
 
 // --- 排行榜页面 ---
 class LeaderboardScreen extends StatelessWidget {

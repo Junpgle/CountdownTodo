@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
-import '../Storage_Service.dart';
+import '../storage_service.dart';
 
 class QuizScreen extends StatefulWidget {
   final String username;

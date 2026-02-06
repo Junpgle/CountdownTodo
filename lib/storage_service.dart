@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 class StorageService {
   static const String KEY_USERS = "users_data";
   static const String KEY_LEADERBOARD = "leaderboard_data";
-  static const String KEY_SETTINGS = "quiz_settings"; // 新增配置Key
+  static const String KEY_SETTINGS = "quiz_settings";
+  // 新增：保存当前登录用户的 Key
+  static const String KEY_CURRENT_USER = "current_login_user";
 
   // 注册用户
   static Future<bool> register(String username, String password) async {
@@ -35,6 +37,28 @@ class StorageService {
     Map<String, dynamic> users = jsonDecode(usersJson);
     return users.containsKey(username) && users[username] == password;
   }
+
+  // --- 新增：自动登录相关方法 ---
+
+  // 保存登录状态
+  static Future<void> saveLoginSession(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(KEY_CURRENT_USER, username);
+  }
+
+  // 获取当前登录用户 (如果没有则返回 null)
+  static Future<String?> getLoginSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(KEY_CURRENT_USER);
+  }
+
+  // 清除登录状态 (退出登录)
+  static Future<void> clearLoginSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(KEY_CURRENT_USER);
+  }
+
+  // -------------------------
 
   // 保存测试记录 (历史记录)
   static Future<void> saveHistory(String username, int score, int duration, String details) async {
@@ -92,8 +116,6 @@ class StorageService {
     if (jsonStr == null) return [];
     return List<Map<String, dynamic>>.from(jsonDecode(jsonStr));
   }
-
-  // --- 新增: 设置相关方法 ---
 
   // 保存设置
   static Future<void> saveSettings(Map<String, dynamic> settings) async {

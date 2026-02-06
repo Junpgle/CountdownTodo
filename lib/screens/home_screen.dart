@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'dart:io'; // 新增
 import 'package:flutter_downloader/flutter_downloader.dart'; // 新增
 import 'package:path_provider/path_provider.dart'; // 新增
+import 'package:package_info_plus/package_info_plus.dart'; // 新增：用于获取版本名称
 import 'quiz_screen.dart';
 import 'other_screens.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
 import '../update_service.dart'; // 引入更新服务
+import '../storage_service.dart'; // 引入存储服务，用于清除登录状态
 
 class HomeScreen extends StatefulWidget {
   final String username;
@@ -40,18 +42,53 @@ class _HomeScreenState extends State<HomeScreen> {
     final dir = await getExternalStorageDirectory();
 
     if (dir != null) {
-      await FlutterDownloader.enqueue(
-        url: url,
-        savedDir: dir.path,
-        showNotification: true, // 显示下载进度通知
-        openFileFromNotification: true, // 点击通知打开文件(安装APK)
-        saveInPublicStorage: false,
-      );
+      // 修复：确保目录存在，否则会导致下载失败
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已开始后台下载，请查看通知栏')),
-      );
+      // 1. 显式提取文件名 (关键修复：防止 flutter_downloader 内部 NPE)
+      String fileName = url.split('/').last;
+      // 处理 URL 参数 (例如 file.apk?token=xyz)
+      if (fileName.contains('?')) {
+        fileName = fileName.split('?').first;
+      }
+      // 兜底默认文件名
+      if (fileName.isEmpty || !fileName.endsWith('.apk')) {
+        fileName = 'update.apk';
+      }
+
+      // 2. 如果文件已存在，先删除（可选，保持干净）
+      final file = File('${dir.path}/$fileName');
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (e) {
+          print("Delete old file failed: $e");
+        }
+      }
+
+      try {
+        await FlutterDownloader.enqueue(
+          url: url,
+          savedDir: dir.path,
+          fileName: fileName, // 显式传递文件名
+          showNotification: true, // 显示下载进度通知
+          openFileFromNotification: true, // 点击通知打开文件(安装APK)
+          saveInPublicStorage: false, // 必须为false，因为我们用的是应用私有目录
+        );
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已开始后台下载，请查看通知栏')),
+        );
+      } catch (e) {
+        print("Download error: $e");
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('下载启动失败，请检查权限或重试')),
+        );
+      }
     }
   }
 
@@ -76,8 +113,10 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // 2. 获取本地版本
-    int localBuild = await UpdateService.getCurrentBuildNumber();
+    // 2. 获取本地版本信息 (修改：直接获取PackageInfo以显示版本名)
+    PackageInfo packageInfo = await PackageInfo.fromPlatform();
+    int localBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
+    String localVersionName = packageInfo.version;
 
     // 3. 判断是否需要展示 (有更新 或者 有公告)
     bool hasUpdate = manifest.versionCode > localBuild;
@@ -92,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text("检查完成"),
-            content: Text("当前版本 (${manifest.versionName}) 已是最新。"),
+            content: Text("当前版本 ($localVersionName) 已是最新。"),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("好"))
             ],
@@ -155,7 +194,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
+                        // 新增：版本对比提示
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            "版本: $localVersionName -> ${manifest.versionName}",
+                            style: TextStyle(color: Colors.blue[800], fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
                         Text(manifest.updateInfo.description),
                         const SizedBox(height: 15),
                         Wrap(
@@ -169,19 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 // 修改：调用后台下载
                                 onPressed: () => _startBackgroundDownload(manifest.updateInfo.fullPackageUrl),
                               ),
-                            if (manifest.updateInfo.patchPackageUrl.isNotEmpty)
-                              OutlinedButton.icon(
-                                icon: const Icon(Icons.compress),
-                                label: const Text("下载增量包"),
-                                // 修改：调用后台下载
-                                onPressed: () {
-                                  // 注意：这里仅演示下载，App目前无法直接安装增量包
-                                  _startBackgroundDownload(manifest.updateInfo.patchPackageUrl);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('增量包仅下载，需配合专门的合并工具使用')),
-                                  );
-                                },
-                              ),
+                            // 已移除增量包按钮
                           ],
                         ),
                         const Divider(height: 30),
@@ -334,7 +374,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   colorStart: const Color(0xFFff9a9e),
                   colorEnd: const Color(0xFFfecfef),
                   icon: Icons.logout_rounded,
-                  onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+                  onTap: () async {
+                    // 修改：清除登录Session，实现真正退出
+                    await StorageService.clearLoginSession();
+                    if (context.mounted) {
+                      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                    }
+                  },
                 ),
               ],
             ),
