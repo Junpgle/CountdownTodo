@@ -6,6 +6,7 @@
     <!-- 新增：通知权限 (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- 新增：前台服务权限 (用于保持通知常驻，模拟"实时活动") -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <!-- 新增：悬浮窗权限 (按你要求添加) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
