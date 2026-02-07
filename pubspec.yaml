@@ -1,7 +1,7 @@
 name: math_quiz_app
 description: A new Flutter project.
 publish_to: 'none'
-version: 1.1.0
+version: 1.1.1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -11,27 +11,24 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+
   shared_preferences: ^2.2.0
   intl: ^0.20.2
   http: ^1.2.0
-  package_info_plus: ^9.0.0
+  package_info_plus: ^5.0.1
   url_launcher: ^6.2.4
   flutter_downloader: ^1.11.3
   path_provider: ^2.1.2
-  permission_handler: ^12.0.1
+  permission_handler: ^11.3.0
   uuid: ^4.2.2
   cached_network_image: ^3.3.0
+  # 确保这个依赖存在
+  flutter_local_notifications: ^17.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.14.4
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
-
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/icon/app_icon.png"

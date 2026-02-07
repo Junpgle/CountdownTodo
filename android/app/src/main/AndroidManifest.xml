@@ -1,9 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 1. 权限声明必须放在 application 标签之前 -->
+    <!-- 1. 权限声明 -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- 2. Queries 标签也建议放在 application 之前 -->
+    <!-- 新增：通知权限 (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- 新增：前台服务权限 (用于保持通知常驻，模拟"实时活动") -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <!-- 新增：悬浮窗权限 (按你要求添加) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
@@ -12,7 +18,7 @@
     </queries>
 
     <application
-        android:label="math_quiz_app"
+        android:label="效率 &amp; 数学"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -24,10 +30,6 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- Specifies an Android theme to apply to this Activity as soon as
-                 the Android process has started. This theme is visible to the user
-                 while the Flutter UI initializes. After that, this theme continues
-                 to determine the Window background behind the Flutter UI. -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme"
@@ -38,8 +40,6 @@
             </intent-filter>
         </activity>
 
-        <!-- 3. 这是 Flutter Downloader 必须的 Provider 配置 -->
-        <!-- 如果这里报红色 Unresolved class，请忽略，这是因为 IDE 没有加载 Gradle 依赖，不影响编译 -->
         <provider
             android:name="vn.hunghd.flutterdownloader.DownloadedFileProvider"
             android:authorities="${applicationId}.flutter_downloader.provider"
@@ -50,8 +50,6 @@
                 android:resource="@xml/provider_paths"/>
         </provider>
 
-        <!-- Don't delete the meta-data below.
-             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
+import '../notification_service.dart'; // 新增：引入通知服务
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -36,11 +37,30 @@ class _HomeDashboardState extends State<HomeDashboard> {
   @override
   void initState() {
     super.initState();
+    _initNotifications(); // 初始化通知
     _loadAllData();
     _fetchRandomWallpaper();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkUpdatesAndNotices(isManual: false);
     });
+  }
+
+  // 新增：初始化通知并请求权限
+  Future<void> _initNotifications() async {
+    await NotificationService.init();
+    // 请求通知权限 (Android 13+)
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
+  }
+
+  // 新增：统一更新数据和通知的方法
+  void _updateDataAndNotify() {
+    setState(() {}); // 触发UI刷新
+    // 保存到本地
+    StorageService.saveTodos(widget.username, _todos);
+    // 更新通知栏实时活动
+    NotificationService.updateTodoNotification(_todos);
   }
 
   void _refreshData() {
@@ -65,6 +85,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           _isTodoExpanded = true;
         }
       });
+      NotificationService.updateTodoNotification(_todos);
     }
   }
 
@@ -119,8 +140,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (!await dir.exists()) await dir.create(recursive: true);
       String fileName = url.split('/').last;
       if (fileName.contains('?')) fileName = fileName.split('?').first;
-      if (fileName.isEmpty || !fileName.endsWith('.apk'))
+      if (fileName.isEmpty || !fileName.endsWith('.apk')) {
         fileName = 'update.apk';
+      }
 
       final file = File('${dir.path}/$fileName');
       if (await file.exists()) {
@@ -490,14 +512,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
         return a.isDone ? 1 : -1;
       });
     });
-    StorageService.saveTodos(widget.username, _todos);
+    _updateDataAndNotify(); // 修改：调用统一更新方法
   }
 
   void _deleteTodo(String id) {
     setState(() {
       _todos.removeWhere((t) => t.id == id);
     });
-    StorageService.saveTodos(widget.username, _todos);
+    _updateDataAndNotify(); // 修改：调用统一更新方法
   }
 
   @override
