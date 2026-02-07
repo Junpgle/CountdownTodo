@@ -35,7 +35,13 @@ class MainActivity: FlutterActivity() {
                 "showOngoingNotification" -> {
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
-                        updateRealtimeNotification(args)
+                        // 根据 type 字段区分是 待办事项 还是 测验
+                        val type = args["type"] as? String
+                        if (type == "quiz") {
+                            updateQuizNotification(args)
+                        } else {
+                            updateTodoNotification(args)
+                        }
                         result.success(null)
                     } else {
                         result.error("INVALID_ARGS", "Arguments were null", null)
@@ -80,16 +86,14 @@ class MainActivity: FlutterActivity() {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             // --- 清理旧渠道开始 ---
-            // 删除以前测试可能留下的旧渠道ID，保持设置界面干净
             val oldChannelIds = listOf("live_updates_official", "live_updates_demo", "order_updates")
             for (oldId in oldChannelIds) {
                 notificationManager.deleteNotificationChannel(oldId)
             }
             // --- 清理旧渠道结束 ---
 
-            val name = "Todo Live Activity"
-            val descriptionText = "Shows your current todo progress"
-            // IMPORTANCE_HIGH 是触发状态栏胶囊/灵动岛的关键
+            val name = "Live Activities"
+            val descriptionText = "Shows ongoing tasks and quizzes"
             val importance = NotificationManager.IMPORTANCE_HIGH
             val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
                 description = descriptionText
@@ -102,93 +106,116 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    // --- 核心逻辑：根据 Flutter 传来的数据更新通知 ---
-    private fun updateRealtimeNotification(args: Map<String, Any>) {
+    // === 处理数学测验的通知逻辑 ===
+    private fun updateQuizNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
-        // 1. 解析数据 (安全转换类型)
+        val currentIndex = (args["currentIndex"] as? Number)?.toInt() ?: 0
+        val totalCount = (args["totalCount"] as? Number)?.toInt() ?: 10
+        val questionText = args["questionText"] as? String ?: "Ready..."
+        val isOver = args["isOver"] as? Boolean ?: false
+        val score = (args["score"] as? Number)?.toInt() ?: 0
+
+        // 计算进度：如果结束了就是100%，否则按题号计算
+        val progress = if (isOver) 100 else if (totalCount > 0) ((currentIndex) * 100) / totalCount else 0
+
+        val title: String
+        val text: String
+        val subText: String
+        val color: Int
+
+        if (isOver) {
+            title = "Quiz Finished! 🏆"
+            text = "Final Score: $score / ${totalCount * 10}"
+            subText = "Completed"
+            color = 0xFFF4B400.toInt() // 金黄色
+        } else {
+            // 题号+1 因为索引从0开始
+            title = "Question ${currentIndex + 1} of $totalCount"
+            text = questionText // 例如 "15 + 3 = ?"
+            subText = "Math Quiz"
+            color = 0xFF673AB7.toInt() // 深紫色
+        }
+
+        // 构建通知
+        buildAndNotify(title, text, subText, progress, !isOver, color)
+    }
+
+    // === 处理待办事项的通知逻辑 ===
+    private fun updateTodoNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
         val totalCount = (args["totalCount"] as? Number)?.toInt() ?: 0
         val completedCount = (args["completedCount"] as? Number)?.toInt() ?: 0
-        // Flutter 传来的 List<String> 可能会被转为 ArrayList
         val pendingTitlesRaw = args["pendingTitles"] as? List<*>
         val pendingTitles = pendingTitlesRaw?.filterIsInstance<String>() ?: emptyList()
 
-        // 2. 状态判断
         val isAllDone = completedCount == totalCount && totalCount > 0
         val progress = if (totalCount > 0) (completedCount * 100) / totalCount else 0
 
-        // 3. 动态文案生成
         val title: String
         val text: String
         val subText = "$completedCount/$totalCount Done"
-        val iconRes: Int
         val color: Int
 
         if (isAllDone) {
             title = "All Tasks Completed! 🎉"
             text = "Great job clearing your list."
-            iconRes = R.mipmap.ic_launcher // 完成时可以用 App 图标或勾选图标
             color = 0xFF0F9D58.toInt() // 绿色
         } else {
-            // 如果还有任务，取第一个作为标题 (Current Focus)
             title = if (pendingTitles.isNotEmpty()) "Current: ${pendingTitles[0]}" else "Keep Going!"
-
-            // 取后续的任务作为正文预览
             text = if (pendingTitles.size > 1) {
                 "Next: ${pendingTitles.drop(1).joinToString(", ")}"
             } else {
                 "Almost there!"
             }
-
-            // 默认图标，如果没有 shopping_bag 请确保 res/drawable 下有该资源，或者改回 ic_launcher
-            // 为了防止报错，这里先用系统自带的或者 ic_launcher，如果你添加了图标可改为 R.drawable.shopping_bag
-            iconRes = R.mipmap.ic_launcher
             color = 0xFF4285F4.toInt() // 蓝色
         }
 
-        // 4. 构建通知
+        buildAndNotify(title, text, subText, progress, !isAllDone, color)
+    }
+
+    // === 通用构建方法 ===
+    private fun buildAndNotify(title: String, text: String, subText: String, progress: Int, isOngoing: Boolean, color: Int) {
         val context = this
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // 点击通知跳转回 App
+        // === 关键修复 ===
+        // 之前使用了 FLAG_ACTIVITY_CLEAR_TASK，会导致应用重启回到首页。
+        // 现在改为 FLAG_ACTIVITY_SINGLE_TOP，如果应用在后台，它会直接将应用拉回前台而不重建。
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
+
         val pendingIntent: PendingIntent = PendingIntent.getActivity(
             context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // 尝试加载大图 (可选)
-        val largeIcon = try {
-            BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
-        } catch (e: Exception) { null }
+        val iconRes = R.mipmap.ic_launcher
 
         val builder = Notification.Builder(context, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(iconRes) // 状态栏小图标
+            .setSmallIcon(iconRes)
             .setContentTitle(title)
             .setContentText(text)
-            .setSubText(subText) // 胶囊上的关键文字
-
-            // 进度条
+            .setSubText(subText)
             .setProgress(100, progress, false)
-
-            // 实时活动关键配置
-            .setOngoing(!isAllDone) // 只有未完成时才驻留
+            .setOngoing(isOngoing)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_STATUS)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setShowWhen(false)
-
-            // 样式
             .setColor(color)
-            .setColorized(true) // 必须为 true 才能变色
+            .setColorized(true)
             .setContentIntent(pendingIntent)
 
-        if (largeIcon != null) {
-            builder.setLargeIcon(Icon.createWithBitmap(largeIcon))
-        }
+        // 大图处理（可选）
+        try {
+            val largeIcon = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
+            if (largeIcon != null) {
+                builder.setLargeIcon(Icon.createWithBitmap(largeIcon))
+            }
+        } catch (e: Exception) {}
 
-        // Android 15 权限提升请求
         val extras = Bundle()
         extras.putBoolean("android.extra.requestPromotedOngoing", true)
         builder.addExtras(extras)
