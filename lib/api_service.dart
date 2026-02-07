@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // ⚠️ 请替换为你部署后的 Worker URL
-  static const String baseUrl = "https://math-quiz-backend.a674155783.workers.dev";
+  static const String baseUrl = "https://mathquiz.junpgle.me";
 
   // ==========================================
   // 1. 用户认证 (Auth)
