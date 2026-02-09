@@ -68,7 +68,7 @@ class WallpaperConfig {
 
 class UpdateService {
   // 替换成你真实的 GitHub Raw URL
-  static const String MANIFEST_URL = "https://raw.githubusercontent.com/Junpgle/math_quiz_app/refs/heads/master/update_manifest.json";
+  static const String MANIFEST_URL = "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
 
   // 检查并获取配置
   static Future<AppManifest?> checkManifest() async {
