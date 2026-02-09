@@ -1,17 +1,17 @@
 {
   "version_code": 1,
-  "version_name": "1.2.0",
+  "version_name": "1.2.1",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 1.2.0",
-    "description": "v1.2.0 更新排行榜,新增世界榜/本地榜\nv1.2.0 新增账号云同步!欢迎和大家PK排行榜!\nv1.1.4 新增账号云同步!欢迎和大家PK排行榜!\nv1.1.3 适配答题实时通知\nv1.1.3 适配答题实时通知\nv1.1.2 适配待办更新实时通知\nv1.1.2 适配待办更新实时通知\nv1.1.1 待办在通知栏实时显示",
-    "full_package_url": "https://github.com/Junpgle/math_quiz_app/releases/download/v1.2.0/1.2.0.apk",
-    "patch_package_url": "https://github.com/Junpgle/math_quiz_app/releases/download/v1.2.0/1.2.0.apk"
+    "title": "版本更新 1.2.1",
+    "description": "v1.2.1 修复同步逻辑,完成多端同步",
+    "full_package_url": "https://github.com/Junpgle/math_quiz_app/releases/download/v1.2.1/1.2.1.apk",
+    "patch_package_url": "https://github.com/Junpgle/math_quiz_app/releases/download/v1.2.1/1.2.1.apk"
   },
   "announcement": {
     "show": true,
     "title": "系统公告",
-    "content": "v1.2.0版本接入云端数据库服务,原有账户无法登录,需要重新注册账号,给您带来不便敬请谅解!"
+    "content": "v1.2.0起版本接入云端数据库服务,原有账户无法登录,需要重新注册账号,给您带来不便敬请谅解!"
   },
   "wallpaper": {
     "show": true,
