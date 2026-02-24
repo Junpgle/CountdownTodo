@@ -1,84 +1,109 @@
 package com.math_quiz.junpgle.com.math_quiz_app
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
+import android.app.*
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.*
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
-    // Channel ID 保持不变，用于实时活动
+    private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
     private val NOTIFICATION_CHANNEL_ID = "live_updates_official_v2"
     private val NOTIFICATION_ID = 12345
-    private val TAG = "LiveUpdates"
+    private val TAG = "MathQuizApp"
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
         createNotificationChannel()
 
+        // 通知通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                // 接收来自 Flutter 的真实数据更新
                 "showOngoingNotification" -> {
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
-                        // 根据 type 字段区分是 待办事项 还是 测验
                         val type = args["type"] as? String
-                        if (type == "quiz") {
-                            updateQuizNotification(args)
-                        } else {
-                            updateTodoNotification(args)
-                        }
+                        if (type == "quiz") updateQuizNotification(args) else updateTodoNotification(args)
                         result.success(null)
-                    } else {
-                        result.error("INVALID_ARGS", "Arguments were null", null)
-                    }
+                    } else result.error("INVALID_ARGS", "Arguments were null", null)
                 }
                 "cancelNotification" -> {
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(NOTIFICATION_ID)
                     result.success(null)
                 }
-                "checkPromotedNotificationPermission" -> {
-                    if (Build.VERSION.SDK_INT >= 35) {
-                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                        result.success(nm.canPostPromotedNotifications())
-                    } else {
-                        result.success(true)
-                    }
-                }
-                "openPromotedNotificationSettings" -> {
-                    if (Build.VERSION.SDK_INT >= 35) {
-                        try {
-                            val intent = Intent("android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS")
-                            intent.putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                            startActivity(intent)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.success(false)
-                        }
-                    } else {
-                        result.success(false)
-                    }
-                }
-                else -> {
-                    result.notImplemented()
-                }
+                else -> result.notImplemented()
             }
         }
+
+        // 屏幕时间通道
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_TIME_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkUsagePermission" -> result.success(hasUsageStatsPermission())
+                "openUsageSettings" -> {
+                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                    result.success(true)
+                }
+                "getScreenTimeData" -> result.success(getUsageStats())
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun hasUsageStatsPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun getUsageStats(): List<Map<String, Any>> {
+        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val calendar = Calendar.getInstance()
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        val startTime = calendar.timeInMillis
+        val endTime = System.currentTimeMillis()
+
+        val stats = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
+        val pm = packageManager
+        val result = mutableListOf<Map<String, Any>>()
+
+        for ((pkgName, usageStat) in stats) {
+            val totalTime = usageStat.totalTimeInForeground
+            if (totalTime > 60000) { // 仅上报使用超过1分钟的应用
+                val label = try {
+                    val info = pm.getApplicationInfo(pkgName, 0)
+                    pm.getApplicationLabel(info).toString()
+                } catch (e: Exception) { pkgName }
+
+                val appMap = mutableMapOf<String, Any>()
+                appMap["app_name"] = label
+                appMap["duration"] = (totalTime / 1000 / 60).toInt()
+                result.add(appMap)
+            }
+        }
+        return result
     }
 
     private fun createNotificationChannel() {

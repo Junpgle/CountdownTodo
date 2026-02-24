@@ -152,4 +152,48 @@ class ApiService {
       return response.statusCode == 200;
     } catch (e) { return false; }
   }
+
+  // ==========================================
+  // 5. 屏幕使用时间 (Screen Time)
+  // ==========================================
+
+  static Future<bool> uploadScreenTime({
+    required int userId,
+    required String deviceName,
+    required String date,
+    required List<Map<String, dynamic>> apps,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/screen_time'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'device_name': deviceName,
+          'record_date': date,
+          'apps': apps,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("上报屏幕时间失败: $e");
+      return false;
+    }
+  }
+
+  static Future<List<dynamic>> fetchScreenTime(int userId, String date) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/screen_time?user_id=$userId&date=$date'),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return [];
+    } catch (e) {
+      print("获取屏幕时间失败: $e");
+      return [];
+    }
+  }
 }
+
