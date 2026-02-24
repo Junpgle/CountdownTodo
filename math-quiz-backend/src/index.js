@@ -1,13 +1,13 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
- * 包含：用户认证(含邮件验证)、排行榜、待办事项、倒计时管理、屏幕时间同步
+ * 功能：用户认证、排行榜、待办事项(软删除)、倒计时(LWW同步)、屏幕时间同步
  */
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // === 1. CORS 设置 ===
+    // === 1. CORS 配置 ===
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
@@ -108,68 +108,61 @@ export default {
       // 模块 B: 排行榜 (Leaderboard)
       // --------------------------
 
+      // --- 模块 B: 排行榜 ---
       if (url.pathname === "/api/leaderboard" && request.method === "GET") {
         const { results } = await DB.prepare("SELECT username, score, duration, played_at FROM leaderboard ORDER BY score DESC, duration ASC LIMIT 50").all();
         return jsonResponse(results);
       }
 
-      if (url.pathname === "/api/score" && request.method === "POST") {
-        const { user_id, username, score, duration } = await request.json();
-        if (!user_id) return errorResponse("未登录");
-        await DB.prepare("INSERT INTO leaderboard (user_id, username, score, duration) VALUES (?, ?, ?, ?)").bind(user_id, username, score, duration).run();
-        return jsonResponse({ success: true });
-      }
-
-      // --------------------------
-      // 模块 C: 待办事项 (Todos)
-      // --------------------------
-
+      // --- 模块 C: 待办事项 (支持软删除) ---
       if (url.pathname === "/api/todos" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
-        if (!userId) return errorResponse("缺少 user_id");
-        const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
+        const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND is_deleted = 0 ORDER BY created_at DESC").bind(userId).all();
         return jsonResponse(results);
-      }
-
-      if (url.pathname === "/api/todos" && request.method === "POST") {
-        const { user_id, content } = await request.json();
-        if (!user_id || !content) return errorResponse("缺少参数");
-        await DB.prepare("INSERT INTO todos (user_id, content, is_completed) VALUES (?, ?, 0)").bind(user_id, content).run();
-        return jsonResponse({ success: true });
       }
 
       if (url.pathname === "/api/todos/toggle" && request.method === "POST") {
         const { id, is_completed } = await request.json();
-        await DB.prepare("UPDATE todos SET is_completed = ? WHERE id = ?").bind(is_completed ? 1 : 0, id).run();
+        await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(is_completed ? 1 : 0, id).run();
         return jsonResponse({ success: true });
       }
 
       if (url.pathname === "/api/todos" && request.method === "DELETE") {
         const { id } = await request.json();
-        await DB.prepare("DELETE FROM todos WHERE id = ?").bind(id).run();
+        await DB.prepare("UPDATE todos SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true });
       }
 
-      // --------------------------
-      // 模块 D: 倒计时 (Countdowns)
-      // --------------------------
-
+      // --- 模块 D: 倒计时 (LWW 同步逻辑) ---
       if (url.pathname === "/api/countdowns" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
-        if (!userId) return errorResponse("缺少 user_id");
-        const { results } = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ? ORDER BY target_time ASC").bind(userId).all();
+        const { results } = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ? AND is_deleted = 0").bind(userId).all();
         return jsonResponse(results);
       }
 
       if (url.pathname === "/api/countdowns" && request.method === "POST") {
-        const { user_id, title, target_time } = await request.json();
-        await DB.prepare("INSERT INTO countdowns (user_id, title, target_time) VALUES (?, ?, ?)").bind(user_id, title, target_time).run();
-        return jsonResponse({ success: true });
+        const { user_id, title, target_time, client_updated_at } = await request.json();
+        const timestamp = client_updated_at || Date.now();
+
+        // UPSERT 逻辑：只有当客户端提供的时间戳大于云端时才更新
+        const info = await DB.prepare(`
+          INSERT INTO countdowns (user_id, title, target_time, updated_at, is_deleted)
+          VALUES (?, ?, ?, ?, 0)
+          ON CONFLICT(user_id, title) DO UPDATE SET
+            target_time = excluded.target_time,
+            updated_at = excluded.updated_at,
+            is_deleted = 0
+          WHERE excluded.updated_at > countdowns.updated_at
+        `).bind(user_id, title, target_time, timestamp).run();
+
+        return jsonResponse({ success: true, updated: info.meta.changes > 0 });
       }
 
       if (url.pathname === "/api/countdowns" && request.method === "DELETE") {
-        const { id } = await request.json();
-        await DB.prepare("DELETE FROM countdowns WHERE id = ?").bind(id).run();
+        const { id, client_updated_at } = await request.json();
+        const timestamp = client_updated_at || Date.now();
+        // 删除也作为一种更新，标记 is_deleted = 1 并更新时间戳
+        await DB.prepare("UPDATE countdowns SET is_deleted = 1, updated_at = ? WHERE id = ?").bind(timestamp, id).run();
         return jsonResponse({ success: true });
       }
 
@@ -245,8 +238,7 @@ export default {
 	};
 
 async function hashPassword(password) {
-  const myText = new TextEncoder().encode(password);
-  const myDigest = await crypto.subtle.digest({ name: 'SHA-256' }, myText);
-  const hashArray = Array.from(new Uint8Array(myDigest));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const msgUint8 = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }

@@ -99,38 +99,64 @@ class ApiService {
   // ==========================================
   // 3. 待办事项 (Todos)
   // ==========================================
+
+  /// 获取待办列表 (后端会自动过滤 is_deleted = 0)
   static Future<List<dynamic>> fetchTodos(int userId) async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/todos?user_id=$userId'));
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
-    } catch (e) { return []; }
+    } catch (e) {
+      return [];
+    }
   }
 
   static Future<bool> addTodo(int userId, String content) async {
     try {
-      final response = await http.post(Uri.parse('$baseUrl/api/todos'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'user_id': userId, 'content': content}));
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/todos'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId, 'content': content}),
+      );
       return response.statusCode == 200;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
-  static Future<bool> toggleTodo(int todoId, bool isCompleted) async {
+  /// 切换完成状态
+  static Future<bool> toggleTodo(int id, bool isCompleted) async {
     try {
-      final response = await http.post(Uri.parse('$baseUrl/api/todos/toggle'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'id': todoId, 'is_completed': isCompleted}));
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/todos/toggle'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'id': id, 'is_completed': isCompleted}),
+      );
       return response.statusCode == 200;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
-  static Future<bool> deleteTodo(int todoId) async {
+  /// 删除待办 (后端执行软删除)
+  static Future<bool> deleteTodo(int id) async {
     try {
-      final response = await http.delete(Uri.parse('$baseUrl/api/todos'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'id': todoId}));
+      final response = await http.delete(
+        Uri.parse('$baseUrl/api/todos'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'id': id}),
+      );
       return response.statusCode == 200;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
   // ==========================================
-  // 4. 倒计时 (Countdowns)
+  // 4. 倒计时 (Countdowns) - 引入时间戳覆盖逻辑
   // ==========================================
+
+  /// 获取倒计时列表
   static Future<List<dynamic>> fetchCountdowns(int userId) async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/countdowns?user_id=$userId'));
@@ -139,18 +165,44 @@ class ApiService {
     } catch (e) { return []; }
   }
 
+  /// 添加或更新倒计时 (Last Write Wins)
+  /// 如果同一 user 下已存在相同 title，后端将根据时间戳决定是否覆盖
   static Future<bool> addCountdown(int userId, String title, DateTime targetTime) async {
     try {
-      final response = await http.post(Uri.parse('$baseUrl/api/countdowns'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'user_id': userId, 'title': title, 'target_time': targetTime.toIso8601String()}));
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/countdowns'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'title': title,
+          'target_time': targetTime.toIso8601String(),
+          // 发送本地当前时间戳作为修改版本
+          'client_updated_at': DateTime.now().millisecondsSinceEpoch,
+        }),
+      );
+      // 返回 success: true 并不代表一定写入（可能云端更旧被忽略），但逻辑上同步请求已成功处理
       return response.statusCode == 200;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
+  /// 删除倒计时
   static Future<bool> deleteCountdown(int id) async {
     try {
-      final response = await http.delete(Uri.parse('$baseUrl/api/countdowns'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'id': id}));
+      final response = await http.delete(
+        Uri.parse('$baseUrl/api/countdowns'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id': id,
+          // 删除也携带时间戳，确保该“删除操作”是针对特定版本的
+          'client_updated_at': DateTime.now().millisecondsSinceEpoch,
+        }),
+      );
       return response.statusCode == 200;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
   // ==========================================
