@@ -157,6 +157,8 @@ class ApiService {
   // 5. 屏幕使用时间 (Screen Time)
   // ==========================================
 
+  // 在 ApiService 类中添加
+
   static Future<bool> uploadScreenTime({
     required int userId,
     required String deviceName,
@@ -175,25 +177,16 @@ class ApiService {
         }),
       );
       return response.statusCode == 200;
-    } catch (e) {
-      print("上报屏幕时间失败: $e");
-      return false;
-    }
+    } catch (e) { return false; }
   }
 
   static Future<List<dynamic>> fetchScreenTime(int userId, String date) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/screen_time?user_id=$userId&date=$date'),
-      );
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
+      final response = await http.get(Uri.parse('$baseUrl/api/screen_time?user_id=$userId&date=$date'));
+      if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
-    } catch (e) {
-      print("获取屏幕时间失败: $e");
-      return [];
-    }
+    } catch (e) { return []; }
   }
+
 }
 

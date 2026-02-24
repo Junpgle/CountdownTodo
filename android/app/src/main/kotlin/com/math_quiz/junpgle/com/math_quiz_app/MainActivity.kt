@@ -4,6 +4,7 @@ import android.app.*
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.os.Build
@@ -29,7 +30,7 @@ class MainActivity: FlutterActivity() {
 
         createNotificationChannel()
 
-        // 通知通道
+        // 1. 通知通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "showOngoingNotification" -> {
@@ -38,18 +39,42 @@ class MainActivity: FlutterActivity() {
                         val type = args["type"] as? String
                         if (type == "quiz") updateQuizNotification(args) else updateTodoNotification(args)
                         result.success(null)
-                    } else result.error("INVALID_ARGS", "Arguments were null", null)
+                    } else {
+                        result.error("INVALID_ARGS", "Arguments were null", null)
+                    }
                 }
                 "cancelNotification" -> {
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(NOTIFICATION_ID)
                     result.success(null)
                 }
+                "checkPromotedNotificationPermission" -> {
+                    if (Build.VERSION.SDK_INT >= 35) {
+                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        result.success(nm.canPostPromotedNotifications())
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "openPromotedNotificationSettings" -> {
+                    if (Build.VERSION.SDK_INT >= 35) {
+                        try {
+                            val intent = Intent("android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS")
+                            intent.putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(false)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
 
-        // 屏幕时间通道
+        // 2. 屏幕时间通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_TIME_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "checkUsagePermission" -> result.success(hasUsageStatsPermission())
@@ -59,7 +84,11 @@ class MainActivity: FlutterActivity() {
                     startActivity(intent)
                     result.success(true)
                 }
-                "getScreenTimeData" -> result.success(getUsageStats())
+                "getScreenTimeData" -> {
+                    // 调用下方定义好的辅助方法并返回结果
+                    val data = getUsageStats()
+                    result.success(data)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -82,40 +111,50 @@ class MainActivity: FlutterActivity() {
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+
         val startTime = calendar.timeInMillis
         val endTime = System.currentTimeMillis()
 
-        val stats = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
-        val pm = packageManager
-        val result = mutableListOf<Map<String, Any>>()
+        // 获取原始数据并手动聚合
+        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
 
-        for ((pkgName, usageStat) in stats) {
-            val totalTime = usageStat.totalTimeInForeground
-            if (totalTime > 60000) { // 仅上报使用超过1分钟的应用
+        val pm = packageManager
+        val usageStatsList = mutableListOf<Map<String, Any>>() // 重命名，避免与 result 冲突
+
+        // 识别设备类型
+        val isTablet = (resources.configuration.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK) >= Configuration.SCREENLAYOUT_SIZE_LARGE
+        val deviceType = if (isTablet) "Android-Tablet" else "Android-Phone"
+
+        // 内存中按包名聚合时长
+        val aggregatedStats = stats.groupBy { it.packageName }
+            .mapValues { entry -> entry.value.sumOf { it.totalTimeInForeground } }
+
+        for ((pkgName, totalTime) in aggregatedStats) {
+            if (totalTime > 10000) { // 超过10秒即记录
                 val label = try {
                     val info = pm.getApplicationInfo(pkgName, 0)
                     pm.getApplicationLabel(info).toString()
                 } catch (e: Exception) { pkgName }
 
-                val appMap = mutableMapOf<String, Any>()
-                appMap["app_name"] = label
-                appMap["duration"] = (totalTime / 1000 / 60).toInt()
-                result.add(appMap)
+                usageStatsList.add(mapOf(
+                    "app_name" to label,
+                    "duration" to (totalTime / 1000).toInt(), // 统一单位：秒
+                    "device_type" to deviceType
+                ))
             }
         }
-        return result
+        return usageStatsList
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            // --- 清理旧渠道开始 ---
             val oldChannelIds = listOf("live_updates_official", "live_updates_demo", "order_updates")
             for (oldId in oldChannelIds) {
                 notificationManager.deleteNotificationChannel(oldId)
             }
-            // --- 清理旧渠道结束 ---
 
             val name = "Live Activities"
             val descriptionText = "Shows ongoing tasks and quizzes"
@@ -126,12 +165,10 @@ class MainActivity: FlutterActivity() {
                 enableVibration(false)
                 setShowBadge(true)
             }
-
             notificationManager.createNotificationChannel(channel)
         }
     }
 
-    // === 处理数学测验的通知逻辑 ===
     private fun updateQuizNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
@@ -141,7 +178,6 @@ class MainActivity: FlutterActivity() {
         val isOver = args["isOver"] as? Boolean ?: false
         val score = (args["score"] as? Number)?.toInt() ?: 0
 
-        // 计算进度：如果结束了就是100%，否则按题号计算
         val progress = if (isOver) 100 else if (totalCount > 0) ((currentIndex) * 100) / totalCount else 0
 
         val title: String
@@ -153,20 +189,17 @@ class MainActivity: FlutterActivity() {
             title = "Quiz Finished! 🏆"
             text = "Final Score: $score / ${totalCount * 10}"
             subText = "Completed"
-            color = 0xFFF4B400.toInt() // 金黄色
+            color = 0xFFF4B400.toInt()
         } else {
-            // 题号+1 因为索引从0开始
             title = "Question ${currentIndex + 1} of $totalCount"
-            text = questionText // 例如 "15 + 3 = ?"
+            text = questionText
             subText = "Math Quiz"
-            color = 0xFF673AB7.toInt() // 深紫色
+            color = 0xFF673AB7.toInt()
         }
 
-        // 构建通知
         buildAndNotify(title, text, subText, progress, !isOver, color)
     }
 
-    // === 处理待办事项的通知逻辑 ===
     private fun updateTodoNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
@@ -186,7 +219,7 @@ class MainActivity: FlutterActivity() {
         if (isAllDone) {
             title = "All Tasks Completed! 🎉"
             text = "Great job clearing your list."
-            color = 0xFF0F9D58.toInt() // 绿色
+            color = 0xFF0F9D58.toInt()
         } else {
             title = if (pendingTitles.isNotEmpty()) "Current: ${pendingTitles[0]}" else "Keep Going!"
             text = if (pendingTitles.size > 1) {
@@ -194,20 +227,16 @@ class MainActivity: FlutterActivity() {
             } else {
                 "Almost there!"
             }
-            color = 0xFF4285F4.toInt() // 蓝色
+            color = 0xFF4285F4.toInt()
         }
 
         buildAndNotify(title, text, subText, progress, !isAllDone, color)
     }
 
-    // === 通用构建方法 ===
     private fun buildAndNotify(title: String, text: String, subText: String, progress: Int, isOngoing: Boolean, color: Int) {
         val context = this
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // === 关键修复 ===
-        // 之前使用了 FLAG_ACTIVITY_CLEAR_TASK，会导致应用重启回到首页。
-        // 现在改为 FLAG_ACTIVITY_SINGLE_TOP，如果应用在后台，它会直接将应用拉回前台而不重建。
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -233,7 +262,6 @@ class MainActivity: FlutterActivity() {
             .setColorized(true)
             .setContentIntent(pendingIntent)
 
-        // 大图处理（可选）
         try {
             val largeIcon = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
             if (largeIcon != null) {

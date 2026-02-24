@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart'; // 需要引入 Uuid 生成ID
+import 'package:uuid/uuid.dart';
 import 'models.dart';
-import 'api_service.dart'; // 引入API服务
+import 'api_service.dart'; // 确保路径正确
 
 class StorageService {
   // ignore: constant_identifier_names
@@ -19,6 +19,12 @@ class StorageService {
   static const String KEY_TODOS = "user_todos";
   // ignore: constant_identifier_names
   static const String KEY_COUNTDOWNS = "user_countdowns";
+
+  // --- 新增：屏幕时间缓存相关的 KEY ---
+  // ignore: constant_identifier_names
+  static const String KEY_SCREEN_TIME_CACHE = "screen_time_cache";
+  // ignore: constant_identifier_names
+  static const String KEY_LAST_SCREEN_TIME_SYNC = "last_screen_time_sync";
 
   // 防止并发同步的标志位
   static bool _isSyncing = false;
@@ -56,6 +62,8 @@ class StorageService {
   static Future<void> clearLoginSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(KEY_CURRENT_USER);
+    // 同时清理屏幕时间同步时间戳，强制下次登录后立即同步
+    await prefs.remove(KEY_LAST_SCREEN_TIME_SYNC);
   }
 
   static Future<void> saveSettings(Map<String, dynamic> settings) async {
@@ -119,7 +127,7 @@ class StorageService {
     int totalCorrect = 0;
     int bestTime = 999999;
     bool hasPerfectScore = false;
-    int todayCount = 0; // 新增：今日完成次数
+    int todayCount = 0;
     DateTime now = DateTime.now();
 
     for (var item in rawList) {
@@ -128,7 +136,6 @@ class StorageService {
         int score = map['score'];
         int duration = map['duration'];
 
-        // 统计今日次数
         if (map['date'] != null) {
           DateTime date = DateTime.parse(map['date']);
           if (date.year == now.year && date.month == now.month && date.day == now.day) {
@@ -144,7 +151,6 @@ class StorageService {
           if (duration < bestTime) bestTime = duration;
         }
       } catch (e) {
-        // 旧数据兼容处理
         RegExp scoreReg = RegExp(r"得分: (\d+)");
         var match = scoreReg.firstMatch(item);
         if (match != null) {
@@ -160,7 +166,7 @@ class StorageService {
     return {
       'accuracy': accuracy,
       'bestTime': hasPerfectScore ? bestTime : null,
-      'todayCount': todayCount, // 返回今日次数
+      'todayCount': todayCount,
     };
   }
 
@@ -177,7 +183,6 @@ class StorageService {
     if (list.length > 10) list = list.sublist(0, 10);
     await prefs.setString(KEY_LEADERBOARD, jsonEncode(list));
 
-    // 触发数据同步 (自动上传最高分)
     syncData(username);
   }
 
@@ -190,13 +195,10 @@ class StorageService {
 
   // --- 待办事项与倒计时 ---
 
-  // 保存倒计时，增加 sync 参数控制是否触发同步
   static Future<void> saveCountdowns(String username, List<CountdownItem> items, {bool sync = true}) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> jsonList = items.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
-
-    // 如果启用了同步，触发后台同步
     if (sync) syncData(username);
   }
 
@@ -206,13 +208,10 @@ class StorageService {
     return list.map((e) => CountdownItem.fromJson(jsonDecode(e))).toList();
   }
 
-  // 保存待办，增加 sync 参数控制是否触发同步
   static Future<void> saveTodos(String username, List<TodoItem> items, {bool sync = true}) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> jsonList = items.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
-
-    // 如果启用了同步，触发后台同步
     if (sync) syncData(username);
   }
 
@@ -248,7 +247,6 @@ class StorageService {
     }
 
     if (needSave) {
-      // 自动生成的日常重置也触发同步
       await saveTodos(username, todos, sync: true);
     }
 
@@ -259,19 +257,56 @@ class StorageService {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  // --- 核心同步功能 (修复版：基于 updated_at 的精确同步) ---
-  // 返回值：是否执行了任何更新 (true: 有数据变更, false: 无变更或失败)
+  // --- 新增：屏幕时间本地缓存与同步管理 ---
+
+  /// 保存屏幕时间汇总数据到本地
+  static Future<void> saveScreenTimeCache(List<dynamic> stats) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(KEY_SCREEN_TIME_CACHE, jsonEncode(stats));
+  }
+
+  /// 从本地读取屏幕时间汇总数据
+  static Future<List<dynamic>> getScreenTimeCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonStr = prefs.getString(KEY_SCREEN_TIME_CACHE);
+    if (jsonStr != null) {
+      try {
+        return jsonDecode(jsonStr);
+      } catch (_) {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  /// 记录最后一次成功同步屏幕时间的时间戳
+  static Future<void> updateLastScreenTimeSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(KEY_LAST_SCREEN_TIME_SYNC, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  /// 获取最后一次成功同步的时间戳
+  static Future<DateTime?> getLastScreenTimeSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    int? timestamp = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+    if (timestamp != null) {
+      return DateTime.fromMillisecondsSinceEpoch(timestamp);
+    }
+    return null;
+  }
+
+  // --- 核心同步功能 ---
   static Future<bool> syncData(String username) async {
-    if (_isSyncing) return false; // 避免并发同步
+    if (_isSyncing) return false;
     _isSyncing = true;
     bool hasChanges = false;
 
     try {
       final prefs = await SharedPreferences.getInstance();
       int? userId = prefs.getInt('current_user_id');
-      if (userId == null) return false; // 未登录云端不执行
+      if (userId == null) return false;
 
-      // 1. 同步最高分 (本地历史记录 -> 云端)
+      // 1. 同步最高分
       List<String> historyList = prefs.getStringList("history_$username") ?? [];
       int bestScore = 0;
       int bestDuration = 9999;
@@ -297,67 +332,53 @@ class StorageService {
         );
       }
 
-      // 2. 同步待办事项 (基于时间戳的双向同步)
+      // 2. 同步待办事项
       List<TodoItem> localTodos = await getTodos(username);
       List<dynamic> cloudTodos = await ApiService.fetchTodos(userId);
       bool localTodosChanged = false;
 
-      // 构建映射以方便查找
-      Map<String, dynamic> cloudMap = {}; // Content -> CloudItem
+      Map<String, dynamic> cloudMap = {};
       for (var t in cloudTodos) {
         if (t['content'] != null) cloudMap[t['content']] = t;
       }
 
-      // A. 遍历本地：上传缺失的 或 更新状态
       for (var localItem in localTodos) {
         if (cloudMap.containsKey(localItem.title)) {
           var cloudItem = cloudMap[localItem.title];
           bool cloudDone = cloudItem['is_completed'] == 1 || cloudItem['is_completed'] == true;
           int cloudId = cloudItem['id'];
 
-          // 核心修复：解析云端时间戳
-          // D1 返回的 CURRENT_TIMESTAMP 是 UTC 格式 (e.g. "2023-10-01 12:00:00") 但可能不带 'Z'
-          // 为了正确比较，我们需要确保它被解析为 UTC，然后转为本地时间与 localItem.lastUpdated 比较
           String timeStr = cloudItem['updated_at'] ?? cloudItem['created_at'] ?? "";
-          if (timeStr.isNotEmpty && !timeStr.endsWith('Z')) {
-            timeStr += 'Z'; // 强制视为 UTC
-          }
+          if (timeStr.isNotEmpty && !timeStr.endsWith('Z')) timeStr += 'Z';
           DateTime cloudTime = DateTime.tryParse(timeStr)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
 
-          // 状态不一致时，谁的时间晚（谁更新），听谁的
           if (localItem.isDone != cloudDone) {
             if (localItem.lastUpdated.isAfter(cloudTime)) {
-              // 本地更新，推送到云端 (例如：刚点击了完成)
               await ApiService.toggleTodo(cloudId, localItem.isDone);
             } else {
-              // 云端更新，拉取到本地 (例如：在其他设备点过完成了)
               localItem.isDone = cloudDone;
-              localItem.lastUpdated = cloudTime; // 更新本地时间戳以保持一致
+              localItem.lastUpdated = cloudTime;
               localTodosChanged = true;
             }
           }
         } else {
-          // 本地有，云端无 -> 上传 (仅限未完成的，避免上传已删除的历史)
           if (!localItem.isDone) {
             await ApiService.addTodo(userId, localItem.title);
           }
         }
       }
 
-      // B. 遍历云端：下载本地缺失的
       for (var content in cloudMap.keys) {
-        // 如果本地没有这个待办
         if (!localTodos.any((t) => t.title == content)) {
           var cloudItem = cloudMap[content];
           bool isCompleted = cloudItem['is_completed'] == 1 || cloudItem['is_completed'] == true;
 
-          // 仅拉取未完成的任务进行恢复
           if (!isCompleted) {
             String timeStr = cloudItem['updated_at'] ?? cloudItem['created_at'] ?? "";
             if (timeStr.isNotEmpty && !timeStr.endsWith('Z')) timeStr += 'Z';
 
             localTodos.insert(0, TodoItem(
-              id: const Uuid().v4(), // 生成新ID
+              id: const Uuid().v4(),
               title: content,
               isDone: false,
               recurrence: RecurrenceType.none,
@@ -369,16 +390,12 @@ class StorageService {
       }
 
       if (localTodosChanged) {
-        // 保存本地更改，注意 sync: false 防止死循环
-        localTodos.sort((a, b) {
-          if (a.isDone == b.isDone) return 0;
-          return a.isDone ? 1 : -1;
-        });
+        localTodos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
         await saveTodos(username, localTodos, sync: false);
         hasChanges = true;
       }
 
-      // 3. 同步倒计时 (双向合并)
+      // 3. 同步倒计时
       List<CountdownItem> localCountdowns = await getCountdowns(username);
       List<dynamic> cloudCountdowns = await ApiService.fetchCountdowns(userId);
       bool countdownsChanged = false;
@@ -386,21 +403,17 @@ class StorageService {
       Set<String> cloudTitles = cloudCountdowns.map((e) => (e['title'] as String?) ?? "").toSet();
       Set<String> localTitles = localCountdowns.map((e) => e.title).toSet();
 
-      // 本地 -> 云端
       for (var item in localCountdowns) {
         if (!cloudTitles.contains(item.title)) {
           await ApiService.addCountdown(userId, item.title, item.targetDate);
         }
       }
 
-      // 云端 -> 本地
       for (var item in cloudCountdowns) {
         String title = item['title'] ?? "";
-        // 如果云端有，本地没有
         if (title.isNotEmpty && !localTitles.contains(title)) {
           String dateStr = item['target_time'] ?? item['date'] ?? "";
           DateTime? target = DateTime.tryParse(dateStr);
-          // 且未过期
           if (target != null && target.isAfter(DateTime.now())) {
             localCountdowns.add(CountdownItem(title: title, targetDate: target));
             countdownsChanged = true;

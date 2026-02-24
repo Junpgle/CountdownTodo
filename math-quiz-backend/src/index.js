@@ -173,56 +173,76 @@ export default {
         return jsonResponse({ success: true });
       }
 
-      // --------------------------
-      // 模块 E: 屏幕使用时间 (Screen Time) - 新增同步接口
-      // --------------------------
 
-      // [POST] 上报某设备在某一天的屏幕时间
-      if (url.pathname === "/api/screen_time" && request.method === "POST") {
-        const { user_id, device_name, record_date, apps } = await request.json();
-        if (!user_id || !device_name || !record_date || !Array.isArray(apps)) {
-          return errorResponse("缺少必要参数或格式错误");
-        }
+    // --------------------------
+	// 模块 E: 屏幕使用时间 (Screen Time)
+	// --------------------------
 
-        // 使用 batch 批量处理以提高效率 (SQLite UPSERT 语法)
-        const statements = apps.map(app => {
-          return DB.prepare(`
-            INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, device_name, record_date, app_name)
-            DO UPDATE SET duration = excluded.duration
-          `).bind(user_id, device_name, record_date, app.app_name, app.duration);
-        });
+	// [POST] 上报某设备在某一天的屏幕时间
+	if (url.pathname === "/api/screen_time" && request.method === "POST") {
+	const body = await request.json();
+	let { user_id, device_name, record_date, apps } = body;
 
-        await DB.batch(statements);
-        return jsonResponse({ success: true });
-      }
+	// 基础校验
+	if (!user_id || !device_name || !record_date || !Array.isArray(apps)) {
+	  return errorResponse("缺少必要参数或格式错误 (需包含 user_id, device_name, record_date, apps[])");
+	}
 
-      // [GET] 拉取某天所有设备的汇总数据
-      if (url.pathname === "/api/screen_time" && request.method === "GET") {
-        const userId = url.searchParams.get("user_id");
-        const date = url.searchParams.get("date");
-        if (!userId || !date) return errorResponse("缺少 user_id 或 date");
+	// 数据清洗：去除前后空格
+	device_name = device_name.trim();
 
-        // 聚合所有设备的数据：按应用名称 SUM 时间
-        const { results } = await DB.prepare(`
-          SELECT app_name, SUM(duration) as duration
-          FROM screen_time_logs
-          WHERE user_id = ? AND record_date = ?
-          GROUP BY app_name
-          ORDER BY duration DESC
-        `).bind(userId, date).all();
+	try {
+	  // 使用 D1 Batch 批量处理以提高性能 (SQLite UPSERT 语法)
+	  const statements = apps.map(app => {
+		return DB.prepare(`
+		  INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
+		  VALUES (?, ?, ?, ?, ?)
+		  ON CONFLICT(user_id, device_name, record_date, app_name)
+		  DO UPDATE SET
+			duration = excluded.duration,
+			updated_at = CURRENT_TIMESTAMP
+		`).bind(user_id, device_name, record_date, app.app_name, app.duration);
+	  });
 
-        return jsonResponse(results);
-      }
+	  await DB.batch(statements);
 
-      return errorResponse("API Endpoint Not Found", 404);
+	  return jsonResponse({
+		success: true,
+		received_device: device_name, // 返回接收到的设备名，便于你调试
+		message: `已同步来自设备 [${device_name}] 的 ${apps.length} 条记录`
+	  });
+	} catch (e) {
+	  return errorResponse("数据库更新失败: " + e.message, 500);
+	}
+	}
 
-    } catch (e) {
-      return errorResponse(`Server Error: ${e.message}`, 500);
-    }
-  },
-};
+	// [GET] 获取今日汇总数据
+	if (url.pathname === "/api/screen_time" && request.method === "GET") {
+	const userId = url.searchParams.get("user_id");
+	const date = url.searchParams.get("date");
+	if (!userId || !date) return errorResponse("缺少参数 user_id 或 date");
+
+	// 按 app_name 和 device_name 共同分组
+	// 这样前端收到的数组里，同个 App 会根据设备名拆分成多条记录，从而显示不同图标
+	const { results } = await DB.prepare(`
+	  SELECT app_name, device_name, SUM(duration) as duration
+	  FROM screen_time_logs
+	  WHERE user_id = ? AND record_date = ?
+	  GROUP BY app_name, device_name
+	  ORDER BY duration DESC
+	`).bind(userId, date).all();
+
+	return jsonResponse(results);
+	}
+
+	// 默认 404
+	return errorResponse("API Endpoint Not Found", 404);
+
+	} catch (e) {
+	return errorResponse(`Server Error: ${e.message}`, 500);
+	}
+	},
+	};
 
 async function hashPassword(password) {
   const myText = new TextEncoder().encode(password);
