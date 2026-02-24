@@ -502,7 +502,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
             FilledButton(
               onPressed: () {
                 if (titleCtrl.text.isNotEmpty) {
-                  setState(() => _countdowns.add(CountdownItem(title: titleCtrl.text, targetDate: selectedDate)));
+                  // === 修复点：传入必填参数 lastUpdated ===
+                  setState(() => _countdowns.add(CountdownItem(
+                    title: titleCtrl.text,
+                    targetDate: selectedDate,
+                    lastUpdated: DateTime.now(),
+                  )));
                   StorageService.saveCountdowns(widget.username, _countdowns);
                   _loadAllData();
                   Navigator.pop(ctx);
@@ -518,26 +523,83 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   void _addTodo() {
     TextEditingController titleCtrl = TextEditingController();
+    RecurrenceType recurrence = RecurrenceType.none;
+    int? customDays;
+    DateTime? endDate;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("添加待办"),
-        content: TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "待办内容")),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
-          FilledButton(
-            onPressed: () {
-              if (titleCtrl.text.isNotEmpty) {
-                final newTodo = TodoItem(id: const Uuid().v4(), title: titleCtrl.text, lastUpdated: DateTime.now());
-                setState(() => _todos.insert(0, newTodo));
-                StorageService.saveTodos(widget.username, _todos);
-                _loadAllData();
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text("添加"),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("添加待办"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    controller: titleCtrl,
+                    decoration: const InputDecoration(labelText: "待办内容")),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<RecurrenceType>(
+                  value: recurrence,
+                  decoration: const InputDecoration(labelText: "重复设置"),
+                  items: const [
+                    DropdownMenuItem(value: RecurrenceType.none, child: Text("不重复")),
+                    DropdownMenuItem(value: RecurrenceType.daily, child: Text("每天重复")),
+                    DropdownMenuItem(value: RecurrenceType.customDays, child: Text("隔几天重复")),
+                  ],
+                  onChanged: (val) => setDialogState(() => recurrence = val!),
+                ),
+                if (recurrence == RecurrenceType.customDays)
+                  TextField(
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: "间隔天数"),
+                    onChanged: (val) => customDays = int.tryParse(val),
+                  ),
+                if (recurrence != RecurrenceType.none)
+                  ListTile(
+                    title: Text(endDate == null
+                        ? "设置截止日期 (可选)"
+                        : "截止: ${DateFormat('yyyy-MM-dd').format(endDate!)}"),
+                    trailing: const Icon(Icons.event_busy),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime(2100),
+                        initialDate: DateTime.now().add(const Duration(days: 30)),
+                      );
+                      if (picked != null) setDialogState(() => endDate = picked);
+                    },
+                  )
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+            FilledButton(
+              onPressed: () {
+                if (titleCtrl.text.isNotEmpty) {
+                  // === 修复点：添加 lastUpdated 参数 ===
+                  final newTodo = TodoItem(
+                    id: const Uuid().v4(),
+                    title: titleCtrl.text,
+                    recurrence: recurrence,
+                    customIntervalDays: customDays,
+                    recurrenceEndDate: endDate,
+                    lastUpdated: DateTime.now(), // 补全必填参数
+                  );
+                  setState(() {
+                    _todos.insert(0, newTodo);
+                  });
+                  StorageService.saveTodos(widget.username, _todos);
+                  _loadAllData();
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text("添加"),
+            )
+          ],
+        ),
       ),
     );
   }

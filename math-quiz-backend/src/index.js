@@ -117,7 +117,8 @@ export default {
       // --- 模块 C: 待办事项 (支持软删除) ---
       if (url.pathname === "/api/todos" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
-        const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND is_deleted = 0 ORDER BY created_at DESC").bind(userId).all();
+        // 修复：去掉 is_deleted = 0，让前端能看到删除状态
+        const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
         return jsonResponse(results);
       }
 
@@ -136,7 +137,8 @@ export default {
       // --- 模块 D: 倒计时 (LWW 同步逻辑) ---
       if (url.pathname === "/api/countdowns" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
-        const { results } = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ? AND is_deleted = 0").bind(userId).all();
+        // 修复：去掉 is_deleted = 0，让前端看到删除标记从而同步本地删除
+        const { results } = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ?").bind(userId).all();
         return jsonResponse(results);
       }
 

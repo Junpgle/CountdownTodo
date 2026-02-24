@@ -111,18 +111,22 @@ class ApiService {
     }
   }
 
-  static Future<bool> addTodo(int userId, String content) async {
+// 修改待办添加：支持传递创建时间（如果后端逻辑允许修改建议加上，否则默认使用服务器时间）
+  static Future<bool> addTodo(int userId, String content, {int? timestamp}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/todos'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': userId, 'content': content}),
+        body: jsonEncode({
+          'user_id': userId,
+          'content': content,
+          'client_updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+        }),
       );
       return response.statusCode == 200;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
+
 
   /// 切换完成状态
   static Future<bool> toggleTodo(int id, bool isCompleted) async {
@@ -166,8 +170,8 @@ class ApiService {
   }
 
   /// 添加或更新倒计时 (Last Write Wins)
-  /// 如果同一 user 下已存在相同 title，后端将根据时间戳决定是否覆盖
-  static Future<bool> addCountdown(int userId, String title, DateTime targetTime) async {
+  // 修改倒计时添加：确保发送 client_updated_at
+  static Future<bool> addCountdown(int userId, String title, DateTime targetTime, int lastUpdatedMs) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/countdowns'),
@@ -176,15 +180,11 @@ class ApiService {
           'user_id': userId,
           'title': title,
           'target_time': targetTime.toIso8601String(),
-          // 发送本地当前时间戳作为修改版本
-          'client_updated_at': DateTime.now().millisecondsSinceEpoch,
+          'client_updated_at': lastUpdatedMs, // 必须传这个，后端靠它判断冲突
         }),
       );
-      // 返回 success: true 并不代表一定写入（可能云端更旧被忽略），但逻辑上同步请求已成功处理
       return response.statusCode == 200;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
 
   /// 删除倒计时

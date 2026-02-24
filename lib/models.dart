@@ -94,17 +94,24 @@ class QuestionGenerator {
 class CountdownItem {
   String title;
   DateTime targetDate;
+  DateTime lastUpdated; // 新增：记录最后修改时间
 
-  CountdownItem({required this.title, required this.targetDate});
+  CountdownItem({
+    required this.title,
+    required this.targetDate,
+    required this.lastUpdated,
+  });
 
   Map<String, dynamic> toJson() => {
     'title': title,
     'targetDate': targetDate.toIso8601String(),
+    'lastUpdated': lastUpdated.millisecondsSinceEpoch, // 存储为时间戳
   };
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) => CountdownItem(
     title: json['title'],
     targetDate: DateTime.parse(json['targetDate']),
+    lastUpdated: DateTime.fromMillisecondsSinceEpoch(json['lastUpdated'] ?? 0),
   );
 }
 

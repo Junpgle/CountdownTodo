@@ -96,7 +96,9 @@ class _LoginScreenState extends State<LoginScreen> {
             String content = item['title'] ?? item['content'] ?? '';
             bool isDone = item['isDone'] ?? item['isCompleted'] ?? false;
             if (content.isNotEmpty && !isDone) {
-              await ApiService.addTodo(targetUserId, content);
+              // === 修复点：addTodo 调用 (如果 API 已更新) ===
+              await ApiService.addTodo(targetUserId, content,
+                  timestamp: DateTime.now().millisecondsSinceEpoch);
             }
           }
         } catch (_) {}
@@ -113,7 +115,13 @@ class _LoginScreenState extends State<LoginScreen> {
             if (title.isNotEmpty && dateStr.isNotEmpty) {
               DateTime? targetTime = DateTime.tryParse(dateStr);
               if (targetTime != null && targetTime.isAfter(DateTime.now())) {
-                await ApiService.addCountdown(targetUserId, title, targetTime);
+                // === 修复点：addCountdown 现在需要 4 个参数 ===
+                await ApiService.addCountdown(
+                  targetUserId,
+                  title,
+                  targetTime,
+                  DateTime.now().millisecondsSinceEpoch, // 增加第四个参数：修改时间戳
+                );
               }
             }
           }
