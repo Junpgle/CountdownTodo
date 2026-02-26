@@ -4,8 +4,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite' // <--- 引入插件
 
 export default defineConfig({
+    base: '/CountdownTodo/',
   plugins: [
     react(),
-    tailwindcss(), // <--- 添加插件
+    tailwindcss() as any, // <--- 添加 as any 解决类型冲突
   ],
 })

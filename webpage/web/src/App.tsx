@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Layers,
   Monitor,
@@ -7,7 +7,6 @@ import {
   Download,
   Github,
   CheckCircle2,
-  BarChart2,
   BellRing,
   Image as ImageIcon,
   RefreshCw,
@@ -21,6 +20,13 @@ import {
   PieChart,
   Activity
 } from 'lucide-react';
+
+// --- 类型定义 ---
+interface AppInfo {
+  version: string;
+  url: string;
+  desc: string;
+}
 
 // --- 子组件: 导航栏 ---
 const Navbar = () => {
@@ -279,11 +285,12 @@ const WindowsShowcase = () => {
                       <Layers className="w-12 h-12 sm:w-20 sm:h-20 text-blue-500/20" />
                       <p className="text-slate-500 text-xs sm:text-sm font-medium">预览图载入中...</p>
                    </div>
+                   {/* 使用 import.meta.env.BASE_URL 来正确解析根路径 */}
                    <img
-                    src="/1.jpg"
+                    src={`${import.meta.env.BASE_URL}1.jpg`}
                     alt="桌面端预览"
                     className="relative z-10 max-w-[90%] sm:max-w-[85%] rounded-lg shadow-2xl border border-white/10 group-hover:scale-105 transition-transform duration-700"
-                    onError={(e) => e.target.style.display='none'}
+                    onError={(e) => e.currentTarget.style.display='none'}
                    />
                 </div>
              </div>
@@ -336,12 +343,13 @@ const AndroidShowcase = () => {
                {/* 居中打孔摄像头 */}
                <div className="absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 w-3 h-3 sm:w-4 sm:h-4 bg-black rounded-full z-20 shadow-inner"></div>
                <div className="absolute inset-0 bg-white">
+                  {/* 使用 import.meta.env.BASE_URL */}
                   <img
-                    src="/2.jpg"
+                    src={`${import.meta.env.BASE_URL}2.jpg`}
                     alt="App 预览图"
                     className="w-full h-full object-cover rounded-[2.5rem] sm:rounded-[2.8rem]"
                     onError={(e) => {
-                      e.target.src = "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=800";
+                      e.currentTarget.src = "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&q=80&w=800";
                     }}
                   />
                </div>
@@ -411,10 +419,10 @@ const ScreenTimeShowcase = () => {
                    <div className="absolute top-2.5 sm:top-3 left-1/2 -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-black rounded-full z-20 shadow-inner"></div>
                    <div className="absolute inset-0 bg-white">
                        <img
-                         src="/3.jpg"
+                         src={`${import.meta.env.BASE_URL}3.jpg`}
                          alt="屏幕时间统计界面1"
                          className="w-full h-full object-cover rounded-[1.5rem] sm:rounded-[2rem]"
-                         onError={(e) => e.target.style.display='none'}
+                         onError={(e) => e.currentTarget.style.display='none'}
                        />
                    </div>
                </div>
@@ -425,10 +433,10 @@ const ScreenTimeShowcase = () => {
                    <div className="absolute top-2.5 sm:top-3 left-1/2 -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-black rounded-full z-20 shadow-inner"></div>
                    <div className="absolute inset-0 bg-white">
                        <img
-                         src="/4.jpg"
+                         src={`${import.meta.env.BASE_URL}4.jpg`}
                          alt="屏幕时间统计界面2"
                          className="w-full h-full object-cover rounded-[1.5rem] sm:rounded-[2rem]"
-                         onError={(e) => e.target.style.display='none'}
+                         onError={(e) => e.currentTarget.style.display='none'}
                        />
                    </div>
                </div>
@@ -491,7 +499,7 @@ const AnalyticsPreview = () => {
 };
 
 // --- 子组件: 下载部分 ---
-const DownloadSection = ({ androidInfo, windowsInfo }) => {
+const DownloadSection = ({ androidInfo, windowsInfo }: { androidInfo: AppInfo, windowsInfo: AppInfo }) => {
   return (
     <section id="download" className="py-20 sm:py-32 bg-white text-center relative overflow-hidden">
       <div className="max-w-5xl mx-auto px-4 relative z-10">
@@ -562,8 +570,8 @@ const DownloadSection = ({ androidInfo, windowsInfo }) => {
 
 // --- 主组件: App ---
 const App = () => {
-  const [androidInfo, setAndroidInfo] = useState({ version: '', url: '', desc: '' });
-  const [windowsInfo, setWindowsInfo] = useState({ version: '', url: '', desc: '' });
+  const [androidInfo, setAndroidInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
+  const [windowsInfo, setWindowsInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
 
   useEffect(() => {
     const fetchAndroid = async () => {
