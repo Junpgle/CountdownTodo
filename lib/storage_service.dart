@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'models.dart';
-import 'api_service.dart';
+import '../services/api_service.dart';
 
 class StorageService {
   static const String KEY_USERS = "users_data";

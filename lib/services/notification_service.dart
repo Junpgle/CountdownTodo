@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'models.dart'; // 确保这个路径与你的项目结构一致
+import '../models.dart'; // 确保这个路径与你的项目结构一致
 
 class NotificationService {
   // 定义与原生通信的通道名称

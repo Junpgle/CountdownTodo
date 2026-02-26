@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'package:intl/intl.dart' hide TextDirection; // 修复点2：隐藏 intl 包的 TextDirection，让其使用 Flutter 默认的 TextDirection
 import '../../models.dart';
 
 /// 通用的板块标题
@@ -53,6 +54,8 @@ class SectionHeader extends StatelessWidget {
 class ScreenTimeCard extends StatelessWidget {
   final List<dynamic> stats;
   final bool hasPermission;
+  final bool isLoading;
+  final DateTime? lastSyncTime;
   final VoidCallback onOpenSettings;
   final VoidCallback onViewDetail;
 
@@ -60,6 +63,8 @@ class ScreenTimeCard extends StatelessWidget {
     super.key,
     required this.stats,
     required this.hasPermission,
+    this.isLoading = false,
+    this.lastSyncTime,
     required this.onOpenSettings,
     required this.onViewDetail,
   });
@@ -86,21 +91,39 @@ class ScreenTimeCard extends StatelessWidget {
       );
     }
 
+    if (isLoading) {
+      return Card(
+        elevation: 2,
+        color: Theme.of(context).cardColor.withOpacity(0.95),
+        child: const Padding(
+          padding: EdgeInsets.all(40),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                SizedBox(height: 16),
+                Text("数据同步中...", style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     if (stats.isEmpty) {
       return Card(
         elevation: 2,
         color: Theme.of(context).cardColor.withOpacity(0.95),
         child: const Padding(
           padding: EdgeInsets.all(30),
-          child: Center(child: Text("暂无今日统计数据", style: TextStyle(color: Colors.grey))),
+          child: Center(child: Text("今日暂无屏幕使用数据", style: TextStyle(color: Colors.grey))),
         ),
       );
     }
 
-    // 1. 计算总时长
     int totalTime = stats.fold(0, (sum, item) => sum + (item['duration'] as int));
 
-    // 2. 聚合设备占比
     Map<String, int> deviceMap = {};
     for (var item in stats) {
       String d = item['device_name'] ?? "未知设备";
@@ -110,7 +133,6 @@ class ScreenTimeCard extends StatelessWidget {
       deviceMap[d] = (deviceMap[d] ?? 0) + (item['duration'] as int);
     }
 
-    // 3. 【核心修复】先按应用名称聚合，再排序，防止多端应用重复出现
     Map<String, int> aggregatedApps = {};
     for (var item in stats) {
       String appName = item['app_name'] ?? "未知应用";
@@ -122,12 +144,10 @@ class ScreenTimeCard extends StatelessWidget {
 
     Map<String, int> appMap = {};
     int topSum = 0;
-    // 取 Top 5 应用
-    for (var i = 0; i < math.min(5, sortedApps.length); i++) {
+    for (var i = 0; i < math.min(3, sortedApps.length); i++) {
       appMap[sortedApps[i].key] = sortedApps[i].value;
       topSum += sortedApps[i].value;
     }
-    // 剩余的全部归入"其他"
     if (totalTime > topSum) {
       appMap["其他"] = totalTime - topSum;
     }
@@ -144,8 +164,22 @@ class ScreenTimeCard extends StatelessWidget {
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("今日总计", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("今日总计", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+                      if (lastSyncTime != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                              "最近更新: ${DateFormat('HH:mm:ss').format(lastSyncTime!)}",
+                              style: const TextStyle(fontSize: 10, color: Colors.blueGrey)
+                          ),
+                        ),
+                    ],
+                  ),
                   Text(_formatSeconds(totalTime),
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
                 ],
@@ -156,7 +190,6 @@ class ScreenTimeCard extends StatelessWidget {
 
               Row(
                 children: [
-                  // 图1: 设备分布
                   Expanded(
                     child: Column(
                       children: [
@@ -171,7 +204,6 @@ class ScreenTimeCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // 图2: App占比
                   Expanded(
                     child: Column(
                       children: [

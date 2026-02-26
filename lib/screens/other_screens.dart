@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../storage_service.dart';
-import '../api_service.dart';
+import '../services/api_service.dart';
 
 // --- 排行榜页面 ---
 class LeaderboardScreen extends StatefulWidget {

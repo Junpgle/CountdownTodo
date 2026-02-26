@@ -8,15 +8,15 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../notification_service.dart';
+import '../services/notification_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
-import '../api_service.dart';
-import '../screen_time_service.dart';
+import '../services/api_service.dart';
+import '../services/screen_time_service.dart';
 import '../widgets/home_sections.dart';
 import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
@@ -41,6 +41,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
   String? _wallpaperUrl;
   bool _isTodoExpanded = true;
 
+  // 新增：屏幕时间的加载与更新状态
+  bool _isLoadingScreenTime = true;
+  DateTime? _lastScreenTimeSync;
+
   @override
   void initState() {
     super.initState();
@@ -49,17 +53,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _loadAllData();
     _fetchRandomWallpaper();
 
-    // 2. 错峰执行耗时操作 (重要！避免和首帧渲染抢 CPU)
+    // 2. 错峰执行耗时操作
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // 延迟 500 毫秒初始化通知
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) _initNotifications();
       });
-      // 延迟 1 秒去读取庞大的屏幕时间数据
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) _initScreenTime();
       });
-      // 延迟 2 秒去检查网络更新
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) _checkUpdatesAndNotices(isManual: false);
       });
@@ -74,18 +75,38 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Future<void> _initScreenTime() async {
+    if (mounted) setState(() => _isLoadingScreenTime = true);
+
     bool permit = await ScreenTimeService.checkPermission();
-    if (mounted) setState(() => _hasUsagePermission = permit);
+    if (mounted) {
+      setState(() {
+        _hasUsagePermission = permit;
+        if (!permit) _isLoadingScreenTime = false; // 无权限则停止加载动画
+      });
+    }
     if (permit) _loadCachedScreenTime();
   }
 
   Future<void> _loadCachedScreenTime() async {
     final prefs = await SharedPreferences.getInstance();
     int? userId = prefs.getInt('current_user_id');
-    if (userId == null) return;
+    if (userId == null) {
+      if (mounted) setState(() => _isLoadingScreenTime = false);
+      return;
+    }
 
+    // 这里会通过 Service 去拿数据（如果需要会自动后台刷新）
     var stats = await ScreenTimeService.getScreenTimeData(userId);
-    if (mounted) setState(() => _screenTimeStats = stats);
+    // 从本地提取最后一次同步完成的时间
+    var lastSync = await StorageService.getLastScreenTimeSync();
+
+    if (mounted) {
+      setState(() {
+        _screenTimeStats = stats;
+        _lastScreenTimeSync = lastSync;
+        _isLoadingScreenTime = false;
+      });
+    }
   }
 
   Future<void> _loadAllData() async {
@@ -105,7 +126,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   Future<void> _handleManualSync() async {
     if (_isSyncing) return;
-    setState(() => _isSyncing = true);
+    setState(() {
+      _isSyncing = true;
+      _isLoadingScreenTime = true; // 手动刷新时也展示卡片的加载状态
+    });
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -114,7 +138,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
       bool hasChanges = await StorageService.syncData(widget.username);
       await ScreenTimeService.syncScreenTime(userId); // 强制云端同步
-      await _loadCachedScreenTime(); // 重新加载
+      await _loadCachedScreenTime(); // 重新加载缓存及时间戳
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 数据同步完成'), backgroundColor: Colors.green));
@@ -123,7 +147,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
     } catch (e) {
       debugPrint("Sync Error: $e");
     } finally {
-      if (mounted) setState(() => _isSyncing = false);
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          _isLoadingScreenTime = false;
+        });
+      }
     }
   }
 
@@ -345,11 +374,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       _buildTodoList(isLight),
                       const SizedBox(height: 24),
                       SectionHeader(title: "屏幕时间 (今日汇总)", icon: Icons.timer_outlined, isLight: isLight),
+
+                      // 使用传入加载状态与更新时间的屏幕时间卡片
                       ScreenTimeCard(
-                        stats: _screenTimeStats, hasPermission: _hasUsagePermission,
+                        stats: _screenTimeStats,
+                        hasPermission: _hasUsagePermission,
+                        isLoading: _isLoadingScreenTime,
+                        lastSyncTime: _lastScreenTimeSync,
                         onOpenSettings: () async { await ScreenTimeService.openSettings(); _initScreenTime(); },
                         onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(stats: _screenTimeStats))); },
                       ),
+
                       const SizedBox(height: 24),
                       SectionHeader(title: "数学测验", icon: Icons.functions, isLight: isLight),
                       MathStatsCard(stats: _mathStats, onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username))); _loadAllData(); }),

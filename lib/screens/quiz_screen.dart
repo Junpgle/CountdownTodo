@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
-import '../notification_service.dart';
+import '../services/notification_service.dart';
 
 // 新增：用于保存会话状态的类
 class QuizSession {

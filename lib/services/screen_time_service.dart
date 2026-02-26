@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import '../api_service.dart';
-import '../storage_service.dart';
+import '../services/api_service.dart';
+import '../../storage_service.dart';
 
 class ScreenTimeService {
   static const _channel = MethodChannel('com.math_quiz_app/screen_time');
