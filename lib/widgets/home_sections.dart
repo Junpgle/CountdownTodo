@@ -49,7 +49,7 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-/// 屏幕时间统计卡片 - 优化了饼图尺寸和标记位置
+/// 屏幕时间统计卡片
 class ScreenTimeCard extends StatelessWidget {
   final List<dynamic> stats;
   final bool hasPermission;
@@ -110,16 +110,24 @@ class ScreenTimeCard extends StatelessWidget {
       deviceMap[d] = (deviceMap[d] ?? 0) + (item['duration'] as int);
     }
 
-    // 3. 聚合应用占比 (取Top 3)
-    List<dynamic> sortedApps = List.from(stats);
-    sortedApps.sort((a, b) => b['duration'].compareTo(a['duration']));
+    // 3. 【核心修复】先按应用名称聚合，再排序，防止多端应用重复出现
+    Map<String, int> aggregatedApps = {};
+    for (var item in stats) {
+      String appName = item['app_name'] ?? "未知应用";
+      aggregatedApps[appName] = (aggregatedApps[appName] ?? 0) + (item['duration'] as int);
+    }
+
+    List<MapEntry<String, int>> sortedApps = aggregatedApps.entries.toList();
+    sortedApps.sort((a, b) => b.value.compareTo(a.value));
 
     Map<String, int> appMap = {};
     int topSum = 0;
-    for (var i = 0; i < math.min(3, sortedApps.length); i++) {
-      appMap[sortedApps[i]['app_name']] = sortedApps[i]['duration'];
-      topSum += sortedApps[i]['duration'] as int;
+    // 取 Top 5 应用
+    for (var i = 0; i < math.min(5, sortedApps.length); i++) {
+      appMap[sortedApps[i].key] = sortedApps[i].value;
+      topSum += sortedApps[i].value;
     }
+    // 剩余的全部归入"其他"
     if (totalTime > topSum) {
       appMap["其他"] = totalTime - topSum;
     }
@@ -148,12 +156,12 @@ class ScreenTimeCard extends StatelessWidget {
 
               Row(
                 children: [
-                  // 图1: 设备分布 (高度增加)
+                  // 图1: 设备分布
                   Expanded(
                     child: Column(
                       children: [
                         SizedBox(
-                          height: 140, // 增大绘图区域
+                          height: 140,
                           child: CustomPaint(
                             painter: PieChartPainter(data: deviceMap, total: totalTime),
                           ),
@@ -163,12 +171,12 @@ class ScreenTimeCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // 图2: App占比 (高度增加)
+                  // 图2: App占比
                   Expanded(
                     child: Column(
                       children: [
                         SizedBox(
-                          height: 140, // 增大绘图区域
+                          height: 140,
                           child: CustomPaint(
                             painter: PieChartPainter(
                               data: appMap,
@@ -201,7 +209,7 @@ class ScreenTimeCard extends StatelessWidget {
   }
 }
 
-/// 增强版饼状图绘图器：优化了比例、文字距离和圆环厚度
+/// 增强版饼状图绘图器
 class PieChartPainter extends CustomPainter {
   final Map<String, int> data;
   final int total;
@@ -214,7 +222,6 @@ class PieChartPainter extends CustomPainter {
     if (total <= 0) return;
 
     final center = Offset(size.width / 2, size.height / 2);
-    // 调大半径比例，充分利用空间
     final radius = math.min(size.width, size.height) / 2.6;
     final rect = Rect.fromCircle(center: center, radius: radius);
 
@@ -233,10 +240,8 @@ class PieChartPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round
         ..color = colors[i % colors.length];
 
-      // 1. 绘制圆环扇区
       canvas.drawArc(rect, startAngle, sweepAngle, false, paint);
 
-      // 2. 绘制标注文字
       final middleAngle = startAngle + sweepAngle / 2;
 
       // 占比超过 2% 就尝试显示文字 (之前是 3%)
@@ -254,7 +259,7 @@ class PieChartPainter extends CustomPainter {
             text: displayLabel,
             style: TextStyle(
                 color: colors[i % colors.length].withOpacity(1.0),
-                fontSize: 10, // 稍微调大字号
+                fontSize: 10,
                 fontWeight: FontWeight.bold,
                 shadows: const [
                   Shadow(offset: Offset(0, 1), blurRadius: 1, color: Colors.black12)

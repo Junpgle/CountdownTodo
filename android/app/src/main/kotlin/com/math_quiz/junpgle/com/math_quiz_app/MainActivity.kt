@@ -30,7 +30,6 @@ class MainActivity: FlutterActivity() {
 
         createNotificationChannel()
 
-        // 1. 通知通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "showOngoingNotification" -> {
@@ -50,7 +49,6 @@ class MainActivity: FlutterActivity() {
             }
         }
 
-        // 2. 屏幕时间通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_TIME_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "checkUsagePermission" -> result.success(hasUsageStatsPermission())
@@ -61,9 +59,22 @@ class MainActivity: FlutterActivity() {
                     result.success(true)
                 }
                 "getScreenTimeData" -> {
-                    // 直接获取系统底层统计好的数据
-                    val data = getSystemAggregatedUsageStats()
-                    result.success(data)
+                    // 彻底解决首帧黑屏卡顿：后台线程 + 降低优先级！
+                    Thread {
+                        // 强制将此线程设置为“后台”级别，绝不和 UI 抢 CPU
+                        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+
+                        try {
+                            val data = getSystemAggregatedUsageStats()
+                            runOnUiThread {
+                                result.success(data)
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread {
+                                result.error("ERROR", "Failed: ${e.message}", null)
+                            }
+                        }
+                    }.start()
                 }
                 else -> result.notImplemented()
             }
@@ -81,14 +92,9 @@ class MainActivity: FlutterActivity() {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    /**
-     * 直接读取 Android 系统底层的聚合数据 (即手机自带的"屏幕使用时间"数据源)
-     * 无需自己遍历事件，完全依赖系统的统计算法。
-     */
     private fun getSystemAggregatedUsageStats(): List<Map<String, Any>> {
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val calendar = Calendar.getInstance()
-        // 设置为今天的 00:00:00
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
@@ -97,24 +103,17 @@ class MainActivity: FlutterActivity() {
         val startTime = calendar.timeInMillis
         val endTime = System.currentTimeMillis()
 
-        // 识别设备类型
         val isTablet = (resources.configuration.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK) >= Configuration.SCREENLAYOUT_SIZE_LARGE
         val deviceType = if (isTablet) "Android-Tablet" else "Android-Phone"
 
-        // 直接向系统请求这段时间的聚合结果
         val statsMap = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
-
         val pm = packageManager
         val usageStatsList = mutableListOf<Map<String, Any>>()
 
         for ((pkgName, usageStats) in statsMap) {
-            // 获取系统统计的"应用在前台显示"的总毫秒数
             val totalTimeMs = usageStats.totalTimeInForeground
 
-            // 过滤掉低于 1 分钟 (60000ms) 的碎片化启动，让图表更干净
             if (totalTimeMs > 60000) {
-
-                // 核心过滤：排除常见的系统服务、桌面启动器和底层组件
                 if (pkgName == "android" || pkgName == "com.android.systemui" || pkgName.contains("launcher")) continue
 
                 val label = try {
@@ -122,12 +121,11 @@ class MainActivity: FlutterActivity() {
                     pm.getApplicationLabel(info).toString()
                 } catch (e: Exception) { pkgName }
 
-                // 如果取不到真正的应用中文名，且是安卓底层系统包，则过滤掉
                 if (label == pkgName && pkgName.startsWith("com.android.")) continue
 
                 usageStatsList.add(mapOf(
                     "app_name" to label,
-                    "duration" to (totalTimeMs / 1000).toInt(), // 转为秒
+                    "duration" to (totalTimeMs / 1000).toInt(),
                     "device_type" to deviceType
                 ))
             }
@@ -148,16 +146,13 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    // --- 通知逻辑保持原样 ---
     private fun updateQuizNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
         val currentIndex = (args["currentIndex"] as? Number)?.toInt() ?: 0
         val totalCount = (args["totalCount"] as? Number)?.toInt() ?: 10
         val questionText = args["questionText"] as? String ?: "Ready..."
         val isOver = args["isOver"] as? Boolean ?: false
         val score = (args["score"] as? Number)?.toInt() ?: 0
-
         val progress = if (isOver) 100 else if (totalCount > 0) ((currentIndex) * 100) / totalCount else 0
         val title: String; val text: String; val subText: String; val color: Int
         if (isOver) {
@@ -165,13 +160,11 @@ class MainActivity: FlutterActivity() {
         } else {
             title = "Question ${currentIndex + 1} of $totalCount"; text = questionText; subText = "Math Quiz"; color = 0xFF673AB7.toInt()
         }
-
         buildAndNotify(title, text, subText, progress, !isOver, color)
     }
 
     private fun updateTodoNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
         val totalCount = (args["totalCount"] as? Number)?.toInt() ?: 0
         val completedCount = (args["completedCount"] as? Number)?.toInt() ?: 0
         val pendingTitlesRaw = args["pendingTitles"] as? List<*>
@@ -182,20 +175,12 @@ class MainActivity: FlutterActivity() {
         if (isAllDone) {
             title = "All Tasks Completed! 🎉"; text = "Great job clearing your list."; color = 0xFF0F9D58.toInt()
         } else {
-            title = if (pendingTitles.isNotEmpty()) "Current: ${pendingTitles[0]}" else "Keep Going!"
-            text = if (pendingTitles.size > 1) {
-                "Next: ${pendingTitles.drop(1).joinToString(", ")}"
-            } else {
-                "Almost there!"
-            }
-            color = 0xFF4285F4.toInt()
+            title = if (pendingTitles.isNotEmpty()) "Current: ${pendingTitles[0]}" else "Keep Going!"; text = if (pendingTitles.size > 1) "Next: ${pendingTitles.drop(1).joinToString(", ")}" else "Almost there!"; color = 0xFF4285F4.toInt()
         }
-
         buildAndNotify(title, text, subText, progress, !isAllDone, color)
     }
 
     private fun buildAndNotify(title: String, text: String, subText: String, progress: Int, isOngoing: Boolean, color: Int) {
-        val context = this
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
         val pendingIntent: PendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
