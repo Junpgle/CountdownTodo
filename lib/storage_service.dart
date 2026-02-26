@@ -28,6 +28,12 @@ class StorageService {
   // ignore: constant_identifier_names
   static const String KEY_SCREEN_TIME_HISTORY = "screen_time_history";
 
+  // 新增：应用分类映射缓存
+  // ignore: constant_identifier_names
+  static const String KEY_APP_MAPPINGS = "app_category_mappings";
+  // ignore: constant_identifier_names
+  static const String KEY_LAST_MAPPINGS_SYNC = "last_mappings_sync";
+
   static bool _isSyncing = false;
 
   static Future<bool> register(String username, String password) async {
@@ -275,6 +281,49 @@ class StorageService {
     return null;
   }
 
+  // --- 应用分类映射缓存机制 ---
+
+  static Future<void> syncAppMappings() async {
+    final prefs = await SharedPreferences.getInstance();
+    int? lastSync = prefs.getInt(KEY_LAST_MAPPINGS_SYNC);
+    DateTime now = DateTime.now();
+
+    // 检查是否在 7 天内同步过
+    if (lastSync != null) {
+      DateTime lastDate = DateTime.fromMillisecondsSinceEpoch(lastSync);
+      if (now.difference(lastDate).inDays < 7) {
+        return; // 7天内无需重复拉取
+      }
+    }
+
+    List<dynamic> mappings = await ApiService.fetchAppMappings();
+    if (mappings.isNotEmpty) {
+      Map<String, String> lookupMap = {};
+      for (var item in mappings) {
+        String pkg = item['package_name'] ?? '';
+        String mapped = item['mapped_name'] ?? '';
+        String cat = item['category'] ?? '未分类';
+
+        // 双重保险：包名和中文名都作为键映射到分类，解决手机端系统转名导致的匹配失效
+        if (pkg.isNotEmpty) lookupMap[pkg] = cat;
+        if (mapped.isNotEmpty) lookupMap[mapped] = cat;
+      }
+      await prefs.setString(KEY_APP_MAPPINGS, jsonEncode(lookupMap));
+      await prefs.setInt(KEY_LAST_MAPPINGS_SYNC, now.millisecondsSinceEpoch);
+    }
+  }
+
+  static Future<Map<String, String>> getAppMappings() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonStr = prefs.getString(KEY_APP_MAPPINGS);
+    if (jsonStr != null) {
+      try {
+        return Map<String, String>.from(jsonDecode(jsonStr));
+      } catch (_) {}
+    }
+    return {};
+  }
+
   // --- 核心同步 ---
   static Future<bool> syncData(String username) async {
     if (_isSyncing) return false;
@@ -365,7 +414,7 @@ class StorageService {
         }
       }
 
-      if (hasChanges) {
+      if (hasChanges){
         await saveTodos(username, localTodos, sync: false);
         await saveCountdowns(username, localCountdowns, sync: false);
       }

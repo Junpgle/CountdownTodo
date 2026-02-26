@@ -61,6 +61,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) _initScreenTime();
       });
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        // 在应用启动时，尝试触发分类字典缓存（内部自带7天CD校验）
+        if (mounted) StorageService.syncAppMappings();
+      });
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) _checkUpdatesAndNotices(isManual: false);
       });

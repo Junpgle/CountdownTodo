@@ -240,5 +240,38 @@ class ApiService {
     } catch (e) { return []; }
   }
 
+  // ==========================================
+  // 6. 调试工具 (Debug Tools)
+  // ==========================================
+
+  /// 危险操作：一键清空云端所有数据
+  static Future<Map<String, dynamic>> debugResetDatabase() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/debug/reset_database'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  // ==========================================
+  // 7. 分类映射 (Category Mappings)
+  // ==========================================
+
+  /// 获取云端的应用分类映射表
+  static Future<List<dynamic>> fetchAppMappings() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/mappings'));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      // 忽略网络错误，返回空列表交由本地缓存逻辑处理
+    }
+    return [];
+  }
 }
 
