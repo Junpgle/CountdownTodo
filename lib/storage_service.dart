@@ -3,21 +3,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'models.dart';
-import '../services/api_service.dart';
+import 'package:math_quiz_app/services/api_service.dart';
 
 class StorageService {
+  // ignore: constant_identifier_names
   static const String KEY_USERS = "users_data";
+  // ignore: constant_identifier_names
   static const String KEY_LEADERBOARD = "leaderboard_data";
+  // ignore: constant_identifier_names
   static const String KEY_SETTINGS = "quiz_settings";
+  // ignore: constant_identifier_names
   static const String KEY_CURRENT_USER = "current_login_user";
+
+  // ignore: constant_identifier_names
   static const String KEY_TODOS = "user_todos";
+  // ignore: constant_identifier_names
   static const String KEY_COUNTDOWNS = "user_countdowns";
+
+  // ignore: constant_identifier_names
   static const String KEY_SCREEN_TIME_CACHE = "screen_time_cache";
+  // ignore: constant_identifier_names
   static const String KEY_LAST_SCREEN_TIME_SYNC = "last_screen_time_sync";
+  // 新增：屏幕时间历史缓存，用于近七日图表
+  // ignore: constant_identifier_names
+  static const String KEY_SCREEN_TIME_HISTORY = "screen_time_history";
 
   static bool _isSyncing = false;
 
-  // --- 基础账号与设置逻辑 ---
   static Future<bool> register(String username, String password) async {
     final prefs = await SharedPreferences.getInstance();
     Map<String, dynamic> users = {};
@@ -70,7 +82,6 @@ class StorageService {
     };
   }
 
-  // --- 历史记录与统计 ---
   static Future<void> saveHistory(String username, int score, int duration, String details) async {
     final prefs = await SharedPreferences.getInstance();
     String key = "history_$username";
@@ -153,8 +164,6 @@ class StorageService {
     return List<Map<String, dynamic>>.from(jsonDecode(jsonStr));
   }
 
-  // --- 核心同步：待办与倒计时 (含删除逻辑修复) ---
-
   static Future<void> saveCountdowns(String username, List<CountdownItem> items, {bool sync = true}) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> jsonList = items.map((e) => jsonEncode(e.toJson())).toList();
@@ -207,10 +216,31 @@ class StorageService {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  // --- 屏幕时间缓存 ---
+  // --- 屏幕时间缓存机制增强 ---
   static Future<void> saveScreenTimeCache(List<dynamic> stats) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(KEY_SCREEN_TIME_CACHE, jsonEncode(stats));
+
+    // 核心新增：同步归档到按日期记录的历史中
+    String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    String? histStr = prefs.getString(KEY_SCREEN_TIME_HISTORY);
+    Map<String, dynamic> history = {};
+    if (histStr != null) {
+      try { history = jsonDecode(histStr); } catch (_) {}
+    }
+
+    // 更新今日的历史记录快照
+    history[today] = stats;
+
+    // 清理老旧数据，最多保留 14 天
+    if (history.length > 14) {
+      var keys = history.keys.toList()..sort();
+      while (history.length > 14) {
+        history.remove(keys.removeAt(0));
+      }
+    }
+
+    await prefs.setString(KEY_SCREEN_TIME_HISTORY, jsonEncode(history));
   }
 
   static Future<List<dynamic>> getScreenTimeCache() async {
@@ -218,6 +248,19 @@ class StorageService {
     String? jsonStr = prefs.getString(KEY_SCREEN_TIME_CACHE);
     if (jsonStr != null) { try { return jsonDecode(jsonStr); } catch (_) { return []; } }
     return [];
+  }
+
+  // 获取屏幕时间历史缓存数据
+  static Future<Map<String, List<dynamic>>> getScreenTimeHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonStr = prefs.getString(KEY_SCREEN_TIME_HISTORY);
+    if (jsonStr != null) {
+      try {
+        Map<String, dynamic> raw = jsonDecode(jsonStr);
+        return raw.map((key, value) => MapEntry(key, List<dynamic>.from(value)));
+      } catch (_) {}
+    }
+    return {};
   }
 
   static Future<void> updateLastScreenTimeSync() async {
@@ -232,7 +275,7 @@ class StorageService {
     return null;
   }
 
-  // --- 核心同步功能 (修复删除标记不生效问题) ---
+  // --- 核心同步 ---
   static Future<bool> syncData(String username) async {
     if (_isSyncing) return false;
     _isSyncing = true;
@@ -274,7 +317,6 @@ class StorageService {
             await ApiService.toggleTodo(cloud['id'], local.isDone);
           }
         } else {
-          // 云端无记录且本地未完成 -> 上传
           if (!local.isDone) await ApiService.addTodo(userId, local.title, timestamp: local.lastUpdated.millisecondsSinceEpoch);
         }
       }
@@ -294,32 +336,23 @@ class StorageService {
           bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
 
           if (cloudTime.isAfter(local.lastUpdated)) {
-            // 云端比本地新
             if (isCloudDeleted) {
-              // 云端标记删除了，本地也删掉
               cdsToRemove.add(local);
               hasChanges = true;
             } else {
-              // 云端更新了内容
               local.targetDate = DateTime.tryParse(cloud['target_time']) ?? local.targetDate;
               local.lastUpdated = cloudTime;
               hasChanges = true;
             }
           } else if (local.lastUpdated.isAfter(cloudTime)) {
-            // 本地比云端新，推送到云端 (API 内部会做冲突检查)
             await ApiService.addCountdown(userId, local.title, local.targetDate, local.lastUpdated.millisecondsSinceEpoch);
           }
         } else {
-          // 云端没查到这个 Title
-          // 注意：如果后端 GET 接口没返回 is_deleted=1 的数据，这里会导致重新上传。
-          // 这里的解决办法是直接上传，让后端的 UPSERT 配合 client_updated_at 决定是否恢复。
           await ApiService.addCountdown(userId, local.title, local.targetDate, local.lastUpdated.millisecondsSinceEpoch);
         }
       }
-      // 执行本地物理删除
       localCountdowns.removeWhere((item) => cdsToRemove.contains(item));
 
-      // 反向检查：云端有本地无的数据
       for (var cloud in cloudCountdowns) {
         bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
         if (!isCloudDeleted && !localCountdowns.any((l) => l.title == cloud['title'])) {
@@ -336,7 +369,7 @@ class StorageService {
         await saveTodos(username, localTodos, sync: false);
         await saveCountdowns(username, localCountdowns, sync: false);
       }
-    } catch (e) {} finally { _isSyncing = false; }
+    } catch (e) { print("同步异常: $e"); } finally { _isSyncing = false; }
     return hasChanges;
   }
 

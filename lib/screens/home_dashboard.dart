@@ -382,7 +382,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         isLoading: _isLoadingScreenTime,
                         lastSyncTime: _lastScreenTimeSync,
                         onOpenSettings: () async { await ScreenTimeService.openSettings(); _initScreenTime(); },
-                        onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(stats: _screenTimeStats))); },
+                        // 修复：将 stats 改为 todayStats
+                        onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(todayStats: _screenTimeStats))); },
                       ),
 
                       const SizedBox(height: 24),
