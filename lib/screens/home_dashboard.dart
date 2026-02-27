@@ -725,17 +725,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return AppBar(
       backgroundColor: isLight ? Colors.transparent : null,
       elevation: 0,
-      toolbarHeight: 100,
+      toolbarHeight: 100, // 增高AppBar以容纳三行文字
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // 第一行：用户名 + 早/中/晚好
           Text("$_timeSalutation, ${widget.username}",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isLight ? Colors.white : null)),
           const SizedBox(height: 4),
+          // 第二行：日期
           Text(DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()),
               style: TextStyle(fontSize: 14, color: isLight ? Colors.white.withOpacity(0.9) : Colors.blueGrey)),
           const SizedBox(height: 2),
+          // 第三行：动态问候语
           Text(_currentGreeting,
               style: TextStyle(fontSize: 12, color: isLight ? Colors.white.withOpacity(0.8) : Colors.grey)),
         ],
@@ -768,7 +771,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(right: 16.0),
+                        padding: const EdgeInsets.only(right: 16.0), // 为删除按钮留出空间
                         child: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)),
                       ),
                       const Spacer(),
@@ -778,6 +781,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   ),
                 ),
               ),
+              // 右上角删除按钮
               Positioned(
                 right: 16,
                 top: 4,
@@ -803,15 +807,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   // 构建统一格式的单条待办卡片 (包含独立的进度条与编辑入口)
   Widget _buildTodoItemCard(TodoItem todo, bool isLight, {required bool isPast, required bool isFuture}) {
+    // 【核心修复】强制卡片内部文字不跟随全局壁纸变白，而是与卡片自身颜色形成绝对对比
     Color cardColor = todo.isDone
-        ? Theme.of(context).disabledColor.withOpacity(0.1)
-        : Theme.of(context).colorScheme.surfaceContainer.withOpacity(isPast || isFuture ? 0.6 : 0.95);
+        ? Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3)
+        : Theme.of(context).colorScheme.surface.withOpacity(isPast || isFuture ? 0.5 : 0.95);
 
-    Color? titleColor = todo.isDone
-        ? Colors.grey
+    Color titleColor = todo.isDone
+        ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
         : (isPast || isFuture
-        ? (isLight ? Colors.white70 : Colors.grey.shade600)
-        : (isLight ? Colors.white : null));
+        ? Theme.of(context).colorScheme.onSurface.withOpacity(0.6)
+        : Theme.of(context).colorScheme.onSurface);
 
     Widget titleWidget = Text(
       todo.title,
@@ -819,6 +824,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         decoration: todo.isDone ? TextDecoration.lineThrough : null,
         color: titleColor,
         fontSize: isPast || isFuture ? 14 : 16,
+        fontWeight: isPast || isFuture ? FontWeight.normal : FontWeight.w500, // 今日重点加粗
       ),
     );
 
@@ -832,14 +838,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
         int days = target.difference(today).inDays;
         dateStr = "$dateStr ($days天后)";
       } else if (isPast) {
-        dateStr = "已延期: $dateStr";
+        dateStr = "已逾期: $dateStr";
       } else {
         dateStr = "今天截止";
       }
 
-      Color? subColor = todo.isDone
-          ? Colors.grey
-          : (isPast ? Colors.redAccent.shade200 : (isLight ? Colors.white60 : Colors.blueGrey));
+      Color subColor = todo.isDone
+          ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
+          : (isPast ? Colors.redAccent.shade400 : Theme.of(context).colorScheme.onSurface.withOpacity(0.5));
 
       Widget dateText = Text(dateStr, style: TextStyle(fontSize: 12, color: subColor));
 
@@ -867,6 +873,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         subtitleWidget = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 2),
             dateText,
             const SizedBox(height: 6),
             Row(
@@ -876,16 +883,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: progress,
-                      minHeight: 4,
-                      backgroundColor: isLight ? Colors.white24 : Theme.of(context).colorScheme.surfaceContainerHighest,
+                      minHeight: 5,
+                      // 【核心修复】让进度条的底轨在任何时候都清晰可见
+                      backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
                       valueColor: AlwaysStoppedAnimation<Color>(
-                          todo.isDone ? Colors.grey : Theme.of(context).colorScheme.primary
+                          todo.isDone ? Theme.of(context).colorScheme.onSurface.withOpacity(0.2) : Theme.of(context).colorScheme.primary
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text("${(progress * 100).toInt()}%", style: TextStyle(fontSize: 10, color: subColor)),
+                Text("${(progress * 100).toInt()}%", style: TextStyle(fontSize: 11, color: subColor, fontWeight: FontWeight.bold)),
               ],
             ),
           ],
@@ -908,12 +916,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
         color: cardColor,
         margin: const EdgeInsets.only(bottom: 6),
         shape: RoundedRectangleBorder(
-            side: isFuture && !todo.isDone ? BorderSide(color: Colors.grey.withOpacity(0.3), width: 1) : BorderSide.none,
-            borderRadius: BorderRadius.circular(12)
+            borderRadius: BorderRadius.circular(12) // 去掉多余边框让画面更清爽
         ),
         child: ListTile(
-          dense: isPast || isFuture,
-          // 增加点击进入编辑页的事件
+          dense: isPast || isFuture, // 压缩非核心待办的上下间距
           onTap: () => _editTodo(todo),
           leading: Checkbox(
               value: todo.isDone,
@@ -1007,8 +1013,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (_isTodoExpanded && futureTodos.isNotEmpty) {
       sections.add(
           Padding(
-            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0, left: 4.0),
-            child: Text("未来待办", style: TextStyle(color: isLight ? Colors.white70 : Colors.grey, fontWeight: FontWeight.bold, fontSize: 13)),
+            padding: const EdgeInsets.only(top: 20.0, bottom: 8.0, left: 4.0),
+            child: Row(
+              children: [
+                Icon(Icons.calendar_month, size: 16, color: isLight ? Colors.white60 : Colors.grey),
+                const SizedBox(width: 6),
+                Text("未来待办", style: TextStyle(color: isLight ? Colors.white70 : Colors.grey, fontWeight: FontWeight.bold, fontSize: 13)),
+              ],
+            ),
           )
       );
       sections.addAll(futureTodos.map((t) => _buildTodoItemCard(t, isLight, isPast: false, isFuture: true)));
