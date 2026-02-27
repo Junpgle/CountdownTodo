@@ -172,7 +172,6 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     List<String> jsonList = items.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
-    // 使用异步防止阻塞，主动触发的同步会继续执行
     if (sync) Future.microtask(() => syncData(username));
   }
 
@@ -216,10 +215,6 @@ class StorageService {
     if (needSave) await saveTodos(username, todos, sync: true);
     return todos;
   }
-
-  // ==========================================
-  // 真正彻底的删除联动逻辑 (软删除云端)
-  // ==========================================
 
   static Future<void> deleteCountdownGlobally(String username, String title) async {
     List<CountdownItem> localCds = await getCountdowns(username);
@@ -359,7 +354,7 @@ class StorageService {
     return {};
   }
 
-  // --- 核心同步机制优化 (重构级别防御防崩溃) ---
+  // --- 核心同步机制优化 ---
   static Future<bool> syncData(String username) async {
     if (_isSyncing) return false;
     _isSyncing = true;
@@ -390,24 +385,38 @@ class StorageService {
             bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
 
             if (cloudTime.isAfter(local.lastUpdated)) {
+              // 云端数据较新
               if (isCloudDeleted) {
                 todosToRemove.add(local);
                 hasChanges = true;
               } else {
-                bool cloudDone = cloud['is_completed'] == 1 || cloud['is_completed'] == true;
-                if (local.isDone != cloudDone) {
-                  local.isDone = cloudDone;
-                  local.lastUpdated = cloudTime;
-                  hasChanges = true;
-                }
+                local.isDone = cloud['is_completed'] == 1 || cloud['is_completed'] == true;
+                local.dueDate = cloud['due_date'] != null ? DateTime.tryParse(cloud['due_date'].toString()) : null;
+                local.createdAt = cloud['created_date'] != null ? (DateTime.tryParse(cloud['created_date'].toString()) ?? local.createdAt) : local.createdAt;
+                local.lastUpdated = cloudTime;
+                hasChanges = true;
               }
             } else if (local.lastUpdated.isAfter(cloudTime)) {
-              await ApiService.toggleTodo(cloud['id'], local.isDone);
+              // 本地数据较新，将所有属性全量推向云端
+              await ApiService.addTodo(
+                userId,
+                local.title,
+                isCompleted: local.isDone,
+                timestamp: local.lastUpdated.millisecondsSinceEpoch,
+                dueDate: local.dueDate?.toIso8601String(),
+                createdDate: local.createdAt.toIso8601String(),
+              );
             }
           } else {
-            if (!local.isDone) {
-              await ApiService.addTodo(userId, local.title, timestamp: local.lastUpdated.millisecondsSinceEpoch);
-            }
+            // 本地有，云端没有的记录，直接上传
+            await ApiService.addTodo(
+              userId,
+              local.title,
+              isCompleted: local.isDone,
+              timestamp: local.lastUpdated.millisecondsSinceEpoch,
+              dueDate: local.dueDate?.toIso8601String(),
+              createdDate: local.createdAt.toIso8601String(),
+            );
           }
         } catch (e) {
           print("同步待办数据单条异常: $e");
@@ -415,7 +424,7 @@ class StorageService {
       }
       localTodos.removeWhere((t) => todosToRemove.contains(t));
 
-      // 【新增补漏】拉取云端新增的且本地没有的待办记录
+      // 拉取云端新增的且本地没有的待办记录
       for (var cloud in cloudTodos) {
         try {
           bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
@@ -426,6 +435,8 @@ class StorageService {
               isDone: cloud['is_completed'] == 1 || cloud['is_completed'] == true,
               lastUpdated: _parseCloudTime(cloud['updated_at'] ?? cloud['created_at']),
               recurrence: RecurrenceType.none,
+              dueDate: cloud['due_date'] != null ? DateTime.tryParse(cloud['due_date'].toString()) : null,
+              createdAt: cloud['created_date'] != null ? (DateTime.tryParse(cloud['created_date'].toString()) ?? DateTime.now()) : DateTime.now(),
             ));
             hasChanges = true;
           }
@@ -446,7 +457,6 @@ class StorageService {
 
       for (var local in localCountdowns) {
         try {
-          // 兜底时间，防止 local.lastUpdated 缺失导致上传失败
           int safePushTime = local.lastUpdated.millisecondsSinceEpoch;
           if (safePushTime < 1000000) safePushTime = DateTime.now().millisecondsSinceEpoch;
 
@@ -468,7 +478,6 @@ class StorageService {
               await ApiService.addCountdown(userId, local.title, local.targetDate, safePushTime);
             }
           } else {
-            // 本地存在但云端不存在 (新创建的数据)，直接上传
             await ApiService.addCountdown(userId, local.title, local.targetDate, safePushTime);
           }
         } catch (e) {
@@ -477,7 +486,6 @@ class StorageService {
       }
       localCountdowns.removeWhere((item) => cdsToRemove.contains(item));
 
-      // 拉取云端新增且本地没有的倒计时
       for (var cloud in cloudCountdowns) {
         try {
           bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
@@ -509,17 +517,14 @@ class StorageService {
     return hasChanges;
   }
 
-  // 强化时间解析器：自动处理整数戳、带/不带时区的字符串，保障跨端对齐
   static DateTime _parseCloudTime(dynamic timeData) {
     if (timeData == null) return DateTime.fromMillisecondsSinceEpoch(0);
     if (timeData is int) return DateTime.fromMillisecondsSinceEpoch(timeData);
     if (timeData is double) return DateTime.fromMillisecondsSinceEpoch(timeData.toInt());
     if (timeData is String) {
-      // 尝试是否能解析成数字
       int? parsedInt = int.tryParse(timeData);
       if (parsedInt != null) return DateTime.fromMillisecondsSinceEpoch(parsedInt);
 
-      // 尝试解析字符串 ISO8601
       String t = timeData;
       if (!t.endsWith('Z') && !t.contains('+')) t += 'Z';
       return DateTime.tryParse(t)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);

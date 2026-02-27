@@ -72,8 +72,6 @@ class ApiService {
     }
   }
 
-  // ... (其余排行榜、待办、倒计时方法保持不变，省略以节省空间) ...
-
   // ==========================================
   // 2. 排行榜 (Leaderboard)
   // ==========================================
@@ -100,7 +98,7 @@ class ApiService {
   // 3. 待办事项 (Todos)
   // ==========================================
 
-  /// 获取待办列表 (后端会自动过滤 is_deleted = 0)
+  /// 获取待办列表
   static Future<List<dynamic>> fetchTodos(int userId) async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/todos?user_id=$userId'));
@@ -111,8 +109,8 @@ class ApiService {
     }
   }
 
-// 修改待办添加：支持传递创建时间（如果后端逻辑允许修改建议加上，否则默认使用服务器时间）
-  static Future<bool> addTodo(int userId, String content, {int? timestamp}) async {
+  /// 修改待办添加：支持传递创建时间、截止日期、完成状态等全量数据
+  static Future<bool> addTodo(int userId, String content, {bool isCompleted = false, int? timestamp, String? dueDate, String? createdDate}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/todos'),
@@ -120,7 +118,10 @@ class ApiService {
         body: jsonEncode({
           'user_id': userId,
           'content': content,
+          'is_completed': isCompleted,
           'client_updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+          'due_date': dueDate,
+          'created_date': createdDate,
         }),
       );
       return response.statusCode == 200;
@@ -128,7 +129,7 @@ class ApiService {
   }
 
 
-  /// 切换完成状态
+  /// 切换完成状态 (简化版，全量同步时用不到，但在单点操作中可以保留)
   static Future<bool> toggleTodo(int id, bool isCompleted) async {
     try {
       final response = await http.post(
@@ -142,7 +143,7 @@ class ApiService {
     }
   }
 
-  /// 删除待办 (后端执行软删除)
+  /// 删除待办
   static Future<bool> deleteTodo(int id) async {
     try {
       final response = await http.delete(
@@ -157,10 +158,9 @@ class ApiService {
   }
 
   // ==========================================
-  // 4. 倒计时 (Countdowns) - 引入时间戳覆盖逻辑
+  // 4. 倒计时 (Countdowns)
   // ==========================================
 
-  /// 获取倒计时列表
   static Future<List<dynamic>> fetchCountdowns(int userId) async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/countdowns?user_id=$userId'));
@@ -169,8 +169,6 @@ class ApiService {
     } catch (e) { return []; }
   }
 
-  /// 添加或更新倒计时 (Last Write Wins)
-  // 修改倒计时添加：确保发送 client_updated_at
   static Future<bool> addCountdown(int userId, String title, DateTime targetTime, int lastUpdatedMs) async {
     try {
       final response = await http.post(
@@ -180,14 +178,13 @@ class ApiService {
           'user_id': userId,
           'title': title,
           'target_time': targetTime.toIso8601String(),
-          'client_updated_at': lastUpdatedMs, // 必须传这个，后端靠它判断冲突
+          'client_updated_at': lastUpdatedMs,
         }),
       );
       return response.statusCode == 200;
     } catch (e) { return false; }
   }
 
-  /// 删除倒计时
   static Future<bool> deleteCountdown(int id) async {
     try {
       final response = await http.delete(
@@ -195,7 +192,6 @@ class ApiService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'id': id,
-          // 删除也携带时间戳，确保该“删除操作”是针对特定版本的
           'client_updated_at': DateTime.now().millisecondsSinceEpoch,
         }),
       );
@@ -208,8 +204,6 @@ class ApiService {
   // ==========================================
   // 5. 屏幕使用时间 (Screen Time)
   // ==========================================
-
-  // 在 ApiService 类中添加
 
   static Future<bool> uploadScreenTime({
     required int userId,
@@ -244,7 +238,6 @@ class ApiService {
   // 6. 调试工具 (Debug Tools)
   // ==========================================
 
-  /// 危险操作：一键清空云端所有数据
   static Future<Map<String, dynamic>> debugResetDatabase() async {
     try {
       final response = await http.post(
@@ -261,7 +254,6 @@ class ApiService {
   // 7. 分类映射 (Category Mappings)
   // ==========================================
 
-  /// 获取云端的应用分类映射表
   static Future<List<dynamic>> fetchAppMappings() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/mappings'));
@@ -269,9 +261,8 @@ class ApiService {
         return jsonDecode(response.body);
       }
     } catch (e) {
-      // 忽略网络错误，返回空列表交由本地缓存逻辑处理
+      // ignore
     }
     return [];
   }
 }
-

@@ -117,47 +117,52 @@ export default {
         return jsonResponse({ success: true });
       }
 
-      // --------------------------
-      // 模块 C: 待办事项 (支持软删除)
-      // --------------------------
+	// --------------------------
+	// 模块 C: 待办事项 (支持软删除与新属性)
+	// --------------------------
 
-      if (url.pathname === "/api/todos" && request.method === "GET") {
-        const userId = url.searchParams.get("user_id");
-        const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
-        return jsonResponse(results);
-      }
+	if (url.pathname === "/api/todos" && request.method === "GET") {
+	  const userId = url.searchParams.get("user_id");
+	  const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
+	  return jsonResponse(results);
+	}
 
-      if (url.pathname === "/api/todos" && request.method === "POST") {
-        const { user_id, content, client_updated_at } = await request.json();
-        const timestamp = client_updated_at || Date.now();
+	if (url.pathname === "/api/todos" && request.method === "POST") {
+	  // 接收新增加的 due_date 和 created_date 字段，以及 is_completed 状态
+	  const { user_id, content, is_completed, client_updated_at, due_date, created_date } = await request.json();
+	  const timestamp = client_updated_at || Date.now();
+	  const completedVal = is_completed ? 1 : 0; // 确保传给数据库的是 0 或 1
 
-        // 核心修复：放弃 ON CONFLICT，防止缺少 UNIQUE 约束导致接口 500 崩溃
-        const existing = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND content = ?").bind(user_id, content).first();
+	  const existing = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND content = ?").bind(user_id, content).first();
 
-        if (existing) {
-          const existingTime = parseInt(existing.updated_at) || 0;
-          if (timestamp > existingTime) {
-            await DB.prepare("UPDATE todos SET is_completed = 0, updated_at = ?, is_deleted = 0 WHERE id = ?").bind(timestamp, existing.id).run();
-          }
-        } else {
-          await DB.prepare("INSERT INTO todos (user_id, content, is_completed, updated_at, is_deleted) VALUES (?, ?, 0, ?, 0)").bind(user_id, content, timestamp).run();
-        }
-        return jsonResponse({ success: true });
-      }
+	  if (existing) {
+		const existingTime = parseInt(existing.updated_at) || 0;
+		if (timestamp > existingTime) {
+		  // 全量更新：包含完成状态、截止日期、创建日期
+		  await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ?, is_deleted = 0, due_date = ?, created_date = ? WHERE id = ?")
+			.bind(completedVal, timestamp, due_date || null, created_date || null, existing.id).run();
+		}
+	  } else {
+		// 插入新数据
+		await DB.prepare("INSERT INTO todos (user_id, content, is_completed, updated_at, is_deleted, due_date, created_date) VALUES (?, ?, ?, ?, 0, ?, ?)")
+		  .bind(user_id, content, completedVal, timestamp, due_date || null, created_date || null).run();
+	  }
+	  return jsonResponse({ success: true });
+	}
 
-      if (url.pathname === "/api/todos/toggle" && request.method === "POST") {
-        const { id, is_completed } = await request.json();
-        await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ? WHERE id = ?")
-          .bind(is_completed ? 1 : 0, Date.now(), id).run();
-        return jsonResponse({ success: true });
-      }
+	if (url.pathname === "/api/todos/toggle" && request.method === "POST") {
+	  const { id, is_completed } = await request.json();
+	  await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ? WHERE id = ?")
+		.bind(is_completed ? 1 : 0, Date.now(), id).run();
+	  return jsonResponse({ success: true });
+	}
 
-      if (url.pathname === "/api/todos" && request.method === "DELETE") {
-        const { id } = await request.json();
-        await DB.prepare("UPDATE todos SET is_deleted = 1, updated_at = ? WHERE id = ?")
-          .bind(Date.now(), id).run();
-        return jsonResponse({ success: true });
-      }
+	if (url.pathname === "/api/todos" && request.method === "DELETE") {
+	  const { id } = await request.json();
+	  await DB.prepare("UPDATE todos SET is_deleted = 1, updated_at = ? WHERE id = ?")
+		.bind(Date.now(), id).run();
+	  return jsonResponse({ success: true });
+	}
 
       // --------------------------
       // 模块 D: 倒计时 (LWW 同步逻辑)
