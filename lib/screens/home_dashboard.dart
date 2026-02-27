@@ -21,6 +21,7 @@ import '../widgets/home_sections.dart';
 import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'login_screen.dart';
+import '../widgets/home_sections.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -176,7 +177,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       return;
     }
     if (!mounted) return;
-    showDialog( // 弹窗逻辑保持原样
+    showDialog(
       context: context, barrierDismissible: !manifest.forceUpdate,
       builder: (context) {
         return AlertDialog(
@@ -353,56 +354,148 @@ class _HomeDashboardState extends State<HomeDashboard> {
       backgroundColor: isLight ? Colors.transparent : Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
+          // 动态壁纸背景
           if (isLight)
             Positioned.fill(child: CachedNetworkImage(imageUrl: _wallpaperUrl!, fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 800), placeholder: (context, url) => Container(color: Theme.of(context).colorScheme.surface))),
-          if (isLight) Positioned.fill(child: Container(color: Colors.black.withOpacity(0.4))),
+          if (isLight)
+            Positioned.fill(child: Container(color: Colors.black.withOpacity(0.4))),
+
           Column(
             children: [
               _buildAppBar(isLight),
+
+              // 核心布局：响应式区域
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SectionHeader(title: "重要日", icon: Icons.timer, onAdd: _addCountdown, isLight: isLight),
-                      _buildCountdownList(isLight),
-                      const SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(child: SectionHeader(title: "今日待办", icon: Icons.check_circle_outline, onAdd: _addTodo, isLight: isLight)),
-                          IconButton(icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: isLight ? Colors.white70 : null), onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded))
-                        ],
-                      ),
-                      _buildTodoList(isLight),
-                      const SizedBox(height: 24),
-                      SectionHeader(title: "屏幕时间 (今日汇总)", icon: Icons.timer_outlined, isLight: isLight),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final bool isTablet = constraints.maxWidth >= 800; // 设定分栏断点
 
-                      // 使用传入加载状态与更新时间的屏幕时间卡片
-                      ScreenTimeCard(
-                        stats: _screenTimeStats,
-                        hasPermission: _hasUsagePermission,
-                        isLoading: _isLoadingScreenTime,
-                        lastSyncTime: _lastScreenTimeSync,
-                        onOpenSettings: () async { await ScreenTimeService.openSettings(); _initScreenTime(); },
-                        // 修复：将 stats 改为 todayStats
-                        onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(todayStats: _screenTimeStats))); },
-                      ),
+                    // 构建各个板块 (将提取为局部 Widget 方便复用)
+                    Widget countdownSection = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SectionHeader(title: "重要日", icon: Icons.timer, onAdd: _addCountdown, isLight: isLight),
+                        _buildCountdownList(isLight),
+                      ],
+                    );
 
-                      const SizedBox(height: 24),
-                      SectionHeader(title: "数学测验", icon: Icons.functions, isLight: isLight),
-                      MathStatsCard(stats: _mathStats, onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username))); _loadAllData(); }),
-                      const SizedBox(height: 40),
-                    ],
-                  ),
+                    Widget todoSection = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(child: SectionHeader(title: "今日待办", icon: Icons.check_circle_outline, onAdd: _addTodo, isLight: isLight)),
+                            IconButton(
+                                icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: isLight ? Colors.white70 : null),
+                                onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded)
+                            )
+                          ],
+                        ),
+                        _buildTodoList(isLight),
+                      ],
+                    );
+
+                    Widget screenTimeSection = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SectionHeader(title: "屏幕时间 (今日汇总)", icon: Icons.timer_outlined, isLight: isLight),
+                        ScreenTimeCard(
+                          stats: _screenTimeStats,
+                          hasPermission: _hasUsagePermission,
+                          isLoading: _isLoadingScreenTime,
+                          lastSyncTime: _lastScreenTimeSync,
+                          onOpenSettings: () async { await ScreenTimeService.openSettings(); _initScreenTime(); },
+                          onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(todayStats: _screenTimeStats))); },
+                        ),
+                      ],
+                    );
+
+                    Widget mathSection = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SectionHeader(title: "数学测验", icon: Icons.functions, isLight: isLight),
+                        MathStatsCard(
+                            stats: _mathStats,
+                            onTap: () async {
+                              await Navigator.push(context, MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username)));
+                              _loadAllData();
+                            }
+                        ),
+                      ],
+                    );
+
+                    return SingleChildScrollView(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 32 : 16,
+                          vertical: 16
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1200), // 全局居中且防止拉伸得过于离谱
+                          child: isTablet
+                          // --- 平板/桌面端：左右两列布局 ---
+                              ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 左侧栏：放列表、时间倒数型内容，适当调小比例 (flex: 5)
+                              Expanded(
+                                flex: 5,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    countdownSection,
+                                    const SizedBox(height: 32),
+                                    todoSection,
+                                    const SizedBox(height: 40),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 32),
+                              // 右侧栏：放大的图表仪表盘内容，占更多比例 (flex: 6)
+                              Expanded(
+                                flex: 6,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    screenTimeSection,
+                                    const SizedBox(height: 32),
+                                    mathSection,
+                                    const SizedBox(height: 40),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          )
+                          // --- 手机端：垂直单列布局 ---
+                              : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              countdownSection,
+                              const SizedBox(height: 24),
+                              todoSection,
+                              const SizedBox(height: 24),
+                              screenTimeSection,
+                              const SizedBox(height: 24),
+                              mathSection,
+                              const SizedBox(height: 40),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(onPressed: _addTodo, icon: const Icon(Icons.add_task), label: const Text("记待办")),
+      floatingActionButton: FloatingActionButton.extended(
+          onPressed: _addTodo,
+          icon: const Icon(Icons.add_task),
+          label: const Text("记待办")
+      ),
     );
   }
 

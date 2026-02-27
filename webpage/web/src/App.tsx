@@ -285,9 +285,8 @@ const WindowsShowcase = () => {
                       <Layers className="w-12 h-12 sm:w-20 sm:h-20 text-blue-500/20" />
                       <p className="text-slate-500 text-xs sm:text-sm font-medium">预览图载入中...</p>
                    </div>
-                   {/* 使用 import.meta.env.BASE_URL 来正确解析根路径 */}
                    <img
-                    src={`${import.meta.env.BASE_URL}1.jpg`}
+                    src="./1.jpg"
                     alt="桌面端预览"
                     className="relative z-10 max-w-[90%] sm:max-w-[85%] rounded-lg shadow-2xl border border-white/10 group-hover:scale-105 transition-transform duration-700"
                     onError={(e) => e.currentTarget.style.display='none'}
@@ -343,9 +342,8 @@ const AndroidShowcase = () => {
                {/* 居中打孔摄像头 */}
                <div className="absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 w-3 h-3 sm:w-4 sm:h-4 bg-black rounded-full z-20 shadow-inner"></div>
                <div className="absolute inset-0 bg-white">
-                  {/* 使用 import.meta.env.BASE_URL */}
                   <img
-                    src={`${import.meta.env.BASE_URL}2.jpg`}
+                    src="./2.jpg"
                     alt="App 预览图"
                     className="w-full h-full object-cover rounded-[2.5rem] sm:rounded-[2.8rem]"
                     onError={(e) => {
@@ -419,7 +417,7 @@ const ScreenTimeShowcase = () => {
                    <div className="absolute top-2.5 sm:top-3 left-1/2 -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-black rounded-full z-20 shadow-inner"></div>
                    <div className="absolute inset-0 bg-white">
                        <img
-                         src={`${import.meta.env.BASE_URL}3.jpg`}
+                         src="./3.jpg"
                          alt="屏幕时间统计界面1"
                          className="w-full h-full object-cover rounded-[1.5rem] sm:rounded-[2rem]"
                          onError={(e) => e.currentTarget.style.display='none'}
@@ -433,7 +431,7 @@ const ScreenTimeShowcase = () => {
                    <div className="absolute top-2.5 sm:top-3 left-1/2 -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-black rounded-full z-20 shadow-inner"></div>
                    <div className="absolute inset-0 bg-white">
                        <img
-                         src={`${import.meta.env.BASE_URL}4.jpg`}
+                         src="./4.jpg"
                          alt="屏幕时间统计界面2"
                          className="w-full h-full object-cover rounded-[1.5rem] sm:rounded-[2rem]"
                          onError={(e) => e.currentTarget.style.display='none'}
@@ -508,9 +506,9 @@ const DownloadSection = ({ androidInfo, windowsInfo }: { androidInfo: AppInfo, w
           选择你的设备平台。所有平台数据基于同一个云端账号实时互通。
         </p>
 
-        <div className="grid md:grid-cols-2 gap-6 sm:gap-8 text-left">
+        <div className="grid md:grid-cols-2 gap-6 sm:gap-8 text-left items-stretch">
           {/* Windows 卡片 */}
-          <div className="group relative p-6 sm:p-8 lg:p-10 bg-slate-50 rounded-3xl sm:rounded-[3rem] border-2 border-transparent hover:border-blue-500 hover:bg-white transition-all duration-500 hover:-translate-y-1 sm:hover:-translate-y-2">
+          <div className="group relative p-6 sm:p-8 lg:p-10 bg-slate-50 rounded-3xl sm:rounded-[3rem] border-2 border-transparent hover:border-blue-500 hover:bg-white transition-all duration-500 hover:-translate-y-1 sm:hover:-translate-y-2 h-full flex flex-col">
             <div className="flex justify-between items-start mb-6 sm:mb-8">
               <div className="w-14 h-14 sm:w-16 sm:h-16 bg-blue-100 rounded-[1.2rem] sm:rounded-[1.5rem] flex items-center justify-center text-blue-600 group-hover:scale-110 transition duration-500">
                  <Monitor className="w-7 h-7 sm:w-8 sm:h-8" />
@@ -522,19 +520,32 @@ const DownloadSection = ({ androidInfo, windowsInfo }: { androidInfo: AppInfo, w
               )}
             </div>
             <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">Windows Lite</h3>
-            <p className="text-slate-500 mb-6 sm:mb-8 text-xs sm:text-sm leading-relaxed min-h-[40px]">
+            <p className="text-slate-500 mb-6 sm:mb-8 text-xs sm:text-sm leading-relaxed flex-1">
               {windowsInfo.desc || "适用于 Win 10/11 x64 原生高性能编译版本。"}
             </p>
-            <a
-              href={windowsInfo.url || "https://github.com/Junpgle/CountdownTodo/releases"}
-              className="flex items-center justify-center gap-2 sm:gap-3 bg-blue-600 text-white w-full py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-bold text-base sm:text-lg shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition"
-            >
-              获取下载 <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-            </a>
+            <div className="space-y-3 mt-auto">
+              <a
+                href={windowsInfo.url || "https://github.com/Junpgle/CountdownTodo/releases"}
+                className="flex items-center justify-center gap-2 sm:gap-3 bg-blue-600 text-white w-full py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-bold text-base sm:text-lg shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition"
+              >
+                获取下载 <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              </a>
+              {/* 新增 Tai 依赖项下载入口 */}
+              <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 bg-blue-100/50 rounded-xl sm:rounded-2xl border border-blue-200/50">
+                 <span className="text-[10px] sm:text-xs text-slate-600 font-medium">* 屏幕时间依赖此核心服务</span>
+                 <a
+                   href="https://github.com/Planshit/Tai/releases/download/1.5.0.6/Tai1.5.0.6.zip"
+                   target="_blank" rel="noreferrer"
+                   className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 text-[10px] sm:text-xs font-bold transition"
+                 >
+                   <Download className="w-3 h-3" /> 下载 Tai
+                 </a>
+              </div>
+            </div>
           </div>
 
           {/* Android 卡片 */}
-          <div className="group relative p-6 sm:p-8 lg:p-10 bg-slate-50 rounded-3xl sm:rounded-[3rem] border-2 border-transparent hover:border-indigo-500 hover:bg-white transition-all duration-500 hover:-translate-y-1 sm:hover:-translate-y-2">
+          <div className="group relative p-6 sm:p-8 lg:p-10 bg-slate-50 rounded-3xl sm:rounded-[3rem] border-2 border-transparent hover:border-indigo-500 hover:bg-white transition-all duration-500 hover:-translate-y-1 sm:hover:-translate-y-2 h-full flex flex-col">
             <div className="flex justify-between items-start mb-6 sm:mb-8">
               <div className="w-14 h-14 sm:w-16 sm:h-16 bg-indigo-100 rounded-[1.2rem] sm:rounded-[1.5rem] flex items-center justify-center text-indigo-600 group-hover:scale-110 transition duration-500">
                  <Smartphone className="w-7 h-7 sm:w-8 sm:h-8" />
@@ -546,15 +557,17 @@ const DownloadSection = ({ androidInfo, windowsInfo }: { androidInfo: AppInfo, w
               )}
             </div>
             <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">Android Pro</h3>
-            <p className="text-slate-500 mb-6 sm:mb-8 text-xs sm:text-sm leading-relaxed min-h-[40px]">
+            <p className="text-slate-500 mb-6 sm:mb-8 text-xs sm:text-sm leading-relaxed flex-1">
               {androidInfo.desc || "支持 Android 8.0+ APK 完整功能体验版。"}
             </p>
-            <a
-              href={androidInfo.url || "https://github.com/Junpgle/CountdownTodo/releases"}
-              className="flex items-center justify-center gap-2 sm:gap-3 bg-indigo-600 text-white w-full py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-bold text-base sm:text-lg shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition"
-            >
-              立即安装 <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-            </a>
+            <div className="mt-auto">
+              <a
+                href={androidInfo.url || "https://github.com/Junpgle/CountdownTodo/releases"}
+                className="flex items-center justify-center gap-2 sm:gap-3 bg-indigo-600 text-white w-full py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-bold text-base sm:text-lg shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition"
+              >
+                立即安装 <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              </a>
+            </div>
           </div>
         </div>
 

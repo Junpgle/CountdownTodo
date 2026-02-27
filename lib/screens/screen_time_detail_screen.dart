@@ -36,9 +36,16 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Map<String, String> _cloudMappings = {};
   bool _isLoading = true;
 
+  late DateTime _selectedDate;
+  late DateTime _todayNormalized;
+
   @override
   void initState() {
     super.initState();
+    DateTime now = DateTime.now();
+    _todayNormalized = DateTime(now.year, now.month, now.day);
+    _selectedDate = _todayNormalized;
+
     // 延迟加载数据，避开页面跳转的动画期
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 300), () {
@@ -271,24 +278,32 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _buildMainContent(),
+      // 增加限制最大宽度，使得在带鱼屏/超大桌面上也能居中显示优雅
+          : Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: _buildMainContent(),
+        ),
+      ),
     );
   }
 
   Widget _buildMainContent() {
-    DateTime now = DateTime.now();
-    String todayStr = DateFormat('yyyy-MM-dd').format(now);
-    String yesterdayStr = DateFormat('yyyy-MM-dd').format(now.subtract(const Duration(days: 1)));
+    bool isSelectedToday = _selectedDate == _todayNormalized;
+    String datePrefix = isSelectedToday ? "今日" : DateFormat('MM/dd').format(_selectedDate);
 
-    int todayTotal = _getTotalDuration(_historyStats[todayStr] ?? [], _currentFilter);
-    int yesterdayTotal = _getTotalDuration(_historyStats[yesterdayStr] ?? [], _currentFilter);
-    int diff = todayTotal - yesterdayTotal;
+    String selectedDateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    String prevDateStr = DateFormat('yyyy-MM-dd').format(_selectedDate.subtract(const Duration(days: 1)));
 
-    final filteredTodayStats = _getFilteredStats(_historyStats[todayStr] ?? [], _currentFilter);
-    final topApps = getGroupedApps(filteredTodayStats);
+    int selectedTotal = _getTotalDuration(_historyStats[selectedDateStr] ?? [], _currentFilter);
+    int prevTotal = _getTotalDuration(_historyStats[prevDateStr] ?? [], _currentFilter);
+    int diff = selectedTotal - prevTotal;
+
+    final filteredSelectedStats = _getFilteredStats(_historyStats[selectedDateStr] ?? [], _currentFilter);
+    final topApps = getGroupedApps(filteredSelectedStats);
 
     Map<String, List<dynamic>> categoryGroups = {};
-    for (var item in filteredTodayStats) {
+    for (var item in filteredSelectedStats) {
       String appName = item['app_name'] ?? '未知应用';
       String cat = getCategoryForApp(appName, item['category'], _cloudMappings);
 
@@ -324,45 +339,132 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       finalCategories.add({'name': '其他类别', 'duration': otherDur, 'items': otherItems});
     }
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildFilters(),
-          _buildTotalCard(todayTotal, diff),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSectionHeader("近七日趋势", Icons.bar_chart),
-                _buildChartCard(now),
+    // 响应式布局核心区域
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+        // 定义断点
+        final bool isDesktop = width >= 900; // 宽屏平板横排 / 桌面端
+        final bool isTablet = width >= 600 && width < 900; // 普通平板竖屏
 
-                const SizedBox(height: 24),
+        // 桌面端大屏使用左右双列布局
+        if (isDesktop) {
+          int maxTopAppsDesktop = 6; // 大屏采用3x2结构，最多显示6个
 
-                if (finalCategories.isNotEmpty) ...[
-                  _buildSectionHeader("今日类别分布", Icons.category_rounded),
-                  _buildCategoryGrid(finalCategories),
-                  const SizedBox(height: 24),
+          return SizedBox(
+            height: constraints.maxHeight, // 强制占据可用高度
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 左侧：筛选器、总览与图表（固定不动，内容少时不需要滚动，套一层防止溢出）
+                  Expanded(
+                    flex: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 将筛选器限制在左侧，不影响右侧的排版
+                        _buildFilters(padding: const EdgeInsets.only(bottom: 12)),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildTotalCard(selectedTotal, diff, datePrefix, isDesktop: true),
+                                const SizedBox(height: 16),
+                                _buildSectionHeader("近七日趋势", Icons.bar_chart),
+                                _buildChartCard(_todayNormalized, height: 280), // 大屏图表高一点
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  // 右侧：分类与排行详情（独立包裹滚动视图，可独立滑动）
+                  Expanded(
+                    flex: 5,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (finalCategories.isNotEmpty) ...[
+                            _buildSectionHeader("$datePrefix类别分布", Icons.category_rounded),
+                            _buildCategoryGrid(finalCategories, crossAxisCount: 3, childAspectRatio: 1.2),
+                            const SizedBox(height: 24),
+                          ],
+                          if (topApps.isNotEmpty) ...[
+                            _buildSectionHeader("$datePrefix最常使用", Icons.dashboard_rounded),
+                            // 修改为动态控制数量的组件，自适应3列
+                            _buildTopAppsGrid(topApps, crossAxisCount: 3, childAspectRatio: 1.2, maxItems: maxTopAppsDesktop),
+                            const SizedBox(height: 24),
+                          ],
+                          if (topApps.length > maxTopAppsDesktop) ...[
+                            _buildSectionHeader("其余应用明细", Icons.format_list_bulleted_rounded),
+                            _buildRestList(topApps, skipCount: maxTopAppsDesktop), // 智能跳过前面已经显示的项
+                          ],
+                          const SizedBox(height: 40),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
-
-                if (topApps.isNotEmpty) ...[
-                  _buildSectionHeader("今日最常使用", Icons.dashboard_rounded),
-                  _buildTop4Grid(topApps),
-                  const SizedBox(height: 24),
-                ],
-
-                if (topApps.length > 4) ...[
-                  _buildSectionHeader("其余应用明细", Icons.format_list_bulleted_rounded),
-                  _buildRestList(topApps),
-                ],
-
-                const SizedBox(height: 40),
-              ],
+              ),
             ),
+          );
+        }
+
+        // 手机与平板竖屏采用单列布局，但调整内部列数
+        int catGridCount = isTablet ? 6 : 3; // 平板竖屏时类别一行 6 个
+        int topGridCount = isTablet ? 4 : 2; // 平板竖屏时最常使用一行 4 个
+        int maxTopAppsMobile = isTablet ? 4 : 4; // 竖屏下显示4项
+        double catAspectRatio = isTablet ? 0.9 : 1.0;
+        double topAspectRatio = isTablet ? 1.0 : 1.15;
+
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 移动端/平板竖屏仍占据通栏宽度
+              _buildFilters(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4)),
+              _buildTotalCard(selectedTotal, diff, datePrefix, isDesktop: false),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader("近七日趋势", Icons.bar_chart),
+                    _buildChartCard(_todayNormalized, height: 200),
+
+                    const SizedBox(height: 24),
+
+                    if (finalCategories.isNotEmpty) ...[
+                      _buildSectionHeader("$datePrefix类别分布", Icons.category_rounded),
+                      _buildCategoryGrid(finalCategories, crossAxisCount: catGridCount, childAspectRatio: catAspectRatio),
+                      const SizedBox(height: 24),
+                    ],
+
+                    if (topApps.isNotEmpty) ...[
+                      _buildSectionHeader("$datePrefix最常使用", Icons.dashboard_rounded),
+                      _buildTopAppsGrid(topApps, crossAxisCount: topGridCount, childAspectRatio: topAspectRatio, maxItems: maxTopAppsMobile),
+                      const SizedBox(height: 24),
+                    ],
+
+                    if (topApps.length > maxTopAppsMobile) ...[
+                      _buildSectionHeader("其余应用明细", Icons.format_list_bulleted_rounded),
+                      _buildRestList(topApps, skipCount: maxTopAppsMobile),
+                    ],
+
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -385,12 +487,12 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     );
   }
 
-  Widget _buildFilters() {
+  Widget _buildFilters({EdgeInsetsGeometry padding = EdgeInsets.zero}) {
     return SizedBox(
       height: 55,
       child: ListView.builder(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: padding,
           itemCount: DeviceFilter.values.length,
           itemBuilder: (ctx, i) {
             final filter = DeviceFilter.values[i];
@@ -411,12 +513,15 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     );
   }
 
-  Widget _buildTotalCard(int todayTotal, int diff) {
+  Widget _buildTotalCard(int total, int diff, String datePrefix, {bool isDesktop = false}) {
     bool isIncrease = diff >= 0;
-    String diffText = "较昨日${isIncrease ? '增加' : '减少'} ${formatHM(diff.abs())}";
+    String diffText = "较前一天${isIncrease ? '增加' : '减少'} ${formatHM(diff.abs())}";
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      // 如果是桌面端，外层已经有边距，这里去掉一些左侧 Padding 使其对齐
+      padding: isDesktop
+          ? const EdgeInsets.only(bottom: 16)
+          : const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Card(
         elevation: 2,
         color: Theme.of(context).colorScheme.surfaceContainer.withOpacity(0.95),
@@ -429,10 +534,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("今日使用时长", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                    Text("$datePrefix使用时长", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                     const SizedBox(height: 8),
                     Text(
-                      formatHM(todayTotal),
+                      formatHM(total),
                       style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.primary),
                     ),
                     const SizedBox(height: 8),
@@ -461,13 +566,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     );
   }
 
-  Widget _buildChartCard(DateTime now) {
+  Widget _buildChartCard(DateTime today, {double height = 200}) {
     List<int> dailyTotals = [];
     List<String> labels = [];
 
     // 收集过去 7 天的数据
     for (int i = 6; i >= 0; i--) {
-      DateTime d = now.subtract(Duration(days: i));
+      DateTime d = today.subtract(Duration(days: i));
       String dateStr = DateFormat('yyyy-MM-dd').format(d);
       String labelStr = i == 0 ? "今日" : DateFormat('MM/dd').format(d);
 
@@ -476,38 +581,58 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       labels.add(labelStr);
     }
 
+    int selectedIndex = 6 - today.difference(_selectedDate).inDays;
+    if (selectedIndex < 0 || selectedIndex > 6) selectedIndex = -1;
+
     return Card(
       elevation: 2,
       color: Theme.of(context).colorScheme.surfaceContainer.withOpacity(0.95),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: SizedBox(
-          width: double.infinity,
-          height: 200,
-          child: CustomPaint(
-            painter: BarChartPainter(
-              data: dailyTotals,
-              labels: labels,
-              primaryColor: Theme.of(context).colorScheme.primary,
-              textColor: Colors.blueGrey,
-            ),
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (details) {
+                double sectionWidth = constraints.maxWidth / 7;
+                int tappedIndex = (details.localPosition.dx / sectionWidth).floor();
+                if (tappedIndex >= 0 && tappedIndex < 7) {
+                  setState(() {
+                    _selectedDate = today.subtract(Duration(days: 6 - tappedIndex));
+                  });
+                }
+              },
+              child: SizedBox(
+                width: double.infinity,
+                height: height,
+                child: CustomPaint(
+                  painter: BarChartPainter(
+                    data: dailyTotals,
+                    labels: labels,
+                    primaryColor: Theme.of(context).colorScheme.primary,
+                    textColor: Colors.blueGrey,
+                    selectedIndex: selectedIndex,
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  // --- 3x2 分类宫格 ---
-  Widget _buildCategoryGrid(List<Map<String, dynamic>> categories) {
+  // --- 支持动态列数的分类宫格 ---
+  Widget _buildCategoryGrid(List<Map<String, dynamic>> categories, {required int crossAxisCount, required double childAspectRatio}) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        childAspectRatio: 1.0,
+        childAspectRatio: childAspectRatio,
       ),
       itemCount: categories.length,
       itemBuilder: (ctx, i) {
@@ -550,18 +675,18 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     );
   }
 
-  // --- Top 4 应用宫格 (2x2) ---
-  Widget _buildTop4Grid(List<MapEntry<String, Map<String, dynamic>>> apps) {
+  // --- 支持动态数量与列数的 Top 应用宫格 ---
+  Widget _buildTopAppsGrid(List<MapEntry<String, Map<String, dynamic>>> apps, {required int crossAxisCount, required double childAspectRatio, required int maxItems}) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 1.15,
+        childAspectRatio: childAspectRatio,
       ),
-      itemCount: math.min(4, apps.length),
+      itemCount: math.min(maxItems, apps.length),
       itemBuilder: (ctx, i) {
         final app = apps[i];
         final devices = app.value['devices'] as Map<String, int>;
@@ -606,8 +731,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     );
   }
 
-  // --- 其余应用列表 ---
-  Widget _buildRestList(List<MapEntry<String, Map<String, dynamic>>> apps) {
+  // --- 其余应用列表，支持跳过已在顶部宫格展示的条目 ---
+  Widget _buildRestList(List<MapEntry<String, Map<String, dynamic>>> apps, {required int skipCount}) {
     return Card(
       elevation: 2,
       color: Theme.of(context).colorScheme.surfaceContainer.withOpacity(0.95),
@@ -615,10 +740,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       child: ListView.separated(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        itemCount: apps.length - 4,
+        itemCount: apps.length - skipCount,
         separatorBuilder: (_, __) => Divider(height: 1, indent: 60, endIndent: 16, color: Colors.grey.withOpacity(0.15)),
         itemBuilder: (ctx, i) {
-          final app = apps[i + 4];
+          final app = apps[i + skipCount];
           final devices = app.value['devices'] as Map<String, int>;
 
           return ListTile(
@@ -645,7 +770,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
 }
 
 // ==========================================
-// 新增：三级界面 (分类详情)
+// 三级界面 (分类详情) - 同样为其增加了居中及最大宽度约束
 // ==========================================
 class CategoryDetailScreen extends StatelessWidget {
   final String categoryName;
@@ -669,57 +794,62 @@ class CategoryDetailScreen extends StatelessWidget {
         title: Text(categoryName),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-            child: Column(
-              children: [
-                Icon(_ScreenTimeDetailScreenState.getCategoryIcon(categoryName), size: 48, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(height: 12),
-                Text("该类别总计", style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                const SizedBox(height: 4),
-                Text(
-                  _ScreenTimeDetailScreenState.formatHM(totalDur),
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: apps.isEmpty
-                ? const Center(child: Text("暂无数据"))
-                : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: apps.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (ctx, i) {
-                final app = apps[i];
-                final devices = app.value['devices'] as Map<String, int>;
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  leading: CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                    child: Text(
-                      app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
-                      style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800), // 为三级页面同样添加最大宽度
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                child: Column(
+                  children: [
+                    Icon(_ScreenTimeDetailScreenState.getCategoryIcon(categoryName), size: 48, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(height: 12),
+                    Text("该类别总计", style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                    const SizedBox(height: 4),
+                    Text(
+                      _ScreenTimeDetailScreenState.formatHM(totalDur),
+                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
                     ),
-                  ),
-                  title: Text(app.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: _ScreenTimeDetailScreenState.buildDeviceBreakdown(devices, isAllFilter)
-                  ),
-                  trailing: Text(_ScreenTimeDetailScreenState.formatHM(app.value['total'] as int),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                );
-              },
-            ),
-          )
-        ],
+                  ],
+                ),
+              ),
+              Expanded(
+                child: apps.isEmpty
+                    ? const Center(child: Text("暂无数据"))
+                    : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: apps.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final app = apps[i];
+                    final devices = app.value['devices'] as Map<String, int>;
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      leading: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        child: Text(
+                          app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
+                          style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      title: Text(app.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: _ScreenTimeDetailScreenState.buildDeviceBreakdown(devices, isAllFilter)
+                      ),
+                      trailing: Text(_ScreenTimeDetailScreenState.formatHM(app.value['total'] as int),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    );
+                  },
+                ),
+              )
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -731,8 +861,9 @@ class BarChartPainter extends CustomPainter {
   final List<String> labels;
   final Color primaryColor;
   final Color textColor;
+  final int selectedIndex;
 
-  BarChartPainter({required this.data, required this.labels, required this.primaryColor, required this.textColor});
+  BarChartPainter({required this.data, required this.labels, required this.primaryColor, required this.textColor, required this.selectedIndex});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -756,7 +887,7 @@ class BarChartPainter extends CustomPainter {
       double xCenter = (i * spacing) + (spacing / 2);
       double barH = (data[i] / maxVal) * chartHeight;
 
-      barPaint.color = (i == data.length - 1) ? primaryColor : primaryColor.withOpacity(0.25);
+      barPaint.color = (i == selectedIndex) ? primaryColor : primaryColor.withOpacity(0.25);
 
       Rect barRect = Rect.fromLTWH(xCenter - barWidth / 2, size.height - bottomPadding - barH, barWidth, barH);
       RRect rRect = RRect.fromRectAndRadius(barRect, const Radius.circular(6));
@@ -767,7 +898,7 @@ class BarChartPainter extends CustomPainter {
         _drawText(canvas, hm, Offset(xCenter, size.height - bottomPadding - barH - 12), fontSize: 10, color: primaryColor, bold: true);
       }
 
-      _drawText(canvas, labels[i], Offset(xCenter, size.height - 12), fontSize: 11, color: textColor, bold: i == data.length - 1);
+      _drawText(canvas, labels[i], Offset(xCenter, size.height - 12), fontSize: 11, color: textColor, bold: i == selectedIndex);
     }
 
     if (avgVal > 0) {
