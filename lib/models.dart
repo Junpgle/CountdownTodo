@@ -125,6 +125,8 @@ class TodoItem {
   int? customIntervalDays; // 隔几天重复
   DateTime? recurrenceEndDate; // 重复截止日期
   DateTime lastUpdated; // 上次更新状态的时间
+  DateTime? dueDate; // 单次待办的截止日期
+  DateTime createdAt; // 新增：待办的创建日期
 
   TodoItem({
     required this.id,
@@ -134,7 +136,9 @@ class TodoItem {
     this.customIntervalDays,
     this.recurrenceEndDate,
     required this.lastUpdated,
-  });
+    this.dueDate,
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now(); // 若未提供则默认为今日
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -144,6 +148,8 @@ class TodoItem {
     'customIntervalDays': customIntervalDays,
     'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
     'lastUpdated': lastUpdated.toIso8601String(),
+    'dueDate': dueDate?.toIso8601String(),
+    'createdAt': createdAt.toIso8601String(),
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) => TodoItem(
@@ -154,5 +160,7 @@ class TodoItem {
     customIntervalDays: json['customIntervalDays'],
     recurrenceEndDate: json['recurrenceEndDate'] != null ? DateTime.parse(json['recurrenceEndDate']) : null,
     lastUpdated: json['lastUpdated'] != null ? DateTime.parse(json['lastUpdated']) : DateTime.now(),
+    dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
+    createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
   );
 }

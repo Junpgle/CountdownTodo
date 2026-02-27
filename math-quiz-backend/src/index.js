@@ -123,7 +123,6 @@ export default {
 
       if (url.pathname === "/api/todos" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
-        // 去掉 is_deleted = 0 过滤，允许前端同步删除标记
         const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
         return jsonResponse(results);
       }
@@ -131,26 +130,32 @@ export default {
       if (url.pathname === "/api/todos" && request.method === "POST") {
         const { user_id, content, client_updated_at } = await request.json();
         const timestamp = client_updated_at || Date.now();
-        await DB.prepare(`
-          INSERT INTO todos (user_id, content, is_completed, updated_at, is_deleted)
-          VALUES (?, ?, 0, ?, 0)
-          ON CONFLICT(user_id, content) DO UPDATE SET
-            is_deleted = 0,
-            updated_at = excluded.updated_at
-          WHERE excluded.updated_at > todos.updated_at
-        `).bind(user_id, content, timestamp).run();
+
+        // 核心修复：放弃 ON CONFLICT，防止缺少 UNIQUE 约束导致接口 500 崩溃
+        const existing = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND content = ?").bind(user_id, content).first();
+
+        if (existing) {
+          const existingTime = parseInt(existing.updated_at) || 0;
+          if (timestamp > existingTime) {
+            await DB.prepare("UPDATE todos SET is_completed = 0, updated_at = ?, is_deleted = 0 WHERE id = ?").bind(timestamp, existing.id).run();
+          }
+        } else {
+          await DB.prepare("INSERT INTO todos (user_id, content, is_completed, updated_at, is_deleted) VALUES (?, ?, 0, ?, 0)").bind(user_id, content, timestamp).run();
+        }
         return jsonResponse({ success: true });
       }
 
       if (url.pathname === "/api/todos/toggle" && request.method === "POST") {
         const { id, is_completed } = await request.json();
-        await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(is_completed ? 1 : 0, id).run();
+        await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ? WHERE id = ?")
+          .bind(is_completed ? 1 : 0, Date.now(), id).run();
         return jsonResponse({ success: true });
       }
 
       if (url.pathname === "/api/todos" && request.method === "DELETE") {
         const { id } = await request.json();
-        await DB.prepare("UPDATE todos SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(id).run();
+        await DB.prepare("UPDATE todos SET is_deleted = 1, updated_at = ? WHERE id = ?")
+          .bind(Date.now(), id).run();
         return jsonResponse({ success: true });
       }
 
@@ -160,7 +165,6 @@ export default {
 
       if (url.pathname === "/api/countdowns" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
-        // 去掉 is_deleted = 0 过滤，允许前端同步删除标记
         const { results } = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ?").bind(userId).all();
         return jsonResponse(results);
       }
@@ -169,24 +173,30 @@ export default {
         const { user_id, title, target_time, client_updated_at } = await request.json();
         const timestamp = client_updated_at || Date.now();
 
-        // UPSERT 逻辑：只有当客户端提供的时间戳大于云端时才更新
-        const info = await DB.prepare(`
-          INSERT INTO countdowns (user_id, title, target_time, updated_at, is_deleted)
-          VALUES (?, ?, ?, ?, 0)
-          ON CONFLICT(user_id, title) DO UPDATE SET
-            target_time = excluded.target_time,
-            updated_at = excluded.updated_at,
-            is_deleted = 0
-          WHERE excluded.updated_at > countdowns.updated_at
-        `).bind(user_id, title, target_time, timestamp).run();
+        // 核心修复：同样放弃 ON CONFLICT，先查询后更新，兼容任何粗糙的建表结构
+        const existing = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ? AND title = ?").bind(user_id, title).first();
 
-        return jsonResponse({ success: true, updated: info.meta.changes > 0 });
+        if (existing) {
+          const existingTime = parseInt(existing.updated_at) || 0;
+          if (timestamp > existingTime) {
+            await DB.prepare("UPDATE countdowns SET target_time = ?, updated_at = ?, is_deleted = 0 WHERE id = ?")
+              .bind(target_time, timestamp, existing.id).run();
+            return jsonResponse({ success: true, updated: true });
+          } else {
+            return jsonResponse({ success: true, updated: false });
+          }
+        } else {
+          await DB.prepare("INSERT INTO countdowns (user_id, title, target_time, updated_at, is_deleted) VALUES (?, ?, ?, ?, 0)")
+            .bind(user_id, title, target_time, timestamp).run();
+          return jsonResponse({ success: true, updated: true });
+        }
       }
 
       if (url.pathname === "/api/countdowns" && request.method === "DELETE") {
         const { id, client_updated_at } = await request.json();
         const timestamp = client_updated_at || Date.now();
-        await DB.prepare("UPDATE countdowns SET is_deleted = 1, updated_at = ? WHERE id = ?").bind(timestamp, id).run();
+        await DB.prepare("UPDATE countdowns SET is_deleted = 1, updated_at = ? WHERE id = ?")
+          .bind(timestamp, id).run();
         return jsonResponse({ success: true });
       }
 
@@ -195,21 +205,17 @@ export default {
       // 模块 E: 屏幕使用时间 (Screen Time)
       // --------------------------
 
-      // [POST] 上报某设备在某一天的屏幕时间
       if (url.pathname === "/api/screen_time" && request.method === "POST") {
         const body = await request.json();
         let { user_id, device_name, record_date, apps } = body;
 
-        // 基础校验
         if (!user_id || !device_name || !record_date || !Array.isArray(apps)) {
           return errorResponse("缺少必要参数或格式错误 (需包含 user_id, device_name, record_date, apps[])");
         }
 
-        // 数据清洗：去除前后空格
         device_name = device_name.trim();
 
         try {
-          // 使用 D1 Batch 批量处理以提高性能 (SQLite UPSERT 语法)
           const statements = apps.map(app => {
            return DB.prepare(`
              INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
@@ -233,13 +239,11 @@ export default {
         }
       }
 
-      // [GET] 获取今日汇总数据
       if (url.pathname === "/api/screen_time" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
         const date = url.searchParams.get("date");
         if (!userId || !date) return errorResponse("缺少参数 user_id 或 date");
 
-        // 核心修改：关联 app_name_mappings 表，并同时拉取 category（分类）字段
         const { results } = await DB.prepare(`
           SELECT
             COALESCE(m.mapped_name, s.app_name) AS app_name,
@@ -256,15 +260,14 @@ export default {
         return jsonResponse(results);
       }
 
-      // [GET] 获取全局应用分类映射表 (供客户端每7天缓存一次)
+      // --------------------------
+      // 模块 F: 映射与调试
+      // --------------------------
+
       if (url.pathname === "/api/mappings" && request.method === "GET") {
         const { results } = await DB.prepare(`SELECT package_name, mapped_name, category FROM app_name_mappings`).all();
         return jsonResponse(results);
       }
-
-      // --------------------------
-      // 模块 F: 调试与维护 (Debug)
-      // --------------------------
 
       if (url.pathname === "/api/debug/reset_database" && request.method === "POST") {
         try {

@@ -40,15 +40,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
   String? _wallpaperUrl;
-  bool _isTodoExpanded = true;
 
-  // 新增：屏幕时间的加载与更新状态
+  bool _isTodoExpanded = true;
+  bool _isPastTodosExpanded = false; // 控制以往待办是否展开
+
+  // 屏幕时间的加载与更新状态
   bool _isLoadingScreenTime = true;
   DateTime? _lastScreenTimeSync;
+
+  // 动态问候语
+  String _currentGreeting = "";
 
   @override
   void initState() {
     super.initState();
+
+    // 0. 初始化动态问候语
+    _generateGreeting();
 
     // 1. 极速加载本地轻量级数据，立刻展现 UI
     _loadAllData();
@@ -63,13 +71,43 @@ class _HomeDashboardState extends State<HomeDashboard> {
         if (mounted) _initScreenTime();
       });
       Future.delayed(const Duration(milliseconds: 1500), () {
-        // 在应用启动时，尝试触发分类字典缓存（内部自带7天CD校验）
         if (mounted) StorageService.syncAppMappings();
       });
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) _checkUpdatesAndNotices(isManual: false);
       });
     });
+  }
+
+  // 动态时段打招呼
+  String get _timeSalutation {
+    final hour = DateTime.now().hour;
+    if (hour >= 5 && hour < 12) return "上午好";
+    if (hour >= 12 && hour < 14) return "中午好";
+    if (hour >= 14 && hour < 18) return "下午好";
+    return "晚上好";
+  }
+
+  // 根据当前时间随机生成问候语
+  void _generateGreeting() {
+    final hour = DateTime.now().hour;
+    List<String> greetings;
+
+    if (hour >= 5 && hour < 11) {
+      greetings = ["今天也要元气超标！", "新的一天，把快乐置顶。", "迎着光，做自己的小太阳。", "起床充电，活力满格。", "今日宜：开心、努力、好运。"];
+    } else if (hour >= 11 && hour < 14) {
+      greetings = ["吃饱喝足，继续奔赴。", "中场能量补给，快乐不打烊。", "稳住状态，万事可期。", "生活不慌不忙，慢慢发光。", "好好吃饭，就是好好爱自己。"];
+    } else if (hour >= 14 && hour < 18) {
+      greetings = ["保持热爱，保持冲劲。", "状态在线，干劲拉满。", "不急不躁，温柔又有力量。", "把普通日子，过得热气腾腾。", "继续向前，好运正在路上。"];
+    } else if (hour >= 18 && hour < 23) {
+      greetings = ["晚风轻踩云朵，今天辛苦啦。", "卸下疲惫，拥抱温柔。", "今日圆满，万事顺心。", "把烦恼清空，把快乐装满。", "好好休息，明天依旧闪亮。"];
+    } else if (hour >= 23 || hour < 3) {
+      greetings = ["愿你心安，好梦常伴。", "安静沉淀，积蓄力量。", "不慌不忙，自在生长。", "温柔治愈，接纳所有情绪。", "今夜安睡，明日更好。"];
+    } else {
+      greetings = ["凌晨的星光，为你照亮前路。", "此刻努力，未来可期。", "安静时光，悄悄变优秀。", "不负自己，不负岁月。", "愿你眼里有光，心中有梦。"];
+    }
+
+    _currentGreeting = greetings[Random().nextInt(greetings.length)];
   }
 
   Future<void> _initNotifications() async {
@@ -86,7 +124,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (mounted) {
       setState(() {
         _hasUsagePermission = permit;
-        if (!permit) _isLoadingScreenTime = false; // 无权限则停止加载动画
+        if (!permit) _isLoadingScreenTime = false;
       });
     }
     if (permit) _loadCachedScreenTime();
@@ -100,9 +138,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       return;
     }
 
-    // 这里会通过 Service 去拿数据（如果需要会自动后台刷新）
     var stats = await ScreenTimeService.getScreenTimeData(userId);
-    // 从本地提取最后一次同步完成的时间
     var lastSync = await StorageService.getLastScreenTimeSync();
 
     if (mounted) {
@@ -133,7 +169,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (_isSyncing) return;
     setState(() {
       _isSyncing = true;
-      _isLoadingScreenTime = true; // 手动刷新时也展示卡片的加载状态
+      _isLoadingScreenTime = true;
     });
 
     try {
@@ -142,8 +178,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (userId == null) throw Exception("未登录");
 
       bool hasChanges = await StorageService.syncData(widget.username);
-      await ScreenTimeService.syncScreenTime(userId); // 强制云端同步
-      await _loadCachedScreenTime(); // 重新加载缓存及时间戳
+      await ScreenTimeService.syncScreenTime(userId);
+      await _loadCachedScreenTime();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 数据同步完成'), backgroundColor: Colors.green));
@@ -161,7 +197,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
-  // --- 更新与壁纸逻辑 ---
   Future<void> _checkUpdatesAndNotices({bool isManual = false}) async {
     if (isManual) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正在检查更新...'), duration: Duration(seconds: 1)));
     AppManifest? manifest = await UpdateService.checkManifest();
@@ -247,7 +282,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     } catch (e) { debugPrint("获取壁纸失败: $e"); }
   }
 
-  // --- 交互 Dialog ---
   void _addCountdown() {
     TextEditingController titleCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
@@ -288,11 +322,40 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
+  void _deleteCountdown(int index) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("删除倒计时"),
+        content: const Text("确定要删除这条倒计时吗？"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () {
+              String titleToDelete = _countdowns[index].title;
+              setState(() {
+                _countdowns.removeAt(index);
+              });
+              StorageService.deleteCountdownGlobally(widget.username, titleToDelete);
+              Navigator.pop(ctx);
+            },
+            child: const Text("删除"),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _addTodo() {
     TextEditingController titleCtrl = TextEditingController();
+    DateTime createdAt = DateTime.now(); // 默认今日创建
+    DateTime? dueDate; // 任务截止日期
     RecurrenceType recurrence = RecurrenceType.none;
+    TextEditingController customDaysCtrl = TextEditingController();
     int? customDays;
-    DateTime? endDate;
+    DateTime? recurrenceEndDate; // 重复截止日期
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -304,8 +367,39 @@ class _HomeDashboardState extends State<HomeDashboard> {
               children: [
                 TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "待办内容")),
                 const SizedBox(height: 10),
+                // 1. 待办创建日期设置
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text("创建日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}"),
+                  trailing: const Icon(Icons.edit_calendar, size: 20),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: createdAt
+                    );
+                    if (picked != null) setDialogState(() => createdAt = picked);
+                  },
+                ),
+                // 2. 待办截止日期选择
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(dueDate == null ? "设置截止日期 (可选)" : "截止日期: ${DateFormat('yyyy-MM-dd').format(dueDate!)}"),
+                  trailing: const Icon(Icons.event, size: 20),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: dueDate ?? createdAt
+                    );
+                    if (picked != null) setDialogState(() => dueDate = picked);
+                  },
+                ),
+                const Divider(),
                 DropdownButtonFormField<RecurrenceType>(
-                  value: recurrence, decoration: const InputDecoration(labelText: "重复设置"),
+                  value: recurrence, decoration: const InputDecoration(labelText: "循环设置 (可选)"),
                   items: const [
                     DropdownMenuItem(value: RecurrenceType.none, child: Text("不重复")),
                     DropdownMenuItem(value: RecurrenceType.daily, child: Text("每天重复")),
@@ -314,13 +408,25 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   onChanged: (val) => setDialogState(() => recurrence = val!),
                 ),
                 if (recurrence == RecurrenceType.customDays)
-                  TextField(keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "间隔天数"), onChanged: (val) => customDays = int.tryParse(val)),
+                  TextField(
+                      controller: customDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "间隔天数"),
+                      onChanged: (val) => customDays = int.tryParse(val)
+                  ),
                 if (recurrence != RecurrenceType.none)
                   ListTile(
-                    title: Text(endDate == null ? "设置截止日期 (可选)" : "截止: ${DateFormat('yyyy-MM-dd').format(endDate!)}"), trailing: const Icon(Icons.event_busy),
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(recurrenceEndDate == null ? "循环截止日期 (可选)" : "循环结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}"),
+                    trailing: const Icon(Icons.event_busy, size: 20),
                     onTap: () async {
-                      final picked = await showDatePicker(context: context, firstDate: DateTime.now(), lastDate: DateTime(2100), initialDate: DateTime.now().add(const Duration(days: 30)));
-                      if (picked != null) setDialogState(() => endDate = picked);
+                      final picked = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                          initialDate: DateTime.now().add(const Duration(days: 30))
+                      );
+                      if (picked != null) setDialogState(() => recurrenceEndDate = picked);
                     },
                   )
               ],
@@ -331,7 +437,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
             FilledButton(
               onPressed: () {
                 if (titleCtrl.text.isNotEmpty) {
-                  final newTodo = TodoItem(id: const Uuid().v4(), title: titleCtrl.text, recurrence: recurrence, customIntervalDays: customDays, recurrenceEndDate: endDate, lastUpdated: DateTime.now());
+                  final newTodo = TodoItem(
+                    id: const Uuid().v4(),
+                    title: titleCtrl.text,
+                    recurrence: recurrence,
+                    customIntervalDays: customDays,
+                    recurrenceEndDate: recurrenceEndDate,
+                    lastUpdated: DateTime.now(),
+                    dueDate: dueDate,
+                    createdAt: createdAt, // 保存用户选择的创建日期
+                  );
                   setState(() => _todos.insert(0, newTodo));
                   StorageService.saveTodos(widget.username, _todos);
                   _loadAllData();
@@ -339,6 +454,117 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 }
               },
               child: const Text("添加"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 新增：编辑待办功能
+  void _editTodo(TodoItem todo) {
+    TextEditingController titleCtrl = TextEditingController(text: todo.title);
+    DateTime createdAt = todo.createdAt;
+    DateTime? dueDate = todo.dueDate;
+    RecurrenceType recurrence = todo.recurrence;
+    int? customDays = todo.customIntervalDays;
+    TextEditingController customDaysCtrl = TextEditingController(text: customDays?.toString() ?? "");
+    DateTime? recurrenceEndDate = todo.recurrenceEndDate;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("编辑待办"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "待办内容")),
+                const SizedBox(height: 10),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text("创建日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}"),
+                  trailing: const Icon(Icons.edit_calendar, size: 20),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: createdAt
+                    );
+                    if (picked != null) setDialogState(() => createdAt = picked);
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(dueDate == null ? "设置截止日期 (可选)" : "截止日期: ${DateFormat('yyyy-MM-dd').format(dueDate!)}"),
+                  trailing: const Icon(Icons.event, size: 20),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: dueDate ?? createdAt
+                    );
+                    if (picked != null) setDialogState(() => dueDate = picked);
+                  },
+                ),
+                const Divider(),
+                DropdownButtonFormField<RecurrenceType>(
+                  value: recurrence, decoration: const InputDecoration(labelText: "循环设置 (可选)"),
+                  items: const [
+                    DropdownMenuItem(value: RecurrenceType.none, child: Text("不重复")),
+                    DropdownMenuItem(value: RecurrenceType.daily, child: Text("每天重复")),
+                    DropdownMenuItem(value: RecurrenceType.customDays, child: Text("隔几天重复")),
+                  ],
+                  onChanged: (val) => setDialogState(() => recurrence = val!),
+                ),
+                if (recurrence == RecurrenceType.customDays)
+                  TextField(
+                      controller: customDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "间隔天数"),
+                      onChanged: (val) => customDays = int.tryParse(val)
+                  ),
+                if (recurrence != RecurrenceType.none)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(recurrenceEndDate == null ? "循环截止日期 (可选)" : "循环结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}"),
+                    trailing: const Icon(Icons.event_busy, size: 20),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                          initialDate: recurrenceEndDate ?? DateTime.now().add(const Duration(days: 30))
+                      );
+                      if (picked != null) setDialogState(() => recurrenceEndDate = picked);
+                    },
+                  )
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+            FilledButton(
+              onPressed: () {
+                if (titleCtrl.text.isNotEmpty) {
+                  setState(() {
+                    todo.title = titleCtrl.text;
+                    todo.createdAt = createdAt;
+                    todo.dueDate = dueDate;
+                    todo.recurrence = recurrence;
+                    todo.customIntervalDays = customDays;
+                    todo.recurrenceEndDate = recurrenceEndDate;
+                    todo.lastUpdated = DateTime.now();
+                  });
+                  StorageService.saveTodos(widget.username, _todos);
+                  _loadAllData();
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text("保存"),
             )
           ],
         ),
@@ -370,7 +596,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   builder: (context, constraints) {
                     final bool isTablet = constraints.maxWidth >= 800; // 设定分栏断点
 
-                    // 构建各个板块 (将提取为局部 Widget 方便复用)
+                    // 构建各个板块
                     Widget countdownSection = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -385,7 +611,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Expanded(child: SectionHeader(title: "今日待办", icon: Icons.check_circle_outline, onAdd: _addTodo, isLight: isLight)),
+                            Expanded(child: SectionHeader(title: "待办清单", icon: Icons.check_circle_outline, onAdd: _addTodo, isLight: isLight)),
                             IconButton(
                                 icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: isLight ? Colors.white70 : null),
                                 onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded)
@@ -432,13 +658,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       ),
                       child: Center(
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1200), // 全局居中且防止拉伸得过于离谱
+                          constraints: const BoxConstraints(maxWidth: 1200),
                           child: isTablet
-                          // --- 平板/桌面端：左右两列布局 ---
                               ? Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // 左侧栏：放列表、时间倒数型内容，适当调小比例 (flex: 5)
                               Expanded(
                                 flex: 5,
                                 child: Column(
@@ -452,7 +676,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                 ),
                               ),
                               const SizedBox(width: 32),
-                              // 右侧栏：放大的图表仪表盘内容，占更多比例 (flex: 6)
                               Expanded(
                                 flex: 6,
                                 child: Column(
@@ -467,7 +690,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                               ),
                             ],
                           )
-                          // --- 手机端：垂直单列布局 ---
                               : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -501,15 +723,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   PreferredSizeWidget _buildAppBar(bool isLight) {
     return AppBar(
-      backgroundColor: isLight ? Colors.transparent : null, elevation: 0,
+      backgroundColor: isLight ? Colors.transparent : null,
+      elevation: 0,
+      toolbarHeight: 100,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text("早安, ${widget.username}", style: TextStyle(fontSize: 16, color: isLight ? Colors.white : null)),
-          Text(DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()), style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: isLight ? Colors.white : null)),
+          Text("$_timeSalutation, ${widget.username}",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isLight ? Colors.white : null)),
+          const SizedBox(height: 4),
+          Text(DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()),
+              style: TextStyle(fontSize: 14, color: isLight ? Colors.white.withOpacity(0.9) : Colors.blueGrey)),
+          const SizedBox(height: 2),
+          Text(_currentGreeting,
+              style: TextStyle(fontSize: 12, color: isLight ? Colors.white.withOpacity(0.8) : Colors.grey)),
         ],
       ),
-      toolbarHeight: 80,
       actions: [
         IconButton(icon: _isSyncing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(Icons.cloud_sync, color: isLight ? Colors.white : null), onPressed: _handleManualSync),
         IconButton(icon: Icon(Icons.system_update, color: isLight ? Colors.white : null), onPressed: () => _checkUpdatesAndNotices(isManual: true)),
@@ -527,43 +757,266 @@ class _HomeDashboardState extends State<HomeDashboard> {
         itemBuilder: (context, index) {
           final item = _countdowns[index];
           final diff = item.targetDate.difference(DateTime.now()).inDays + 1;
-          return Card(
-            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.9), margin: const EdgeInsets.only(right: 12),
-            child: Container(
-              width: 140, padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)), const Spacer(),
-                  Text("$diff天", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onPrimaryContainer)),
-                  Text("目标日: ${DateFormat('MM-dd').format(item.targetDate)}", style: const TextStyle(fontSize: 10)),
-                ],
+
+          return Stack(
+            children: [
+              Card(
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.9), margin: const EdgeInsets.only(right: 12),
+                child: Container(
+                  width: 140, padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16.0),
+                        child: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)),
+                      ),
+                      const Spacer(),
+                      Text("$diff天", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onPrimaryContainer)),
+                      Text("目标日: ${DateFormat('MM-dd').format(item.targetDate)}", style: const TextStyle(fontSize: 10)),
+                    ],
+                  ),
+                ),
               ),
-            ),
+              Positioned(
+                right: 16,
+                top: 4,
+                child: InkWell(
+                  onTap: () => _deleteCountdown(index),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                        Icons.close,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.5)
+                    ),
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildTodoList(bool isLight) {
-    if (_todos.isEmpty) return EmptyState(text: "今日无待办", isLight: isLight);
-    if (!_isTodoExpanded) return ListTile(title: Text(_todos.every((t) => t.isDone) ? "所有待办均已完成" : "还有 ${_todos.where((t) => !t.isDone).length} 个待办未完成"), trailing: const Icon(Icons.expand_more), onTap: () => setState(() => _isTodoExpanded = true));
-    return Column(
-      children: _todos.asMap().entries.map((entry) {
-        int idx = entry.key; TodoItem todo = entry.value;
-        return Dismissible(
-          key: Key(todo.id), background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
-          onDismissed: (_) { setState(() => _todos.removeWhere((t) => t.id == todo.id)); StorageService.saveTodos(widget.username, _todos); },
-          child: Card(
-            elevation: 0, color: todo.isDone ? Theme.of(context).disabledColor.withOpacity(0.1) : Theme.of(context).colorScheme.surfaceContainer.withOpacity(0.95),
-            child: ListTile(
-              leading: Checkbox(value: todo.isDone, onChanged: (val) { setState(() { _todos[idx].isDone = val!; _todos[idx].lastUpdated = DateTime.now(); _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1)); }); StorageService.saveTodos(widget.username, _todos); }),
-              title: Text(todo.title, style: TextStyle(decoration: todo.isDone ? TextDecoration.lineThrough : null, color: todo.isDone ? Colors.grey : null)),
+  // 构建统一格式的单条待办卡片 (包含独立的进度条与编辑入口)
+  Widget _buildTodoItemCard(TodoItem todo, bool isLight, {required bool isPast, required bool isFuture}) {
+    Color cardColor = todo.isDone
+        ? Theme.of(context).disabledColor.withOpacity(0.1)
+        : Theme.of(context).colorScheme.surfaceContainer.withOpacity(isPast || isFuture ? 0.6 : 0.95);
+
+    Color? titleColor = todo.isDone
+        ? Colors.grey
+        : (isPast || isFuture
+        ? (isLight ? Colors.white70 : Colors.grey.shade600)
+        : (isLight ? Colors.white : null));
+
+    Widget titleWidget = Text(
+      todo.title,
+      style: TextStyle(
+        decoration: todo.isDone ? TextDecoration.lineThrough : null,
+        color: titleColor,
+        fontSize: isPast || isFuture ? 14 : 16,
+      ),
+    );
+
+    Widget? subtitleWidget;
+    if (todo.dueDate != null) {
+      String dateStr = DateFormat('MM-dd').format(todo.dueDate!);
+      if (isFuture) {
+        DateTime now = DateTime.now();
+        DateTime today = DateTime(now.year, now.month, now.day);
+        DateTime target = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+        int days = target.difference(today).inDays;
+        dateStr = "$dateStr ($days天后)";
+      } else if (isPast) {
+        dateStr = "已延期: $dateStr";
+      } else {
+        dateStr = "今天截止";
+      }
+
+      Color? subColor = todo.isDone
+          ? Colors.grey
+          : (isPast ? Colors.redAccent.shade200 : (isLight ? Colors.white60 : Colors.blueGrey));
+
+      Widget dateText = Text(dateStr, style: TextStyle(fontSize: 12, color: subColor));
+
+      // 核心计算：基于每个待办自身的进度条 (已过天数 / 总天数 = 1 - 剩余/总数)
+      double progress = 0.0;
+      bool showProgress = false;
+
+      DateTime start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
+      DateTime end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+      DateTime now = DateTime.now();
+      DateTime today = DateTime(now.year, now.month, now.day);
+
+      int totalDays = end.difference(start).inDays;
+      if (totalDays > 0) {
+        int passedDays = today.difference(start).inDays;
+        progress = (passedDays / totalDays).clamp(0.0, 1.0);
+        showProgress = true;
+      } else if (totalDays == 0) {
+        // 如果创建日期和截止日期是同一天，那么今天过了没？
+        progress = today.isBefore(start) ? 0.0 : 1.0;
+        showProgress = true;
+      }
+
+      if (showProgress) {
+        subtitleWidget = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            dateText,
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 4,
+                      backgroundColor: isLight ? Colors.white24 : Theme.of(context).colorScheme.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          todo.isDone ? Colors.grey : Theme.of(context).colorScheme.primary
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text("${(progress * 100).toInt()}%", style: TextStyle(fontSize: 10, color: subColor)),
+              ],
             ),
-          ),
+          ],
         );
-      }).toList(),
+      } else {
+        subtitleWidget = dateText;
+      }
+    }
+
+    return Dismissible(
+      key: Key(todo.id),
+      background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
+      onDismissed: (_) {
+        String titleToDelete = todo.title;
+        setState(() => _todos.removeWhere((t) => t.id == todo.id));
+        StorageService.deleteTodoGlobally(widget.username, titleToDelete);
+      },
+      child: Card(
+        elevation: 0,
+        color: cardColor,
+        margin: const EdgeInsets.only(bottom: 6),
+        shape: RoundedRectangleBorder(
+            side: isFuture && !todo.isDone ? BorderSide(color: Colors.grey.withOpacity(0.3), width: 1) : BorderSide.none,
+            borderRadius: BorderRadius.circular(12)
+        ),
+        child: ListTile(
+          dense: isPast || isFuture,
+          // 增加点击进入编辑页的事件
+          onTap: () => _editTodo(todo),
+          leading: Checkbox(
+              value: todo.isDone,
+              onChanged: (val) {
+                setState(() {
+                  todo.isDone = val!;
+                  todo.lastUpdated = DateTime.now();
+                  _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+                });
+                StorageService.saveTodos(widget.username, _todos);
+              }
+          ),
+          title: titleWidget,
+          subtitle: subtitleWidget,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTodoList(bool isLight) {
+    if (_todos.isEmpty) return EmptyState(text: "暂无待办", isLight: isLight);
+
+    // 智能分组
+    List<TodoItem> pastTodos = [];
+    List<TodoItem> todayTodos = [];
+    List<TodoItem> futureTodos = [];
+
+    DateTime now = DateTime.now();
+    DateTime today = DateTime(now.year, now.month, now.day);
+
+    for (var t in _todos) {
+      if (t.dueDate != null) {
+        DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+        if (d.isBefore(today)) {
+          pastTodos.add(t);
+        } else if (d.isAfter(today)) {
+          futureTodos.add(t);
+        } else {
+          todayTodos.add(t);
+        }
+      } else {
+        todayTodos.add(t);
+      }
+    }
+
+    List<Widget> sections = [];
+
+    // 1. 以往待办（默认折叠）
+    if (pastTodos.isNotEmpty) {
+      sections.add(
+          InkWell(
+            onTap: () => setState(() => _isPastTodosExpanded = !_isPastTodosExpanded),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+              child: Row(
+                children: [
+                  Icon(_isPastTodosExpanded ? Icons.expand_more : Icons.chevron_right, size: 20, color: isLight ? Colors.white70 : Colors.grey),
+                  const SizedBox(width: 8),
+                  Text("以往待办 (${pastTodos.length})", style: TextStyle(color: isLight ? Colors.white70 : Colors.grey, fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
+            ),
+          )
+      );
+      if (_isPastTodosExpanded) {
+        sections.addAll(pastTodos.map((t) => _buildTodoItemCard(t, isLight, isPast: true, isFuture: false)));
+      }
+      sections.add(const SizedBox(height: 8));
+    }
+
+    // 2. 今日待办 (受总开关控制)
+    if (!_isTodoExpanded) {
+      sections.add(
+          ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(todayTodos.every((t) => t.isDone) ? "今日待办均已完成" : "还有 ${todayTodos.where((t) => !t.isDone).length} 个今日待办未完成", style: TextStyle(color: isLight ? Colors.white : null)),
+              trailing: Icon(Icons.expand_more, color: isLight ? Colors.white70 : null),
+              onTap: () => setState(() => _isTodoExpanded = true)
+          )
+      );
+    } else {
+      if (todayTodos.isNotEmpty) {
+        sections.addAll(todayTodos.map((t) => _buildTodoItemCard(t, isLight, isPast: false, isFuture: false)));
+      } else if (futureTodos.isEmpty) {
+        sections.add(Padding(padding: const EdgeInsets.all(8.0), child: Text("今日无待办", style: TextStyle(color: isLight ? Colors.white70 : Colors.grey))));
+      }
+    }
+
+    // 3. 未来待办 (置于今日待办下方，视觉减淡)
+    if (_isTodoExpanded && futureTodos.isNotEmpty) {
+      sections.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0, left: 4.0),
+            child: Text("未来待办", style: TextStyle(color: isLight ? Colors.white70 : Colors.grey, fontWeight: FontWeight.bold, fontSize: 13)),
+          )
+      );
+      sections.addAll(futureTodos.map((t) => _buildTodoItemCard(t, isLight, isPast: false, isFuture: true)));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: sections,
     );
   }
 }
