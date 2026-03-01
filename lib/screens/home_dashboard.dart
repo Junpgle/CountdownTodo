@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 新增 services 导入以使用 MethodChannel
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
@@ -21,7 +22,6 @@ import '../widgets/home_sections.dart';
 import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'login_screen.dart';
-import '../widgets/home_sections.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -161,7 +161,29 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _mathStats = stats;
         _isTodoExpanded = !_todos.every((t) => t.isDone);
       });
-      NotificationService.updateTodoNotification(_todos);
+      _syncTodoNotification(); // 同步通知
+    }
+  }
+
+  // 统一的通知同步入口：过滤未来的待办
+  void _syncTodoNotification() {
+    DateTime now = DateTime.now();
+    DateTime today = DateTime(now.year, now.month, now.day);
+
+    // 过滤出今日及以往的待办（排除未来待办）
+    List<TodoItem> activeTodos = _todos.where((t) {
+      if (t.dueDate == null) return true; // 没有截止日期的视为今日待办
+      DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+      return !d.isAfter(today); // 只要不是未来的（即 <= today），就纳入通知
+    }).toList();
+
+    // 如果没有任何当前待办，或者所有当前待办都已完成，则直接取消通知
+    if (activeTodos.isEmpty || activeTodos.every((t) => t.isDone)) {
+      const MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications')
+          .invokeMethod('cancelNotification');
+    } else {
+      // 否则正常更新常驻通知进度
+      NotificationService.updateTodoNotification(activeTodos);
     }
   }
 
@@ -910,6 +932,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         String titleToDelete = todo.title;
         setState(() => _todos.removeWhere((t) => t.id == todo.id));
         StorageService.deleteTodoGlobally(widget.username, titleToDelete);
+        _syncTodoNotification(); // 实时更新通知
       },
       child: Card(
         elevation: 0,
@@ -930,6 +953,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
                 });
                 StorageService.saveTodos(widget.username, _todos);
+                _syncTodoNotification(); // 实时更新通知
               }
           ),
           title: titleWidget,
@@ -1023,7 +1047,44 @@ class _HomeDashboardState extends State<HomeDashboard> {
             ),
           )
       );
-      sections.addAll(futureTodos.map((t) => _buildTodoItemCard(t, isLight, isPast: false, isFuture: true)));
+
+      // --- 新增的自定义排序逻辑开始 ---
+
+      // 辅助函数：根据 TodoItem 数据计算当前的进度条值 (与 _buildTodoItemCard 中的逻辑一致)
+      double _calculateProgress(TodoItem todo) {
+        if (todo.dueDate == null) return 0.0;
+        DateTime start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
+        DateTime end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+        int totalDays = end.difference(start).inDays;
+
+        if (totalDays > 0) {
+          int passedDays = today.difference(start).inDays;
+          return (passedDays / totalDays).clamp(0.0, 1.0);
+        } else if (totalDays == 0) {
+          return today.isBefore(start) ? 0.0 : 1.0;
+        }
+        return 0.0;
+      }
+
+      final sortedFutureTodos = futureTodos.toList();
+      sortedFutureTodos.sort((a, b) {
+        // 第一级排序: 按进度降序 (越接近 1.0 的排在越前面)
+        double progressA = _calculateProgress(a);
+        double progressB = _calculateProgress(b);
+        int progressComparison = progressB.compareTo(progressA);
+
+        if (progressComparison != 0) {
+          return progressComparison;
+        }
+
+        // 第二级排序: 当进度相同时，按截止日期升序 (日期越近的排在越前面)
+        // 注意：这里的 a.dueDate 和 b.dueDate 一定不为空，因为上方加入 futureTodos 前已经判断过
+        return a.dueDate!.compareTo(b.dueDate!);
+      });
+
+      // 渲染排序后的列表
+      sections.addAll(sortedFutureTodos.map((t) => _buildTodoItemCard(t, isLight, isPast: false, isFuture: true)));
+      // --- 新增的自定义排序逻辑结束 ---
     }
 
     return Column(
