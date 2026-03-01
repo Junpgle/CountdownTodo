@@ -12,6 +12,11 @@
     <!-- 新增：悬浮窗权限 (按你要求添加) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+    </queries>
+
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />

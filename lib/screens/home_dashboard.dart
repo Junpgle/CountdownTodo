@@ -1,27 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 新增 services 导入以使用 MethodChannel
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
-import 'dart:io';
 import 'dart:math';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models.dart';
 import '../storage_service.dart';
-import '../update_service.dart';
-import '../services/api_service.dart';
 import '../services/screen_time_service.dart';
 import '../widgets/home_sections.dart';
 import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
-import 'login_screen.dart';
+import 'home_settings_screen.dart'; // 导入全局设置界面
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -42,27 +36,28 @@ class _HomeDashboardState extends State<HomeDashboard> {
   String? _wallpaperUrl;
 
   bool _isTodoExpanded = true;
-  bool _isPastTodosExpanded = false; // 控制以往待办是否展开
+  bool _isPastTodosExpanded = false;
 
-  // 屏幕时间的加载与更新状态
   bool _isLoadingScreenTime = true;
   DateTime? _lastScreenTimeSync;
 
-  // 动态问候语
   String _currentGreeting = "";
 
   @override
   void initState() {
     super.initState();
 
-    // 0. 初始化动态问候语
     _generateGreeting();
-
-    // 1. 极速加载本地轻量级数据，立刻展现 UI
     _loadAllData();
     _fetchRandomWallpaper();
 
-    // 2. 错峰执行耗时操作
+    const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+    platform.setMethodCallHandler((call) async {
+      if (call.method == "markCurrentTodoDone") {
+        _markCurrentTodoDone(); // 监听到 Android 的点击事件，调用完成逻辑
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) _initNotifications();
@@ -73,13 +68,49 @@ class _HomeDashboardState extends State<HomeDashboard> {
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) StorageService.syncAppMappings();
       });
-      Future.delayed(const Duration(milliseconds: 2000), () {
-        if (mounted) _checkUpdatesAndNotices(isManual: false);
-      });
     });
   }
 
-  // 动态时段打招呼
+  // 响应超级岛“完成”按钮的方法
+  void _markCurrentTodoDone() {
+    DateTime now = DateTime.now();
+    DateTime today = DateTime(now.year, now.month, now.day);
+
+    // 1. 找出当前具备提醒资格的所有待办（非未来待办）
+    List<TodoItem> activeTodos = _todos.where((t) {
+      if (t.dueDate == null) return true;
+      DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+      return !d.isAfter(today);
+    }).toList();
+
+    // 2. 找到排在最前面的第一个“未完成”待办，将其标为完成
+    TodoItem? currentTodo;
+    for (var t in activeTodos) {
+      if (!t.isDone) {
+        currentTodo = t;
+        break;
+      }
+    }
+
+    if (currentTodo != null) {
+      setState(() {
+        currentTodo!.isDone = true;
+        currentTodo!.lastUpdated = DateTime.now();
+        // 保持界面的排序规则同步
+        _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+      });
+
+      // 3. 保存并触发通知的无缝刷新
+      StorageService.saveTodos(widget.username, _todos);
+      _syncTodoNotification();
+
+      // 给用户一个轻量级的界面反馈
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已完成: ${currentTodo.title}'), duration: const Duration(seconds: 1)),
+      );
+    }
+  }
+
   String get _timeSalutation {
     final hour = DateTime.now().hour;
     if (hour >= 5 && hour < 12) return "上午好";
@@ -88,7 +119,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return "晚上好";
   }
 
-  // 根据当前时间随机生成问候语
   void _generateGreeting() {
     final hour = DateTime.now().hour;
     List<String> greetings;
@@ -161,28 +191,24 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _mathStats = stats;
         _isTodoExpanded = !_todos.every((t) => t.isDone);
       });
-      _syncTodoNotification(); // 同步通知
+      _syncTodoNotification();
     }
   }
 
-  // 统一的通知同步入口：过滤未来的待办
   void _syncTodoNotification() {
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
 
-    // 过滤出今日及以往的待办（排除未来待办）
     List<TodoItem> activeTodos = _todos.where((t) {
-      if (t.dueDate == null) return true; // 没有截止日期的视为今日待办
+      if (t.dueDate == null) return true;
       DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-      return !d.isAfter(today); // 只要不是未来的（即 <= today），就纳入通知
+      return !d.isAfter(today);
     }).toList();
 
-    // 如果没有任何当前待办，或者所有当前待办都已完成，则直接取消通知
     if (activeTodos.isEmpty || activeTodos.every((t) => t.isDone)) {
       const MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications')
           .invokeMethod('cancelNotification');
     } else {
-      // 否则正常更新常驻通知进度
       NotificationService.updateTodoNotification(activeTodos);
     }
   }
@@ -216,79 +242,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
           _isLoadingScreenTime = false;
         });
       }
-    }
-  }
-
-  Future<void> _checkUpdatesAndNotices({bool isManual = false}) async {
-    if (isManual) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正在检查更新...'), duration: Duration(seconds: 1)));
-    AppManifest? manifest = await UpdateService.checkManifest();
-    if (manifest == null) {
-      if (isManual && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('检查失败，请检查网络')));
-      return;
-    }
-    PackageInfo packageInfo = await PackageInfo.fromPlatform();
-    bool hasUpdate = _shouldUpdate(localVersion: packageInfo.version, localBuild: int.tryParse(packageInfo.buildNumber) ?? 0, remoteVersion: manifest.versionName, remoteBuild: manifest.versionCode);
-    bool hasNotice = manifest.announcement.show;
-    if (!hasUpdate && !hasNotice) {
-      if (isManual && mounted) showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("检查完成"), content: Text("当前版本 (${packageInfo.version}) 已是最新。"), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("好"))]));
-      return;
-    }
-    if (!mounted) return;
-    showDialog(
-      context: context, barrierDismissible: !manifest.forceUpdate,
-      builder: (context) {
-        return AlertDialog(
-          contentPadding: EdgeInsets.zero,
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (manifest.wallpaper.show && manifest.wallpaper.imageUrl.isNotEmpty)
-                  ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(20)), child: CachedNetworkImage(imageUrl: manifest.wallpaper.imageUrl, height: 200, fit: BoxFit.cover)),
-                Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (hasUpdate) ...[
-                        Row(children: [const Icon(Icons.new_releases, color: Colors.blue), const SizedBox(width: 8), Text(manifest.updateInfo.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))]),
-                        const SizedBox(height: 6), Text("当前: ${packageInfo.version}  →  最新: ${manifest.versionName}", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10), Text(manifest.updateInfo.description), const SizedBox(height: 15),
-                        if (manifest.updateInfo.fullPackageUrl.isNotEmpty) ElevatedButton.icon(icon: const Icon(Icons.download), label: const Text("下载更新 (APK)"), onPressed: () => _startBackgroundDownload(manifest.updateInfo.fullPackageUrl)),
-                        const Divider(height: 30),
-                      ],
-                      if (hasNotice) ...[
-                        Row(children: [const Icon(Icons.campaign, color: Colors.orange), const SizedBox(width: 8), Text(manifest.announcement.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))]),
-                        const SizedBox(height: 8), Text(manifest.announcement.content),
-                      ]
-                    ],
-                  ),
-                )
-              ],
-            ),
-          ),
-          actions: [if (!manifest.forceUpdate) TextButton(onPressed: () => Navigator.pop(context), child: const Text("关闭"))],
-        );
-      },
-    );
-  }
-
-  bool _shouldUpdate({required String localVersion, required int localBuild, required String remoteVersion, required int remoteBuild}) {
-    List<int> v1 = remoteVersion.split('.').map(int.parse).toList();
-    List<int> v2 = localVersion.split('.').map(int.parse).toList();
-    for (int i = 0; i < min(v1.length, v2.length); i++) {
-      if (v1[i] > v2[i]) return true;
-      if (v1[i] < v2[i]) return false;
-    }
-    return remoteBuild > localBuild;
-  }
-
-  Future<void> _startBackgroundDownload(String url) async {
-    if (!Platform.isAndroid) return UpdateService.launchURL(url);
-    final dir = await getExternalStorageDirectory();
-    if (dir != null) {
-      await FlutterDownloader.enqueue(url: url, savedDir: dir.path, fileName: 'update.apk', showNotification: true, openFileFromNotification: true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已开始后台下载，请检查通知栏')));
     }
   }
 
@@ -371,12 +324,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   void _addTodo() {
     TextEditingController titleCtrl = TextEditingController();
-    DateTime createdAt = DateTime.now(); // 默认今日创建
-    DateTime? dueDate; // 任务截止日期
+    DateTime createdAt = DateTime.now();
+    DateTime? dueDate;
     RecurrenceType recurrence = RecurrenceType.none;
     TextEditingController customDaysCtrl = TextEditingController();
     int? customDays;
-    DateTime? recurrenceEndDate; // 重复截止日期
+    DateTime? recurrenceEndDate;
 
     showDialog(
       context: context,
@@ -389,7 +342,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
               children: [
                 TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "待办内容")),
                 const SizedBox(height: 10),
-                // 1. 待办创建日期设置
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text("创建日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}"),
@@ -404,7 +356,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     if (picked != null) setDialogState(() => createdAt = picked);
                   },
                 ),
-                // 2. 待办截止日期选择
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(dueDate == null ? "设置截止日期 (可选)" : "截止日期: ${DateFormat('yyyy-MM-dd').format(dueDate!)}"),
@@ -467,7 +418,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     recurrenceEndDate: recurrenceEndDate,
                     lastUpdated: DateTime.now(),
                     dueDate: dueDate,
-                    createdAt: createdAt, // 保存用户选择的创建日期
+                    createdAt: createdAt,
                   );
                   setState(() => _todos.insert(0, newTodo));
                   StorageService.saveTodos(widget.username, _todos);
@@ -483,7 +434,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  // 新增：编辑待办功能
   void _editTodo(TodoItem todo) {
     TextEditingController titleCtrl = TextEditingController(text: todo.title);
     DateTime createdAt = todo.createdAt;
@@ -602,7 +552,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
       backgroundColor: isLight ? Colors.transparent : Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
-          // 动态壁纸背景
           if (isLight)
             Positioned.fill(child: CachedNetworkImage(imageUrl: _wallpaperUrl!, fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 800), placeholder: (context, url) => Container(color: Theme.of(context).colorScheme.surface))),
           if (isLight)
@@ -612,13 +561,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
             children: [
               _buildAppBar(isLight),
 
-              // 核心布局：响应式区域
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final bool isTablet = constraints.maxWidth >= 800; // 设定分栏断点
+                    final bool isTablet = constraints.maxWidth >= 800;
 
-                    // 构建各个板块
                     Widget countdownSection = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -747,28 +694,34 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return AppBar(
       backgroundColor: isLight ? Colors.transparent : null,
       elevation: 0,
-      toolbarHeight: 100, // 增高AppBar以容纳三行文字
+      toolbarHeight: 100,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // 第一行：用户名 + 早/中/晚好
           Text("$_timeSalutation, ${widget.username}",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isLight ? Colors.white : null)),
           const SizedBox(height: 4),
-          // 第二行：日期
           Text(DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()),
               style: TextStyle(fontSize: 14, color: isLight ? Colors.white.withOpacity(0.9) : Colors.blueGrey)),
           const SizedBox(height: 2),
-          // 第三行：动态问候语
           Text(_currentGreeting,
               style: TextStyle(fontSize: 12, color: isLight ? Colors.white.withOpacity(0.8) : Colors.grey)),
         ],
       ),
       actions: [
-        IconButton(icon: _isSyncing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(Icons.cloud_sync, color: isLight ? Colors.white : null), onPressed: _handleManualSync),
-        IconButton(icon: Icon(Icons.system_update, color: isLight ? Colors.white : null), onPressed: () => _checkUpdatesAndNotices(isManual: true)),
-        IconButton(icon: Icon(Icons.logout, color: isLight ? Colors.white : null), onPressed: () async { await StorageService.clearLoginSession(); if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen())); }),
+        IconButton(
+            icon: _isSyncing
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Icon(Icons.cloud_sync, color: isLight ? Colors.white : null),
+            onPressed: _handleManualSync
+        ),
+        IconButton(
+            icon: Icon(Icons.settings, color: isLight ? Colors.white : null),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
+            }
+        ),
       ],
     );
   }
@@ -793,7 +746,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(right: 16.0), // 为删除按钮留出空间
+                        padding: const EdgeInsets.only(right: 16.0),
                         child: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)),
                       ),
                       const Spacer(),
@@ -803,7 +756,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   ),
                 ),
               ),
-              // 右上角删除按钮
               Positioned(
                 right: 16,
                 top: 4,
@@ -827,9 +779,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  // 构建统一格式的单条待办卡片 (包含独立的进度条与编辑入口)
   Widget _buildTodoItemCard(TodoItem todo, bool isLight, {required bool isPast, required bool isFuture}) {
-    // 【核心修复】强制卡片内部文字不跟随全局壁纸变白，而是与卡片自身颜色形成绝对对比
     Color cardColor = todo.isDone
         ? Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3)
         : Theme.of(context).colorScheme.surface.withOpacity(isPast || isFuture ? 0.5 : 0.95);
@@ -846,7 +796,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         decoration: todo.isDone ? TextDecoration.lineThrough : null,
         color: titleColor,
         fontSize: isPast || isFuture ? 14 : 16,
-        fontWeight: isPast || isFuture ? FontWeight.normal : FontWeight.w500, // 今日重点加粗
+        fontWeight: isPast || isFuture ? FontWeight.normal : FontWeight.w500,
       ),
     );
 
@@ -871,7 +821,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
       Widget dateText = Text(dateStr, style: TextStyle(fontSize: 12, color: subColor));
 
-      // 核心计算：基于每个待办自身的进度条 (已过天数 / 总天数 = 1 - 剩余/总数)
       double progress = 0.0;
       bool showProgress = false;
 
@@ -886,7 +835,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         progress = (passedDays / totalDays).clamp(0.0, 1.0);
         showProgress = true;
       } else if (totalDays == 0) {
-        // 如果创建日期和截止日期是同一天，那么今天过了没？
         progress = today.isBefore(start) ? 0.0 : 1.0;
         showProgress = true;
       }
@@ -906,7 +854,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     child: LinearProgressIndicator(
                       value: progress,
                       minHeight: 5,
-                      // 【核心修复】让进度条的底轨在任何时候都清晰可见
                       backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
                       valueColor: AlwaysStoppedAnimation<Color>(
                           todo.isDone ? Theme.of(context).colorScheme.onSurface.withOpacity(0.2) : Theme.of(context).colorScheme.primary
@@ -932,17 +879,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
         String titleToDelete = todo.title;
         setState(() => _todos.removeWhere((t) => t.id == todo.id));
         StorageService.deleteTodoGlobally(widget.username, titleToDelete);
-        _syncTodoNotification(); // 实时更新通知
+        _syncTodoNotification();
       },
       child: Card(
         elevation: 0,
         color: cardColor,
         margin: const EdgeInsets.only(bottom: 6),
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12) // 去掉多余边框让画面更清爽
+            borderRadius: BorderRadius.circular(12)
         ),
         child: ListTile(
-          dense: isPast || isFuture, // 压缩非核心待办的上下间距
+          dense: isPast || isFuture,
           onTap: () => _editTodo(todo),
           leading: Checkbox(
               value: todo.isDone,
@@ -953,7 +900,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
                 });
                 StorageService.saveTodos(widget.username, _todos);
-                _syncTodoNotification(); // 实时更新通知
+                _syncTodoNotification();
               }
           ),
           title: titleWidget,
@@ -966,7 +913,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Widget _buildTodoList(bool isLight) {
     if (_todos.isEmpty) return EmptyState(text: "暂无待办", isLight: isLight);
 
-    // 智能分组
     List<TodoItem> pastTodos = [];
     List<TodoItem> todayTodos = [];
     List<TodoItem> futureTodos = [];
@@ -991,7 +937,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
     List<Widget> sections = [];
 
-    // 1. 以往待办（默认折叠）
     if (pastTodos.isNotEmpty) {
       sections.add(
           InkWell(
@@ -1015,7 +960,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
       sections.add(const SizedBox(height: 8));
     }
 
-    // 2. 今日待办 (受总开关控制)
     if (!_isTodoExpanded) {
       sections.add(
           ListTile(
@@ -1033,7 +977,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
       }
     }
 
-    // 3. 未来待办 (置于今日待办下方，视觉减淡)
     if (_isTodoExpanded && futureTodos.isNotEmpty) {
       sections.add(
           Padding(
@@ -1048,9 +991,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
           )
       );
 
-      // --- 新增的自定义排序逻辑开始 ---
-
-      // 辅助函数：根据 TodoItem 数据计算当前的进度条值 (与 _buildTodoItemCard 中的逻辑一致)
       double _calculateProgress(TodoItem todo) {
         if (todo.dueDate == null) return 0.0;
         DateTime start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
@@ -1068,7 +1008,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
       final sortedFutureTodos = futureTodos.toList();
       sortedFutureTodos.sort((a, b) {
-        // 第一级排序: 按进度降序 (越接近 1.0 的排在越前面)
         double progressA = _calculateProgress(a);
         double progressB = _calculateProgress(b);
         int progressComparison = progressB.compareTo(progressA);
@@ -1077,14 +1016,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
           return progressComparison;
         }
 
-        // 第二级排序: 当进度相同时，按截止日期升序 (日期越近的排在越前面)
-        // 注意：这里的 a.dueDate 和 b.dueDate 一定不为空，因为上方加入 futureTodos 前已经判断过
         return a.dueDate!.compareTo(b.dueDate!);
       });
 
-      // 渲染排序后的列表
       sections.addAll(sortedFutureTodos.map((t) => _buildTodoItemCard(t, isLight, isPast: false, isFuture: true)));
-      // --- 新增的自定义排序逻辑结束 ---
     }
 
     return Column(

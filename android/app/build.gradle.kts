@@ -21,7 +21,8 @@ android {
 
     defaultConfig {
         applicationId = "com.math_quiz.junpgle.com.math_quiz_app"
-        minSdk = flutter.minSdkVersion
+        // 【关键修改】将 flutter.minSdkVersion 改为 26，以满足 hyperisland_kit 0.4.3 的最低要求
+        minSdk = 26
         targetSdk = 36 // 确保目标 SDK 为 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -43,4 +44,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     // 【关键新增】添加 Google Material 库依赖，解决 Theme.Material3 找不到的问题
     implementation("com.google.android.material:material:1.12.0")
+    implementation("io.github.d4viddf:hyperisland_kit:0.4.3")
+    implementation("dev.rikka.shizuku:api:13.1.5") // 添加 Shizuku 依赖
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }
