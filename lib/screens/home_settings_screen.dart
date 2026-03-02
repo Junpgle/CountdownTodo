@@ -451,10 +451,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _startBackgroundDownload(String url) async {
+    bool ready = await UpdateService.prepareForDownload();
+    if (!ready) return;
     if (!Platform.isAndroid) return UpdateService.launchURL(url);
     final dir = await getExternalStorageDirectory();
     if (dir != null) {
-      await FlutterDownloader.enqueue(url: url, savedDir: dir.path, fileName: 'update.apk', showNotification: true, openFileFromNotification: true);
+      await FlutterDownloader.enqueue(url: url, savedDir: dir.path, fileName: 'update.apk', showNotification: true, openFileFromNotification: false, saveInPublicStorage: true);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已开始后台下载，请检查通知栏')));
     }
   }

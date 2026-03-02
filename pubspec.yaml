@@ -27,6 +27,7 @@ dependencies:
   # 确保这个依赖存在
   flutter_local_notifications: ^20.0.0
   open_file: ^3.5.11
+  device_info_plus: ^10.1.0
 
 dev_dependencies:
   flutter_test:
