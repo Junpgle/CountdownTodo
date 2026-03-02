@@ -57,8 +57,56 @@ class WidgetService {
   }
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
-    // 拿列表前 3 条（无论是否已完成）
-    final displayTodos = todos.take(3).toList();
+    // --- 提取并排序最紧急的待办 ---
+
+    // 1. 我们只想要展示未完成的待办
+    List<TodoItem> pendingTodos = todos.where((t) => !t.isDone).toList();
+
+    DateTime now = DateTime.now();
+    DateTime todayStart = DateTime(now.year, now.month, now.day);
+    DateTime todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    // 辅助函数：判断待办是否与今天相关 (创建在今天 或 截止在今天，甚至跨越今天)
+    bool isTodayRelevant(TodoItem todo) {
+      if (todo.dueDate != null) {
+        DateTime dueDateStart = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+        // 如果今天在创建时间和截止时间之间（包含今天）
+        if (!todayEnd.isBefore(DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day)) &&
+            !todayStart.isAfter(dueDateStart)) {
+          return true;
+        }
+      } else {
+        // 如果没有截止时间，只看是不是今天创建的
+        if (todo.createdAt.year == now.year && todo.createdAt.month == now.month && todo.createdAt.day == now.day) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // 2. 自定义排序逻辑
+    pendingTodos.sort((a, b) {
+      bool aToday = isTodayRelevant(a);
+      bool bToday = isTodayRelevant(b);
+
+      // 第一优先级：今天相关的排在前面
+      if (aToday && !bToday) return -1;
+      if (!aToday && bToday) return 1;
+
+      // 如果同为今天相关，或者同不为今天相关，则继续按截止时间排序
+      if (a.dueDate != null && b.dueDate != null) {
+        return a.dueDate!.compareTo(b.dueDate!);
+      }
+      if (a.dueDate != null && b.dueDate == null) return -1;
+      if (a.dueDate == null && b.dueDate != null) return 1;
+
+      // 都没有截止日期：按创建时间排序，早的在前
+      return a.createdAt.compareTo(b.createdAt);
+    });
+
+    // 3. 截取前 3 条作为要在小部件显示的项
+    final displayTodos = pendingTodos.take(3).toList();
+    // ---------------------------------
 
     // 清空旧数据（标题、是否完成、ID）
     for (int i = 1; i <= 3; i++) {

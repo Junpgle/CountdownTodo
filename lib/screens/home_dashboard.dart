@@ -134,7 +134,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  void _markCurrentTodoDone() {
+  void _markCurrentTodoDone() async {
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
 
@@ -159,13 +159,16 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
       });
 
-      StorageService.saveTodos(widget.username, _todos);
+      await StorageService.saveTodos(widget.username, _todos);
       _syncTodoNotification();
-      WidgetService.updateTodoWidget(_todos); // <--- 同步刷新桌面小部件
+      // 关键修复：加入 await，确保数据写入完成并触发原生更新后再继续
+      await WidgetService.updateTodoWidget(_todos);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已完成: ${currentTodo.title}'), duration: const Duration(seconds: 1)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已完成: ${currentTodo.title}'), duration: const Duration(seconds: 1)),
+        );
+      }
     }
   }
 
@@ -250,7 +253,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         _isTodoExpanded = !_todos.every((t) => t.isDone);
       });
       _syncTodoNotification();
-      WidgetService.updateTodoWidget(_todos); // <--- 初始化/刷新时同步小部件
+      // 初始化或全量刷新时，等待小部件同步完成
+      await WidgetService.updateTodoWidget(_todos);
     }
   }
 
@@ -345,12 +349,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 if (titleCtrl.text.isNotEmpty) {
                   setState(() => _countdowns.add(CountdownItem(title: titleCtrl.text, targetDate: selectedDate, lastUpdated: DateTime.now())));
-                  StorageService.saveCountdowns(widget.username, _countdowns);
-                  _loadAllData();
-                  Navigator.pop(ctx);
+                  await StorageService.saveCountdowns(widget.username, _countdowns);
+                  if (mounted) Navigator.pop(ctx);
                 }
               },
               child: const Text("添加"),
@@ -371,12 +374,12 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
+            onPressed: () async {
               setState(() {
                 _countdowns.removeWhere((c) => c.title == itemToDelete.title && c.targetDate == itemToDelete.targetDate);
               });
-              StorageService.deleteCountdownGlobally(widget.username, itemToDelete.title);
-              Navigator.pop(ctx);
+              await StorageService.deleteCountdownGlobally(widget.username, itemToDelete.title);
+              if (mounted) Navigator.pop(ctx);
             },
             child: const Text("删除"),
           ),
@@ -471,7 +474,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 if (titleCtrl.text.isNotEmpty) {
                   final newTodo = TodoItem(
                     id: const Uuid().v4(),
@@ -484,9 +487,13 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                     createdAt: createdAt,
                   );
                   setState(() => _todos.insert(0, newTodo));
-                  StorageService.saveTodos(widget.username, _todos);
-                  _loadAllData();
-                  Navigator.pop(ctx);
+
+                  await StorageService.saveTodos(widget.username, _todos);
+                  _syncTodoNotification();
+                  // 关键修复：加入 await
+                  await WidgetService.updateTodoWidget(_todos);
+
+                  if (mounted) Navigator.pop(ctx);
                 }
               },
               child: const Text("添加"),
@@ -583,7 +590,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 if (titleCtrl.text.isNotEmpty) {
                   setState(() {
                     todo.title = titleCtrl.text;
@@ -594,9 +601,13 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                     todo.recurrenceEndDate = recurrenceEndDate;
                     todo.lastUpdated = DateTime.now();
                   });
-                  StorageService.saveTodos(widget.username, _todos);
-                  _loadAllData();
-                  Navigator.pop(ctx);
+
+                  await StorageService.saveTodos(widget.username, _todos);
+                  _syncTodoNotification();
+                  // 关键修复：加入 await
+                  await WidgetService.updateTodoWidget(_todos);
+
+                  if (mounted) Navigator.pop(ctx);
                 }
               },
               child: const Text("保存"),
@@ -883,89 +894,104 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
 
     Widget? subtitleWidget;
+    String dateStr = "";
+
     if (todo.dueDate != null) {
-      String dateStr = DateFormat('MM-dd').format(todo.dueDate!);
+      String dueDateStr = DateFormat('MM-dd').format(todo.dueDate!);
+      String createDateStr = DateFormat('MM-dd').format(todo.createdAt);
+
       if (isFuture) {
         DateTime now = DateTime.now();
         DateTime today = DateTime(now.year, now.month, now.day);
         DateTime target = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
         int days = target.difference(today).inDays;
-        dateStr = "$dateStr ($days天后)";
+        dateStr = "$createDateStr 至 $dueDateStr ($days天后截止)";
       } else if (isPast) {
-        dateStr = "已逾期: $dateStr";
+        dateStr = "$createDateStr 至 $dueDateStr (已逾期)";
       } else {
-        dateStr = "今天截止";
+        dateStr = "$createDateStr 至 $dueDateStr (今天截止)";
       }
+    } else {
+      dateStr = "创建于 ${DateFormat('MM-dd HH:mm').format(todo.createdAt)}";
+    }
 
-      Color subColor = todo.isDone
-          ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
-          : (isPast ? Colors.redAccent.shade400 : Theme.of(context).colorScheme.onSurface.withOpacity(0.5));
+    Color subColor = todo.isDone
+        ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
+        : (isPast ? Colors.redAccent.shade400 : Theme.of(context).colorScheme.onSurface.withOpacity(0.5));
 
-      Widget dateText = Text(dateStr, style: TextStyle(fontSize: 12, color: subColor));
+    Widget dateText = Text(dateStr, style: TextStyle(fontSize: 12, color: subColor));
 
-      double progress = 0.0;
-      bool showProgress = false;
+    double progress = 0.0;
 
-      // 核心修改点：进度计算精准到小时级别
-      DateTime start = todo.createdAt; // 使用完整的创建时间
-      // 把截止时间设定为当天的 23:59:59，以涵盖整个一天
-      DateTime end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
-      DateTime now = DateTime.now();
+    DateTime start;
+    DateTime end;
+    DateTime now = DateTime.now();
 
-      int totalHours = end.difference(start).inHours;
+    if (todo.dueDate != null) {
+      start = todo.createdAt;
+      // 截止到当天的最后一秒
+      end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
+    } else {
+      // 只有创建时间，默认按创建当天的 00:00 到 23:59:59 (完整的24小时) 切割
+      start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
+      end = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, 23, 59, 59);
+    }
 
-      if (totalHours > 0) {
-        int passedHours = now.difference(start).inHours;
-        progress = (passedHours / totalHours).clamp(0.0, 1.0);
-        showProgress = true;
+    bool isSameDay = start.year == end.year && start.month == end.month && start.day == end.day;
+
+    if (isSameDay && now.isBefore(DateTime(start.year, start.month, start.day))) {
+      progress = 0.0;
+    } else {
+      // 使用 inMinutes 替代 inHours 使得进度条更加平滑精准
+      int totalMinutes = end.difference(start).inMinutes;
+      if (totalMinutes <= 0) totalMinutes = 1;
+
+      if (now.isBefore(start)) {
+        progress = 0.0;
       } else {
-        // 如果创建时间和截止时间过短甚至在同一个小时以内
-        progress = now.isBefore(start) ? 0.0 : 1.0;
-        showProgress = true;
-      }
-
-      if (showProgress) {
-        subtitleWidget = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 2),
-            dateText,
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 5,
-                      backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                          todo.isDone ? Theme.of(context).colorScheme.onSurface.withOpacity(0.2) : Theme.of(context).colorScheme.primary
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text("${(progress * 100).toInt()}%", style: TextStyle(fontSize: 11, color: subColor, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ],
-        );
-      } else {
-        subtitleWidget = dateText;
+        int passedMinutes = now.difference(start).inMinutes;
+        progress = (passedMinutes / totalMinutes).clamp(0.0, 1.0);
       }
     }
+
+    subtitleWidget = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 2),
+        dateText,
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 5,
+                  backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                      todo.isDone ? Theme.of(context).colorScheme.onSurface.withOpacity(0.2) : Theme.of(context).colorScheme.primary
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text("${(progress * 100).toInt()}%", style: TextStyle(fontSize: 11, color: subColor, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ],
+    );
 
     return Dismissible(
       key: key ?? Key(todo.id), // 使用传入的 key 或默认使用 id
       background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
-      onDismissed: (_) {
+      onDismissed: (_) async {
         String titleToDelete = todo.title;
         setState(() => _todos.removeWhere((t) => t.id == todo.id));
-        StorageService.deleteTodoGlobally(widget.username, titleToDelete);
+        await StorageService.deleteTodoGlobally(widget.username, titleToDelete);
         _syncTodoNotification();
-        WidgetService.updateTodoWidget(_todos); // <--- 新增：删除后同步桌面小部件
+        // 关键修复：加入 await
+        await WidgetService.updateTodoWidget(_todos);
       },
       child: Card(
         elevation: 0,
@@ -979,15 +1005,16 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           onTap: () => _editTodo(todo),
           leading: Checkbox(
               value: todo.isDone,
-              onChanged: (val) {
+              onChanged: (val) async {
                 setState(() {
                   todo.isDone = val!;
                   todo.lastUpdated = DateTime.now();
                   _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
                 });
-                StorageService.saveTodos(widget.username, _todos);
+                await StorageService.saveTodos(widget.username, _todos);
                 _syncTodoNotification();
-                WidgetService.updateTodoWidget(_todos); // <--- 新增：勾选后同步桌面小部件
+                // 关键修复：加入 await
+                await WidgetService.updateTodoWidget(_todos);
               }
           ),
           title: titleWidget,
@@ -1073,7 +1100,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 child: child,
               );
             },
-            onReorder: (oldIndex, newIndex) {
+            onReorder: (oldIndex, newIndex) async {
               setState(() {
                 if (newIndex > oldIndex) {
                   newIndex -= 1;
@@ -1100,9 +1127,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 }
               });
 
-              StorageService.saveTodos(widget.username, _todos);
+              await StorageService.saveTodos(widget.username, _todos);
               _syncTodoNotification();
-              WidgetService.updateTodoWidget(_todos); // <--- 新增：拖拽重排后同步桌面小部件
+              // 关键修复：加入 await
+              await WidgetService.updateTodoWidget(_todos);
             },
             children: todayTodos.asMap().entries.map((entry) {
               int index = entry.key;
@@ -1140,21 +1168,33 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           )
       );
 
-      // 同步将列表自动排序的比对基准修改为按小时精度
+      // 同步将列表自动排序的比对基准修改为按分钟精度
       double _calculateProgress(TodoItem todo) {
-        if (todo.dueDate == null) return 0.0;
-        DateTime start = todo.createdAt;
-        DateTime end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
+        DateTime start;
+        DateTime end;
         DateTime now = DateTime.now();
 
-        int totalHours = end.difference(start).inHours;
-
-        if (totalHours > 0) {
-          int passedHours = now.difference(start).inHours;
-          return (passedHours / totalHours).clamp(0.0, 1.0);
+        if (todo.dueDate != null) {
+          start = todo.createdAt;
+          end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
         } else {
-          return now.isBefore(start) ? 0.0 : 1.0;
+          start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
+          end = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, 23, 59, 59);
         }
+
+        bool isSameDay = start.year == end.year && start.month == end.month && start.day == end.day;
+
+        if (isSameDay && now.isBefore(DateTime(start.year, start.month, start.day))) {
+          return 0.0;
+        }
+
+        int totalMinutes = end.difference(start).inMinutes;
+        if (totalMinutes <= 0) return now.isBefore(start) ? 0.0 : 1.0;
+
+        if (now.isBefore(start)) return 0.0;
+
+        int passedMinutes = now.difference(start).inMinutes;
+        return (passedMinutes / totalMinutes).clamp(0.0, 1.0);
       }
 
       final sortedFutureTodos = futureTodos.toList();
