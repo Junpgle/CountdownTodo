@@ -44,6 +44,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
   String _currentGreeting = "";
 
+  // 学期进度相关
+  bool _semesterEnabled = false;
+  DateTime? _semesterStart;
+  DateTime? _semesterEnd;
+
   // 首页模块配置
   List<String> _sectionOrder = ['countdowns', 'todos', 'screenTime', 'math'];
   Map<String, bool> _sectionVisibility = {
@@ -59,6 +64,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     WidgetsBinding.instance.addObserver(this); // 注册生命周期监听
 
     _loadSectionPreferences();
+    _loadSemesterSettings(); // 加载学期设置
     _generateGreeting();
     _loadAllData();
     _fetchRandomWallpaper();
@@ -93,6 +99,33 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     super.dispose();
   }
 
+  // 加载学期进度配置
+  Future<void> _loadSemesterSettings() async {
+    bool enabled = await StorageService.getSemesterEnabled();
+    DateTime? start = await StorageService.getSemesterStart();
+    DateTime? end = await StorageService.getSemesterEnd();
+    if (mounted) {
+      setState(() {
+        _semesterEnabled = enabled;
+        _semesterStart = start;
+        _semesterEnd = end;
+      });
+    }
+  }
+
+  // 计算学期进度
+  double _calculateSemesterProgress() {
+    if (_semesterStart == null || _semesterEnd == null) return 0.0;
+    DateTime now = DateTime.now();
+    if (now.isBefore(_semesterStart!)) return 0.0;
+    if (now.isAfter(_semesterEnd!)) return 1.0;
+
+    int totalMinutes = _semesterEnd!.difference(_semesterStart!).inMinutes;
+    int passedMinutes = now.difference(_semesterStart!).inMinutes;
+    if (totalMinutes <= 0) return 0.0;
+    return (passedMinutes / totalMinutes).clamp(0.0, 1.0);
+  }
+
   // 加载模块排序与可见性偏好配置
   Future<void> _loadSectionPreferences() async {
     final prefs = await SharedPreferences.getInstance();
@@ -113,7 +146,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAutoSync();
-      _loadSectionPreferences(); // 返回前台时重新加载模块偏好
+      _loadSectionPreferences();
+      _loadSemesterSettings(); // 返回前台时刷新学期设置
     }
   }
 
@@ -618,6 +652,35 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
   }
 
+  // 渲染顶部学期进度条
+  Widget _buildSemesterProgressBar(bool isLight) {
+    if (!_semesterEnabled || _semesterStart == null || _semesterEnd == null) return const SizedBox.shrink();
+
+    double progress = _calculateSemesterProgress();
+
+    return Container(
+      width: double.infinity,
+      height: 4.0, // 类似网页加载条的厚度
+      alignment: Alignment.centerLeft,
+      child: FractionallySizedBox(
+        widthFactor: progress,
+        child: Container(
+          decoration: BoxDecoration(
+            color: isLight ? Colors.lightBlueAccent : Theme.of(context).colorScheme.primary,
+            boxShadow: [
+              if (progress > 0)
+                BoxShadow(
+                  color: (isLight ? Colors.lightBlueAccent : Theme.of(context).colorScheme.primary).withOpacity(0.5),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 根据当前主题判断是否为深色模式
@@ -636,133 +699,138 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           if (showWallpaper)
             Positioned.fill(child: Container(color: Colors.black.withOpacity(0.4))),
 
-          Column(
-            children: [
-              _buildAppBar(isLight),
+          SafeArea(
+            child: Column(
+              children: [
+                // 👇 新增：最顶部的学期进度条
+                _buildSemesterProgressBar(isLight),
 
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final bool isTablet = constraints.maxWidth >= 800;
+                _buildAppBar(isLight),
 
-                    // 将四个板块分别定义好
-                    Widget countdownSection = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SectionHeader(title: "重要日", icon: Icons.timer, onAdd: _addCountdown, isLight: isLight),
-                        _buildCountdownList(isLight),
-                      ],
-                    );
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final bool isTablet = constraints.maxWidth >= 800;
 
-                    Widget todoSection = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(child: SectionHeader(title: "待办清单", icon: Icons.check_circle_outline, onAdd: _addTodo, isLight: isLight)),
-                            IconButton(
-                                icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: isLight ? Colors.white70 : null),
-                                onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded)
-                            )
-                          ],
-                        ),
-                        _buildTodoList(isLight),
-                      ],
-                    );
+                      // 将四个板块分别定义好
+                      Widget countdownSection = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SectionHeader(title: "重要日", icon: Icons.timer, onAdd: _addCountdown, isLight: isLight),
+                          _buildCountdownList(isLight),
+                        ],
+                      );
 
-                    Widget screenTimeSection = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SectionHeader(title: "屏幕时间 (今日汇总)", icon: Icons.timer_outlined, isLight: isLight),
-                        ScreenTimeCard(
-                          stats: _screenTimeStats,
-                          hasPermission: _hasUsagePermission,
-                          isLoading: _isLoadingScreenTime,
-                          lastSyncTime: _lastScreenTimeSync,
-                          onOpenSettings: () async { await ScreenTimeService.openSettings(); _initScreenTime(); },
-                          onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(todayStats: _screenTimeStats))); },
-                        ),
-                      ],
-                    );
-
-                    Widget mathSection = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SectionHeader(title: "数学测验", icon: Icons.functions, isLight: isLight),
-                        MathStatsCard(
-                            stats: _mathStats,
-                            onTap: () async {
-                              await Navigator.push(context, MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username)));
-                              _loadAllData();
-                            }
-                        ),
-                      ],
-                    );
-
-                    // 映射板块标识和 Widget
-                    Map<String, Widget> sectionsMap = {
-                      'countdowns': countdownSection,
-                      'todos': todoSection,
-                      'screenTime': screenTimeSection,
-                      'math': mathSection,
-                    };
-
-                    // 根据设置中的顺序和可见性进行过滤组装
-                    List<Widget> visibleSections = _sectionOrder
-                        .where((key) => _sectionVisibility[key] == true)
-                        .map((key) => Padding(
-                      padding: const EdgeInsets.only(bottom: 24.0),
-                      child: sectionsMap[key] ?? const SizedBox(),
-                    ))
-                        .toList();
-
-                    // 处理平板的双列瀑布排布（分成左右两半）
-                    int mid = (visibleSections.length / 2).ceil();
-                    List<Widget> leftCol = visibleSections.sublist(0, mid);
-                    List<Widget> rightCol = visibleSections.sublist(mid);
-
-                    return SingleChildScrollView(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 32 : 16,
-                          vertical: 16
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1200),
-                          child: isTablet
-                              ? Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      Widget todoSection = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(
-                                flex: 5,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: leftCol,
-                                ),
-                              ),
-                              if (rightCol.isNotEmpty) const SizedBox(width: 32),
-                              if (rightCol.isNotEmpty)
+                              Expanded(child: SectionHeader(title: "待办清单", icon: Icons.check_circle_outline, onAdd: _addTodo, isLight: isLight)),
+                              IconButton(
+                                  icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: isLight ? Colors.white70 : null),
+                                  onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded)
+                              )
+                            ],
+                          ),
+                          _buildTodoList(isLight),
+                        ],
+                      );
+
+                      Widget screenTimeSection = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SectionHeader(title: "屏幕时间 (今日汇总)", icon: Icons.timer_outlined, isLight: isLight),
+                          ScreenTimeCard(
+                            stats: _screenTimeStats,
+                            hasPermission: _hasUsagePermission,
+                            isLoading: _isLoadingScreenTime,
+                            lastSyncTime: _lastScreenTimeSync,
+                            onOpenSettings: () async { await ScreenTimeService.openSettings(); _initScreenTime(); },
+                            onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(todayStats: _screenTimeStats))); },
+                          ),
+                        ],
+                      );
+
+                      Widget mathSection = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SectionHeader(title: "数学测验", icon: Icons.functions, isLight: isLight),
+                          MathStatsCard(
+                              stats: _mathStats,
+                              onTap: () async {
+                                await Navigator.push(context, MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username)));
+                                _loadAllData();
+                              }
+                          ),
+                        ],
+                      );
+
+                      // 映射板块标识和 Widget
+                      Map<String, Widget> sectionsMap = {
+                        'countdowns': countdownSection,
+                        'todos': todoSection,
+                        'screenTime': screenTimeSection,
+                        'math': mathSection,
+                      };
+
+                      // 根据设置中的顺序和可见性进行过滤组装
+                      List<Widget> visibleSections = _sectionOrder
+                          .where((key) => _sectionVisibility[key] == true)
+                          .map((key) => Padding(
+                        padding: const EdgeInsets.only(bottom: 24.0),
+                        child: sectionsMap[key] ?? const SizedBox(),
+                      ))
+                          .toList();
+
+                      // 处理平板的双列瀑布排布（分成左右两半）
+                      int mid = (visibleSections.length / 2).ceil();
+                      List<Widget> leftCol = visibleSections.sublist(0, mid);
+                      List<Widget> rightCol = visibleSections.sublist(mid);
+
+                      return SingleChildScrollView(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: isTablet ? 32 : 16,
+                            vertical: 16
+                        ),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1200),
+                            child: isTablet
+                                ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Expanded(
-                                  flex: 6,
+                                  flex: 5,
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: rightCol,
+                                    children: leftCol,
                                   ),
                                 ),
-                            ],
-                          )
-                              : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: visibleSections,
+                                if (rightCol.isNotEmpty) const SizedBox(width: 32),
+                                if (rightCol.isNotEmpty)
+                                  Expanded(
+                                    flex: 6,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: rightCol,
+                                    ),
+                                  ),
+                              ],
+                            )
+                                : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: visibleSections,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -804,8 +872,9 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
             icon: Icon(Icons.settings, color: isLight ? Colors.white : null),
             onPressed: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
-              // 从设置返回后，重载模块显示配置和倒计时数据（以防历史倒计时被删除）
+              // 从设置返回后，重载模块显示配置、倒计时数据以及学期进度设置
               _loadSectionPreferences();
+              _loadSemesterSettings();
               _loadAllData();
             }
         ),

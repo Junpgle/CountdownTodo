@@ -1,7 +1,7 @@
 name: math_quiz_app
 description: A new Flutter project.
 publish_to: 'none'
-version: 1.4.8
+version: 1.4.7
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -26,6 +26,7 @@ dependencies:
   window_manager: ^0.3.8
   # 确保这个依赖存在
   flutter_local_notifications: ^20.0.0
+  open_file: ^3.5.11
 
 dev_dependencies:
   flutter_test:

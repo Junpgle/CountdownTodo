@@ -37,6 +37,11 @@ class _SettingsPageState extends State<SettingsPage> {
   int _syncInterval = 0;
   String _themeMode = 'system';
 
+  // 新增学期进度状态
+  bool _semesterEnabled = false;
+  DateTime? _semesterStart;
+  DateTime? _semesterEnd;
+
   @override
   void initState() {
     super.initState();
@@ -45,17 +50,47 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    int interval = await StorageService.getSyncInterval();
+    String theme = await StorageService.getThemeMode();
+
+    // 加载学期设置
+    bool sEnabled = await StorageService.getSemesterEnabled();
+    DateTime? sStart = await StorageService.getSemesterStart();
+    DateTime? sEnd = await StorageService.getSemesterEnd();
+
     setState(() {
       _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? "未登录";
       _userId = prefs.getInt('current_user_id');
-    });
-
-    int interval = await StorageService.getSyncInterval();
-    String theme = await StorageService.getThemeMode();
-    setState(() {
       _syncInterval = interval;
       _themeMode = theme;
+      _semesterEnabled = sEnabled;
+      _semesterStart = sStart;
+      _semesterEnd = sEnd;
     });
+  }
+
+  // 选择学期日期
+  Future<void> _pickSemesterDate(bool isStart) async {
+    DateTime initialDate = (isStart ? _semesterStart : _semesterEnd) ?? DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      helpText: isStart ? "选择开学日期" : "选择放假日期",
+    );
+
+    if (picked != null) {
+      setState(() {
+        if (isStart) {
+          _semesterStart = picked;
+          StorageService.saveAppSetting(StorageService.KEY_SEMESTER_START, picked.toIso8601String());
+        } else {
+          _semesterEnd = picked;
+          StorageService.saveAppSetting(StorageService.KEY_SEMESTER_END, picked.toIso8601String());
+        }
+      });
+    }
   }
 
   // 修改密码对话框
@@ -220,7 +255,6 @@ class _SettingsPageState extends State<SettingsPage> {
   // 展示历史倒计时记录
   void _showHistoricalCountdowns() async {
     final countdowns = await StorageService.getCountdowns(_username);
-    // 过滤出天数 < 0 (已过期) 的记录
     List<CountdownItem> history = countdowns.where((item) {
       return item.targetDate.difference(DateTime.now()).inDays + 1 < 0;
     }).toList();
@@ -494,15 +528,41 @@ class _SettingsPageState extends State<SettingsPage> {
               leading: const Icon(Icons.dashboard_customize_outlined),
               title: const Text('首页模块管理'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: _showHomeSectionManager, // <--- 新增首页排序面板
+              onTap: _showHomeSectionManager,
             ),
             const Divider(height: 1, indent: 56),
             ListTile(
               leading: const Icon(Icons.history),
               title: const Text('历史倒计时'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: _showHistoricalCountdowns, // <--- 新增历史倒计时查看入口
+              onTap: _showHistoricalCountdowns,
             ),
+            const Divider(height: 1, indent: 56),
+            // 学期进度设置项
+            SwitchListTile(
+              secondary: const Icon(Icons.linear_scale),
+              title: const Text('显示学期进度条'),
+              subtitle: const Text('在首页顶部显示距离放假的时间进度'),
+              value: _semesterEnabled,
+              onChanged: (val) {
+                setState(() => _semesterEnabled = val);
+                StorageService.saveAppSetting(StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+              },
+            ),
+            if (_semesterEnabled) ...[
+              ListTile(
+                contentPadding: const EdgeInsets.only(left: 56, right: 16),
+                title: const Text('开学日期'),
+                trailing: Text(_semesterStart == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
+                onTap: () => _pickSemesterDate(true),
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.only(left: 56, right: 16),
+                title: const Text('放假日期'),
+                trailing: Text(_semesterEnd == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
+                onTap: () => _pickSemesterDate(false),
+              ),
+            ],
             const Divider(height: 1, indent: 56),
             ListTile(
               leading: const Icon(Icons.sync),

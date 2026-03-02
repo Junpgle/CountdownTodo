@@ -1,9 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:open_file/open_file.dart';
 
-// 数据模型类
+// 数据模型类：映射服务器端的 update_manifest.json 结构
 class AppManifest {
   final int versionCode;
   final String versionName;
@@ -67,36 +72,61 @@ class WallpaperConfig {
 }
 
 class UpdateService {
-  // 替换成你真实的 GitHub Raw URL
+  // 云端更新配置文件地址
   static const String MANIFEST_URL = "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
 
-  // 检查并获取配置
+  // 1. 检查并获取配置对象
   static Future<AppManifest?> checkManifest() async {
     try {
       final response = await http.get(Uri.parse(MANIFEST_URL));
       if (response.statusCode == 200) {
-        // 防止中文乱码
         String body = utf8.decode(response.bodyBytes);
         return AppManifest.fromJson(jsonDecode(body));
       }
     } catch (e) {
-      print("Fetch manifest failed: $e");
+      print("获取更新配置失败: $e");
     }
     return null;
   }
 
-  // 获取当前版本号
-  static Future<int> getCurrentBuildNumber() async {
-    PackageInfo packageInfo = await PackageInfo.fromPlatform();
-    // pubspec.yaml 中的 version: 1.0.0，这里获取的是 + 号后面的数字
-    return int.tryParse(packageInfo.buildNumber) ?? 0;
+  // 2. 获取下载目录：强制定位至 Android 公共 Download 目录
+  static Future<String?> getDownloadDirectory() async {
+    if (Platform.isAndroid) {
+      // 这里的路径是安卓的标准公共下载目录
+      const String downloadPath = '/storage/emulated/0/Download';
+      final directory = Directory(downloadPath);
+      if (await directory.exists()) {
+        return downloadPath;
+      }
+      // 如果上述路径不可用，回退到应用外部目录
+      final externalDir = await getExternalStorageDirectory();
+      return externalDir?.path;
+    } else {
+      final downloadDir = await getDownloadsDirectory();
+      return downloadDir?.path;
+    }
   }
 
-  // 打开浏览器下载
+  // 3. 核心修复：调用系统包管理器安装 APK
+  static Future<void> installApk(String filePath) async {
+    final file = File(filePath);
+    if (await file.exists()) {
+      print("准备安装 APK，路径: $filePath");
+      // 显式指定 type，防止弹出“打开方式”选择框
+      final result = await OpenFile.open(
+        filePath,
+        type: "application/vnd.android.package-archive",
+      );
+      print("安装唤起结果: ${result.message}");
+    } else {
+      print("安装失败：找不到文件 $filePath");
+    }
+  }
+
   static Future<void> launchURL(String url) async {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw 'Could not launch $url';
+      throw '无法打开下载链接 $url';
     }
   }
 }

@@ -33,10 +33,15 @@ class StorageService {
   // ignore: constant_identifier_names
   static const String KEY_LAST_MAPPINGS_SYNC = "last_mappings_sync";
 
-  // 新增：设置相关的 Key
+  // 设置相关的 Key
   static const String KEY_SYNC_INTERVAL = "app_sync_interval"; // 同步频率 (分钟)
   static const String KEY_THEME_MODE = "app_theme_mode"; // 主题外观
   static const String KEY_LAST_AUTO_SYNC = "last_auto_sync_time"; // 上次自动同步的时间
+
+  // 新增：学期进度设置相关的 Key
+  static const String KEY_SEMESTER_PROGRESS_ENABLED = "semester_progress_enabled";
+  static const String KEY_SEMESTER_START = "semester_start_date";
+  static const String KEY_SEMESTER_END = "semester_end_date";
 
   static bool _isSyncing = false;
 
@@ -440,7 +445,7 @@ class StorageService {
                 hasChanges = true;
               }
             } else if (local.lastUpdated.isAfter(cloudTime)) {
-              // 本地数据较新，将所有属性全量推向云端
+              // 本地数据较新，全量推向云端
               await ApiService.addTodo(
                 userId,
                 local.title,
@@ -451,7 +456,7 @@ class StorageService {
               );
             }
           } else {
-            // 本地有，云端没有的记录，直接上传
+            // 本地有，云端没有，上传
             await ApiService.addTodo(
               userId,
               local.title,
@@ -467,7 +472,7 @@ class StorageService {
       }
       localTodos.removeWhere((t) => todosToRemove.contains(t));
 
-      // 拉取云端新增的且本地没有的待办记录
+      // 拉取云端新增且本地没有的
       for (var cloud in cloudTodos) {
         try {
           bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
@@ -575,10 +580,7 @@ class StorageService {
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  // ==========================================
-  // 新增：通用设置项读取与存储
-  // ==========================================
-
+  // 通用设置项读取与存储
   static Future<void> saveAppSetting(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
     if (value is int) await prefs.setInt(key, value);
@@ -588,12 +590,30 @@ class StorageService {
 
   static Future<int> getSyncInterval() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0; // 0 表示每次打开同步
+    return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0;
   }
 
   static Future<String> getThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(KEY_THEME_MODE) ?? 'system';
+  }
+
+  // 新增：便捷获取学期进度设置
+  static Future<bool> getSemesterEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
+  }
+
+  static Future<DateTime?> getSemesterStart() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? s = prefs.getString(KEY_SEMESTER_START);
+    return s != null ? DateTime.tryParse(s) : null;
+  }
+
+  static Future<DateTime?> getSemesterEnd() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? s = prefs.getString(KEY_SEMESTER_END);
+    return s != null ? DateTime.tryParse(s) : null;
   }
 
   static Future<void> updateLastAutoSyncTime() async {
