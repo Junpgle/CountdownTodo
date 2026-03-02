@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'dart:math';
+import 'dart:convert';
+import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
@@ -25,7 +28,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String _shizukuStatus = "点击右侧按钮获取或检查权限";
   String _islandStatus = "点击检测设备是否支持";
-  String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)"; // 新增状态变量
+  String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)";
   bool _isCheckingUpdate = false;
 
   // 用户与偏好设置状态
@@ -132,95 +135,197 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // --- 新增：检测并开启 Android 16 实时通知权限 ---
+  // 打开首页模块管理面板
+  void _showHomeSectionManager() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> order = prefs.getStringList('home_section_order') ?? ['countdowns', 'todos', 'screenTime', 'math'];
+    Map<String, bool> visibility = {'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
+
+    String? visStr = prefs.getString('home_section_visibility');
+    if (visStr != null) {
+      visibility = Map<String, bool>.from(jsonDecode(visStr));
+    }
+
+    Map<String, String> names = {
+      'countdowns': '重要日与倒计时',
+      'todos': '待办事项清单',
+      'screenTime': '屏幕时间面板',
+      'math': '数学测验入口'
+    };
+
+    if (!mounted) return;
+
+    showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text("首页模块管理"),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  height: 320,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8.0),
+                        child: Text("长按拖拽可改变显示顺序，勾选可控制是否展示。", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      ),
+                      Expanded(
+                        child: ReorderableListView(
+                          shrinkWrap: true,
+                          onReorder: (oldIndex, newIndex) {
+                            setDialogState(() {
+                              if (newIndex > oldIndex) newIndex -= 1;
+                              final item = order.removeAt(oldIndex);
+                              order.insert(newIndex, item);
+                            });
+                          },
+                          children: order.map((key) {
+                            return CheckboxListTile(
+                              key: Key(key),
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(names[key] ?? key),
+                              value: visibility[key],
+                              secondary: const Icon(Icons.drag_handle, color: Colors.grey),
+                              onChanged: (val) {
+                                setDialogState(() {
+                                  visibility[key] = val ?? true;
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+                  FilledButton(
+                    onPressed: () {
+                      prefs.setStringList('home_section_order', order);
+                      prefs.setString('home_section_visibility', jsonEncode(visibility));
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text("保存并应用"),
+                  )
+                ],
+              );
+            }
+        )
+    );
+  }
+
+  // 展示历史倒计时记录
+  void _showHistoricalCountdowns() async {
+    final countdowns = await StorageService.getCountdowns(_username);
+    // 过滤出天数 < 0 (已过期) 的记录
+    List<CountdownItem> history = countdowns.where((item) {
+      return item.targetDate.difference(DateTime.now()).inDays + 1 < 0;
+    }).toList();
+
+    if (!mounted) return;
+
+    showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text("历史倒计时"),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  height: 350,
+                  child: history.isEmpty
+                      ? const Center(child: Text("暂无已过期的历史记录", style: TextStyle(color: Colors.grey)))
+                      : ListView.builder(
+                      itemCount: history.length,
+                      itemBuilder: (context, index) {
+                        final item = history[index];
+                        final diff = (item.targetDate.difference(DateTime.now()).inDays + 1).abs();
+
+                        return Card(
+                          elevation: 0,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          child: ListTile(
+                            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text("目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}  (已过 $diff 天)"),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                              onPressed: () {
+                                setDialogState(() => history.removeAt(index));
+                                countdowns.removeWhere((c) => c.title == item.title && c.targetDate == item.targetDate);
+                                StorageService.saveCountdowns(_username, countdowns);
+                              },
+                            ),
+                          ),
+                        );
+                      }
+                  ),
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("关闭"))
+                ],
+              );
+            }
+        )
+    );
+  }
+
   Future<void> _checkAndOpenLiveUpdates() async {
     try {
       final bool hasPermission = await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
       if (!hasPermission) {
-        setState(() {
-          _liveUpdatesStatus = "权限未开启，尝试跳转设置...";
-        });
-
+        setState(() => _liveUpdatesStatus = "权限未开启，尝试跳转设置...");
         final bool opened = await platform.invokeMethod('openLiveUpdatesSettings') ?? false;
 
         if (opened) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('请在设置中打开“推广的通知/实时更新”权限'),
-              duration: Duration(seconds: 3),
-            ),
+            const SnackBar(content: Text('请在设置中打开“推广的通知/实时更新”权限'), duration: Duration(seconds: 3)),
           );
         } else {
-          setState(() {
-            _liveUpdatesStatus = "跳转失败，设备可能不是 Android 16+";
-          });
+          setState(() => _liveUpdatesStatus = "跳转失败，设备可能不是 Android 16+");
         }
       } else {
-        setState(() {
-          _liveUpdatesStatus = "✅ 已拥有实时通知权限 (或非高版本系统)";
-        });
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('权限已正常开启，无需额外设置')),
-        );
+        setState(() => _liveUpdatesStatus = "✅ 已拥有实时通知权限");
       }
     } on PlatformException catch (e) {
-      setState(() {
-        _liveUpdatesStatus = "检测失败: '${e.message}'.";
-      });
+      setState(() => _liveUpdatesStatus = "检测失败: '${e.message}'.");
     }
   }
 
-  // 检测超级岛支持
   Future<void> _checkIslandSupport() async {
     try {
       final bool result = await platform.invokeMethod('checkIslandSupport');
       setState(() {
         if (result) {
           _islandStatus = "✅ 设备已支持超级岛！";
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('检测成功：您的设备支持超级岛功能！')),
-          );
         } else {
           _islandStatus = "❌ 不支持，或未开启状态栏显示权限";
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('设备不支持，请检查系统版本或是否开启"在状态栏显示"权限')),
-          );
         }
       });
     } on PlatformException catch (e) {
-      setState(() {
-        _islandStatus = "检测失败: '${e.message}'.";
-      });
+      setState(() => _islandStatus = "检测失败: '${e.message}'.");
     }
   }
 
-  // 请求 Shizuku 权限
   Future<void> _requestShizukuPermission() async {
     try {
       final bool result = await platform.invokeMethod('requestShizukuPermission');
       setState(() {
         if (result) {
-          _shizukuStatus = "已获得权限，或系统已弹出授权提示";
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('如果您通过了授权/ADB指令，配置将自动生效')),
-          );
+          _shizukuStatus = "已获得权限，或系统已弹出提示";
         } else {
-          _shizukuStatus = "未检测到 Shizuku 服务，请确保后台已激活 Shizuku";
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Shizuku 未运行，请先去激活')),
-          );
+          _shizukuStatus = "未检测到服务，请激活 Shizuku";
         }
       });
     } on PlatformException catch (e) {
-      setState(() {
-        _shizukuStatus = "请求失败: '${e.message}'.";
-      });
+      setState(() => _shizukuStatus = "请求失败: '${e.message}'.");
     }
   }
 
-  // 检查更新与通知
   Future<void> _checkUpdatesAndNotices() async {
     setState(() => _isCheckingUpdate = true);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正在检查更新...'), duration: Duration(seconds: 1)));
@@ -316,11 +421,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final dir = await getExternalStorageDirectory();
     if (dir != null) {
       await FlutterDownloader.enqueue(url: url, savedDir: dir.path, fileName: 'update.apk', showNotification: true, openFileFromNotification: true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已开始后台下载，请下拉检查系统通知栏')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已开始后台下载，请检查通知栏')));
     }
   }
 
-  // 退出账号
   Future<void> _handleLogout({bool force = false}) async {
     bool confirm = force;
     if (!force) {
@@ -349,7 +453,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // 构建统一风格的卡片组
   Widget _buildSection(String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,6 +490,20 @@ class _SettingsPageState extends State<SettingsPage> {
 
           // 2. 偏好与数据设置
           _buildSection('偏好设置', [
+            ListTile(
+              leading: const Icon(Icons.dashboard_customize_outlined),
+              title: const Text('首页模块管理'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showHomeSectionManager, // <--- 新增首页排序面板
+            ),
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('历史倒计时'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showHistoricalCountdowns, // <--- 新增历史倒计时查看入口
+            ),
+            const Divider(height: 1, indent: 56),
             ListTile(
               leading: const Icon(Icons.sync),
               title: const Text('自动同步数据'),
@@ -433,80 +550,44 @@ class _SettingsPageState extends State<SettingsPage> {
           // 3. 高级设置
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-            child: Text(
-              '高级设置 (用于超级岛通知)',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
-            ),
+            child: Text('高级设置 (用于超级岛通知)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
           ),
 
-          // --- 核心新增：Android 16 实时通知权限检测 ---
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const CircleAvatar(
-                backgroundColor: Colors.teal,
-                child: Icon(Icons.notifications_active, color: Colors.white),
-              ),
+              leading: const CircleAvatar(backgroundColor: Colors.teal, child: Icon(Icons.notifications_active, color: Colors.white)),
               title: const Text('Android 16 实时活动', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Text(_liveUpdatesStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-              ),
-              trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                onPressed: _checkAndOpenLiveUpdates,
-                child: const Text('去开启'),
-              ),
+              subtitle: Padding(padding: const EdgeInsets.only(top: 4.0), child: Text(_liveUpdatesStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+              trailing: ElevatedButton(style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))), onPressed: _checkAndOpenLiveUpdates, child: const Text('去开启')),
             ),
           ),
           const SizedBox(height: 12),
 
-          // 超级岛特性支持
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const CircleAvatar(
-                backgroundColor: Colors.deepPurpleAccent,
-                child: Icon(Icons.smart_button, color: Colors.white),
-              ),
+              leading: const CircleAvatar(backgroundColor: Colors.deepPurpleAccent, child: Icon(Icons.smart_button, color: Colors.white)),
               title: const Text('小米超级岛支持', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Text(_islandStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-              ),
-              trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                onPressed: _checkIslandSupport,
-                child: const Text('检测'),
-              ),
+              subtitle: Padding(padding: const EdgeInsets.only(top: 4.0), child: Text(_islandStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+              trailing: ElevatedButton(style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))), onPressed: _checkIslandSupport, child: const Text('检测')),
             ),
           ),
           const SizedBox(height: 12),
 
-          // 现有的 Shizuku 检测
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const CircleAvatar(
-                backgroundColor: Colors.blueAccent,
-                child: Icon(Icons.adb, color: Colors.white),
-              ),
+              leading: const CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.adb, color: Colors.white)),
               title: const Text('Shizuku 授权', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Text(_shizukuStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-              ),
-              trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                onPressed: _requestShizukuPermission,
-                child: const Text('授权'),
-              ),
+              subtitle: Padding(padding: const EdgeInsets.only(top: 4.0), child: Text(_shizukuStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+              trailing: ElevatedButton(style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))), onPressed: _requestShizukuPermission, child: const Text('授权')),
             ),
           ),
 
@@ -515,9 +596,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ListTile(
               leading: const Icon(Icons.system_update, color: Colors.green),
               title: const Text('检查更新'),
-              trailing: _isCheckingUpdate
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.chevron_right),
+              trailing: _isCheckingUpdate ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chevron_right),
               onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
             ),
             const Divider(height: 1, indent: 56),

@@ -17,7 +17,6 @@ import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'home_settings_screen.dart';
 
-// --- 修改点：增加 with WidgetsBindingObserver 监听生命周期 ---
 class HomeDashboard extends StatefulWidget {
   final String username;
   const HomeDashboard({super.key, required this.username});
@@ -44,11 +43,21 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
   String _currentGreeting = "";
 
+  // 首页模块配置
+  List<String> _sectionOrder = ['countdowns', 'todos', 'screenTime', 'math'];
+  Map<String, bool> _sectionVisibility = {
+    'countdowns': true,
+    'todos': true,
+    'screenTime': true,
+    'math': true,
+  };
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // 注册生命周期监听
 
+    _loadSectionPreferences();
     _generateGreeting();
     _loadAllData();
     _fetchRandomWallpaper();
@@ -82,15 +91,31 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     super.dispose();
   }
 
+  // 加载模块排序与可见性偏好配置
+  Future<void> _loadSectionPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String>? savedOrder = prefs.getStringList('home_section_order');
+    if (savedOrder != null && savedOrder.isNotEmpty) {
+      if (mounted) setState(() => _sectionOrder = savedOrder);
+    }
+    String? savedVisibilityStr = prefs.getString('home_section_visibility');
+    if (savedVisibilityStr != null) {
+      if (mounted) {
+        setState(() => _sectionVisibility = Map<String, bool>.from(jsonDecode(savedVisibilityStr)));
+      }
+    }
+  }
+
   // 监听应用回到前台
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAutoSync();
+      _loadSectionPreferences(); // 返回前台时重新加载模块偏好
     }
   }
 
-  // --- 新增点：自动判断是否需要后台静默同步 ---
+  // 自动判断是否需要后台静默同步
   Future<void> _checkAutoSync() async {
     int interval = await StorageService.getSyncInterval();
     DateTime? lastSync = await StorageService.getLastAutoSyncTime();
@@ -243,7 +268,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  // --- 修改点：增加 silent 参数，控制是否弹 Toast ---
   Future<void> _handleManualSync({bool silent = false}) async {
     if (_isSyncing) return;
     setState(() {
@@ -333,7 +357,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
   }
 
-  void _deleteCountdown(int index) {
+  void _deleteCountdown(CountdownItem itemToDelete) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -344,11 +368,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () {
-              String titleToDelete = _countdowns[index].title;
               setState(() {
-                _countdowns.removeAt(index);
+                _countdowns.removeWhere((c) => c.title == itemToDelete.title && c.targetDate == itemToDelete.targetDate);
               });
-              StorageService.deleteCountdownGlobally(widget.username, titleToDelete);
+              StorageService.deleteCountdownGlobally(widget.username, itemToDelete.title);
               Navigator.pop(ctx);
             },
             child: const Text("删除"),
@@ -582,15 +605,20 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
-    bool isLight = _wallpaperUrl != null;
+    // 根据当前主题判断是否为深色模式
+    bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    // 深色模式下不显示壁纸背景，浅色模式下显示
+    bool showWallpaper = !isDarkMode && _wallpaperUrl != null;
+    // 如果显示壁纸，那么文字配色应当为浅色(Light)风格以确保清晰度
+    bool isLight = showWallpaper;
 
     return Scaffold(
-      backgroundColor: isLight ? Colors.transparent : Theme.of(context).colorScheme.surface,
+      backgroundColor: showWallpaper ? Colors.transparent : Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
-          if (isLight)
+          if (showWallpaper)
             Positioned.fill(child: CachedNetworkImage(imageUrl: _wallpaperUrl!, fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 800), placeholder: (context, url) => Container(color: Theme.of(context).colorScheme.surface))),
-          if (isLight)
+          if (showWallpaper)
             Positioned.fill(child: Container(color: Colors.black.withOpacity(0.4))),
 
           Column(
@@ -602,6 +630,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                   builder: (context, constraints) {
                     final bool isTablet = constraints.maxWidth >= 800;
 
+                    // 将四个板块分别定义好
                     Widget countdownSection = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -656,6 +685,28 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                       ],
                     );
 
+                    // 映射板块标识和 Widget
+                    Map<String, Widget> sectionsMap = {
+                      'countdowns': countdownSection,
+                      'todos': todoSection,
+                      'screenTime': screenTimeSection,
+                      'math': mathSection,
+                    };
+
+                    // 根据设置中的顺序和可见性进行过滤组装
+                    List<Widget> visibleSections = _sectionOrder
+                        .where((key) => _sectionVisibility[key] == true)
+                        .map((key) => Padding(
+                      padding: const EdgeInsets.only(bottom: 24.0),
+                      child: sectionsMap[key] ?? const SizedBox(),
+                    ))
+                        .toList();
+
+                    // 处理平板的双列瀑布排布（分成左右两半）
+                    int mid = (visibleSections.length / 2).ceil();
+                    List<Widget> leftCol = visibleSections.sublist(0, mid);
+                    List<Widget> rightCol = visibleSections.sublist(mid);
+
                     return SingleChildScrollView(
                       padding: EdgeInsets.symmetric(
                           horizontal: isTablet ? 32 : 16,
@@ -672,41 +723,23 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                                 flex: 5,
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    countdownSection,
-                                    const SizedBox(height: 32),
-                                    todoSection,
-                                    const SizedBox(height: 40),
-                                  ],
+                                  children: leftCol,
                                 ),
                               ),
-                              const SizedBox(width: 32),
-                              Expanded(
-                                flex: 6,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    screenTimeSection,
-                                    const SizedBox(height: 32),
-                                    mathSection,
-                                    const SizedBox(height: 40),
-                                  ],
+                              if (rightCol.isNotEmpty) const SizedBox(width: 32),
+                              if (rightCol.isNotEmpty)
+                                Expanded(
+                                  flex: 6,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: rightCol,
+                                  ),
                                 ),
-                              ),
                             ],
                           )
                               : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              countdownSection,
-                              const SizedBox(height: 24),
-                              todoSection,
-                              const SizedBox(height: 24),
-                              screenTimeSection,
-                              const SizedBox(height: 24),
-                              mathSection,
-                              const SizedBox(height: 40),
-                            ],
+                            children: visibleSections,
                           ),
                         ),
                       ),
@@ -754,8 +787,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         ),
         IconButton(
             icon: Icon(Icons.settings, color: isLight ? Colors.white : null),
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
+              // 从设置返回后，重载模块显示配置和倒计时数据（以防历史倒计时被删除）
+              _loadSectionPreferences();
+              _loadAllData();
             }
         ),
       ],
@@ -763,13 +799,19 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   }
 
   Widget _buildCountdownList(bool isLight) {
-    if (_countdowns.isEmpty) return EmptyState(text: "暂无倒计时", isLight: isLight);
+    // 过滤出距离天数 >= 0 (未过期/进行中) 的重要日展示在主页，过期的历史在设置中展示
+    final List<CountdownItem> activeCountdowns = _countdowns.where((item) {
+      return item.targetDate.difference(DateTime.now()).inDays + 1 >= 0;
+    }).toList();
+
+    if (activeCountdowns.isEmpty) return EmptyState(text: "暂无有效倒计时", isLight: isLight);
+
     return SizedBox(
       height: 110,
       child: ListView.builder(
-        scrollDirection: Axis.horizontal, itemCount: _countdowns.length,
+        scrollDirection: Axis.horizontal, itemCount: activeCountdowns.length,
         itemBuilder: (context, index) {
-          final item = _countdowns[index];
+          final item = activeCountdowns[index];
           final diff = item.targetDate.difference(DateTime.now()).inDays + 1;
 
           return Stack(
@@ -796,7 +838,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 right: 16,
                 top: 4,
                 child: InkWell(
-                  onTap: () => _deleteCountdown(index),
+                  onTap: () => _deleteCountdown(item),
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     padding: const EdgeInsets.all(4),
@@ -815,7 +857,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
   }
 
-  Widget _buildTodoItemCard(TodoItem todo, bool isLight, {required bool isPast, required bool isFuture}) {
+  Widget _buildTodoItemCard(TodoItem todo, bool isLight, {required bool isPast, required bool isFuture, Key? key}) {
     Color cardColor = todo.isDone
         ? Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3)
         : Theme.of(context).colorScheme.surface.withOpacity(isPast || isFuture ? 0.5 : 0.95);
@@ -909,7 +951,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
 
     return Dismissible(
-      key: Key(todo.id),
+      key: key ?? Key(todo.id), // 使用传入的 key 或默认使用 id
       background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
       onDismissed: (_) {
         String titleToDelete = todo.title;
@@ -1007,7 +1049,69 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       );
     } else {
       if (todayTodos.isNotEmpty) {
-        sections.addAll(todayTodos.map((t) => _buildTodoItemCard(t, isLight, isPast: false, isFuture: false)));
+        sections.add(
+          ReorderableListView(
+            padding: EdgeInsets.zero,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            proxyDecorator: (Widget child, int index, Animation<double> animation) {
+              return Material(
+                color: Colors.transparent,
+                elevation: 6 * animation.value,
+                shadowColor: Colors.black.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(12),
+                child: child,
+              );
+            },
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                if (newIndex > oldIndex) {
+                  newIndex -= 1;
+                }
+
+                List<int> todayIndices = [];
+                for (int i = 0; i < _todos.length; i++) {
+                  final t = _todos[i];
+                  if (t.dueDate != null) {
+                    DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+                    if (!d.isBefore(today) && !d.isAfter(today)) {
+                      todayIndices.add(i);
+                    }
+                  } else {
+                    todayIndices.add(i);
+                  }
+                }
+
+                final item = todayTodos.removeAt(oldIndex);
+                todayTodos.insert(newIndex, item);
+
+                for (int i = 0; i < todayIndices.length; i++) {
+                  _todos[todayIndices[i]] = todayTodos[i];
+                }
+              });
+
+              StorageService.saveTodos(widget.username, _todos);
+              // 同步拖拽排序更改后的顺序到 Android 状态栏通知
+              _syncTodoNotification();
+            },
+            children: todayTodos.asMap().entries.map((entry) {
+              int index = entry.key;
+              TodoItem t = entry.value;
+              return ReorderableDelayedDragStartListener(
+                key: Key(t.id),
+                index: index,
+                child: _buildTodoItemCard(
+                    t,
+                    isLight,
+                    isPast: false,
+                    isFuture: false,
+                    key: Key('dismiss_${t.id}')
+                ),
+              );
+            }).toList(),
+          ),
+        );
       } else if (futureTodos.isEmpty) {
         sections.add(Padding(padding: const EdgeInsets.all(8.0), child: Text("今日无待办", style: TextStyle(color: isLight ? Colors.white70 : Colors.grey))));
       }
