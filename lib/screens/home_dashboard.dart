@@ -906,18 +906,21 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       double progress = 0.0;
       bool showProgress = false;
 
-      DateTime start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
-      DateTime end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+      // 核心修改点：进度计算精准到小时级别
+      DateTime start = todo.createdAt; // 使用完整的创建时间
+      // 把截止时间设定为当天的 23:59:59，以涵盖整个一天
+      DateTime end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
       DateTime now = DateTime.now();
-      DateTime today = DateTime(now.year, now.month, now.day);
 
-      int totalDays = end.difference(start).inDays;
-      if (totalDays > 0) {
-        int passedDays = today.difference(start).inDays;
-        progress = (passedDays / totalDays).clamp(0.0, 1.0);
+      int totalHours = end.difference(start).inHours;
+
+      if (totalHours > 0) {
+        int passedHours = now.difference(start).inHours;
+        progress = (passedHours / totalHours).clamp(0.0, 1.0);
         showProgress = true;
-      } else if (totalDays == 0) {
-        progress = today.isBefore(start) ? 0.0 : 1.0;
+      } else {
+        // 如果创建时间和截止时间过短甚至在同一个小时以内
+        progress = now.isBefore(start) ? 0.0 : 1.0;
         showProgress = true;
       }
 
@@ -1137,19 +1140,21 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           )
       );
 
+      // 同步将列表自动排序的比对基准修改为按小时精度
       double _calculateProgress(TodoItem todo) {
         if (todo.dueDate == null) return 0.0;
-        DateTime start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
-        DateTime end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
-        int totalDays = end.difference(start).inDays;
+        DateTime start = todo.createdAt;
+        DateTime end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
+        DateTime now = DateTime.now();
 
-        if (totalDays > 0) {
-          int passedDays = today.difference(start).inDays;
-          return (passedDays / totalDays).clamp(0.0, 1.0);
-        } else if (totalDays == 0) {
-          return today.isBefore(start) ? 0.0 : 1.0;
+        int totalHours = end.difference(start).inHours;
+
+        if (totalHours > 0) {
+          int passedHours = now.difference(start).inHours;
+          return (passedHours / totalHours).clamp(0.0, 1.0);
+        } else {
+          return now.isBefore(start) ? 0.0 : 1.0;
         }
-        return 0.0;
       }
 
       final sortedFutureTodos = futureTodos.toList();
