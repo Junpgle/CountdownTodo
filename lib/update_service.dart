@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 // 数据模型类
 class AppManifest {
@@ -117,7 +119,7 @@ class UpdateService {
   static Future<bool> prepareForDownload(String targetVersionName) async {
     if (!Platform.isAndroid) return true;
 
-    // 因为我们要写入公共目录，所以还是需要请求存储权限
+    // 我们要写入公共目录的子文件夹，所以必须请求权限
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
 
@@ -173,7 +175,7 @@ class UpdateService {
         if (!await customDir.exists()) {
           await customDir.create(recursive: true);
         }
-        return customDir.path;
+        return customDir.path; // 成功返回 /storage/emulated/0/Download/CountdownTodo
       } catch (e) {
         print("创建公开专属目录失败，回退到私有目录: $e");
         // 如果因为权限或其他原因创建失败，回退到应用专属外部目录
@@ -240,6 +242,190 @@ class UpdateService {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw '无法打开链接 $url';
+    }
+  }
+
+  // =========================================================================
+  // 👉 提取的公共逻辑：自动检查更新与公告并弹窗 (首页与设置页通用)
+  // =========================================================================
+  static Future<void> checkUpdateAndPrompt(BuildContext context, {bool isManual = false}) async {
+    AppManifest? manifest = await checkManifest();
+    if (manifest == null) {
+      if (isManual && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('检查失败，请检查网络')));
+      }
+      return;
+    }
+
+    PackageInfo packageInfo = await PackageInfo.fromPlatform();
+    int localBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
+    String localVersion = packageInfo.version;
+
+    bool hasUpdate = false;
+    try {
+      // 智能比对点分十进制版本号 (例如 1.4.8 -> 1.4.9)
+      List<int> v1 = manifest.versionName.split('.').map(int.parse).toList();
+      List<int> v2 = localVersion.split('.').map(int.parse).toList();
+      int minLen = v1.length < v2.length ? v1.length : v2.length;
+      bool isVersionDifferent = false;
+
+      for (int i = 0; i < minLen; i++) {
+        if (v1[i] > v2[i]) {
+          hasUpdate = true;
+          isVersionDifferent = true;
+          break;
+        } else if (v1[i] < v2[i]) {
+          hasUpdate = false;
+          isVersionDifferent = true;
+          break;
+        }
+      }
+
+      // 如果前面都一样，对比 versionCode
+      if (!isVersionDifferent) {
+        hasUpdate = manifest.versionCode > localBuild;
+      }
+    } catch (e) {
+      hasUpdate = manifest.versionCode > localBuild;
+    }
+
+    bool hasNotice = manifest.announcement.show;
+
+    if (!hasUpdate && !hasNotice) {
+      if (isManual && context.mounted) {
+        showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+                title: const Text("检查完成"),
+                content: Text("当前版本 ($localVersion) 已是最新。"),
+                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("好"))]
+            )
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      showUpdateDialog(context, manifest, localVersion, hasUpdate: hasUpdate, hasNotice: hasNotice);
+    }
+  }
+
+  // =========================================================================
+  // 👉 提取的公共 UI 方法：展示更新弹窗
+  // =========================================================================
+  static void showUpdateDialog(BuildContext context, AppManifest manifest, String currentVersion, {bool hasUpdate = true, bool hasNotice = false}) {
+    showDialog(
+      context: context,
+      barrierDismissible: !manifest.forceUpdate,
+      builder: (ctx) {
+        return AlertDialog(
+          contentPadding: EdgeInsets.zero,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (manifest.wallpaper.show && manifest.wallpaper.imageUrl.isNotEmpty)
+                  ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                      child: CachedNetworkImage(
+                        imageUrl: manifest.wallpaper.imageUrl,
+                        height: 200,
+                        fit: BoxFit.cover,
+                        errorWidget: (context, url, error) => Container(color: Colors.grey[200]),
+                      )
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (hasUpdate) ...[
+                        Row(
+                            children: [
+                              const Icon(Icons.new_releases, color: Colors.blue),
+                              const SizedBox(width: 8),
+                              Text(manifest.updateInfo.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))
+                            ]
+                        ),
+                        const SizedBox(height: 6),
+                        Text("当前: $currentVersion  →  最新: ${manifest.versionName}", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 10),
+                        Text(manifest.updateInfo.description),
+                        const SizedBox(height: 15),
+                        if (manifest.updateInfo.fullPackageUrl.isNotEmpty)
+                          ElevatedButton.icon(
+                              icon: const Icon(Icons.download),
+                              label: const Text("立即安装新版本"),
+                              onPressed: () {
+                                Navigator.pop(ctx); // 点击下载后关闭弹窗
+                                startDownload(context, manifest); // 调用统一的下载逻辑
+                              }
+                          ),
+                        if (hasNotice) const Divider(height: 30),
+                      ],
+                      if (hasNotice) ...[
+                        Row(
+                            children: [
+                              const Icon(Icons.campaign, color: Colors.orange),
+                              const SizedBox(width: 8),
+                              Text(manifest.announcement.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))
+                            ]
+                        ),
+                        const SizedBox(height: 8),
+                        Text(manifest.announcement.content),
+                      ]
+                    ],
+                  ),
+                )
+              ],
+            ),
+          ),
+          actions: [
+            if (!manifest.forceUpdate)
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("关闭"))
+          ],
+        );
+      },
+    );
+  }
+
+  // =========================================================================
+  // 👉 提取的公共逻辑：处理下载前置检查和发起下载
+  // =========================================================================
+  static Future<void> startDownload(BuildContext context, AppManifest manifest) async {
+    // 1. 先检查是否已经下载过这个版本的完整包
+    String? existingPath = await isApkAlreadyDownloaded(manifest.versionName);
+
+    if (existingPath != null) {
+      print("检测到本地已存在完整安装包，直接安装");
+      await installApk(existingPath);
+      return;
+    }
+
+    // 2. 如果没有，则准备环境（清理旧版本包并请求权限）
+    bool ready = await prepareForDownload(manifest.versionName);
+    if (!ready) return;
+
+    final path = await getDownloadDirectory();
+    if (path == null) return;
+
+    // 3. 执行真正的下载
+    await FlutterDownloader.enqueue(
+      url: manifest.updateInfo.fullPackageUrl,
+      savedDir: path, // 路径指向 /storage/emulated/0/Download/CountdownTodo
+      fileName: getUpdateFileName(manifest.versionName),
+      showNotification: true,
+      openFileFromNotification: false,
+      // 💡 核心修复：这里必须设为 false ！！！
+      // 设为 false 后，下载器不再调用 MediaStore（媒体库会无视子目录强制放入 Download 根目录）
+      // 而是直接使用我们申请好的 MANAGE_EXTERNAL_STORAGE 权限，把文件写入 savedDir 制定的子目录里。
+      saveInPublicStorage: false,
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("正在后台下载更新，完成后将自动弹出安装界面..."))
+      );
     }
   }
 }

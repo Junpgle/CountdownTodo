@@ -6,12 +6,14 @@ import 'dart:math';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/notification_service.dart';
-import '../services/widget_service.dart'; // <--- 新增：导入小部件服务
+import '../services/widget_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../update_service.dart';
 import '../services/screen_time_service.dart';
 import '../widgets/home_sections.dart';
 import 'screen_time_detail_screen.dart';
@@ -90,6 +92,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
       // 启动时检查自动同步
       _checkAutoSync();
+      // 启动时异步静默检查更新
+      _checkUpdatesSilently();
     });
   }
 
@@ -97,6 +101,12 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   void dispose() {
     WidgetsBinding.instance.removeObserver(this); // 移除监听
     super.dispose();
+  }
+
+  // 👉 更新：直接调用已封装好的全局检查与弹窗方法
+  Future<void> _checkUpdatesSilently() async {
+    if (!mounted) return;
+    await UpdateService.checkUpdateAndPrompt(context, isManual: false);
   }
 
   // 加载学期进度配置
@@ -148,6 +158,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       _checkAutoSync();
       _loadSectionPreferences();
       _loadSemesterSettings(); // 返回前台时刷新学期设置
+      _checkUpdatesSilently(); // 返回前台时也可再次检查更新
     }
   }
 
@@ -195,7 +206,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
       await StorageService.saveTodos(widget.username, _todos);
       _syncTodoNotification();
-      // 关键修复：加入 await，确保数据写入完成并触发原生更新后再继续
       await WidgetService.updateTodoWidget(_todos);
 
       if (mounted) {
@@ -287,7 +297,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         _isTodoExpanded = !_todos.every((t) => t.isDone);
       });
       _syncTodoNotification();
-      // 初始化或全量刷新时，等待小部件同步完成
       await WidgetService.updateTodoWidget(_todos);
     }
   }
@@ -326,7 +335,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       await ScreenTimeService.syncScreenTime(userId);
       await _loadCachedScreenTime();
 
-      // 更新自动同步时间戳
       await StorageService.updateLastAutoSyncTime();
 
       if (mounted) {
@@ -524,7 +532,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
                   await StorageService.saveTodos(widget.username, _todos);
                   _syncTodoNotification();
-                  // 关键修复：加入 await
                   await WidgetService.updateTodoWidget(_todos);
 
                   if (mounted) Navigator.pop(ctx);
@@ -638,7 +645,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
                   await StorageService.saveTodos(widget.username, _todos);
                   _syncTodoNotification();
-                  // 关键修复：加入 await
                   await WidgetService.updateTodoWidget(_todos);
 
                   if (mounted) Navigator.pop(ctx);
@@ -1059,7 +1065,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         setState(() => _todos.removeWhere((t) => t.id == todo.id));
         await StorageService.deleteTodoGlobally(widget.username, titleToDelete);
         _syncTodoNotification();
-        // 关键修复：加入 await
         await WidgetService.updateTodoWidget(_todos);
       },
       child: Card(
@@ -1082,7 +1087,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 });
                 await StorageService.saveTodos(widget.username, _todos);
                 _syncTodoNotification();
-                // 关键修复：加入 await
                 await WidgetService.updateTodoWidget(_todos);
               }
           ),
@@ -1198,7 +1202,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
               await StorageService.saveTodos(widget.username, _todos);
               _syncTodoNotification();
-              // 关键修复：加入 await
               await WidgetService.updateTodoWidget(_todos);
             },
             children: todayTodos.asMap().entries.map((entry) {
