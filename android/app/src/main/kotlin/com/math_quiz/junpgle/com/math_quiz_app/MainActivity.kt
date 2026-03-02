@@ -415,8 +415,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setColor(color)
-            .setColorized(true)
+            .setColorized(false)
             .setContentIntent(pendingIntent)
+            .setRequestPromotedOngoing(true)
 
         // 🚨 显式要求系统提升为“推荐的持续通知”(Live Updates)
         val extras = Bundle()

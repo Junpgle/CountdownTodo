@@ -9,6 +9,7 @@ android {
     compileSdk = 36 // 保持 36 以支持最新 API
     ndkVersion = flutter.ndkVersion
 
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
