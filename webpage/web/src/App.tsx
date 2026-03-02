@@ -14,7 +14,8 @@ import {
   Cpu,
   PieChart,
   Activity,
-  Tablet as TabletIcon
+  Tablet as TabletIcon,
+  BellRing
 } from 'lucide-react';
 
 // --- 类型定义 ---
@@ -106,6 +107,7 @@ const Navbar = () => {
     { name: '核心特性', href: '#features' },
     { name: '桌面端', href: '#desktop' },
     { name: '移动端', href: '#mobile' },
+    { name: '灵动通知', href: '#liveupdates' }, // 添加了新导航项
     { name: '屏幕时间', href: '#screentime' },
     { name: '数据看板', href: '#analytics' },
   ];
@@ -123,14 +125,14 @@ const Navbar = () => {
             <span className="font-bold text-xl sm:text-2xl tracking-tight text-slate-900">CountDownTodo</span>
           </div>
 
-          <div className="hidden md:flex space-x-8 lg:space-x-10 items-center">
+          <div className="hidden lg:flex space-x-6 xl:space-x-10 items-center">
             {navLinks.map((link) => (
-              <a key={link.name} href={link.href} className="text-slate-600 hover:text-indigo-600 font-semibold transition-colors duration-300">{link.name}</a>
+              <a key={link.name} href={link.href} className="text-slate-600 hover:text-indigo-600 font-semibold transition-colors duration-300 text-sm xl:text-base">{link.name}</a>
             ))}
             <a href="#download" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 lg:px-6 py-2 sm:py-2.5 rounded-full font-bold transition-all shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5 active:scale-95">获取软件</a>
           </div>
 
-          <div className="md:hidden">
+          <div className="lg:hidden">
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition">
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -138,7 +140,7 @@ const Navbar = () => {
         </div>
       </div>
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white/95 backdrop-blur-2xl border-b border-slate-200 shadow-xl absolute w-full transition-all">
+        <div className="lg:hidden bg-white/95 backdrop-blur-2xl border-b border-slate-200 shadow-xl absolute w-full transition-all">
           <div className="px-4 pt-2 pb-6 space-y-2">
             {navLinks.map((link) => (
               <a key={link.name} href={link.href} onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-base font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition">{link.name}</a>
@@ -257,7 +259,7 @@ const AndroidShowcase = () => (
   <section id="mobile" className="py-24 sm:py-40 bg-white overflow-hidden text-center">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16 text-left">
-        {/* 左侧文字区 - 严格限制宽度 */}
+        {/* 左侧文字区 */}
         <div className="lg:w-5/12 w-full pr-0 lg:pr-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-xs font-bold uppercase mb-6 sm:mb-8">
             <TabletIcon className="w-4 h-4" /> Cross-Device Mobile
@@ -286,10 +288,8 @@ const AndroidShowcase = () => (
           </div>
         </div>
 
-        {/* 右侧展示区 - 基于百分比布局，绝对防止越界 */}
+        {/* 右侧展示区 */}
         <div className="lg:w-7/12 w-full flex items-center justify-center relative mt-16 lg:mt-0">
-
-          {/* 手机 (占比父容器宽度约 35%) */}
           <div className="relative z-20 w-[40%] sm:w-[35%] max-w-[260px] transform -rotate-2 hover:rotate-0 transition-all duration-500">
              <MobileFrame src="./2.jpg" />
              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full shadow-xl border border-slate-100 flex items-center gap-1.5 sm:gap-2">
@@ -297,8 +297,6 @@ const AndroidShowcase = () => (
                 <span className="text-[10px] sm:text-xs font-black text-slate-700 uppercase tracking-tighter whitespace-nowrap">Phone</span>
              </div>
           </div>
-
-          {/* 平板 (占比父容器宽度约 65%，左侧拉回一部分形成错落堆叠) */}
           <div className="relative z-10 w-[65%] sm:w-[60%] max-w-[550px] -ml-[15%] sm:-ml-[10%] transform translate-y-12 sm:translate-y-20 rotate-2 hover:rotate-0 transition-all duration-500">
              <TabletFrame src="./2-2.jpg" />
              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full shadow-xl border border-slate-100 flex items-center gap-1.5 sm:gap-2">
@@ -306,8 +304,80 @@ const AndroidShowcase = () => (
                 <span className="text-[10px] sm:text-xs font-black text-slate-700 uppercase tracking-tighter whitespace-nowrap">Tablet Pro</span>
              </div>
           </div>
-
         </div>
+      </div>
+    </div>
+  </section>
+);
+
+// --- 子组件: Android 实时活动 (7.gif) ---
+const LiveUpdatesShowcase = () => (
+  <section id="liveupdates" className="py-24 sm:py-40 bg-slate-900 text-white relative overflow-hidden">
+    <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/20 to-slate-900 pointer-events-none"></div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20 text-left">
+
+        {/* 左侧动图展示区 */}
+        <div className="w-full lg:w-1/2 flex justify-center order-2 lg:order-1">
+          <div className="relative w-full max-w-[400px]">
+             {/* 环境光效 */}
+             <div className="absolute -inset-10 bg-indigo-500/30 blur-[100px] rounded-full"></div>
+
+             {/* 动图包装，增加一点点透视效果 */}
+             <div className="relative bg-slate-800 rounded-[2rem] md:rounded-[3rem] p-4 md:p-6 shadow-2xl border border-white/10 transform perspective-1000 rotateY-[5deg] hover:rotateY-0 transition-transform duration-700">
+                <img
+                  src="./7.gif"
+                  alt="Android Live Updates"
+                  className="w-full rounded-xl md:rounded-2xl shadow-inner"
+                  onError={(e) => {
+                    // Fallback in case gif isn't ready
+                    e.currentTarget.src = 'https://images.unsplash.com/photo-1607252650355-f7fd0460ccdb?auto=format&fit=crop&q=80&w=800';
+                  }}
+                />
+
+                {/* 装饰性状态标签 */}
+                <div className="absolute -top-4 -right-4 bg-indigo-600 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2 animate-bounce-subtle border border-indigo-400">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-300"></span>
+                  </span>
+                  <span className="font-black text-xs uppercase tracking-widest">Live Sync</span>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        {/* 右侧文字区 */}
+        <div className="w-full lg:w-1/2 order-1 lg:order-2">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-500/20 text-indigo-400 rounded-lg text-sm font-bold uppercase tracking-widest mb-6 sm:mb-8">
+            <BellRing className="w-5 h-5" /> Android 16+ Ready
+          </div>
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-6 sm:mb-8 leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400">
+            灵动通知栏<br/>待办状态实时流转
+          </h2>
+          <p className="text-slate-400 text-lg sm:text-xl mb-10 leading-relaxed font-medium">
+            全面适配 Android 最新规范。借助 Live Updates 实时活动，无需打开应用，在锁屏和通知栏即可直观把控最重要的待办倒计时。
+          </p>
+
+          <ul className="space-y-6">
+             {[
+               { title: "锁屏级呈现", desc: "最重要的事，点亮屏幕立刻可见。" },
+               { title: "毫秒级状态同步", desc: "桌面端标记完成，手机锁屏秒级自动清除。" },
+               { title: "深度系统融合", desc: "适配各大厂商灵动交互形态。" }
+             ].map((item, idx) => (
+               <li key={idx} className="flex gap-4">
+                 <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center shrink-0 border border-slate-700 shadow-inner">
+                   <span className="text-indigo-400 font-black text-lg">{idx + 1}</span>
+                 </div>
+                 <div>
+                   <h4 className="text-xl font-bold text-white mb-1">{item.title}</h4>
+                   <p className="text-slate-400">{item.desc}</p>
+                 </div>
+               </li>
+             ))}
+          </ul>
+        </div>
+
       </div>
     </div>
   </section>
@@ -327,7 +397,7 @@ const ScreenTimeShowcase = () => (
         </p>
       </div>
 
-      {/* 看板多设备布局 - 百分比响应式宽度 */}
+      {/* 看板多设备布局 */}
       <div className="relative flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto">
         <div className="absolute inset-0 bg-indigo-500/5 blur-[200px] rounded-full pointer-events-none"></div>
 
@@ -474,6 +544,7 @@ const App = () => {
       <Features />
       <WindowsShowcase />
       <AndroidShowcase />
+      <LiveUpdatesShowcase /> {/* 新增的实时活动模块 */}
       <ScreenTimeShowcase />
       <AnalyticsPreview />
       <DownloadSection androidInfo={androidInfo} windowsInfo={windowsInfo} />
