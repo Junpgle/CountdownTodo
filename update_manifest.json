@@ -1,12 +1,12 @@
 {
   "version_code": 1,
-  "version_name": "1.4.0",
+  "version_name": "1.4.8",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 1.4.0",
-    "description": "v1.3.9 同步数据库云端修改\nv1.3.9 待办新增未来待办、支持待办编辑\nv1.3.8 适配平板显示UI",
-    "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/MathQuizLite.exe",
-    "patch_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/MathQuizLite.exe"
+    "title": "版本更新 1.4.8",
+    "description": "全新实时活动通知已上线![仅部分Android 16机型支持]\n全新设置界面\n新增深色模式\n主页布局可调整\n半残废桌面小组件已上线\n",
+    "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
+    "patch_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk"
   },
   "announcement": {
     "show": false,
