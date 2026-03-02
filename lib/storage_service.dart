@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart'; // 引入 foundation.dart 以使用 ValueNotifier
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -32,7 +33,21 @@ class StorageService {
   // ignore: constant_identifier_names
   static const String KEY_LAST_MAPPINGS_SYNC = "last_mappings_sync";
 
+  // 新增：设置相关的 Key
+  static const String KEY_SYNC_INTERVAL = "app_sync_interval"; // 同步频率 (分钟)
+  static const String KEY_THEME_MODE = "app_theme_mode"; // 主题外观
+  static const String KEY_LAST_AUTO_SYNC = "last_auto_sync_time"; // 上次自动同步的时间
+
   static bool _isSyncing = false;
+
+  // 新增：全局监听主题变化的状态
+  static ValueNotifier<String> themeNotifier = ValueNotifier('system');
+
+  // 新增：在 App 启动时读取本地主题设置
+  static Future<void> initTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    themeNotifier.value = prefs.getString(KEY_THEME_MODE) ?? 'system';
+  }
 
   static Future<bool> register(String username, String password) async {
     final prefs = await SharedPreferences.getInstance();
@@ -530,5 +545,38 @@ class StorageService {
       return DateTime.tryParse(t)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
     }
     return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  // ==========================================
+  // 新增：通用设置项读取与存储
+  // ==========================================
+
+  static Future<void> saveAppSetting(String key, dynamic value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value is int) await prefs.setInt(key, value);
+    if (value is String) await prefs.setString(key, value);
+    if (value is bool) await prefs.setBool(key, value);
+  }
+
+  static Future<int> getSyncInterval() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0; // 0 表示每次打开同步
+  }
+
+  static Future<String> getThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(KEY_THEME_MODE) ?? 'system';
+  }
+
+  static Future<void> updateLastAutoSyncTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(KEY_LAST_AUTO_SYNC, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  static Future<DateTime?> getLastAutoSyncTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    int? timestamp = prefs.getInt(KEY_LAST_AUTO_SYNC);
+    if (timestamp != null) return DateTime.fromMillisecondsSinceEpoch(timestamp);
+    return null;
   }
 }

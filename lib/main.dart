@@ -36,6 +36,9 @@ class _MyAppState extends State<MyApp> {
 
   // 将所有耗时的初始化工作放到异步方法中
   Future<void> _initializeApp() async {
+    // 0. 读取主题偏好 (不阻塞 UI 第一帧，读取完毕后触发重绘)
+    await StorageService.initTheme();
+
     // 1. 读取硬盘获取登录状态
     final user = await StorageService.getLoginSession();
 
@@ -77,36 +80,73 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '效率 & 数学',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('zh', 'CN'),
-        Locale('en', 'US'),
-      ],
-      // 路由控制：如果在检查中，显示纯蓝屏+加载圈；检查完毕再跳转
-      home: _isChecking
-          ? const Scaffold(
-        backgroundColor: Colors.blue,
-        body: Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
-      )
-          : (_loggedInUser != null && _loggedInUser!.isNotEmpty
-          ? HomeDashboard(username: _loggedInUser!)
-          : const LoginScreen()),
+    // 关键点：使用 ValueListenableBuilder 监听全局主题状态
+    return ValueListenableBuilder<String>(
+      valueListenable: StorageService.themeNotifier,
+      builder: (context, themeModeString, child) {
+
+        // 将设置中的字符串映射为 Flutter 引擎识别的 ThemeMode
+        ThemeMode currentThemeMode;
+        switch (themeModeString) {
+          case 'light':
+            currentThemeMode = ThemeMode.light;
+            break;
+          case 'dark':
+            currentThemeMode = ThemeMode.dark;
+            break;
+          default:
+            currentThemeMode = ThemeMode.system;
+        }
+
+        return MaterialApp(
+          title: '效率 & 数学',
+          debugShowCheckedModeBanner: false,
+
+          // 绑定动态主题模式
+          themeMode: currentThemeMode,
+
+          // 配置浅色模式主题
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.light,
+            ),
+            useMaterial3: true,
+          ),
+
+          // 核心修复：配置深色模式主题 (必须要配置这个，darkTheme 才生效)
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.dark, // 设为暗色模式
+            ),
+            useMaterial3: true,
+          ),
+
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('zh', 'CN'),
+            Locale('en', 'US'),
+          ],
+
+          // 路由控制：如果在检查中，显示加载圈；检查完毕再跳转
+          home: _isChecking
+              ? Scaffold(
+            // 蓝屏加载页也可以根据主题稍作适配，这里保留你的原版深蓝底色
+            backgroundColor: currentThemeMode == ThemeMode.dark ? Colors.grey[900] : Colors.blue,
+            body: const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          )
+              : (_loggedInUser != null && _loggedInUser!.isNotEmpty
+              ? HomeDashboard(username: _loggedInUser!)
+              : const LoginScreen()),
+        );
+      },
     );
   }
 }

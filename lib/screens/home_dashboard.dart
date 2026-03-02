@@ -15,8 +15,9 @@ import '../services/screen_time_service.dart';
 import '../widgets/home_sections.dart';
 import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
-import 'home_settings_screen.dart'; // 导入全局设置界面
+import 'home_settings_screen.dart';
 
+// --- 修改点：增加 with WidgetsBindingObserver 监听生命周期 ---
 class HomeDashboard extends StatefulWidget {
   final String username;
   const HomeDashboard({super.key, required this.username});
@@ -25,7 +26,7 @@ class HomeDashboard extends StatefulWidget {
   State<HomeDashboard> createState() => _HomeDashboardState();
 }
 
-class _HomeDashboardState extends State<HomeDashboard> {
+class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserver {
   List<CountdownItem> _countdowns = [];
   List<TodoItem> _todos = [];
   Map<String, dynamic> _mathStats = {};
@@ -46,6 +47,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // 注册生命周期监听
 
     _generateGreeting();
     _loadAllData();
@@ -54,7 +56,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
     platform.setMethodCallHandler((call) async {
       if (call.method == "markCurrentTodoDone") {
-        _markCurrentTodoDone(); // 监听到 Android 的点击事件，调用完成逻辑
+        _markCurrentTodoDone();
       }
     });
 
@@ -68,22 +70,53 @@ class _HomeDashboardState extends State<HomeDashboard> {
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) StorageService.syncAppMappings();
       });
+
+      // 启动时检查自动同步
+      _checkAutoSync();
     });
   }
 
-  // 响应超级岛“完成”按钮的方法
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // 移除监听
+    super.dispose();
+  }
+
+  // 监听应用回到前台
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAutoSync();
+    }
+  }
+
+  // --- 新增点：自动判断是否需要后台静默同步 ---
+  Future<void> _checkAutoSync() async {
+    int interval = await StorageService.getSyncInterval();
+    DateTime? lastSync = await StorageService.getLastAutoSyncTime();
+    DateTime now = DateTime.now();
+
+    if (interval == 0) {
+      // 每次打开 / 回到前台都同步 (静默)
+      _handleManualSync(silent: true);
+    } else {
+      // 根据设定的分钟数判断
+      if (lastSync == null || now.difference(lastSync).inMinutes >= interval) {
+        _handleManualSync(silent: true);
+      }
+    }
+  }
+
   void _markCurrentTodoDone() {
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
 
-    // 1. 找出当前具备提醒资格的所有待办（非未来待办）
     List<TodoItem> activeTodos = _todos.where((t) {
       if (t.dueDate == null) return true;
       DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
       return !d.isAfter(today);
     }).toList();
 
-    // 2. 找到排在最前面的第一个“未完成”待办，将其标为完成
     TodoItem? currentTodo;
     for (var t in activeTodos) {
       if (!t.isDone) {
@@ -96,15 +129,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
       setState(() {
         currentTodo!.isDone = true;
         currentTodo!.lastUpdated = DateTime.now();
-        // 保持界面的排序规则同步
         _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
       });
 
-      // 3. 保存并触发通知的无缝刷新
       StorageService.saveTodos(widget.username, _todos);
       _syncTodoNotification();
 
-      // 给用户一个轻量级的界面反馈
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已完成: ${currentTodo.title}'), duration: const Duration(seconds: 1)),
       );
@@ -213,7 +243,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
-  Future<void> _handleManualSync() async {
+  // --- 修改点：增加 silent 参数，控制是否弹 Toast ---
+  Future<void> _handleManualSync({bool silent = false}) async {
     if (_isSyncing) return;
     setState(() {
       _isSyncing = true;
@@ -229,8 +260,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
       await ScreenTimeService.syncScreenTime(userId);
       await _loadCachedScreenTime();
 
+      // 更新自动同步时间戳
+      await StorageService.updateLastAutoSyncTime();
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 数据同步完成'), backgroundColor: Colors.green));
+        if (!silent) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 数据同步完成'), backgroundColor: Colors.green));
+        }
         if (hasChanges) _loadAllData();
       }
     } catch (e) {
@@ -714,7 +750,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
             icon: _isSyncing
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : Icon(Icons.cloud_sync, color: isLight ? Colors.white : null),
-            onPressed: _handleManualSync
+            onPressed: () => _handleManualSync(silent: false)
         ),
         IconButton(
             icon: Icon(Icons.settings, color: isLight ? Colors.white : null),

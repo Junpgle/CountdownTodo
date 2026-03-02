@@ -1,6 +1,6 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
- * 功能：用户认证、排行榜、待办事项(LWW同步)、倒计时(LWW同步)、屏幕时间同步(含分类映射)
+ * 功能：用户认证、排行榜、待办事项(LWW同步)、倒计时(LWW同步)、屏幕时间同步(含分类映射)、修改密码
  */
 
 export default {
@@ -99,6 +99,23 @@ export default {
         const inputHash = await hashPassword(password);
         if (inputHash !== user.password_hash) return errorResponse("密码错误", 401);
         return jsonResponse({ success: true, user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url } });
+      }
+
+      // --- 新增：修改密码接口 ---
+      if (url.pathname === "/api/auth/change_password" && request.method === "POST") {
+        const { user_id, old_password, new_password } = await request.json();
+        if (!user_id || !old_password || !new_password) return errorResponse("缺少参数");
+
+        const user = await DB.prepare("SELECT * FROM users WHERE id = ?").bind(user_id).first();
+        if (!user) return errorResponse("用户不存在", 404);
+
+        const oldHash = await hashPassword(old_password);
+        if (oldHash !== user.password_hash) return errorResponse("当前密码错误", 401);
+
+        const newHash = await hashPassword(new_password);
+        await DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(newHash, user_id).run();
+
+        return jsonResponse({ success: true, message: "密码修改成功" });
       }
 
       // --------------------------

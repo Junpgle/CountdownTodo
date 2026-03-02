@@ -72,6 +72,28 @@ class ApiService {
     }
   }
 
+  // 修改密码
+  static Future<Map<String, dynamic>> changePassword(int userId, String oldPassword, String newPassword) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/auth/change_password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'old_password': oldPassword,
+          'new_password': newPassword,
+        }),
+      );
+      final data = jsonDecode(response.body);
+      return {
+        'success': response.statusCode == 200 && data['success'] == true,
+        'message': data['message'] ?? data['error'] ?? '修改失败'
+      };
+    } catch (e) {
+      return {'success': false, 'message': "网络错误: $e"};
+    }
+  }
+
   // ==========================================
   // 2. 排行榜 (Leaderboard)
   // ==========================================
