@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
+import '../services/widget_service.dart'; // <--- 新增：导入小部件服务
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models.dart';
@@ -61,6 +62,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     _generateGreeting();
     _loadAllData();
     _fetchRandomWallpaper();
+    WidgetService.init();
 
     const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
     platform.setMethodCallHandler((call) async {
@@ -159,6 +161,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
       StorageService.saveTodos(widget.username, _todos);
       _syncTodoNotification();
+      WidgetService.updateTodoWidget(_todos); // <--- 同步刷新桌面小部件
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已完成: ${currentTodo.title}'), duration: const Duration(seconds: 1)),
@@ -247,6 +250,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         _isTodoExpanded = !_todos.every((t) => t.isDone);
       });
       _syncTodoNotification();
+      WidgetService.updateTodoWidget(_todos); // <--- 初始化/刷新时同步小部件
     }
   }
 
@@ -958,6 +962,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         setState(() => _todos.removeWhere((t) => t.id == todo.id));
         StorageService.deleteTodoGlobally(widget.username, titleToDelete);
         _syncTodoNotification();
+        WidgetService.updateTodoWidget(_todos); // <--- 新增：删除后同步桌面小部件
       },
       child: Card(
         elevation: 0,
@@ -979,6 +984,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 });
                 StorageService.saveTodos(widget.username, _todos);
                 _syncTodoNotification();
+                WidgetService.updateTodoWidget(_todos); // <--- 新增：勾选后同步桌面小部件
               }
           ),
           title: titleWidget,
@@ -1092,8 +1098,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
               });
 
               StorageService.saveTodos(widget.username, _todos);
-              // 同步拖拽排序更改后的顺序到 Android 状态栏通知
               _syncTodoNotification();
+              WidgetService.updateTodoWidget(_todos); // <--- 新增：拖拽重排后同步桌面小部件
             },
             children: todayTodos.asMap().entries.map((entry) {
               int index = entry.key;

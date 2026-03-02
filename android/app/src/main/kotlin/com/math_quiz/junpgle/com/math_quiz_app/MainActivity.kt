@@ -20,6 +20,7 @@ import java.util.*
 import android.graphics.Color
 import androidx.core.app.NotificationCompat
 import androidx.core.graphics.drawable.IconCompat
+import es.antonborri.home_widget.HomeWidgetPlugin
 
 // 导入 HyperIsland Kit 的核心类
 import io.github.d4viddf.hyperisland_kit.HyperIslandNotification
@@ -56,6 +57,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        HomeWidgetPlugin.getData(this)
         // 注册 Shizuku 权限请求与生命周期监听器
         Shizuku.addRequestPermissionResultListener(this)
         Shizuku.addBinderReceivedListener(this)

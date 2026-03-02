@@ -511,10 +511,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 value: _syncInterval,
                 underline: const SizedBox(),
                 items: const [
-                  DropdownMenuItem(value: 0, child: Text('每次打开App')),
                   DropdownMenuItem(value: 5, child: Text('每 5 分钟')),
                   DropdownMenuItem(value: 10, child: Text('每 10 分钟')),
                   DropdownMenuItem(value: 60, child: Text('每小时')),
+                  DropdownMenuItem(value: 0, child: Text('每次打开App')),
                 ],
                 onChanged: (val) {
                   if (val != null) {
