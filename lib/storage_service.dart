@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'models.dart';
-import 'package:math_quiz_app/services/api_service.dart';
+import 'services/api_service.dart'; // 修复为通用的相对路径导入
 
 class StorageService {
   // ignore: constant_identifier_names
@@ -40,10 +40,10 @@ class StorageService {
 
   static bool _isSyncing = false;
 
-  // 新增：全局监听主题变化的状态
+  // 全局监听主题变化的状态
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
-  // 新增：在 App 启动时读取本地主题设置
+  // 在 App 启动时读取本地主题设置
   static Future<void> initTheme() async {
     final prefs = await SharedPreferences.getInstance();
     themeNotifier.value = prefs.getString(KEY_THEME_MODE) ?? 'system';
@@ -193,7 +193,13 @@ class StorageService {
   static Future<List<CountdownItem>> getCountdowns(String username) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> list = prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
-    return list.map((e) => CountdownItem.fromJson(jsonDecode(e))).toList();
+    List<CountdownItem> result = [];
+    for (var e in list) {
+      try {
+        result.add(CountdownItem.fromJson(jsonDecode(e)));
+      } catch (_) {}
+    }
+    return result;
   }
 
   static Future<void> saveTodos(String username, List<TodoItem> items, {bool sync = true}) async {
@@ -206,7 +212,15 @@ class StorageService {
   static Future<List<TodoItem>> getTodos(String username) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
-    List<TodoItem> todos = list.map((e) => TodoItem.fromJson(jsonDecode(e))).toList();
+    List<TodoItem> todos = [];
+
+    // 安全的反序列化
+    for (var e in list) {
+      try {
+        todos.add(TodoItem.fromJson(jsonDecode(e)));
+      } catch (_) {}
+    }
+
     DateTime now = DateTime.now();
     bool needSave = false;
     for (var todo in todos) {
@@ -241,7 +255,14 @@ class StorageService {
     if (userId != null) {
       try {
         List<dynamic> cloudCds = await ApiService.fetchCountdowns(userId);
-        var match = cloudCds.firstWhere((c) => c['title'] == title, orElse: () => null);
+        dynamic match;
+        // 修复 firstWhere 空安全隐患
+        for (var c in cloudCds) {
+          if (c['title'] == title) {
+            match = c;
+            break;
+          }
+        }
         if (match != null && match['id'] != null) {
           await ApiService.deleteCountdown(match['id']);
         }
@@ -261,7 +282,14 @@ class StorageService {
     if (userId != null) {
       try {
         List<dynamic> cloudTodos = await ApiService.fetchTodos(userId);
-        var match = cloudTodos.firstWhere((t) => t['content'] == title, orElse: () => null);
+        dynamic match;
+        // 修复 firstWhere 空安全隐患
+        for (var t in cloudTodos) {
+          if (t['content'] == title) {
+            match = t;
+            break;
+          }
+        }
         if (match != null && match['id'] != null) {
           await ApiService.deleteTodo(match['id']);
         }

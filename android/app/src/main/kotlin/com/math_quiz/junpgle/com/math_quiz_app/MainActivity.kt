@@ -17,6 +17,9 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.*
+import android.graphics.Color
+import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.IconCompat
 
 // 导入 HyperIsland Kit 的核心类
 import io.github.d4viddf.hyperisland_kit.HyperIslandNotification
@@ -43,9 +46,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     // 专门接收“点击完成”按钮的广播接收器
     private val todoActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d(TAG, "✅ Received MARK_DONE intent: $intent")
             if (intent?.action == "com.math_quiz.MARK_DONE") {
-                // 通知 Flutter 端去完成当前待办
                 methodChannel?.invokeMethod("markCurrentTodoDone", null)
+                Log.d(TAG, "✅ Invoked markCurrentTodoDone to Flutter")
             }
         }
     }
@@ -64,6 +68,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         } else {
             registerReceiver(todoActionReceiver, filter)
         }
+
+        Log.d(TAG, "🚀 Broadcast receiver registered: ${todoActionReceiver::class.java.simpleName}")
     }
 
     override fun onDestroy() {
@@ -146,6 +152,37 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         val isSupported = HyperIslandNotification.isSupported(this@MainActivity)
                         result.success(isSupported)
                     } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                // === 新增：检查 Android 16 实时通知权限 ===
+                "checkLiveUpdatesPermission" -> {
+                    if (Build.VERSION.SDK_INT >= 36) {
+                        try {
+                            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                            val canPost = nm.javaClass.getMethod("canPostPromotedNotifications").invoke(nm) as Boolean
+                            result.success(canPost)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(true) // 旧版本默认 true
+                    }
+                }
+                // === 新增：跳转 Android 16 实时通知设置页 ===
+                "openLiveUpdatesSettings" -> {
+                    if (Build.VERSION.SDK_INT >= 36) {
+                        try {
+                            val intent = Intent("android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS").apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    } else {
                         result.success(false)
                     }
                 }
@@ -362,23 +399,96 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val builder = Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+        // ==========================================
+        // 🚀 构建基础的 NotificationCompat.Builder
+        // ==========================================
+        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)
-            .setProgress(100, progress, false)
             .setOngoing(isOngoing)
             .setOnlyAlertOnce(true)
-            .setCategory(Notification.CATEGORY_STATUS)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setShowWhen(false)
+            .setWhen(System.currentTimeMillis())
+            .setShowWhen(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setColor(color)
             .setColorized(true)
             .setContentIntent(pendingIntent)
 
+        // 🚨 显式要求系统提升为“推荐的持续通知”(Live Updates)
         val extras = Bundle()
         extras.putBoolean("android.extra.requestPromotedOngoing", true)
+
+        // ==========================================
+        // 🚀 构建完全对齐官方的 ProgressStyle
+        // ==========================================
+        var appliedProgressStyle = false
+
+        if (Build.VERSION.SDK_INT >= 34 && totalSteps > 0) {
+            try {
+                // 1. 设置极简短文本 (用于胶囊/锁屏)
+                builder.setShortCriticalText("$currentStep/$totalSteps")
+
+                // 2. 颜色配置
+                val pointColor = color
+                val segmentColor = android.graphics.Color.argb(76,
+                    android.graphics.Color.red(color),
+                    android.graphics.Color.green(color),
+                    android.graphics.Color.blue(color)
+                )
+
+                val progressStyle = NotificationCompat.ProgressStyle()
+
+                // 3. 构建分段 (Segments)
+                val segmentsList = mutableListOf<NotificationCompat.ProgressStyle.Segment>()
+                val segmentWeight = 100 / totalSteps
+                for (i in 1..totalSteps) {
+                    val w = if (i == totalSteps) 100 - (segmentWeight * (totalSteps - 1)) else segmentWeight
+                    segmentsList.add(NotificationCompat.ProgressStyle.Segment(w).setColor(segmentColor))
+                }
+                progressStyle.setProgressSegments(segmentsList)
+
+                // 4. 构建节点 (Points)
+                val pointsList = mutableListOf<NotificationCompat.ProgressStyle.Point>()
+                for (i in 1..totalSteps) {
+                    if (i <= currentStep && isOngoing) {
+                        val p = (i * 100) / totalSteps
+                        pointsList.add(NotificationCompat.ProgressStyle.Point(p).setColor(pointColor))
+                    } else if (!isOngoing) {
+                        val p = (i * 100) / totalSteps
+                        pointsList.add(NotificationCompat.ProgressStyle.Point(p).setColor(pointColor))
+                    }
+                }
+                if (pointsList.isNotEmpty()) {
+                    progressStyle.setProgressPoints(pointsList)
+                }
+
+                // 5. 设置 Tracker 图标 - 🚨核心修复：强行给图标上色，防止因为系统背景为白色导致隐形！
+                val trackerIconRes = if (isOngoing) R.drawable.ic_notification else R.drawable.ic_done
+                val trackerIcon = IconCompat.createWithResource(this, trackerIconRes)
+                trackerIcon.setTint(color) // <--- 强行赋予主题色，绝对清晰可见！
+                progressStyle.setProgressTrackerIcon(trackerIcon)
+
+                // 6. 将样式应用到 Builder，并且 **只在这里** 调用 setProgress
+                val currentPercent = if (totalSteps > 0) (currentStep * 100) / totalSteps else 0
+                builder.setStyle(progressStyle.setProgress(currentPercent))
+
+                // 标记成功应用，不执行后方的基础兜底
+                appliedProgressStyle = true
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Apply ProgressStyle Failed", e)
+            }
+        }
+
+        // ❌ 兜底进度条渲染：不让它干扰 Live Updates
+        if (!appliedProgressStyle) {
+            val fallbackProgress = if (totalSteps > 0) (currentStep * 100) / totalSteps else 0
+            builder.setProgress(100, fallbackProgress, false)
+        }
 
         // ==========================================
         //  为未完成的待办事项准备「完成」广播 Intent
@@ -386,16 +496,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         var actionPendingIntent: PendingIntent? = null
         if (isTodo && isOngoing) {
             val actionIntent = Intent("com.math_quiz.MARK_DONE").apply {
-                setPackage(packageName) // 确保广播只发给自己的应用
+                setPackage(packageName)
             }
             actionPendingIntent = PendingIntent.getBroadcast(
                 this, 100, actionIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
 
-            // 核心修复：同步添加到原生 Android Notification 中，防止 HyperOS 吞掉下方按钮区
-            val nativeAction = Notification.Action.Builder(
-                Icon.createWithResource(this, R.mipmap.ic_launcher),
+            val nativeAction = NotificationCompat.Action.Builder(
+                IconCompat.createWithResource(this, R.drawable.ic_done),
                 "完成",
                 actionPendingIntent
             ).build()
@@ -411,13 +520,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 val hyperBuilder = HyperIslandNotification.Builder(this, "math_quiz_biz", title)
                     .setSmallWindowTarget(MainActivity::class.java.name)
 
-                val appIcon = HyperPicture("app_icon", this, R.mipmap.ic_launcher)
-                hyperBuilder.addPicture(appIcon)
+                val islandIcon = HyperPicture("island_icon", this, R.drawable.ic_notification)
+                hyperBuilder.addPicture(islandIcon)
 
                 hyperBuilder.setBaseInfo(
                     title = title,
                     content = text,
-                    pictureKey = "app_icon"
+                    pictureKey = "island_icon"
                 )
 
                 hyperBuilder.setIslandConfig(
@@ -432,13 +541,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     hyperBuilder.setStepProgress(currentStep, totalSteps, hexColor)
                 }
 
-                // 注入超级岛的 Action 配置
                 if (actionPendingIntent != null) {
                     val doneAction = HyperAction(
-                        "btn_done", // 唯一标识
-                        "完成",     // 按钮文字
+                        "btn_done",
+                        "完成",
                         actionPendingIntent,
-                        1           // actionIntentType: 1
+                        1
                     )
                     hyperBuilder.addAction(doneAction)
                 }
@@ -450,79 +558,29 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.e(TAG, "HyperIsland Setup Failed", e)
         }
 
+        // 统一添加 Extras
         builder.addExtras(extras)
 
         // ==========================================
-        //  Shizuku 流程：拦截 xmsf -> 触发通知 -> 恢复网络
+        // 发送通知与权限检查
         // ==========================================
-        Thread {
-            var shizukuInteracted = false
-            var targetUid = -1
+        val notification = builder.build()
 
+        // 🚀 核心诊断：通过反射验证系统是否真正赋予了“实时更新”权限
+        if (Build.VERSION.SDK_INT >= 36) {
             try {
-                // 动态获取当前设备上 xmsf 的 UID
-                targetUid = packageManager.getApplicationInfo("com.xiaomi.xmsf", 0).uid
-
-                // 检查 Shizuku 服务状态与权限
-                if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                    // 1. 使用动态获取的 UID 禁用 xmsf 网络
-                    val disableCmd = "cmd netpolicy add restrict-background-blacklist $targetUid"
-
-                    // 使用反射调用 newProcess 绕过 Kotlin 返回值推断问题
-                    val processMethod = Shizuku::class.java.getMethod(
-                        "newProcess",
-                        Array<String>::class.java,
-                        Array<String>::class.java,
-                        String::class.java
-                    )
-                    // 必须指定为 java.lang.Process 以防止和 android.os.Process 冲突
-                    val p = processMethod.invoke(
-                        null,
-                        arrayOf("sh", "-c", disableCmd),
-                        null,
-                        null
-                    ) as java.lang.Process
-                    p.waitFor()
-
-                    shizukuInteracted = true
-                }
+                val canPost = notificationManager.javaClass.getMethod("canPostPromotedNotifications").invoke(notificationManager) as? Boolean ?: false
+                val hasPromo = notification.javaClass.getMethod("hasPromotableCharacteristics").invoke(notification) as? Boolean ?: false
+                Log.w(TAG, "🚀 Live Updates Status -> Permitted by user: $canPost | Has Promotable Flags: $hasPromo")
             } catch (e: Exception) {
-                Log.e(TAG, "Shizuku disable network failed", e)
+                Log.e(TAG, "Failed to check Live Updates status via reflection", e)
             }
+        }
 
-            try {
-                // 2. 发送通知
-                notificationManager.notify(NOTIFICATION_ID, builder.build())
-            } catch (e: Exception) {
-                Log.e(TAG, "Notify error", e)
-            }
-
-            // 3. 恢复 xmsf 网络
-            if (shizukuInteracted && targetUid != -1) {
-                try {
-                    Thread.sleep(1500)
-
-                    val enableCmd = "cmd netpolicy remove restrict-background-blacklist $targetUid"
-
-                    val processMethod = Shizuku::class.java.getMethod(
-                        "newProcess",
-                        Array<String>::class.java,
-                        Array<String>::class.java,
-                        String::class.java
-                    )
-                    val p = processMethod.invoke(
-                        null,
-                        arrayOf("sh", "-c", enableCmd),
-                        null,
-                        null
-                    ) as java.lang.Process
-                    p.waitFor()
-
-                } catch (e: Exception) {
-                    Log.e(TAG, "Shizuku enable network failed", e)
-                }
-            }
-        }.start()
-        // ==========================================
+        try {
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Notify error", e)
+        }
     }
 }

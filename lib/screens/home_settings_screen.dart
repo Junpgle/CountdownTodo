@@ -25,13 +25,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String _shizukuStatus = "点击右侧按钮获取或检查权限";
   String _islandStatus = "点击检测设备是否支持";
+  String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)"; // 新增状态变量
   bool _isCheckingUpdate = false;
 
   // 用户与偏好设置状态
   String _username = "加载中...";
   int? _userId;
-  int _syncInterval = 0; // 0:每次打开, 5:五分钟, 10:十分钟, 60:一小时
-  String _themeMode = 'system'; // 'system', 'light', 'dark'
+  int _syncInterval = 0;
+  String _themeMode = 'system';
 
   @override
   void initState() {
@@ -116,7 +117,6 @@ class _SettingsPageState extends State<SettingsPage> {
                           SnackBar(content: Text(res['message'] ?? (res['success'] ? '修改成功' : '修改失败')))
                       );
 
-                      // 如果修改成功，选择强制用户重新登录
                       if (res['success']) {
                         _handleLogout(force: true);
                       }
@@ -130,6 +130,46 @@ class _SettingsPageState extends State<SettingsPage> {
             }
         )
     );
+  }
+
+  // --- 新增：检测并开启 Android 16 实时通知权限 ---
+  Future<void> _checkAndOpenLiveUpdates() async {
+    try {
+      final bool hasPermission = await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
+      if (!hasPermission) {
+        setState(() {
+          _liveUpdatesStatus = "权限未开启，尝试跳转设置...";
+        });
+
+        final bool opened = await platform.invokeMethod('openLiveUpdatesSettings') ?? false;
+
+        if (opened) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('请在设置中打开“推广的通知/实时更新”权限'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          setState(() {
+            _liveUpdatesStatus = "跳转失败，设备可能不是 Android 16+";
+          });
+        }
+      } else {
+        setState(() {
+          _liveUpdatesStatus = "✅ 已拥有实时通知权限 (或非高版本系统)";
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('权限已正常开启，无需额外设置')),
+        );
+      }
+    } on PlatformException catch (e) {
+      setState(() {
+        _liveUpdatesStatus = "检测失败: '${e.message}'.";
+      });
+    }
   }
 
   // 检测超级岛支持
@@ -383,7 +423,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (val != null) {
                     setState(() => _themeMode = val);
                     StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, val);
-                    // 核心修改：通知全局主题状态变化，立即重绘 MaterialApp
                     StorageService.themeNotifier.value = val;
                   }
                 },
@@ -392,27 +431,84 @@ class _SettingsPageState extends State<SettingsPage> {
           ]),
 
           // 3. 高级设置
-          _buildSection('高级设置 (用于超级岛通知)', [
-            ListTile(
-              leading: const CircleAvatar(backgroundColor: Colors.deepPurpleAccent, child: Icon(Icons.smart_button, color: Colors.white, size: 20)),
-              title: const Text('超级岛特性支持'),
-              subtitle: Text(_islandStatus, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+          const Padding(
+            padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
+            child: Text(
+              '高级设置 (用于超级岛通知)',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
+            ),
+          ),
+
+          // --- 核心新增：Android 16 实时通知权限检测 ---
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              leading: const CircleAvatar(
+                backgroundColor: Colors.teal,
+                child: Icon(Icons.notifications_active, color: Colors.white),
+              ),
+              title: const Text('Android 16 实时活动', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(_liveUpdatesStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ),
               trailing: ElevatedButton(
                 style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                onPressed: _checkIslandSupport, child: const Text('检测'),
+                onPressed: _checkAndOpenLiveUpdates,
+                child: const Text('去开启'),
               ),
             ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.adb, color: Colors.white, size: 20)),
-              title: const Text('Shizuku 授权'),
-              subtitle: Text(_shizukuStatus, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+          ),
+          const SizedBox(height: 12),
+
+          // 超级岛特性支持
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              leading: const CircleAvatar(
+                backgroundColor: Colors.deepPurpleAccent,
+                child: Icon(Icons.smart_button, color: Colors.white),
+              ),
+              title: const Text('小米超级岛支持', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(_islandStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ),
               trailing: ElevatedButton(
                 style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                onPressed: _requestShizukuPermission, child: const Text('授权'),
+                onPressed: _checkIslandSupport,
+                child: const Text('检测'),
               ),
             ),
-          ]),
+          ),
+          const SizedBox(height: 12),
+
+          // 现有的 Shizuku 检测
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              leading: const CircleAvatar(
+                backgroundColor: Colors.blueAccent,
+                child: Icon(Icons.adb, color: Colors.white),
+              ),
+              title: const Text('Shizuku 授权', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(_shizukuStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ),
+              trailing: ElevatedButton(
+                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                onPressed: _requestShizukuPermission,
+                child: const Text('授权'),
+              ),
+            ),
+          ),
 
           // 4. 系统与账户
           _buildSection('系统与关于', [
