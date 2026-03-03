@@ -11,6 +11,7 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
@@ -18,7 +19,9 @@ import '../update_service.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
 
-// 🌟 核心修复：必须作为顶级函数放在所有类的外部！
+// 引入课程数据服务来处理 JSON 导入
+import '../services/course_service.dart';
+
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
   final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
@@ -47,7 +50,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _syncInterval = 0;
   String _themeMode = 'system';
 
-  // 新增学期进度状态
+  // 学期进度状态
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
@@ -56,23 +59,17 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _loadSettings();
-    _setupDownloadListener(); // 初始化下载状态监听
+    _setupDownloadListener();
   }
 
   @override
   void dispose() {
     IsolateNameServer.removePortNameMapping('downloader_send_port');
-    _port.close(); // 释放端口资源
+    _port.close();
     super.dispose();
   }
 
-  // ---------------------------------------------------------
-  // 核心监听：监听下载任务状态，完成后自动唤起安装
-  // ---------------------------------------------------------
-
   void _setupDownloadListener() {
-    // 💡 核心修复：热重启时 dispose 不会执行，必须在注册前强行解绑旧端口！
-    // 否则后台 Isolate 会把消息发给死掉的旧端口，导致 UI 接收不到 100% 下载完成的通知
     IsolateNameServer.removePortNameMapping('downloader_send_port');
     IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
 
@@ -80,14 +77,12 @@ class _SettingsPageState extends State<SettingsPage> {
       String id = data[0];
       DownloadTaskStatus status = DownloadTaskStatus.fromInt(data[1]);
 
-      // 下载完成时触发安装
       if (status == DownloadTaskStatus.complete) {
         print("UI 线程监听到下载完成，准备弹出安装器...");
         _handleDownloadCompleted(id);
       }
     });
 
-    // 注册顶级函数
     FlutterDownloader.registerCallback(downloadCallback);
   }
 
@@ -98,7 +93,6 @@ class _SettingsPageState extends State<SettingsPage> {
       final task = tasks.firstWhere((t) => t.taskId == taskId);
       if (task.filename != null) {
         final String fullPath = "${task.savedDir}/${task.filename}";
-        // 延迟 1.5 秒，确保 Android 系统已经将文件完全从缓存写入磁盘
         await Future.delayed(const Duration(milliseconds: 1500));
         await UpdateService.installApk(fullPath);
       }
@@ -107,16 +101,11 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // ---------------------------------------------------------
-  // 其他设置逻辑
-  // ---------------------------------------------------------
-
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     int interval = await StorageService.getSyncInterval();
     String theme = await StorageService.getThemeMode();
 
-    // 加载学期设置
     bool sEnabled = await StorageService.getSemesterEnabled();
     DateTime? sStart = await StorageService.getSemesterStart();
     DateTime? sEnd = await StorageService.getSemesterEnd();
@@ -233,8 +222,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showHomeSectionManager() async {
     final prefs = await SharedPreferences.getInstance();
-    List<String> order = prefs.getStringList('home_section_order') ?? ['countdowns', 'todos', 'screenTime', 'math'];
-    Map<String, bool> visibility = {'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
+    // 增加 courses
+    List<String> order = prefs.getStringList('home_section_order') ?? ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
+    Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
 
     String? visStr = prefs.getString('home_section_visibility');
     if (visStr != null) {
@@ -242,6 +232,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     Map<String, String> names = {
+      'courses': '课程提醒',
       'countdowns': '重要日与倒计时',
       'todos': '待办事项清单',
       'screenTime': '屏幕时间面板',
@@ -281,7 +272,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               key: Key(key),
                               contentPadding: EdgeInsets.zero,
                               title: Text(names[key] ?? key),
-                              value: visibility[key],
+                              value: visibility[key] ?? true,
                               secondary: const Icon(Icons.drag_handle, color: Colors.grey),
                               onChanged: (val) {
                                 setDialogState(() {
@@ -419,12 +410,9 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // 👉 更新：手动检查更新，调用封装好的统一方法
   Future<void> _checkUpdatesAndNotices() async {
     setState(() => _isCheckingUpdate = true);
-
     await UpdateService.checkUpdateAndPrompt(context, isManual: true);
-
     if (mounted) setState(() => _isCheckingUpdate = false);
   }
 
@@ -505,6 +493,31 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('历史倒计时'),
               trailing: const Icon(Icons.chevron_right),
               onTap: _showHistoricalCountdowns,
+            ),
+            const Divider(height: 1, indent: 56),
+
+            // 新增导入 JSON 课表功能
+            ListTile(
+              leading: const Icon(Icons.file_upload_outlined),
+              title: const Text('导入课表 (JSON)'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                FilePickerResult? result = await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['json', 'txt'],
+                );
+
+                if (result != null && result.files.single.path != null) {
+                  File file = File(result.files.single.path!);
+                  String jsonString = await file.readAsString();
+                  bool success = await CourseService.importScheduleFromJson(jsonString);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(success ? '课表导入成功' : '课表解析失败，请检查文件格式')),
+                    );
+                  }
+                }
+              },
             ),
             const Divider(height: 1, indent: 56),
 

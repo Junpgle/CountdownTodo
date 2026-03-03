@@ -20,6 +20,10 @@ import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'home_settings_screen.dart';
 
+// 引入课程相关服务和界面
+import '../services/course_service.dart';
+import '../screens/course_screens.dart';
+
 class HomeDashboard extends StatefulWidget {
   final String username;
   const HomeDashboard({super.key, required this.username});
@@ -33,6 +37,9 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   List<TodoItem> _todos = [];
   Map<String, dynamic> _mathStats = {};
   List<dynamic> _screenTimeStats = [];
+
+  // 课程提醒相关状态
+  Map<String, dynamic> _dashboardCourseData = {'title': '课程提醒', 'courses': <CourseItem>[]};
 
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
@@ -51,9 +58,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  // 首页模块配置
-  List<String> _sectionOrder = ['countdowns', 'todos', 'screenTime', 'math'];
+  // 首页模块配置 (新增了 'courses')
+  List<String> _sectionOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
   Map<String, bool> _sectionVisibility = {
+    'courses': true,
     'countdowns': true,
     'todos': true,
     'screenTime': true,
@@ -103,7 +111,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     super.dispose();
   }
 
-  // 👉 更新：直接调用已封装好的全局检查与弹窗方法
   Future<void> _checkUpdatesSilently() async {
     if (!mounted) return;
     await UpdateService.checkUpdateAndPrompt(context, isManual: false);
@@ -289,11 +296,14 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     final countdowns = await StorageService.getCountdowns(widget.username);
     final todos = await StorageService.getTodos(widget.username);
     final stats = await StorageService.getMathStats(widget.username);
+    final courseData = await CourseService.getDashboardCourses();
+
     if (mounted) {
       setState(() {
         _countdowns = countdowns;
         _todos = todos;
         _mathStats = stats;
+        _dashboardCourseData = courseData;
         _isTodoExpanded = !_todos.every((t) => t.isDone);
       });
       _syncTodoNotification();
@@ -666,7 +676,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
     return Container(
       width: double.infinity,
-      height: 4.0, // 类似网页加载条的厚度
+      height: 4.0,
       alignment: Alignment.centerLeft,
       child: FractionallySizedBox(
         widthFactor: progress,
@@ -687,13 +697,48 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
   }
 
+  Widget _buildCourseCard(bool isLight) {
+    List<CourseItem> courses = (_dashboardCourseData['courses'] as List?)?.cast<CourseItem>() ?? [];
+
+    if (courses.isEmpty) {
+      return EmptyState(text: "近期没有需要上的课", isLight: isLight);
+    }
+
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(isLight ? 0.8 : 0.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: courses.length,
+        itemBuilder: (context, index) {
+          final course = courses[index];
+          return ListTile(
+            leading: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(course.formattedStartTime, style: TextStyle(fontWeight: FontWeight.bold, color: isLight ? Colors.black87 : null)),
+                Text(course.formattedEndTime, style: TextStyle(fontSize: 10, color: isLight ? Colors.black54 : Colors.grey)),
+              ],
+            ),
+            title: Text(course.courseName, style: TextStyle(fontWeight: FontWeight.w600, color: isLight ? Colors.black87 : null)),
+            subtitle: Text('${course.roomName} | ${course.teacherName}', style: TextStyle(fontSize: 12, color: isLight ? Colors.black54 : null)),
+            trailing: Icon(Icons.chevron_right, size: 20, color: isLight ? Colors.black54 : null),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailScreen(course: course)));
+            },
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 根据当前主题判断是否为深色模式
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    // 深色模式下不显示壁纸背景，浅色模式下显示
     bool showWallpaper = !isDarkMode && _wallpaperUrl != null;
-    // 如果显示壁纸，那么文字配色应当为浅色(Light)风格以确保清晰度
     bool isLight = showWallpaper;
 
     return Scaffold(
@@ -708,7 +753,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           SafeArea(
             child: Column(
               children: [
-                // 👇 新增：最顶部的学期进度条
                 _buildSemesterProgressBar(isLight),
 
                 _buildAppBar(isLight),
@@ -718,7 +762,22 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                     builder: (context, constraints) {
                       final bool isTablet = constraints.maxWidth >= 800;
 
-                      // 将四个板块分别定义好
+                      // --- 课程模块 ---
+                      Widget courseSection = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SectionHeader(
+                            title: _dashboardCourseData['title'],
+                            icon: Icons.class_outlined,
+                            isLight: isLight,
+                            onAdd: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const WeeklyCourseScreen()));
+                            },
+                          ),
+                          _buildCourseCard(isLight),
+                        ],
+                      );
+
                       Widget countdownSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -775,13 +834,13 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
                       // 映射板块标识和 Widget
                       Map<String, Widget> sectionsMap = {
+                        'courses': courseSection,
                         'countdowns': countdownSection,
                         'todos': todoSection,
                         'screenTime': screenTimeSection,
                         'math': mathSection,
                       };
 
-                      // 根据设置中的顺序和可见性进行过滤组装
                       List<Widget> visibleSections = _sectionOrder
                           .where((key) => _sectionVisibility[key] == true)
                           .map((key) => Padding(
@@ -790,7 +849,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                       ))
                           .toList();
 
-                      // 处理平板的双列瀑布排布（分成左右两半）
                       int mid = (visibleSections.length / 2).ceil();
                       List<Widget> leftCol = visibleSections.sublist(0, mid);
                       List<Widget> rightCol = visibleSections.sublist(mid);
@@ -878,7 +936,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
             icon: Icon(Icons.settings, color: isLight ? Colors.white : null),
             onPressed: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
-              // 从设置返回后，重载模块显示配置、倒计时数据以及学期进度设置
               _loadSectionPreferences();
               _loadSemesterSettings();
               _loadAllData();
@@ -889,7 +946,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   }
 
   Widget _buildCountdownList(bool isLight) {
-    // 过滤出距离天数 >= 0 (未过期/进行中) 的重要日展示在主页，过期的历史在设置中展示
     final List<CountdownItem> activeCountdowns = _countdowns.where((item) {
       return item.targetDate.difference(DateTime.now()).inDays + 1 >= 0;
     }).toList();
@@ -1004,10 +1060,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
     if (todo.dueDate != null) {
       start = todo.createdAt;
-      // 截止到当天的最后一秒
       end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
     } else {
-      // 只有创建时间，默认按创建当天的 00:00 到 23:59:59 (完整的24小时) 切割
       start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
       end = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, 23, 59, 59);
     }
@@ -1017,7 +1071,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     if (isSameDay && now.isBefore(DateTime(start.year, start.month, start.day))) {
       progress = 0.0;
     } else {
-      // 使用 inMinutes 替代 inHours 使得进度条更加平滑精准
       int totalMinutes = end.difference(start).inMinutes;
       if (totalMinutes <= 0) totalMinutes = 1;
 
@@ -1058,7 +1111,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
 
     return Dismissible(
-      key: key ?? Key(todo.id), // 使用传入的 key 或默认使用 id
+      key: key ?? Key(todo.id),
       background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
       onDismissed: (_) async {
         String titleToDelete = todo.title;
@@ -1240,7 +1293,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           )
       );
 
-      // 同步将列表自动排序的比对基准修改为按分钟精度
       double _calculateProgress(TodoItem todo) {
         DateTime start;
         DateTime end;
