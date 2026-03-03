@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/course_service.dart';
+import '../models.dart';
+import '../storage_service.dart';
 
 // --- 二级界面：按周查看课表 (网格视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
-  const WeeklyCourseScreen({Key? key}) : super(key: key);
+  final String username;
+  const WeeklyCourseScreen({Key? key, required this.username}) : super(key: key);
 
   @override
   State<WeeklyCourseScreen> createState() => _WeeklyCourseScreenState();
@@ -14,8 +17,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   int _currentWeek = 1;
   List<int> _availableWeeks = [];
   List<CourseItem> _weekCourses = [];
+
+  List<TodoItem> _allTodos = [];
+
+  // 拆分：全天/跨天待办 和 日内局部待办
+  Map<int, List<TodoItem>> _allDayTodosPerDay = {};
+  Map<int, List<TodoItem>> _intraDayTodosPerDay = {};
+
   bool _isLoading = true;
   DateTime? _semesterMonday;
+  int _viewMode = 0; // 0: 混合查看, 1: 只看课表, 2: 只看待办
 
   // 网格尺寸常量设置
   final double timeColumnWidth = 45.0; // 左侧时间栏宽度
@@ -31,6 +42,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final weeks = await CourseService.getAvailableWeeks();
+    _allTodos = await StorageService.getTodos(widget.username);
+
     if (weeks.isNotEmpty) {
       _availableWeeks = weeks;
 
@@ -55,8 +68,64 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       }
 
       _weekCourses = await CourseService.getCoursesByWeek(_currentWeek);
+      _updateWeekTodos();
+    } else {
+      // 兼容无课表情况：尝试获取学期设置或以当前周为第一周，以确保待办能够渲染
+      DateTime? semStart = await StorageService.getSemesterStart();
+      DateTime now = DateTime.now();
+      if (semStart != null) {
+        _semesterMonday = semStart.subtract(Duration(days: semStart.weekday - 1));
+        int daysDiff = now.difference(_semesterMonday!).inDays;
+        _currentWeek = (daysDiff ~/ 7) + 1;
+        if (_currentWeek < 1) _currentWeek = 1;
+      } else {
+        _semesterMonday = now.subtract(Duration(days: now.weekday - 1));
+        _currentWeek = 1;
+      }
+      _availableWeeks = List.generate(20, (index) => index + 1); // 虚拟生成20周
+      _weekCourses = [];
+      _updateWeekTodos();
     }
+
     setState(() => _isLoading = false);
+  }
+
+  // 刷新当前周对应的待办列表并分类
+  void _updateWeekTodos() {
+    _allDayTodosPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
+    _intraDayTodosPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
+
+    if (_semesterMonday == null) return;
+
+    DateTime currentWeekMonday = _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+    DateTime currentWeekMondayStart = DateTime(currentWeekMonday.year, currentWeekMonday.month, currentWeekMonday.day);
+
+    for (var todo in _allTodos) {
+      DateTime start = todo.createdAt;
+      // 如果没有截止日期，默认算作1小时的局部事件，防止在网格里拉得太长
+      DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
+
+      // 判断是否是全天事件 或 跨天事件
+      bool isAllDayFlag = todo.dueDate != null &&
+          start.hour == 0 && start.minute == 0 &&
+          todo.dueDate!.hour == 23 && todo.dueDate!.minute == 59;
+      bool isCrossDay = !(start.year == end.year && start.month == end.month && start.day == end.day);
+      bool treatAsAllDay = isAllDayFlag || isCrossDay;
+
+      for (int i = 1; i <= 7; i++) {
+        DateTime dayStart = currentWeekMondayStart.add(Duration(days: i - 1));
+        DateTime dayEnd = dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+
+        // 检查重叠
+        if (start.isBefore(dayEnd) && end.isAfter(dayStart)) {
+          if (treatAsAllDay) {
+            _allDayTodosPerDay[i]!.add(todo);
+          } else {
+            _intraDayTodosPerDay[i]!.add(todo);
+          }
+        }
+      }
+    }
   }
 
   void _changeWeek(int delta) {
@@ -69,13 +138,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       CourseService.getCoursesByWeek(_currentWeek).then((courses) {
         setState(() {
           _weekCourses = courses;
+          _updateWeekTodos();
           _isLoading = false;
         });
       });
     }
   }
 
-  // 获取当前周的周一日期
   DateTime? _getMondayOfCurrentWeek() {
     if (_semesterMonday != null) {
       return _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
@@ -83,7 +152,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     return null;
   }
 
-  // 节次到时间的文本映射
   String _getPeriodTime(int period) {
     switch (period) {
       case 1: return '08:00\n08:50';
@@ -101,7 +169,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     }
   }
 
-  // 根据课程的开始时间计算所在的起始节次
   int getStartPeriod(int startTime) {
     if (startTime <= 800) return 1;
     if (startTime <= 900) return 2;
@@ -116,7 +183,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     return 11;
   }
 
-  // 根据课程的结束时间计算所在的结束节次
   int getEndPeriod(int endTime) {
     if (endTime <= 850) return 1;
     if (endTime <= 950) return 2;
@@ -131,7 +197,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     return 11;
   }
 
-  // 计算某个节次在 Y 轴上的顶部偏移量 (考虑到午休和晚休的高度)
   double getTopOffset(int p) {
     if (p <= 4) {
       return (p - 1) * cellHeight;
@@ -142,12 +207,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     }
   }
 
-  // 计算某个节次在 Y 轴上的底部偏移量
   double getBottomOffset(int p) {
     return getTopOffset(p) + cellHeight;
   }
 
-  // 根据课程名称生成固定的卡片颜色
   Color _getCourseColor(String courseName) {
     final List<Color> colors = [
       Colors.blueAccent.shade200,
@@ -163,7 +226,106 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     return colors[hash % colors.length];
   }
 
-  // 构建顶部的日期星期标头
+  void _showAllDayTodos(BuildContext context, List<TodoItem> todos, String dateStr) {
+    showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        builder: (ctx) {
+          return SafeArea(
+            child: Container(
+                padding: const EdgeInsets.all(16),
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Center(
+                        child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+                      ),
+                      const SizedBox(height: 16),
+                      Text("$dateStr 全天/跨天待办", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 16),
+                      Expanded(
+                          child: ListView.builder(
+                              itemCount: todos.length,
+                              itemBuilder: (context, index) {
+                                final todo = todos[index];
+                                return ListTile(
+                                  leading: Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, color: todo.isDone ? Colors.green : Colors.amber),
+                                  title: Text(todo.title, style: TextStyle(decoration: todo.isDone ? TextDecoration.lineThrough : null)),
+                                  subtitle: Text("开始: ${DateFormat('MM-dd HH:mm').format(todo.createdAt)}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)));
+                                  },
+                                );
+                              }
+                          )
+                      )
+                    ]
+                )
+            ),
+          );
+        }
+    );
+  }
+
+  // 渲染表头的全天事件横幅
+  Widget _buildAllDayHeaderRow(DateTime? monday) {
+    if (monday == null || _viewMode == 1) return const SizedBox.shrink();
+
+    bool hasAnyAllDay = _allDayTodosPerDay.values.any((list) => list.isNotEmpty);
+    if (!hasAnyAllDay) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.only(left: timeColumnWidth, bottom: 4),
+      color: Theme.of(context).colorScheme.surface,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: List.generate(7, (index) {
+          int weekday = index + 1;
+          List<TodoItem> dayTodos = _allDayTodosPerDay[weekday] ?? [];
+
+          if (dayTodos.isEmpty) {
+            return const Expanded(child: SizedBox(height: 22));
+          }
+
+          String text = dayTodos.length == 1 ? dayTodos.first.title : "${dayTodos.length}项全天待办";
+          bool allDone = dayTodos.every((t) => t.isDone);
+
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                DateTime currentDay = monday.add(Duration(days: index));
+                String dateStr = DateFormat('MM-dd').format(currentDay);
+                _showAllDayTodos(context, dayTodos, dateStr);
+              },
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+                decoration: BoxDecoration(
+                  color: allDone ? Colors.green.withOpacity(0.5) : Colors.amber.shade500.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.white,
+                    decoration: allDone ? TextDecoration.lineThrough : null,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
   Widget _buildHeader(DateTime? monday) {
     DateTime now = DateTime.now();
     String todayStr = DateFormat('yyyy-MM-dd').format(now);
@@ -214,7 +376,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     );
   }
 
-  // 构建课表网格和课程块
   Widget _buildGrid(double cellWidth) {
     List<Widget> children = [];
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -226,7 +387,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
     // 1. 绘制水平的网格线、左侧时间列以及休息分割带
     for (int i = 1; i <= 11; i++) {
-      // 水平网格线
       children.add(
           Positioned(
             top: currentY,
@@ -241,7 +401,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
           )
       );
 
-      // 左侧时间文字
       children.add(
           Positioned(
             top: currentY,
@@ -262,7 +421,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       currentY += cellHeight;
 
       if (i == 4) {
-        // 午休区块
         children.add(
             Positioned(
               top: currentY,
@@ -278,7 +436,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
         );
         currentY += breakHeight;
       } else if (i == 8) {
-        // 晚休区块
         children.add(
             Positioned(
               top: currentY,
@@ -296,7 +453,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       }
     }
 
-    // 2. 绘制垂直网格线
     for (int i = 0; i <= 7; i++) {
       children.add(
           Positioned(
@@ -309,57 +465,156 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       );
     }
 
-    // 3. 将课程块覆盖到网格上
-    for (var course in _weekCourses) {
-      int startPeriod = getStartPeriod(course.startTime);
-      int endPeriod = getEndPeriod(course.endTime);
+    // 2. 将待办事项覆盖到网格上 (避开午休晚休)
+    if (_viewMode != 1) {
+      Map<String, int> periodTodoCount = {};
 
-      double top = getTopOffset(startPeriod);
-      double height = getBottomOffset(endPeriod) - top;
-      double left = timeColumnWidth + (course.weekday - 1) * cellWidth;
+      for (int weekday = 1; weekday <= 7; weekday++) {
+        for (var todo in _intraDayTodosPerDay[weekday]!) {
+          DateTime start = todo.createdAt;
+          DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
-      Color bgColor = _getCourseColor(course.courseName);
+          int startTimeInt = start.hour * 100 + start.minute;
+          int endTimeInt = end.hour * 100 + end.minute;
 
-      children.add(
-          Positioned(
-            top: top + 1,
-            left: left + 1,
-            width: cellWidth - 2,
-            height: height - 2,
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => CourseDetailScreen(course: course),
-                ));
-              },
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: bgColor.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      course.courseName,
-                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, height: 1.2),
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
+          int sPeriod = getStartPeriod(startTimeInt);
+          int ePeriod = getEndPeriod(endTimeInt);
+
+          // 限制范围 1~11
+          if (sPeriod > 11) sPeriod = 11;
+          if (ePeriod > 11) ePeriod = 11;
+          if (sPeriod < 1) sPeriod = 1;
+          if (ePeriod < 1) ePeriod = 1;
+
+          // ⭐ 核心逻辑：切分时间段，跨越休息区则拆成两块绘制
+          List<List<int>> segments = [];
+          if (sPeriod <= 4) {
+            segments.add([sPeriod, (ePeriod < 4) ? ePeriod : 4]);
+          }
+          if (sPeriod <= 8 && ePeriod >= 5) {
+            segments.add([(sPeriod > 5) ? sPeriod : 5, (ePeriod < 8) ? ePeriod : 8]);
+          }
+          if (ePeriod >= 9) {
+            segments.add([(sPeriod > 9) ? sPeriod : 9, ePeriod]);
+          }
+
+          for (var seg in segments) {
+            if (seg[0] > seg[1]) continue;
+
+            String periodKey = "${weekday}_${seg[0]}";
+            int offsetIndex = periodTodoCount[periodKey] ?? 0;
+            periodTodoCount[periodKey] = offsetIndex + 1;
+
+            double top = getTopOffset(seg[0]) + (offsetIndex * 18.0);
+            double bottom = getBottomOffset(seg[1]);
+            double height = bottom - top;
+            if (height < cellHeight / 2) height = cellHeight / 2;
+
+            double left = timeColumnWidth + (weekday - 1) * cellWidth;
+
+            children.add(
+                Positioned(
+                  top: top + 1,
+                  left: left + 1,
+                  width: cellWidth - 2,
+                  height: height - 2,
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)));
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: todo.isDone ? Colors.green.withOpacity(0.5) : Colors.amber.shade500.withOpacity(0.85),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 10, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  DateFormat('HH:mm').format(start),
+                                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            todo.title,
+                            style: TextStyle(color: Colors.white, fontSize: 10, decoration: todo.isDone ? TextDecoration.lineThrough : null, height: 1.1),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
-                    const Spacer(),
-                    Text(
-                      '@${course.roomName}',
-                      style: const TextStyle(color: Colors.white, fontSize: 9, height: 1.1),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                  ),
+                )
+            );
+          }
+        }
+      }
+    }
+
+    // 3. 将课程块覆盖到网格上 (课程在待办之后 Add，自动实现重叠时课程置顶)
+    if (_viewMode != 2) {
+      for (var course in _weekCourses) {
+        int startPeriod = getStartPeriod(course.startTime);
+        int endPeriod = getEndPeriod(course.endTime);
+
+        double top = getTopOffset(startPeriod);
+        double height = getBottomOffset(endPeriod) - top;
+        double left = timeColumnWidth + (course.weekday - 1) * cellWidth;
+
+        Color bgColor = _getCourseColor(course.courseName);
+
+        children.add(
+            Positioned(
+              top: top + 1,
+              left: left + 1,
+              width: cellWidth - 2,
+              height: height - 2,
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => CourseDetailScreen(course: course),
+                  ));
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                      color: bgColor.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))]
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        course.courseName,
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, height: 1.2),
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Spacer(),
+                      Text(
+                        '@${course.roomName}',
+                        style: const TextStyle(color: Colors.white, fontSize: 9, height: 1.1),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          )
-      );
+            )
+        );
+      }
     }
 
     return Stack(
@@ -371,29 +626,62 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back_ios, size: 16),
-              onPressed: _availableWeeks.contains(_currentWeek - 1) ? () => _changeWeek(-1) : null,
+        title: const Text('课表与待办', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        centerTitle: false,
+        actions: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios, size: 16),
+                onPressed: _availableWeeks.contains(_currentWeek - 1) ? () => _changeWeek(-1) : null,
+              ),
+              Text('第 $_currentWeek 周', style: const TextStyle(fontSize: 14)),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward_ios, size: 16),
+                onPressed: _availableWeeks.contains(_currentWeek + 1) ? () => _changeWeek(1) : null,
+              ),
+            ],
+          ),
+          const SizedBox(width: 4),
+
+          // 切换查看模式
+          PopupMenuButton<int>(
+            initialValue: _viewMode,
+            onSelected: (val) {
+              setState(() {
+                _viewMode = val;
+              });
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 0, child: Text("混合查看")),
+              const PopupMenuItem(value: 1, child: Text("只看课表")),
+              const PopupMenuItem(value: 2, child: Text("只看待办")),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                      _viewMode == 1 ? "只看课表" : (_viewMode == 2 ? "只看待办" : "混合查看"),
+                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)
+                  ),
+                  Icon(Icons.arrow_drop_down, size: 20, color: Theme.of(context).colorScheme.primary),
+                ],
+              ),
             ),
-            const SizedBox(width: 8),
-            Text('第 $_currentWeek 周', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.arrow_forward_ios, size: 16),
-              onPressed: _availableWeeks.contains(_currentWeek + 1) ? () => _changeWeek(1) : null,
-            ),
-          ],
-        ),
-        centerTitle: true,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
         children: [
           _buildHeader(_getMondayOfCurrentWeek()),
+          // 全天/跨天事件横幅
+          _buildAllDayHeaderRow(_getMondayOfCurrentWeek()),
           Divider(height: 1, thickness: 0.5, color: Theme.of(context).brightness == Brightness.dark ? Colors.white10 : Colors.black12),
           Expanded(
             child: LayoutBuilder(
@@ -415,7 +703,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   }
 }
 
-// --- 三级界面：课程详情保持原状 ---
+// --- 三级界面：课程详情 ---
 class CourseDetailScreen extends StatelessWidget {
   final CourseItem course;
   const CourseDetailScreen({Key? key, required this.course}) : super(key: key);
@@ -442,6 +730,125 @@ class CourseDetailScreen extends StatelessWidget {
             const Divider(),
             _buildDetailRow(Icons.category, '课程类型', course.lessonType == 'EXPERIMENT' ? '实验课' : '理论/实践'),
           ]
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey),
+          const SizedBox(width: 16),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 16)),
+          const Spacer(),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- 三级界面：待办详情 ---
+class TodoDetailScreen extends StatelessWidget {
+  final TodoItem todo;
+  const TodoDetailScreen({Key? key, required this.todo}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    bool isAllDay = todo.dueDate != null &&
+        todo.createdAt.hour == 0 && todo.createdAt.minute == 0 &&
+        todo.dueDate!.hour == 23 && todo.dueDate!.minute == 59;
+
+    String startTimeStr = isAllDay
+        ? DateFormat('yyyy-MM-dd (全天)').format(todo.createdAt)
+        : DateFormat('yyyy-MM-dd HH:mm').format(todo.createdAt);
+
+    String endTimeStr = todo.dueDate == null
+        ? '无截止时间'
+        : (isAllDay
+        ? DateFormat('yyyy-MM-dd (全天)').format(todo.dueDate!)
+        : DateFormat('yyyy-MM-dd HH:mm').format(todo.dueDate!));
+
+    // 计算进度
+    double progress = 0.0;
+    DateTime now = DateTime.now();
+    DateTime start = todo.createdAt;
+    DateTime end = todo.dueDate ?? DateTime(start.year, start.month, start.day, 23, 59, 59);
+
+    if (todo.isDone) {
+      progress = 1.0;
+    } else {
+      int totalMinutes = end.difference(start).inMinutes;
+      if (totalMinutes <= 0) totalMinutes = 1;
+
+      if (now.isBefore(start)) {
+        progress = 0.0;
+      } else {
+        int passedMinutes = now.difference(start).inMinutes;
+        progress = (passedMinutes / totalMinutes).clamp(0.0, 1.0);
+      }
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('待办详情')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 80, color: todo.isDone ? Colors.green : Colors.amber),
+          const SizedBox(height: 16),
+          Text(
+              todo.title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                  color: todo.isDone ? Colors.grey : null
+              )
+          ),
+          const SizedBox(height: 32),
+
+          // 进度条渲染
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("时间进度", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                  Text("${(progress * 100).toInt()}%", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 10,
+                  backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
+                  valueColor: AlwaysStoppedAnimation<Color>(todo.isDone ? Colors.green : Theme.of(context).colorScheme.primary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          _buildDetailRow(Icons.flag, '状态', todo.isDone ? '已完成' : '进行中'),
+          const Divider(),
+          _buildDetailRow(Icons.play_circle_outline, '开始时间', startTimeStr),
+          const Divider(),
+          _buildDetailRow(Icons.stop_circle_outlined, '截止时间', endTimeStr),
+          const Divider(),
+          _buildDetailRow(Icons.update, '最近更新', DateFormat('yyyy-MM-dd HH:mm').format(todo.lastUpdated)),
         ],
       ),
     );

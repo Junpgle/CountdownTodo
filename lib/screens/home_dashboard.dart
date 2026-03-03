@@ -19,7 +19,7 @@ import '../widgets/home_sections.dart';
 import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'home_settings_screen.dart';
-import 'dart:async'; // 新增引入用于定时器
+import 'dart:async';
 
 // 引入课程相关服务和界面
 import '../services/course_service.dart';
@@ -41,9 +41,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   Map<String, dynamic> _mathStats = {};
   List<dynamic> _screenTimeStats = [];
 
-  // 课程提醒相关状态
   Map<String, dynamic> _dashboardCourseData = {'title': '课程提醒', 'courses': <CourseItem>[]};
-  String _noCourseBehavior = 'keep'; // 'keep', 'bottom', 'hide'
+  String _noCourseBehavior = 'keep';
 
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
@@ -57,12 +56,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
   String _currentGreeting = "";
 
-  // 学期进度相关
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  // 首页模块配置
   List<String> _sectionOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
   Map<String, bool> _sectionVisibility = {
     'courses': true,
@@ -72,15 +69,15 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     'math': true,
   };
 
-  Timer? _courseTimer; // 课程提醒定时器
+  Timer? _courseTimer;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this); // 注册生命周期监听
+    WidgetsBinding.instance.addObserver(this);
 
     _loadSectionPreferences();
-    _loadSemesterSettings(); // 加载学期设置
+    _loadSemesterSettings();
     _generateGreeting();
     _loadAllData();
     _fetchRandomWallpaper();
@@ -104,12 +101,9 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         if (mounted) StorageService.syncAppMappings();
       });
 
-      // 启动时检查自动同步
       _checkAutoSync();
-      // 启动时异步静默检查更新
       _checkUpdatesSilently();
 
-      // 启动每分钟一次的课程检查定时器
       _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
         _checkUpcomingCourses();
       });
@@ -118,12 +112,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
   @override
   void dispose() {
-    _courseTimer?.cancel(); // 退出时取消定时器
-    WidgetsBinding.instance.removeObserver(this); // 移除监听
+    _courseTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  // 检查即将到来的课程
   Future<void> _checkUpcomingCourses() async {
     final dashboardData = await CourseService.getDashboardCourses();
     List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
@@ -135,7 +128,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         DateTime courseTime = DateFormat('yyyy-MM-dd HH:mm').parse('${course.date} ${course.formattedStartTime}');
         int diffMinutes = courseTime.difference(now).inMinutes;
 
-        // 刚好提前 20 分钟时，发送实时通知
         if (diffMinutes == 20) {
           NotificationService.showCourseLiveActivity(
             courseName: course.courseName,
@@ -144,7 +136,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
             teacher: course.teacherName,
           );
         } else if (diffMinutes == -10) {
-          // 课程开始后 10 分钟自动取消（可以根据需求调整时间）
           NotificationService.cancelNotification();
         }
       } catch (e) {
@@ -158,7 +149,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     await UpdateService.checkUpdateAndPrompt(context, isManual: false);
   }
 
-  // 加载学期进度配置
   Future<void> _loadSemesterSettings() async {
     bool enabled = await StorageService.getSemesterEnabled();
     DateTime? start = await StorageService.getSemesterStart();
@@ -172,7 +162,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  // 计算学期进度
   double _calculateSemesterProgress() {
     if (_semesterStart == null || _semesterEnd == null) return 0.0;
     DateTime now = DateTime.now();
@@ -185,7 +174,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     return (passedMinutes / totalMinutes).clamp(0.0, 1.0);
   }
 
-  // 加载模块排序与可见性偏好配置
   Future<void> _loadSectionPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     List<String>? savedOrder = prefs.getStringList('home_section_order');
@@ -204,35 +192,30 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  // 监听应用回到前台
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAutoSync();
       _loadSectionPreferences();
-      _loadSemesterSettings(); // 返回前台时刷新学期设置
-      _checkUpdatesSilently(); // 返回前台时也可再次检查更新
+      _loadSemesterSettings();
+      _checkUpdatesSilently();
     }
   }
 
-  // 自动判断是否需要后台静默同步
   Future<void> _checkAutoSync() async {
     int interval = await StorageService.getSyncInterval();
     DateTime? lastSync = await StorageService.getLastAutoSyncTime();
     DateTime now = DateTime.now();
 
     if (interval == 0) {
-      // 每次打开 / 回到前台都同步 (静默)
       _handleManualSync(silent: true);
     } else {
-      // 根据设定的分钟数判断
       if (lastSync == null || now.difference(lastSync).inMinutes >= interval) {
         _handleManualSync(silent: true);
       }
     }
   }
 
-  // 待办历史状态过滤条件
   bool _isHistoricalTodo(TodoItem t) {
     if (!t.isDone) return false;
     DateTime today = DateTime.now();
@@ -508,6 +491,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     TextEditingController customDaysCtrl = TextEditingController();
     int? customDays;
     DateTime? recurrenceEndDate;
+    bool isAllDay = false; // 新增：全天事件标志
 
     showDialog(
       context: context,
@@ -520,32 +504,85 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
               children: [
                 TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "待办内容")),
                 const SizedBox(height: 10),
+
+                // 全天事件开关
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text("全天事件", style: TextStyle(fontSize: 15)),
+                  value: isAllDay,
+                  onChanged: (val) {
+                    setDialogState(() {
+                      isAllDay = val;
+                      if (isAllDay) {
+                        createdAt = DateTime(createdAt.year, createdAt.month, createdAt.day, 0, 0);
+                        if (dueDate != null) {
+                          dueDate = DateTime(dueDate!.year, dueDate!.month, dueDate!.day, 23, 59);
+                        } else {
+                          dueDate = DateTime(createdAt.year, createdAt.month, createdAt.day, 23, 59);
+                        }
+                      }
+                    });
+                  },
+                ),
+
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text("创建日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}"),
+                  title: Text("开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdAt)}"),
                   trailing: const Icon(Icons.edit_calendar, size: 20),
                   onTap: () async {
-                    final picked = await showDatePicker(
+                    final pickedDate = await showDatePicker(
                         context: context,
                         firstDate: DateTime(2000),
                         lastDate: DateTime(2100),
                         initialDate: createdAt
                     );
-                    if (picked != null) setDialogState(() => createdAt = picked);
+                    if (pickedDate != null) {
+                      if (isAllDay) {
+                        setDialogState(() => createdAt = DateTime(
+                            pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
+                      } else {
+                        if (!context.mounted) return;
+                        final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(createdAt),
+                        );
+                        if (pickedTime != null) {
+                          setDialogState(() => createdAt = DateTime(
+                              pickedDate.year, pickedDate.month, pickedDate.day,
+                              pickedTime.hour, pickedTime.minute));
+                        }
+                      }
+                    }
                   },
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(dueDate == null ? "设置截止日期 (可选)" : "截止日期: ${DateFormat('yyyy-MM-dd').format(dueDate!)}"),
+                  title: Text(dueDate == null ? "设置截止时间 (可选)" : "截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}"),
                   trailing: const Icon(Icons.event, size: 20),
                   onTap: () async {
-                    final picked = await showDatePicker(
+                    final pickedDate = await showDatePicker(
                         context: context,
                         firstDate: DateTime(2000),
                         lastDate: DateTime(2100),
                         initialDate: dueDate ?? createdAt
                     );
-                    if (picked != null) setDialogState(() => dueDate = picked);
+                    if (pickedDate != null) {
+                      if (isAllDay) {
+                        setDialogState(() => dueDate = DateTime(
+                            pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
+                      } else {
+                        if (!context.mounted) return;
+                        final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(dueDate ?? DateTime.now()),
+                        );
+                        if (pickedTime != null) {
+                          setDialogState(() => dueDate = DateTime(
+                              pickedDate.year, pickedDate.month, pickedDate.day,
+                              pickedTime.hour, pickedTime.minute));
+                        }
+                      }
+                    }
                   },
                 ),
                 const Divider(),
@@ -624,6 +661,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     TextEditingController customDaysCtrl = TextEditingController(text: customDays?.toString() ?? "");
     DateTime? recurrenceEndDate = todo.recurrenceEndDate;
 
+    bool isAllDay = dueDate != null &&
+        createdAt.hour == 0 && createdAt.minute == 0 &&
+        dueDate!.hour == 23 && dueDate!.minute == 59;
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -635,32 +676,85 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
               children: [
                 TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "待办内容")),
                 const SizedBox(height: 10),
+
+                // 全天事件开关
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text("全天事件", style: TextStyle(fontSize: 15)),
+                  value: isAllDay,
+                  onChanged: (val) {
+                    setDialogState(() {
+                      isAllDay = val;
+                      if (isAllDay) {
+                        createdAt = DateTime(createdAt.year, createdAt.month, createdAt.day, 0, 0);
+                        if (dueDate != null) {
+                          dueDate = DateTime(dueDate!.year, dueDate!.month, dueDate!.day, 23, 59);
+                        } else {
+                          dueDate = DateTime(createdAt.year, createdAt.month, createdAt.day, 23, 59);
+                        }
+                      }
+                    });
+                  },
+                ),
+
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text("创建日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}"),
+                  title: Text("开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdAt)}"),
                   trailing: const Icon(Icons.edit_calendar, size: 20),
                   onTap: () async {
-                    final picked = await showDatePicker(
+                    final pickedDate = await showDatePicker(
                         context: context,
                         firstDate: DateTime(2000),
                         lastDate: DateTime(2100),
                         initialDate: createdAt
                     );
-                    if (picked != null) setDialogState(() => createdAt = picked);
+                    if (pickedDate != null) {
+                      if (isAllDay) {
+                        setDialogState(() => createdAt = DateTime(
+                            pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
+                      } else {
+                        if (!context.mounted) return;
+                        final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(createdAt),
+                        );
+                        if (pickedTime != null) {
+                          setDialogState(() => createdAt = DateTime(
+                              pickedDate.year, pickedDate.month, pickedDate.day,
+                              pickedTime.hour, pickedTime.minute));
+                        }
+                      }
+                    }
                   },
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(dueDate == null ? "设置截止日期 (可选)" : "截止日期: ${DateFormat('yyyy-MM-dd').format(dueDate!)}"),
+                  title: Text(dueDate == null ? "设置截止时间 (可选)" : "截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}"),
                   trailing: const Icon(Icons.event, size: 20),
                   onTap: () async {
-                    final picked = await showDatePicker(
+                    final pickedDate = await showDatePicker(
                         context: context,
                         firstDate: DateTime(2000),
                         lastDate: DateTime(2100),
                         initialDate: dueDate ?? createdAt
                     );
-                    if (picked != null) setDialogState(() => dueDate = picked);
+                    if (pickedDate != null) {
+                      if (isAllDay) {
+                        setDialogState(() => dueDate = DateTime(
+                            pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
+                      } else {
+                        if (!context.mounted) return;
+                        final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(dueDate ?? DateTime.now()),
+                        );
+                        if (pickedTime != null) {
+                          setDialogState(() => dueDate = DateTime(
+                              pickedDate.year, pickedDate.month, pickedDate.day,
+                              pickedTime.hour, pickedTime.minute));
+                        }
+                      }
+                    }
                   },
                 ),
                 const Divider(),
@@ -728,7 +822,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
   }
 
-  // 渲染顶部学期进度条
   Widget _buildSemesterProgressBar(bool isLight) {
     if (!_semesterEnabled || _semesterStart == null || _semesterEnd == null) return const SizedBox.shrink();
 
@@ -822,7 +915,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                     builder: (context, constraints) {
                       final bool isTablet = constraints.maxWidth >= 800;
 
-                      // --- 课程模块 ---
                       Widget courseSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -835,7 +927,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         ],
                       );
 
-                      // --- 重要日板块 (增加了进入历史页面的按钮) ---
                       Widget countdownSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -856,7 +947,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         ],
                       );
 
-                      // --- 待办清单板块 (增加了进入历史页面的按钮) ---
                       Widget todoSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -923,20 +1013,18 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         'math': mathSection,
                       };
 
-                      // 解析无课时的行为逻辑
                       bool hasNoCourse = (_dashboardCourseData['courses'] == null || (_dashboardCourseData['courses'] as List).isEmpty);
                       List<String> currentOrder = List.from(_sectionOrder);
 
                       if (hasNoCourse) {
                         if (_noCourseBehavior == 'hide') {
-                          currentOrder.remove('courses'); // 隐藏
+                          currentOrder.remove('courses');
                         } else if (_noCourseBehavior == 'bottom') {
                           if (currentOrder.contains('courses')) {
                             currentOrder.remove('courses');
-                            currentOrder.add('courses'); // 移到最后
+                            currentOrder.add('courses');
                           }
                         }
-                        // 如果是 keep，则什么都不做，保持原顺序
                       }
 
                       List<Widget> visibleSections = currentOrder
@@ -1026,7 +1114,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         IconButton(
           icon: Icon(Icons.calendar_month, color: isLight ? Colors.white : null),
           onPressed: () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const WeeklyCourseScreen()));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => WeeklyCourseScreen(username: widget.username)));
           },
         ),
         IconButton(
@@ -1131,8 +1219,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     String dateStr = "";
 
     if (todo.dueDate != null) {
-      String dueDateStr = DateFormat('MM-dd').format(todo.dueDate!);
-      String createDateStr = DateFormat('MM-dd').format(todo.createdAt);
+      String dueDateStr = DateFormat('MM-dd HH:mm').format(todo.dueDate!);
+      String createDateStr = DateFormat('MM-dd HH:mm').format(todo.createdAt);
 
       if (isFuture) {
         DateTime now = DateTime.now();
@@ -1146,7 +1234,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         dateStr = "$createDateStr 至 $dueDateStr (今天截止)";
       }
     } else {
-      dateStr = "创建于 ${DateFormat('MM-dd HH:mm').format(todo.createdAt)}";
+      dateStr = "开始于 ${DateFormat('MM-dd HH:mm').format(todo.createdAt)}";
     }
 
     Color subColor = todo.isDone
@@ -1163,15 +1251,15 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
     if (todo.dueDate != null) {
       start = todo.createdAt;
-      end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
+      end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, todo.dueDate!.hour, todo.dueDate!.minute, 59);
     } else {
-      start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
+      start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, todo.createdAt.hour, todo.createdAt.minute);
       end = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, 23, 59, 59);
     }
 
     bool isSameDay = start.year == end.year && start.month == end.month && start.day == end.day;
 
-    if (isSameDay && now.isBefore(DateTime(start.year, start.month, start.day))) {
+    if (isSameDay && now.isBefore(start)) {
       progress = 0.0;
     } else {
       int totalMinutes = end.difference(start).inMinutes;
@@ -1264,7 +1352,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     DateTime today = DateTime(now.year, now.month, now.day);
 
     for (var t in _todos) {
-      if (_isHistoricalTodo(t)) continue; // 跳过渲染已经是历史（过期并完成）的待办
+      if (_isHistoricalTodo(t)) continue;
 
       if (t.dueDate != null) {
         DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
@@ -1407,15 +1495,15 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
         if (todo.dueDate != null) {
           start = todo.createdAt;
-          end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, 23, 59, 59);
+          end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, todo.dueDate!.hour, todo.dueDate!.minute, 59);
         } else {
-          start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day);
+          start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, todo.createdAt.hour, todo.createdAt.minute);
           end = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, 23, 59, 59);
         }
 
         bool isSameDay = start.year == end.year && start.month == end.month && start.day == end.day;
 
-        if (isSameDay && now.isBefore(DateTime(start.year, start.month, start.day))) {
+        if (isSameDay && now.isBefore(start)) {
           return 0.0;
         }
 
