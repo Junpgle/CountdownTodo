@@ -830,9 +830,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                             title: _dashboardCourseData['title'],
                             icon: Icons.class_outlined,
                             isLight: isLight,
-                            onAdd: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => const WeeklyCourseScreen()));
-                            },
                           ),
                           _buildCourseCard(isLight),
                         ],
@@ -1026,6 +1023,12 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         ],
       ),
       actions: [
+        IconButton(
+          icon: Icon(Icons.calendar_month, color: isLight ? Colors.white : null),
+          onPressed: () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const WeeklyCourseScreen()));
+          },
+        ),
         IconButton(
             icon: _isSyncing
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
