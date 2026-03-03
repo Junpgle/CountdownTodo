@@ -317,12 +317,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val timeStr = args["timeStr"] as? String ?: ""
         val teacher = args["teacher"] as? String ?: ""
 
-        val title = "即将上课: $courseName"
-        val text = "$timeStr | $teacher"
-        val subText = "教室: $room"
-        val color = 0xFF00ACC1.toInt() // 青色
+        // 小岛左侧标题：课程名称；小岛右侧内容/胶囊短文本：教室
+        val title = courseName
+        val text = "$timeStr | $teacher | $room"
+        val subText = "🔔上课提醒"
+        val color = 0xFF00ACC1.toInt()
 
-        // 标记为非待办，并传入短文本（教室位置）
         buildAndNotify(
             title = title,
             text = text,
@@ -333,7 +333,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             currentStep = 0,
             totalSteps = 0,
             isTodo = false,
-            shortText = room
+            shortText = room, // 这个会被映射到胶囊和锁屏的关键短文本
+            iconResId = R.drawable.play_lesson // 新增：指定课程专属图标
         )
     }
 
@@ -425,7 +426,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         currentStep: Int,
         totalSteps: Int,
         isTodo: Boolean = false,
-        shortText: String? = null
+        shortText: String? = null,
+        iconResId: Int = R.drawable.ic_notification // 新增：图标资源参数，默认使用旧图标
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
@@ -440,7 +442,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 🚀 构建基础的 NotificationCompat.Builder
         // ==========================================
         val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(iconResId) // 使用传入的图标
             .setLargeIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
             .setContentTitle(title)
             .setContentText(text)
@@ -509,10 +511,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     }
 
                     // 5. 设置 Tracker 图标 - 强行给图标上色
-                    val trackerIconRes = if (isOngoing) R.drawable.ic_notification else R.drawable.ic_done
-                    val trackerIcon = IconCompat.createWithResource(this, trackerIconRes)
-                    trackerIcon.setTint(color)
-                    progressStyle.setProgressTrackerIcon(trackerIcon)
+                    val trackerIconRes = if (isOngoing) R.drawable.ic_done else 0 // 或者其他默认图标
+                    if (trackerIconRes != 0) {
+                        val trackerIcon = IconCompat.createWithResource(this, trackerIconRes)
+                        trackerIcon.setTint(color)
+                        progressStyle.setProgressTrackerIcon(trackerIcon)
+                    }
 
                     // 6. 将样式应用到 Builder
                     val currentPercent = if (totalSteps > 0) (currentStep * 100) / totalSteps else 0
@@ -561,7 +565,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 val hyperBuilder = HyperIslandNotification.Builder(this, "math_quiz_biz", title)
                     .setSmallWindowTarget(MainActivity::class.java.name)
 
-                val islandIcon = HyperPicture("island_icon", this, R.drawable.ic_notification)
+                // 🌟 更新：在这里也使用了传入的 iconResId
+                val islandIcon = HyperPicture("island_icon", this, iconResId)
                 hyperBuilder.addPicture(islandIcon)
 
                 hyperBuilder.setBaseInfo(
