@@ -20,6 +20,26 @@ class NotificationService {
     await flutterLocalNotificationsPlugin.initialize(settings: initializationSettings);
   }
 
+  // --- 课程 (Course) 实时通知逻辑 ---
+  static Future<void> showCourseLiveActivity({
+    required String courseName,
+    required String room,
+    required String timeStr,
+    required String teacher,
+  }) async {
+    try {
+      await _channel.invokeMethod('showOngoingNotification', {
+        'type': 'course',
+        'courseName': courseName,
+        'room': room,
+        'timeStr': timeStr,
+        'teacher': teacher,
+      });
+    } catch (e) {
+      print("更新课程通知失败: $e");
+    }
+  }
+
   // --- 测验 (Quiz) 通知逻辑 ---
 
   static Future<void> updateQuizNotification({

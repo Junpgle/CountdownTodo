@@ -2,8 +2,10 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.app.*
 import android.app.usage.UsageStatsManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.drawable.Icon
@@ -13,23 +15,18 @@ import android.os.Process
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
+import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.IconCompat
+import es.antonborri.home_widget.HomeWidgetPlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.*
-import android.graphics.Color
-import androidx.core.app.NotificationCompat
-import androidx.core.graphics.drawable.IconCompat
-import es.antonborri.home_widget.HomeWidgetPlugin
 
 // 导入 HyperIsland Kit 的核心类
+import io.github.d4viddf.hyperisland_kit.HyperAction
 import io.github.d4viddf.hyperisland_kit.HyperIslandNotification
 import io.github.d4viddf.hyperisland_kit.HyperPicture
-
-// 修正：HyperAction 和 HyperPicture 一样，在根目录下
-import io.github.d4viddf.hyperisland_kit.HyperAction
-import android.content.BroadcastReceiver
-import android.content.IntentFilter
 
 // 导入 Shizuku 核心类
 import rikka.shizuku.Shizuku
@@ -58,6 +55,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         HomeWidgetPlugin.getData(this)
+
         // 注册 Shizuku 权限请求与生命周期监听器
         Shizuku.addRequestPermissionResultListener(this)
         Shizuku.addBinderReceivedListener(this)
@@ -121,9 +119,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
                         val type = args["type"] as? String
-                        if (type == "quiz") updateQuizNotification(args) else updateTodoNotification(
-                            args
-                        )
+                        when (type) {
+                            "quiz" -> updateQuizNotification(args)
+                            "course" -> updateCourseNotification(args)
+                            else -> updateTodoNotification(args)
+                        }
                         result.success(null)
                     } else result.error("INVALID_ARGS", "Arguments were null", null)
                 }
@@ -133,6 +133,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     nm.cancel(NOTIFICATION_ID)
                     result.success(null)
                 }
+
                 // 让 Flutter 端可以请求 Shizuku 授权
                 "requestShizukuPermission" -> {
                     if (Shizuku.pingBinder()) {
@@ -147,17 +148,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         result.success(false) // Shizuku 服务未运行或包可见性限制
                     }
                 }
+
                 // 处理 Flutter 的检测请求
                 "checkIslandSupport" -> {
                     try {
-                        // 直接调用 HyperIslandNotification 检查是否支持
                         val isSupported = HyperIslandNotification.isSupported(this@MainActivity)
                         result.success(isSupported)
                     } catch (e: Exception) {
                         result.success(false)
                     }
                 }
-                // === 新增：检查 Android 16 实时通知权限 ===
+
+                // 检查 Android 16 实时通知权限
                 "checkLiveUpdatesPermission" -> {
                     if (Build.VERSION.SDK_INT >= 36) {
                         try {
@@ -171,7 +173,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         result.success(true) // 旧版本默认 true
                     }
                 }
-                // === 新增：跳转 Android 16 实时通知设置页 ===
+
+                // 跳转 Android 16 实时通知设置页
                 "openLiveUpdatesSettings" -> {
                     if (Build.VERSION.SDK_INT >= 36) {
                         try {
@@ -199,6 +202,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "checkUsagePermission" -> result.success(hasUsageStatsPermission())
+
                 "openUsageSettings" -> {
                     val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -306,6 +310,33 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
     }
 
+    private fun updateCourseNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val courseName = args["courseName"] as? String ?: "未知课程"
+        val room = args["room"] as? String ?: "未知教室"
+        val timeStr = args["timeStr"] as? String ?: ""
+        val teacher = args["teacher"] as? String ?: ""
+
+        val title = "即将上课: $courseName"
+        val text = "$timeStr | $teacher"
+        val subText = "教室: $room"
+        val color = 0xFF00ACC1.toInt() // 青色
+
+        // 标记为非待办，并传入短文本（教室位置）
+        buildAndNotify(
+            title = title,
+            text = text,
+            subText = subText,
+            progress = 0,
+            isOngoing = true,
+            color = color,
+            currentStep = 0,
+            totalSteps = 0,
+            isTodo = false,
+            shortText = room
+        )
+    }
+
     private fun updateQuizNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val currentIndex = (args["currentIndex"] as? Number)?.toInt() ?: 0
@@ -316,27 +347,33 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val progress =
             if (isOver) 100 else if (totalCount > 0) ((currentIndex) * 100) / totalCount else 0
 
-        val title: String;
-        val text: String;
-        val subText: String;
+        val title: String
+        val text: String
+        val subText: String
         val color: Int
+
         if (isOver) {
-            title = "Quiz Finished! \uD83C\uDFC6"; text =
-                "Final Score: $score / ${totalCount * 10}"; subText = "Completed"; color =
-                0xFFF4B400.toInt()
+            title = "Quiz Finished! \uD83C\uDFC6"
+            text = "Final Score: $score / ${totalCount * 10}"
+            subText = "Completed"
+            color = 0xFFF4B400.toInt()
         } else {
-            title = "Question ${currentIndex + 1} of $totalCount"; text = questionText; subText =
-                "Math Quiz"; color = 0xFF673AB7.toInt()
+            title = "Question ${currentIndex + 1} of $totalCount"
+            text = questionText
+            subText = "Math Quiz"
+            color = 0xFF673AB7.toInt()
         }
+
         buildAndNotify(
-            title,
-            text,
-            subText,
-            progress,
-            !isOver,
-            color,
-            if (isOver) totalCount else currentIndex + 1,
-            totalCount
+            title = title,
+            text = text,
+            subText = subText,
+            progress = progress,
+            isOngoing = !isOver,
+            color = color,
+            currentStep = if (isOver) totalCount else currentIndex + 1,
+            totalSteps = totalCount,
+            isTodo = false
         )
     }
 
@@ -349,36 +386,35 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val isAllDone = completedCount == totalCount && totalCount > 0
         val progress = if (totalCount > 0) (completedCount * 100) / totalCount else 0
 
-        val title: String;
-        val text: String;
-        val subText = "$completedCount/$totalCount Done";
+        val title: String
+        val text: String
+        val subText = "$completedCount/$totalCount Done"
         val color: Int
+
         if (isAllDone) {
-            title = "All Tasks Completed! \uD83C\uDF89"; text =
-                "Great job clearing your list."; color = 0xFF0F9D58.toInt()
+            title = "All Tasks Completed! \uD83C\uDF89"
+            text = "Great job clearing your list."
+            color = 0xFF0F9D58.toInt()
         } else {
-            title =
-                if (pendingTitles.isNotEmpty()) "Current: ${pendingTitles[0]}" else "Keep Going!"; text =
-                if (pendingTitles.size > 1) "Next: ${
-                    pendingTitles.drop(1).joinToString(", ")
-                }" else "Almost there!"; color = 0xFF4285F4.toInt()
+            title = if (pendingTitles.isNotEmpty()) "Current: ${pendingTitles[0]}" else "Keep Going!"
+            text = if (pendingTitles.size > 1) "Next: ${pendingTitles.drop(1).joinToString(", ")}" else "Almost there!"
+            color = 0xFF4285F4.toInt()
         }
 
         // 标记为待办任务，传入 isTodo = true
         buildAndNotify(
-            title,
-            text,
-            subText,
-            progress,
-            !isAllDone,
-            color,
-            completedCount,
-            totalCount,
+            title = title,
+            text = text,
+            subText = subText,
+            progress = progress,
+            isOngoing = !isAllDone,
+            color = color,
+            currentStep = completedCount,
+            totalSteps = totalCount,
             isTodo = true
         )
     }
 
-    // 增加了 isTodo = false 默认参数
     private fun buildAndNotify(
         title: String,
         text: String,
@@ -388,12 +424,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         color: Int,
         currentStep: Int,
         totalSteps: Int,
-        isTodo: Boolean = false
+        isTodo: Boolean = false,
+        shortText: String? = null
     ) {
-        val notificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val intent =
-            Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
         val pendingIntent: PendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -426,69 +461,73 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         extras.putBoolean("android.extra.requestPromotedOngoing", true)
 
         // ==========================================
-        // 🚀 构建完全对齐官方的 ProgressStyle
+        // 🚀 构建完全对齐官方的 ProgressStyle / Short Text
         // ==========================================
         var appliedProgressStyle = false
 
-        if (Build.VERSION.SDK_INT >= 34 && totalSteps > 0) {
+        if (Build.VERSION.SDK_INT >= 34) {
             try {
-                // 1. 设置极简短文本 (用于胶囊/锁屏)
-                builder.setShortCriticalText("$currentStep/$totalSteps")
-
-                // 2. 颜色配置
-                val pointColor = color
-                val segmentColor = android.graphics.Color.argb(76,
-                    android.graphics.Color.red(color),
-                    android.graphics.Color.green(color),
-                    android.graphics.Color.blue(color)
-                )
-
-                val progressStyle = NotificationCompat.ProgressStyle()
-
-                // 3. 构建分段 (Segments)
-                val segmentsList = mutableListOf<NotificationCompat.ProgressStyle.Segment>()
-                val segmentWeight = 100 / totalSteps
-                for (i in 1..totalSteps) {
-                    val w = if (i == totalSteps) 100 - (segmentWeight * (totalSteps - 1)) else segmentWeight
-                    segmentsList.add(NotificationCompat.ProgressStyle.Segment(w).setColor(segmentColor))
+                // 1. 设置极简短文本 (用于胶囊/锁屏)，优先使用传入的 shortText (例如教室信息)
+                val textToUse = shortText ?: if (totalSteps > 0) "$currentStep/$totalSteps" else null
+                if (textToUse != null) {
+                    builder.setShortCriticalText(textToUse)
                 }
-                progressStyle.setProgressSegments(segmentsList)
 
-                // 4. 构建节点 (Points)
-                val pointsList = mutableListOf<NotificationCompat.ProgressStyle.Point>()
-                for (i in 1..totalSteps) {
-                    if (i <= currentStep && isOngoing) {
-                        val p = (i * 100) / totalSteps
-                        pointsList.add(NotificationCompat.ProgressStyle.Point(p).setColor(pointColor))
-                    } else if (!isOngoing) {
-                        val p = (i * 100) / totalSteps
-                        pointsList.add(NotificationCompat.ProgressStyle.Point(p).setColor(pointColor))
+                if (totalSteps > 0) {
+                    // 2. 颜色配置
+                    val pointColor = color
+                    val segmentColor = android.graphics.Color.argb(76,
+                        android.graphics.Color.red(color),
+                        android.graphics.Color.green(color),
+                        android.graphics.Color.blue(color)
+                    )
+
+                    val progressStyle = NotificationCompat.ProgressStyle()
+
+                    // 3. 构建分段 (Segments)
+                    val segmentsList = mutableListOf<NotificationCompat.ProgressStyle.Segment>()
+                    val segmentWeight = 100 / totalSteps
+                    for (i in 1..totalSteps) {
+                        val w = if (i == totalSteps) 100 - (segmentWeight * (totalSteps - 1)) else segmentWeight
+                        segmentsList.add(NotificationCompat.ProgressStyle.Segment(w).setColor(segmentColor))
                     }
+                    progressStyle.setProgressSegments(segmentsList)
+
+                    // 4. 构建节点 (Points)
+                    val pointsList = mutableListOf<NotificationCompat.ProgressStyle.Point>()
+                    for (i in 1..totalSteps) {
+                        if (i <= currentStep && isOngoing) {
+                            val p = (i * 100) / totalSteps
+                            pointsList.add(NotificationCompat.ProgressStyle.Point(p).setColor(pointColor))
+                        } else if (!isOngoing) {
+                            val p = (i * 100) / totalSteps
+                            pointsList.add(NotificationCompat.ProgressStyle.Point(p).setColor(pointColor))
+                        }
+                    }
+                    if (pointsList.isNotEmpty()) {
+                        progressStyle.setProgressPoints(pointsList)
+                    }
+
+                    // 5. 设置 Tracker 图标 - 强行给图标上色
+                    val trackerIconRes = if (isOngoing) R.drawable.ic_notification else R.drawable.ic_done
+                    val trackerIcon = IconCompat.createWithResource(this, trackerIconRes)
+                    trackerIcon.setTint(color)
+                    progressStyle.setProgressTrackerIcon(trackerIcon)
+
+                    // 6. 将样式应用到 Builder
+                    val currentPercent = if (totalSteps > 0) (currentStep * 100) / totalSteps else 0
+                    builder.setStyle(progressStyle.setProgress(currentPercent))
+
+                    // 标记成功应用，不执行后方的基础兜底
+                    appliedProgressStyle = true
                 }
-                if (pointsList.isNotEmpty()) {
-                    progressStyle.setProgressPoints(pointsList)
-                }
-
-                // 5. 设置 Tracker 图标 - 🚨核心修复：强行给图标上色，防止因为系统背景为白色导致隐形！
-                val trackerIconRes = if (isOngoing) R.drawable.ic_notification else R.drawable.ic_done
-                val trackerIcon = IconCompat.createWithResource(this, trackerIconRes)
-                trackerIcon.setTint(color) // <--- 强行赋予主题色，绝对清晰可见！
-                progressStyle.setProgressTrackerIcon(trackerIcon)
-
-                // 6. 将样式应用到 Builder，并且 **只在这里** 调用 setProgress
-                val currentPercent = if (totalSteps > 0) (currentStep * 100) / totalSteps else 0
-                builder.setStyle(progressStyle.setProgress(currentPercent))
-
-                // 标记成功应用，不执行后方的基础兜底
-                appliedProgressStyle = true
-
             } catch (e: Exception) {
                 Log.e(TAG, "Apply ProgressStyle Failed", e)
             }
         }
 
-        // ❌ 兜底进度条渲染：不让它干扰 Live Updates
-        if (!appliedProgressStyle) {
+        // ❌ 兜底进度条渲染
+        if (!appliedProgressStyle && totalSteps > 0) {
             val fallbackProgress = if (totalSteps > 0) (currentStep * 100) / totalSteps else 0
             builder.setProgress(100, fallbackProgress, false)
         }
@@ -513,7 +552,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             ).build()
             builder.addAction(nativeAction)
         }
-        // ==========================================
 
         // ==========================================
         //  小米 HyperOS 超级岛 (Dynamic Island) 适配
@@ -528,7 +566,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
                 hyperBuilder.setBaseInfo(
                     title = title,
-                    content = text,
+                    content = shortText ?: text, // 优先显示短文本（比如教室信息）
                     pictureKey = "island_icon"
                 )
 

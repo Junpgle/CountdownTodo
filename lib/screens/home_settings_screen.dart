@@ -17,10 +17,13 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import 'login_screen.dart';
 
-// 引入课程数据服务来处理 JSON 导入
+// 引入课程数据服务来处理 JSON 导入和通知测试
 import '../services/course_service.dart';
+import 'historical_countdowns_screen.dart';
+import 'historical_todos_screen.dart';
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
@@ -49,6 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _userId;
   int _syncInterval = 0;
   String _themeMode = 'system';
+  String _noCourseBehavior = 'keep'; // 'keep', 'bottom', 'hide'
 
   // 学期进度状态
   bool _semesterEnabled = false;
@@ -110,6 +114,8 @@ class _SettingsPageState extends State<SettingsPage> {
     DateTime? sStart = await StorageService.getSemesterStart();
     DateTime? sEnd = await StorageService.getSemesterEnd();
 
+    String? noCourseBehaviorPref = prefs.getString('no_course_behavior');
+
     setState(() {
       _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? "未登录";
       _userId = prefs.getInt('current_user_id');
@@ -118,6 +124,9 @@ class _SettingsPageState extends State<SettingsPage> {
       _semesterEnabled = sEnabled;
       _semesterStart = sStart;
       _semesterEnd = sEnd;
+      if (noCourseBehaviorPref != null) {
+        _noCourseBehavior = noCourseBehaviorPref;
+      }
     });
   }
 
@@ -222,7 +231,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showHomeSectionManager() async {
     final prefs = await SharedPreferences.getInstance();
-    // 增加 courses
     List<String> order = prefs.getStringList('home_section_order') ?? ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
     Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
 
@@ -303,60 +311,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _showHistoricalCountdowns() async {
-    final countdowns = await StorageService.getCountdowns(_username);
-    List<CountdownItem> history = countdowns.where((item) {
-      return item.targetDate.difference(DateTime.now()).inDays + 1 < 0;
-    }).toList();
-
-    if (!mounted) return;
-
-    showDialog(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-            builder: (context, setDialogState) {
-              return AlertDialog(
-                title: const Text("历史倒计时"),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  height: 350,
-                  child: history.isEmpty
-                      ? const Center(child: Text("暂无已过期的历史记录", style: TextStyle(color: Colors.grey)))
-                      : ListView.builder(
-                      itemCount: history.length,
-                      itemBuilder: (context, index) {
-                        final item = history[index];
-                        final diff = (item.targetDate.difference(DateTime.now()).inDays + 1).abs();
-
-                        return Card(
-                          elevation: 0,
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          child: ListTile(
-                            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text("目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}  (已过 $diff 天)"),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                              onPressed: () {
-                                setDialogState(() => history.removeAt(index));
-                                countdowns.removeWhere((c) => c.title == item.title && c.targetDate == item.targetDate);
-                                StorageService.saveCountdowns(_username, countdowns);
-                              },
-                            ),
-                          ),
-                        );
-                      }
-                  ),
-                ),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("关闭"))
-                ],
-              );
-            }
-        )
-    );
-  }
-
   Future<void> _checkAndOpenLiveUpdates() async {
     try {
       final bool hasPermission = await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
@@ -407,6 +361,41 @@ class _SettingsPageState extends State<SettingsPage> {
       });
     } on PlatformException catch (e) {
       setState(() => _shizukuStatus = "请求失败: '${e.message}'.");
+    }
+  }
+
+  // 核心优化逻辑：测试实时通知
+  Future<void> _testCourseNotification() async {
+    // 1. 尝试从主页逻辑获取（今日/明日课程）
+    final dashboardData = await CourseService.getDashboardCourses();
+    List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
+
+    CourseItem? testCourse;
+    if (courses.isNotEmpty) {
+      testCourse = courses.first;
+    } else {
+      // 2. 如果主页此时没课，调取全量数据库里的任意课程
+      final allCourses = await CourseService.getAllCourses();
+      if (allCourses.isNotEmpty) {
+        testCourse = allCourses.first;
+      }
+    }
+
+    if (testCourse != null) {
+      NotificationService.showCourseLiveActivity(
+        courseName: testCourse.courseName,
+        room: testCourse.roomName,
+        timeStr: '${testCourse.formattedStartTime} - ${testCourse.formattedEndTime}',
+        teacher: testCourse.teacherName,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 已发送测试实时通知，请查看状态栏')));
+      }
+    } else {
+      // 3. 只有彻底没导入过 JSON 才会提示失败
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 尚未导入课程 JSON，请先在“课程设置”中导入')));
+      }
     }
   }
 
@@ -468,7 +457,7 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // 1. 账户管理
+          // --- 1. 账户管理 ---
           _buildSection('账户管理', [
             ListTile(
               leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primaryContainer, child: const Icon(Icons.person)),
@@ -479,27 +468,12 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ]),
 
-          // 2. 偏好与数据设置
-          _buildSection('偏好设置', [
-            ListTile(
-              leading: const Icon(Icons.dashboard_customize_outlined),
-              title: const Text('首页模块管理'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _showHomeSectionManager,
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('历史倒计时'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _showHistoricalCountdowns,
-            ),
-            const Divider(height: 1, indent: 56),
-
-            // 新增导入 JSON 课表功能
+          // --- 2. 课程设置 ---
+          _buildSection('课程设置', [
             ListTile(
               leading: const Icon(Icons.file_upload_outlined),
               title: const Text('导入课表 (JSON)'),
+              subtitle: const Text('支持 聚在工大 课程数据格式导入'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {
                 FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -520,12 +494,32 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
             const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: const Icon(Icons.layers_clear_outlined),
+              title: const Text('无课时板块行为'),
+              trailing: DropdownButton<String>(
+                value: _noCourseBehavior,
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(value: 'keep', child: Text('保持位置')),
+                  DropdownMenuItem(value: 'bottom', child: Text('排到最后')),
+                  DropdownMenuItem(value: 'hide', child: Text('自动隐藏')),
+                ],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _noCourseBehavior = val);
+                    SharedPreferences.getInstance().then((prefs) => prefs.setString('no_course_behavior', val));
+                  }
+                },
+              ),
+            ),
+          ]),
 
-            // 学期进度设置项
+          // --- 3. 学期设置 ---
+          _buildSection('学期设置', [
             SwitchListTile(
               secondary: const Icon(Icons.linear_scale),
-              title: const Text('显示学期进度条'),
-              subtitle: const Text('在首页顶部显示距离放假的时间进度'),
+              title: const Text('首页学期进度条'),
               value: _semesterEnabled,
               onChanged: (val) {
                 setState(() => _semesterEnabled = val);
@@ -546,10 +540,20 @@ class _SettingsPageState extends State<SettingsPage> {
                 onTap: () => _pickSemesterDate(false),
               ),
             ],
+          ]),
+
+          // --- 4. 偏好与通用 ---
+          _buildSection('偏好设置', [
+            ListTile(
+              leading: const Icon(Icons.dashboard_customize_outlined),
+              title: const Text('首页模块管理'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showHomeSectionManager,
+            ),
             const Divider(height: 1, indent: 56),
             ListTile(
               leading: const Icon(Icons.sync),
-              title: const Text('自动同步数据'),
+              title: const Text('自动同步频率'),
               trailing: DropdownButton<int>(
                 value: _syncInterval,
                 underline: const SizedBox(),
@@ -557,7 +561,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   DropdownMenuItem(value: 5, child: Text('每 5 分钟')),
                   DropdownMenuItem(value: 10, child: Text('每 10 分钟')),
                   DropdownMenuItem(value: 60, child: Text('每小时')),
-                  DropdownMenuItem(value: 0, child: Text('每次打开App')),
+                  DropdownMenuItem(value: 0, child: Text('每次启动')),
                 ],
                 onChanged: (val) {
                   if (val != null) {
@@ -570,14 +574,14 @@ class _SettingsPageState extends State<SettingsPage> {
             const Divider(height: 1, indent: 56),
             ListTile(
               leading: const Icon(Icons.palette_outlined),
-              title: const Text('外观主题'),
+              title: const Text('深色模式/主题'),
               trailing: DropdownButton<String>(
                 value: _themeMode,
                 underline: const SizedBox(),
                 items: const [
                   DropdownMenuItem(value: 'system', child: Text('跟随系统')),
-                  DropdownMenuItem(value: 'light', child: Text('浅色模式')),
-                  DropdownMenuItem(value: 'dark', child: Text('深色模式')),
+                  DropdownMenuItem(value: 'light', child: Text('浅色')),
+                  DropdownMenuItem(value: 'dark', child: Text('深色')),
                 ],
                 onChanged: (val) {
                   if (val != null) {
@@ -593,8 +597,21 @@ class _SettingsPageState extends State<SettingsPage> {
           // 3. 高级设置
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-            child: Text('高级设置 (用于超级岛通知)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            child: Text('高级设置', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
           ),
+
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                leading: const Icon(Icons.notification_important_outlined, color: Colors.amber),
+                title: const Text('测试课程实时通知'),
+                subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
+                trailing: TextButton(onPressed: _testCourseNotification, child: const Text("发送测试")),
+              ),
+          ),
+          const SizedBox(height: 12),
 
           Card(
             elevation: 2,
@@ -636,30 +653,11 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 12),
 
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.adb, color: Colors.white)),
-              title: const Text('Shizuku 授权', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(_shizukuStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))
-              ),
-              trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                  onPressed: _requestShizukuPermission,
-                  child: const Text('授权')
-              ),
-            ),
-          ),
-
-          // 4. 系统与账户
+          // --- 7. 关于与系统 ---
           _buildSection('系统与关于', [
             ListTile(
               leading: const Icon(Icons.system_update, color: Colors.green),
-              title: const Text('检查更新'),
+              title: const Text('检查新版本'),
               trailing: _isCheckingUpdate
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.chevron_right),
@@ -668,12 +666,12 @@ class _SettingsPageState extends State<SettingsPage> {
             const Divider(height: 1, indent: 56),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.redAccent),
-              title: const Text('退出账号', style: TextStyle(color: Colors.redAccent)),
+              title: const Text('退出当前账号', style: TextStyle(color: Colors.redAccent)),
               onTap: () => _handleLogout(force: false),
             ),
           ]),
 
-          const SizedBox(height: 30),
+          const SizedBox(height: 40),
         ],
       ),
     );

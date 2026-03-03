@@ -19,10 +19,13 @@ import '../widgets/home_sections.dart';
 import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'home_settings_screen.dart';
+import 'dart:async'; // 新增引入用于定时器
 
 // 引入课程相关服务和界面
 import '../services/course_service.dart';
-import '../screens/course_screens.dart';
+import 'course_screens.dart';
+import 'historical_countdowns_screen.dart';
+import 'historical_todos_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -40,6 +43,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
   // 课程提醒相关状态
   Map<String, dynamic> _dashboardCourseData = {'title': '课程提醒', 'courses': <CourseItem>[]};
+  String _noCourseBehavior = 'keep'; // 'keep', 'bottom', 'hide'
 
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
@@ -58,7 +62,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  // 首页模块配置 (新增了 'courses')
+  // 首页模块配置
   List<String> _sectionOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
   Map<String, bool> _sectionVisibility = {
     'courses': true,
@@ -67,6 +71,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     'screenTime': true,
     'math': true,
   };
+
+  Timer? _courseTimer; // 课程提醒定时器
 
   @override
   void initState() {
@@ -102,13 +108,49 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       _checkAutoSync();
       // 启动时异步静默检查更新
       _checkUpdatesSilently();
+
+      // 启动每分钟一次的课程检查定时器
+      _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+        _checkUpcomingCourses();
+      });
     });
   }
 
   @override
   void dispose() {
+    _courseTimer?.cancel(); // 退出时取消定时器
     WidgetsBinding.instance.removeObserver(this); // 移除监听
     super.dispose();
+  }
+
+  // 检查即将到来的课程
+  Future<void> _checkUpcomingCourses() async {
+    final dashboardData = await CourseService.getDashboardCourses();
+    List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
+    if (courses.isEmpty) return;
+
+    DateTime now = DateTime.now();
+    for (var course in courses) {
+      try {
+        DateTime courseTime = DateFormat('yyyy-MM-dd HH:mm').parse('${course.date} ${course.formattedStartTime}');
+        int diffMinutes = courseTime.difference(now).inMinutes;
+
+        // 刚好提前 20 分钟时，发送实时通知
+        if (diffMinutes == 20) {
+          NotificationService.showCourseLiveActivity(
+            courseName: course.courseName,
+            room: course.roomName,
+            timeStr: '${course.formattedStartTime} - ${course.formattedEndTime}',
+            teacher: course.teacherName,
+          );
+        } else if (diffMinutes == -10) {
+          // 课程开始后 10 分钟自动取消（可以根据需求调整时间）
+          NotificationService.cancelNotification();
+        }
+      } catch (e) {
+        debugPrint("检查课程通知失败: $e");
+      }
+    }
   }
 
   Future<void> _checkUpdatesSilently() async {
@@ -156,6 +198,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         setState(() => _sectionVisibility = Map<String, bool>.from(jsonDecode(savedVisibilityStr)));
       }
     }
+    String? noCourseBehav = prefs.getString('no_course_behavior');
+    if (noCourseBehav != null && mounted) {
+      setState(() => _noCourseBehavior = noCourseBehav);
+    }
   }
 
   // 监听应用回到前台
@@ -183,6 +229,20 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       if (lastSync == null || now.difference(lastSync).inMinutes >= interval) {
         _handleManualSync(silent: true);
       }
+    }
+  }
+
+  // 待办历史状态过滤条件
+  bool _isHistoricalTodo(TodoItem t) {
+    if (!t.isDone) return false;
+    DateTime today = DateTime.now();
+    today = DateTime(today.year, today.month, today.day);
+    if (t.dueDate != null) {
+      DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+      return d.isBefore(today);
+    } else {
+      DateTime c = DateTime(t.createdAt.year, t.createdAt.month, t.createdAt.day);
+      return c.isBefore(today);
     }
   }
 
@@ -304,7 +364,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         _todos = todos;
         _mathStats = stats;
         _dashboardCourseData = courseData;
-        _isTodoExpanded = !_todos.every((t) => t.isDone);
+        _isTodoExpanded = !_todos.where((t) => !_isHistoricalTodo(t)).every((t) => t.isDone);
       });
       _syncTodoNotification();
       await WidgetService.updateTodoWidget(_todos);
@@ -778,14 +838,28 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         ],
                       );
 
+                      // --- 重要日板块 (增加了进入历史页面的按钮) ---
                       Widget countdownSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SectionHeader(title: "重要日", icon: Icons.timer, onAdd: _addCountdown, isLight: isLight),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(child: SectionHeader(title: "重要日", icon: Icons.timer, onAdd: _addCountdown, isLight: isLight)),
+                              IconButton(
+                                icon: Icon(Icons.history, color: isLight ? Colors.white70 : Colors.grey),
+                                onPressed: () async {
+                                  await Navigator.push(context, MaterialPageRoute(builder: (_) => HistoricalCountdownsScreen(username: widget.username)));
+                                  _loadAllData();
+                                },
+                              ),
+                            ],
+                          ),
                           _buildCountdownList(isLight),
                         ],
                       );
 
+                      // --- 待办清单板块 (增加了进入历史页面的按钮) ---
                       Widget todoSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -793,10 +867,22 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(child: SectionHeader(title: "待办清单", icon: Icons.check_circle_outline, onAdd: _addTodo, isLight: isLight)),
-                              IconButton(
-                                  icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: isLight ? Colors.white70 : null),
-                                  onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded)
-                              )
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                      icon: Icon(Icons.history, color: isLight ? Colors.white70 : Colors.grey),
+                                      onPressed: () async {
+                                        await Navigator.push(context, MaterialPageRoute(builder: (_) => HistoricalTodosScreen(username: widget.username)));
+                                        _loadAllData();
+                                      }
+                                  ),
+                                  IconButton(
+                                      icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: isLight ? Colors.white70 : Colors.grey),
+                                      onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded)
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                           _buildTodoList(isLight),
@@ -832,7 +918,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         ],
                       );
 
-                      // 映射板块标识和 Widget
                       Map<String, Widget> sectionsMap = {
                         'courses': courseSection,
                         'countdowns': countdownSection,
@@ -841,13 +926,28 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         'math': mathSection,
                       };
 
-                      List<Widget> visibleSections = _sectionOrder
-                          .where((key) => _sectionVisibility[key] == true)
+                      // 解析无课时的行为逻辑
+                      bool hasNoCourse = (_dashboardCourseData['courses'] == null || (_dashboardCourseData['courses'] as List).isEmpty);
+                      List<String> currentOrder = List.from(_sectionOrder);
+
+                      if (hasNoCourse) {
+                        if (_noCourseBehavior == 'hide') {
+                          currentOrder.remove('courses'); // 隐藏
+                        } else if (_noCourseBehavior == 'bottom') {
+                          if (currentOrder.contains('courses')) {
+                            currentOrder.remove('courses');
+                            currentOrder.add('courses'); // 移到最后
+                          }
+                        }
+                        // 如果是 keep，则什么都不做，保持原顺序
+                      }
+
+                      List<Widget> visibleSections = currentOrder
+                          .where((key) => _sectionVisibility[key] == true && sectionsMap.containsKey(key))
                           .map((key) => Padding(
                         padding: const EdgeInsets.only(bottom: 24.0),
-                        child: sectionsMap[key] ?? const SizedBox(),
-                      ))
-                          .toList();
+                        child: sectionsMap[key]!,
+                      )).toList();
 
                       int mid = (visibleSections.length / 2).ceil();
                       List<Widget> leftCol = visibleSections.sublist(0, mid);
@@ -1151,7 +1251,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   }
 
   Widget _buildTodoList(bool isLight) {
-    if (_todos.isEmpty) return EmptyState(text: "暂无待办", isLight: isLight);
+    if (_todos.where((t) => !_isHistoricalTodo(t)).isEmpty) return EmptyState(text: "暂无待办", isLight: isLight);
 
     List<TodoItem> pastTodos = [];
     List<TodoItem> todayTodos = [];
@@ -1161,6 +1261,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     DateTime today = DateTime(now.year, now.month, now.day);
 
     for (var t in _todos) {
+      if (_isHistoricalTodo(t)) continue; // 跳过渲染已经是历史（过期并完成）的待办
+
       if (t.dueDate != null) {
         DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
         if (d.isBefore(today)) {
@@ -1235,6 +1337,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 List<int> todayIndices = [];
                 for (int i = 0; i < _todos.length; i++) {
                   final t = _todos[i];
+                  if (_isHistoricalTodo(t)) continue;
+
                   if (t.dueDate != null) {
                     DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
                     if (!d.isBefore(today) && !d.isAfter(today)) {
