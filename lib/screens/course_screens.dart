@@ -170,16 +170,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   }
 
   int getStartPeriod(int startTime) {
-    if (startTime <= 800) return 1;
-    if (startTime <= 900) return 2;
-    if (startTime <= 1010) return 3;
-    if (startTime <= 1110) return 4;
-    if (startTime <= 1400) return 5;
-    if (startTime <= 1500) return 6;
-    if (startTime <= 1600) return 7;
-    if (startTime <= 1700) return 8;
-    if (startTime <= 1900) return 9;
-    if (startTime <= 2000) return 10;
+    if (startTime <= 850) return 1;
+    if (startTime <= 950) return 2;
+    if (startTime <= 1100) return 3;
+    if (startTime <= 1200) return 4;
+    if (startTime <= 1450) return 5;
+    if (startTime <= 1550) return 6;
+    if (startTime <= 1650) return 7;
+    if (startTime <= 1750) return 8;
+    if (startTime <= 1950) return 9;
+    if (startTime <= 2050) return 10;
     return 11;
   }
 
