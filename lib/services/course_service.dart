@@ -1,6 +1,9 @@
-import 'dart:convert';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+
+// 引入刚才提取出来的解析器
+import 'hfut_schedule_parser.dart';
 
 class CourseItem {
   final String courseName;
@@ -33,8 +36,13 @@ class CourseItem {
 class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
 
-  // 导入并保存JSON
+  // 1. 从字符串导入课表 (基础逻辑)
   static Future<bool> importScheduleFromJson(String jsonString) async {
+    // 调用提取的 parser 进行校验
+    if (!HfutScheduleParser.isValid(jsonString)) {
+      return false;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_keyCourseData, jsonString);
@@ -44,59 +52,28 @@ class CourseService {
     }
   }
 
-  // 获取所有解析后的课程
+  // 2. 从文件路径导入课表 (供外部 App 唤起时调用)
+  static Future<bool> importScheduleFromFile(String filePath) async {
+    try {
+      File file = File(filePath);
+      String jsonString = await file.readAsString();
+      return await importScheduleFromJson(jsonString);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 3. 获取所有解析后的课程对象
   static Future<List<CourseItem>> getAllCourses() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonStr = prefs.getString(_keyCourseData);
     if (jsonStr == null || jsonStr.isEmpty) return [];
 
-    try {
-      final data = jsonDecode(jsonStr);
-      final result = data['result'];
-      if (result == null) return [];
-
-      final lessonList = result['lessonList'] as List;
-      final scheduleList = result['scheduleList'] as List;
-
-      // 建立 lessonId 到 lesson 详情的映射，方便快速查找课程名
-      Map<int, dynamic> lessonMap = {
-        for (var item in lessonList) item['id']: item
-      };
-
-      List<CourseItem> courses = [];
-      for (var schedule in scheduleList) {
-        final lessonId = schedule['lessonId'];
-        final lessonInfo = lessonMap[lessonId];
-
-        if (lessonInfo != null) {
-          courses.add(CourseItem(
-            courseName: lessonInfo['courseName']?.toString().trim() ?? '未知课程',
-            teacherName: schedule['personName'] ?? '未知教师',
-            date: schedule['date'],
-            weekday: schedule['weekday'],
-            startTime: schedule['startTime'],
-            endTime: schedule['endTime'],
-            weekIndex: schedule['weekIndex'],
-            roomName: schedule['room']['nameZh'] ?? '未知教室',
-            lessonType: schedule['lessonType'],
-          ));
-        }
-      }
-
-      // 按日期和开始时间排序
-      courses.sort((a, b) {
-        int dateCmp = a.date.compareTo(b.date);
-        if (dateCmp != 0) return dateCmp;
-        return a.startTime.compareTo(b.startTime);
-      });
-
-      return courses;
-    } catch (e) {
-      return [];
-    }
+    // 直接委托给 Parser 进行解析，业务层不再堆积 JSON 提取逻辑
+    return HfutScheduleParser.parse(jsonStr);
   }
 
-  // 获取主页显示的课程（今天或明天）
+  // 4. 获取主页今日/明日需要显示的课程
   static Future<Map<String, dynamic>> getDashboardCourses() async {
     final courses = await getAllCourses();
     if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
@@ -136,13 +113,13 @@ class CourseService {
     return {'title': '近期无课', 'courses': <CourseItem>[]};
   }
 
-  // 获取指定周的课程
+  // 5. 按周获取课程
   static Future<List<CourseItem>> getCoursesByWeek(int weekIndex) async {
     final courses = await getAllCourses();
     return courses.where((c) => c.weekIndex == weekIndex).toList();
   }
 
-  // 获取所有周数（用于二级界面切换）
+  // 6. 获取包含课程的所有周数列表
   static Future<List<int>> getAvailableWeeks() async {
     final courses = await getAllCourses();
     final weeks = courses.map((c) => c.weekIndex).toSet().toList();

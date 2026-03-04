@@ -26,6 +26,7 @@ import '../services/course_service.dart';
 import 'course_screens.dart';
 import 'historical_countdowns_screen.dart';
 import 'historical_todos_screen.dart';
+import '../services/external_share_handler.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -101,6 +102,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         if (mounted) StorageService.syncAppMappings();
       });
 
+      // 🚀 新增：启动外部文件分享监听，传入上下文和刷新 UI 的回调函数
+      ExternalShareHandler.init(context, () {
+        _loadAllData(); // 核心：解析成功后立刻重新加载主页数据！
+      });
+
       _checkAutoSync();
       _checkUpdatesSilently();
 
@@ -112,6 +118,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
   @override
   void dispose() {
+    ExternalShareHandler.dispose();
+
     _courseTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();

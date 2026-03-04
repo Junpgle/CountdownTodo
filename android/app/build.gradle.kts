@@ -11,18 +11,13 @@ android {
 
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        isCoreLibraryDesugaringEnabled = true
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
         applicationId = "com.math_quiz.junpgle.com.math_quiz_app"
-        // 【关键修改】将 flutter.minSdkVersion 改为 26，以满足 hyperisland_kit 0.4.3 的最低要求
         minSdk = 26
         targetSdk = 36 // 确保目标 SDK 为 36
         versionCode = flutter.versionCode
@@ -33,6 +28,12 @@ android {
         release {
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
@@ -48,4 +49,10 @@ dependencies {
     implementation("io.github.d4viddf:hyperisland_kit:0.4.3")
     implementation("dev.rikka.shizuku:api:13.1.5") // 添加 Shizuku 依赖
     implementation("dev.rikka.shizuku:provider:13.1.5")
+}
+
+android {
+    buildFeatures {
+        buildConfig = true
+    }
 }
