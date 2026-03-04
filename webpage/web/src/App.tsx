@@ -15,7 +15,8 @@ import {
   PieChart,
   Activity,
   Tablet as TabletIcon,
-  BellRing
+  BellRing,
+  CalendarDays
 } from 'lucide-react';
 
 // --- 类型定义 ---
@@ -107,9 +108,9 @@ const Navbar = () => {
     { name: '核心特性', href: '#features' },
     { name: '桌面端', href: '#desktop' },
     { name: '移动端', href: '#mobile' },
+    { name: '日历课表', href: '#timetable' },
     { name: '灵动通知', href: '#liveupdates' },
     { name: '屏幕时间', href: '#screentime' },
-    { name: '数据看板', href: '#analytics' },
   ];
 
   return (
@@ -222,10 +223,8 @@ const WindowsShowcase = () => (
       <div className="flex justify-center relative group w-full max-w-[900px] mx-auto pb-20 px-2 sm:px-6">
         <div className="absolute -inset-20 bg-blue-500/10 blur-[120px] rounded-full pointer-events-none"></div>
 
-        {/* 6.jpg 作为主显示器 */}
         <MonitorFrame src="./6.jpg" className="transition-transform duration-700 group-hover:scale-[1.01]" />
 
-        {/* 1.jpg 作为桌面悬浮小部件，使用基于外层的百分比宽度 */}
         <div className="absolute top-1/4 -left-2 sm:-left-12 z-30 transform -rotate-3 hover:rotate-0 hover:scale-105 transition-all duration-500 w-[40%] max-w-[320px]">
            <div className="bg-slate-800 p-2 md:p-3 rounded-[1.2rem] md:rounded-[2.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] border border-white/10 overflow-hidden">
               <div className="flex items-center gap-1.5 px-3 py-1.5 md:py-3 border-b border-white/5 bg-white/5 mb-1 rounded-t-xl md:rounded-t-3xl">
@@ -259,7 +258,6 @@ const AndroidShowcase = () => (
   <section id="mobile" className="py-24 sm:py-40 bg-white overflow-hidden text-center">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16 text-left">
-        {/* 左侧文字区 */}
         <div className="lg:w-5/12 w-full pr-0 lg:pr-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-xs font-bold uppercase mb-6 sm:mb-8">
             <TabletIcon className="w-4 h-4" /> Cross-Device Mobile
@@ -288,7 +286,6 @@ const AndroidShowcase = () => (
           </div>
         </div>
 
-        {/* 右侧展示区 */}
         <div className="lg:w-7/12 w-full flex items-center justify-center relative mt-16 lg:mt-0">
           <div className="relative z-20 w-[40%] sm:w-[35%] max-w-[260px] transform -rotate-2 hover:rotate-0 transition-all duration-500">
              <MobileFrame src="./2.jpg" />
@@ -310,15 +307,104 @@ const AndroidShowcase = () => (
   </section>
 );
 
+// --- 子组件: 课表与日历展示 (8.jpg, 9.jpg, 10.mp4) ---
+const TimetableShowcase = () => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+
+    useEffect(() => {
+      if (videoRef.current) {
+        videoRef.current.play().catch(e => console.log("Auto-play prevented.", e));
+      }
+    }, []);
+
+    return (
+      <section id="timetable" className="py-24 sm:py-40 bg-slate-50 relative overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <div className="mb-20">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-bold mb-6">
+              <CalendarDays className="w-5 h-5" /> 智能课表与日历
+            </div>
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-6 text-slate-900 tracking-tight">
+              打通全平台的行程管家
+            </h2>
+            <p className="text-slate-500 text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed px-4">
+              不仅是待办，更是你的私人课表。支持一键导入 JSON 课表数据，云端同步后，PC 端与移动端将呈现一致的网格化视图，全天候、跨天任务一目了然。
+            </p>
+          </div>
+
+          {/* 第一排：电脑端与手机端的课表静态展示 */}
+          <div className="flex flex-col lg:flex-row items-center justify-center gap-12 lg:gap-16 mb-24">
+
+            {/* 左侧：手机端日历 (9.jpg) */}
+            <div className="w-full lg:w-1/3 flex justify-center order-2 lg:order-1 relative group">
+                <div className="absolute inset-0 bg-blue-500/10 blur-[80px] rounded-full pointer-events-none"></div>
+                <div className="w-[60%] sm:w-[50%] lg:w-[80%] max-w-[300px] transform group-hover:-translate-y-2 transition-transform duration-500">
+                    <MobileFrame src="./9.jpg" />
+                </div>
+            </div>
+
+            {/* 右侧：PC端日历 (8.jpg) */}
+            <div className="w-full lg:w-2/3 order-1 lg:order-2 group">
+              <div className="bg-white p-2 sm:p-4 rounded-[1.5rem] sm:rounded-[2.5rem] shadow-2xl border border-slate-200 transform group-hover:scale-[1.01] transition-transform duration-500">
+                <img
+                    src="./8.jpg"
+                    alt="PC 端日历课表"
+                    className="w-full rounded-xl sm:rounded-2xl border border-slate-100"
+                    onError={(e) => {
+                        e.currentTarget.src = 'https://images.unsplash.com/photo-1506784951209-6854d59ab2a2?auto=format&fit=crop&q=80&w=1200';
+                    }}
+                />
+              </div>
+            </div>
+
+          </div>
+
+          {/* 第二排：导入视频演示 */}
+          <div className="max-w-4xl mx-auto bg-slate-900 rounded-[2rem] sm:rounded-[3rem] p-6 sm:p-10 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center gap-8 md:gap-12 text-left">
+            <div className="absolute -right-20 -top-20 w-64 h-64 bg-indigo-500/30 blur-[100px] rounded-full pointer-events-none"></div>
+
+            <div className="w-full md:w-1/2 order-2 md:order-1">
+                <div className="relative rounded-[1.5rem] overflow-hidden border-4 border-slate-800 shadow-inner bg-black aspect-[9/19.5] max-h-[500px] mx-auto md:mx-0">
+                    <video
+                        ref={videoRef}
+                        src="./10.mp4"
+                        className="w-full h-full object-cover"
+                        loop
+                        muted
+                        autoPlay
+                        playsInline
+                        style={{ pointerEvents: 'none' }}
+                    />
+                </div>
+            </div>
+
+            <div className="w-full md:w-1/2 order-1 md:order-2">
+               <h3 className="text-2xl sm:text-3xl font-black text-white mb-4">无缝导入，即刻生效</h3>
+               <p className="text-slate-400 leading-relaxed mb-6">
+                 支持从 聚在工大App 导入。在手机端简单几步操作，即可将整学期的课表载入系统。点击「同步」按钮，数据瞬间流转至云端及 PC 桌面。
+               </p>
+               <ul className="space-y-3 text-slate-300 text-sm font-medium">
+                   <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-400" /> 支持第三方工具导出格式</li>
+                   <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-400" /> 自动防重叠布局引擎</li>
+                   <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-400" /> 动态换行与教室地点提示</li>
+                   <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-400" /> *聚在工大是学长开发的App</li>
+               </ul>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    );
+  };
+
 // --- 子组件: Android 实时活动 (7.mp4 视频版) ---
 const LiveUpdatesShowcase = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    // 确保视频可以自动播放
     if (videoRef.current) {
       videoRef.current.play().catch(e => {
-        console.log("Auto-play was prevented. This is normal on some browsers.", e);
+        console.log("Auto-play was prevented.", e);
       });
     }
   }, []);
@@ -328,17 +414,10 @@ const LiveUpdatesShowcase = () => {
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/20 to-slate-900 pointer-events-none"></div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20 text-left">
-
-          {/* 左侧视频展示区 */}
           <div className="w-full lg:w-1/2 flex justify-center order-2 lg:order-1">
             <div className="relative w-full max-w-[400px]">
-               {/* 环境光效 */}
                <div className="absolute -inset-10 bg-indigo-500/30 blur-[100px] rounded-full"></div>
-
-               {/* 视频包装，增加一点点透视效果 */}
                <div className="relative bg-slate-800 rounded-[2rem] md:rounded-[3rem] p-4 md:p-6 shadow-2xl border border-white/10 transform perspective-1000 rotateY-[5deg] hover:rotateY-0 transition-transform duration-700">
-
-                  {/* 使用 video 标签替代 img 标签，去除 controls，设置 loop, muted, autoPlay 和 playsInline */}
                   <video
                     ref={videoRef}
                     src="./7.mp4"
@@ -347,14 +426,8 @@ const LiveUpdatesShowcase = () => {
                     muted
                     autoPlay
                     playsInline
-                    style={{ pointerEvents: 'none' }} // 防止用户点击视频导致暂停或唤出某些浏览器的隐藏控件
-                    onError={(e) => {
-                      // Fallback in case video isn't ready
-                      console.error("Video failed to load", e);
-                    }}
+                    style={{ pointerEvents: 'none' }}
                   />
-
-                  {/* 装饰性状态标签 */}
                   <div className="absolute -top-4 -right-4 bg-indigo-600 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2 animate-bounce-subtle border border-indigo-400">
                     <span className="relative flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
@@ -365,8 +438,6 @@ const LiveUpdatesShowcase = () => {
                </div>
             </div>
           </div>
-
-          {/* 右侧文字区 */}
           <div className="w-full lg:w-1/2 order-1 lg:order-2">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-500/20 text-indigo-400 rounded-lg text-sm font-bold uppercase tracking-widest mb-6 sm:mb-8">
               <BellRing className="w-5 h-5" /> Android 16+ Ready
@@ -377,7 +448,6 @@ const LiveUpdatesShowcase = () => {
             <p className="text-slate-400 text-lg sm:text-xl mb-10 leading-relaxed font-medium">
               全面适配 Android 最新规范。借助 Live Updates 实时活动，无需打开应用，在锁屏和通知栏即可直观把控最重要的待办倒计时。
             </p>
-
             <ul className="space-y-6">
                {[
                  { title: "锁屏级呈现", desc: "最重要的事，点亮屏幕立刻可见。" },
@@ -396,16 +466,15 @@ const LiveUpdatesShowcase = () => {
                ))}
             </ul>
           </div>
-
         </div>
       </div>
     </section>
   );
 };
 
-// --- 子组件: 屏幕时间看板 (3,4 手机 & 5 平板) ---
+// --- 子组件: 屏幕时间看板 ---
 const ScreenTimeShowcase = () => (
-  <section id="screentime" className="py-24 sm:py-40 bg-slate-50 overflow-hidden">
+  <section id="screentime" className="py-24 sm:py-40 bg-white overflow-hidden">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
       <div className="mb-20 sm:mb-32">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold uppercase mb-6">
@@ -416,12 +485,8 @@ const ScreenTimeShowcase = () => (
           整合手机、平板、电脑三端时长数据。不再猜测你的时间去哪了，让数据说话，在任何设备上都能精准掌控每一分钟的产出。
         </p>
       </div>
-
-      {/* 看板多设备布局 */}
       <div className="relative flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto">
         <div className="absolute inset-0 bg-indigo-500/5 blur-[200px] rounded-full pointer-events-none"></div>
-
-        {/* 手机群组 */}
         <div className="flex justify-center gap-4 sm:gap-8 z-20 w-full lg:w-5/12 mb-16 lg:mb-0">
           <div className="w-[42%] sm:w-[35%] lg:w-[45%] max-w-[220px] transform translate-y-6 md:translate-y-12 group">
             <MobileFrame src="./3.jpg" className="group-hover:scale-[1.03] transition duration-500" />
@@ -432,8 +497,6 @@ const ScreenTimeShowcase = () => (
             <p className="text-center mt-6 text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-[0.2em] whitespace-nowrap">Time Summary</p>
           </div>
         </div>
-
-        {/* 平板 */}
         <div className="z-10 w-[90%] sm:w-[75%] lg:w-7/12 max-w-[650px] group relative lg:-ml-8">
           <div className="bg-white p-2 sm:p-4 rounded-[1.5rem] sm:rounded-[3rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.15)] border border-slate-200 transform group-hover:scale-[1.02] transition-all duration-700">
             <TabletFrame src="./5.jpg" />
@@ -564,7 +627,8 @@ const App = () => {
       <Features />
       <WindowsShowcase />
       <AndroidShowcase />
-      <LiveUpdatesShowcase /> {/* 新增的实时活动模块 */}
+      <TimetableShowcase /> {/* 🚀 新增的课表展示组件 */}
+      <LiveUpdatesShowcase />
       <ScreenTimeShowcase />
       <AnalyticsPreview />
       <DownloadSection androidInfo={androidInfo} windowsInfo={windowsInfo} />
