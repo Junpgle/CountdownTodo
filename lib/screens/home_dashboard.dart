@@ -63,7 +63,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  // 🚀 新增：彻底分离的左右双栏状态
   List<String> _leftSections = ['courses', 'todos', 'math'];
   List<String> _rightSections = ['countdowns', 'screenTime'];
 
@@ -203,11 +202,9 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   Future<void> _loadSectionPreferences() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // 🚀 读取新的左右双栏缓存
     List<String>? leftOrder = prefs.getStringList('home_section_order_left');
     List<String>? rightOrder = prefs.getStringList('home_section_order_right');
 
-    // 💡 兼容老版本：如果没存过双栏，就读取老的单栏配置并拆分
     if (leftOrder == null || rightOrder == null) {
       List<String> oldOrder = prefs.getStringList('home_section_order') ?? ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
       leftOrder = [];
@@ -401,11 +398,17 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  Future<void> _handleManualSync({bool silent = false}) async {
+  // 🚀 核心更新：支持分模块同步，并完美捕获 429 超限提示
+  Future<void> _handleManualSync({
+    bool silent = false,
+    bool syncTodos = true,
+    bool syncCountdowns = true,
+    bool syncScreenTime = true,
+  }) async {
     if (_isSyncing) return;
     setState(() {
       _isSyncing = true;
-      _isLoadingScreenTime = true;
+      if (syncScreenTime) _isLoadingScreenTime = true;
     });
 
     try {
@@ -413,20 +416,46 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       int? userId = prefs.getInt('current_user_id');
       if (userId == null) throw Exception("未登录");
 
-      bool hasChanges = await StorageService.syncData(widget.username);
-      await ScreenTimeService.syncScreenTime(userId);
-      await _loadCachedScreenTime();
+      bool hasChanges = false;
+
+      // 根据用户选择决定是否调用底层同步
+      if (syncTodos || syncCountdowns) {
+        hasChanges = await StorageService.syncData(
+          widget.username,
+          syncTodos: syncTodos,
+          syncCountdowns: syncCountdowns,
+        );
+      }
+
+      if (syncScreenTime) {
+        await ScreenTimeService.syncScreenTime(userId);
+        await _loadCachedScreenTime();
+      }
 
       await StorageService.updateLastAutoSyncTime();
 
       if (mounted) {
         if (!silent) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 数据同步完成'), backgroundColor: Colors.green));
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('✅ 数据同步完成'), backgroundColor: Colors.green)
+          );
         }
         if (hasChanges) _loadAllData();
       }
     } catch (e) {
       debugPrint("Sync Error: $e");
+      if (mounted && !silent) {
+        String msg = e.toString();
+        // 🚀 智能拦截并展示 429 报错提示
+        if (msg.contains("LIMIT_EXCEEDED:")) {
+          msg = msg.split("LIMIT_EXCEEDED:").last;
+        } else {
+          msg = "同步失败: 获取数据异常";
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: Colors.redAccent)
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -435,6 +464,63 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         });
       }
     }
+  }
+
+  // 🚀 呼出同步选择对话框
+  void _showSyncOptionsDialog() {
+    bool syncTodos = true;
+    bool syncCountdowns = true;
+    bool syncScreenTime = true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text("手动同步", style: TextStyle(fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("请勾选你需要同步的数据模块：", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    title: const Text("待办事项"),
+                    value: syncTodos,
+                    onChanged: (val) => setDialogState(() => syncTodos = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("重要日与倒计时"),
+                    value: syncCountdowns,
+                    onChanged: (val) => setDialogState(() => syncCountdowns = val ?? false),
+                  ),
+                  CheckboxListTile(
+                    title: const Text("屏幕使用时间"),
+                    value: syncScreenTime,
+                    onChanged: (val) => setDialogState(() => syncScreenTime = val ?? false),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+                FilledButton(
+                  // 只有至少选中一个才能点击同步
+                  onPressed: (syncTodos || syncCountdowns || syncScreenTime) ? () {
+                    Navigator.pop(ctx);
+                    _handleManualSync(
+                      silent: false,
+                      syncTodos: syncTodos,
+                      syncCountdowns: syncCountdowns,
+                      syncScreenTime: syncScreenTime,
+                    );
+                  } : null,
+                  child: const Text("开始同步"),
+                ),
+              ],
+            );
+          }
+      ),
+    );
   }
 
   Future<void> _fetchRandomWallpaper() async {
@@ -506,7 +592,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                   currentGreeting: _currentGreeting,
                   isLight: isLight,
                   isSyncing: _isSyncing,
-                  onSync: () => _handleManualSync(silent: false),
+                  // 🚀 将原本的直接调用改为呼出我们新写的弹窗
+                  onSync: _showSyncOptionsDialog,
                   onSettings: () async {
                     await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
                     _loadSectionPreferences();
@@ -518,10 +605,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      // 💡 智能平板断点识别
                       final bool isTablet = constraints.maxWidth >= 768;
 
-                      // === 构建5个功能区块 ===
                       Widget courseSection = CourseSectionWidget(dashboardCourseData: _dashboardCourseData, isLight: isLight);
                       Widget countdownSection = CountdownSectionWidget(countdowns: _countdowns, username: widget.username, isLight: isLight, onDataChanged: _loadAllData);
                       Widget todoSection = TodoSectionWidget(
@@ -557,7 +642,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         'courses': courseSection, 'countdowns': countdownSection, 'todos': todoSection, 'screenTime': screenTimeSection, 'math': mathSection,
                       };
 
-                      // 💡 处理没课时的行为逻辑
                       bool hasNoCourse = (_dashboardCourseData['courses'] == null || (_dashboardCourseData['courses'] as List).isEmpty);
                       List<String> currentLeft = List.from(_leftSections);
                       List<String> currentRight = List.from(_rightSections);
@@ -575,7 +659,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                       applyNoCourseBehavior(currentLeft);
                       applyNoCourseBehavior(currentRight);
 
-                      // 提取组件
                       List<Widget> buildColumnWidgets(List<String> keys) {
                         return keys
                             .where((key) => _sectionVisibility[key] == true && sectionsMap.containsKey(key))
@@ -593,7 +676,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 1200),
                             child: isTablet
-                                ? Row( // 🚀 平板模式：强制渲染左右两栏，由双栏配置决定排版
+                                ? Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: leftWidgets)),
@@ -601,7 +684,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                                 if (rightWidgets.isNotEmpty) Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rightWidgets)),
                               ],
                             )
-                                : Column( // 🚀 手机模式：自动把左右栏拼接为单列长流
+                                : Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [...leftWidgets, ...rightWidgets],
                             ),

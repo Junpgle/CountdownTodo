@@ -117,6 +117,28 @@ export default {
         return jsonResponse({ success: true, message: "密码修改成功" });
       }
 
+       // --- 查询用户同步状态 (等级和今日额度) ---
+      if (url.pathname === "/api/user/status" && request.method === "GET") {
+        const userId = url.searchParams.get("user_id");
+        if (!userId) return errorResponse("缺少 user_id");
+
+        const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
+        const tier = userRow ? userRow.tier : 'free';
+
+        let sync_limit = (tier === 'pro') ? 500 : ((tier === 'admin') ? 99999 : 50);
+
+        const today = new Date().toISOString().split('T')[0];
+        const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, today).first();
+        const sync_count = record ? record.sync_count : 0;
+
+        return jsonResponse({
+          success: true,
+          tier: tier,
+          sync_count: sync_count,
+          sync_limit: sync_limit
+        });
+      }
+
       // --------------------------
       // 模块 B: 排行榜 (Leaderboard)
       // --------------------------
@@ -340,8 +362,20 @@ export default {
         const todosRes = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
         const countdownsRes = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ?").bind(userId).all();
 
+        // 提取用户状态
+        const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
+        const tier = userRow ? userRow.tier : 'free';
+        let sync_limit = (tier === 'pro') ? 500 : ((tier === 'admin') ? 99999 : 50);
+
+        const today = new Date().toISOString().split('T')[0];
+        const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, today).first();
+        const sync_count = record ? record.sync_count : 0;
+
         return jsonResponse({
           success: true,
+          tier: tier,
+          sync_count: sync_count,
+          sync_limit: sync_limit,
           data: {
             todos: todosRes.results,
             countdowns: countdownsRes.results
@@ -413,13 +447,24 @@ export default {
           if (statements.length > 0) await DB.batch(statements);
         }
 
-        // 4. 返回最新数据（全量）
+        // 4. 获取账户额度和最新数据
+        const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(user_id).first();
+        const tier = userRow ? userRow.tier : 'free';
+        let sync_limit = (tier === 'pro') ? 500 : ((tier === 'admin') ? 99999 : 50);
+
+        const today = new Date().toISOString().split('T')[0];
+        const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(user_id, today).first();
+        const sync_count = record ? record.sync_count : 1;
+
         const todosRes = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(user_id).all();
         const countdownsRes = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ?").bind(user_id).all();
 
         return jsonResponse({
           success: true,
           message: "聚合同步完成",
+          tier: tier,
+          sync_count: sync_count,
+          sync_limit: sync_limit,
           data: {
             todos: todosRes.results,
             countdowns: countdownsRes.results

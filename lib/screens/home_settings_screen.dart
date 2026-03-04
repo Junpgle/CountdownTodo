@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:ui';
 import 'dart:isolate';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http; // 🚀 新增 http 引入
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
@@ -59,13 +60,18 @@ class _SettingsPageState extends State<SettingsPage> {
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  // 🚀 缓存大小状态
+  // 缓存大小状态
   String _cacheSizeStr = "计算中...";
+
+  // 🚀 账户状态：等级与同步额度
+  String _userTier = "加载中...";
+  double _syncProgress = 0.0;
+  bool _isLoadingStatus = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadSettings().then((_) => _fetchAccountStatus());
     _setupDownloadListener();
     _calculateCacheSize();
   }
@@ -75,6 +81,80 @@ class _SettingsPageState extends State<SettingsPage> {
     IsolateNameServer.removePortNameMapping('downloader_send_port');
     _port.close();
     super.dispose();
+  }
+
+  // 🚀 获取当前账户等级和同步额度，加入缓存机制
+  Future<void> _fetchAccountStatus() async {
+    if (_userId == null) {
+      if (mounted) {
+        setState(() {
+          _userTier = "离线";
+          _syncProgress = 0.0;
+          _isLoadingStatus = false;
+        });
+      }
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final String cacheKey = 'account_status_cache_$_userId';
+    final String timeKey = 'account_status_time_$_userId';
+
+    // 1. 尝试从缓存加载
+    final String? cachedDataStr = prefs.getString(cacheKey);
+    final int? lastSyncTime = prefs.getInt(timeKey);
+
+    bool useCache = false;
+    if (cachedDataStr != null && lastSyncTime != null) {
+      final DateTime lastSync = DateTime.fromMillisecondsSinceEpoch(lastSyncTime);
+      // 检查缓存是否在 5 分钟内
+      if (DateTime.now().difference(lastSync).inMinutes < 5) {
+        useCache = true;
+        try {
+          final data = jsonDecode(cachedDataStr);
+          if (mounted) {
+            setState(() {
+              _userTier = data['tier'] ?? 'Free';
+              int count = data['sync_count'] ?? 0;
+              int limit = data['sync_limit'] ?? 50;
+              _syncProgress = limit > 0 ? (count / limit).clamp(0.0, 1.0) : 0.0;
+              _isLoadingStatus = false;
+            });
+          }
+        } catch(e) {
+          useCache = false; // 解析失败，回退到网络请求
+        }
+      }
+    }
+
+    // 2. 如果缓存有效，则直接返回，不再发起网络请求
+    if (useCache) return;
+
+    // 3. 如果缓存无效或不存在，则发起网络请求
+    try {
+      final response = await http.get(Uri.parse('${ApiService.baseUrl}/api/user/status?user_id=$_userId'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        // 更新缓存
+        await prefs.setString(cacheKey, response.body);
+        await prefs.setInt(timeKey, DateTime.now().millisecondsSinceEpoch);
+
+        if (mounted) {
+          setState(() {
+            _userTier = data['tier'] ?? 'Free';
+            int count = data['sync_count'] ?? 0;
+            int limit = data['sync_limit'] ?? 50;
+            _syncProgress = limit > 0 ? (count / limit).clamp(0.0, 1.0) : 0.0;
+            _isLoadingStatus = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() { _userTier = "Free"; _isLoadingStatus = false; });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _userTier = "未知"; _isLoadingStatus = false; });
+    }
   }
 
   // === 🚀 深度缓存计算与清理逻辑 ===
@@ -919,6 +999,47 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: Text(_userId != null ? "UID: $_userId" : "离线模式"),
               trailing: const Icon(Icons.edit_square, size: 20, color: Colors.grey),
               onTap: _showChangePasswordDialog,
+            ),
+            // 🚀 新增：等级与同步额度显示
+            const Divider(height: 1, indent: 56),
+            Padding(
+              padding: const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("账户等级", style: TextStyle(fontSize: 14)),
+                      _isLoadingStatus
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          : Text(
+                        _userTier.toUpperCase(),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: _userTier.toLowerCase() == 'pro' || _userTier.toLowerCase() == 'admin'
+                              ? Colors.orangeAccent
+                              : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text("今日同步额度", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: _syncProgress,
+                      minHeight: 6,
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          _syncProgress > 0.9 ? Colors.redAccent : Theme.of(context).colorScheme.primary
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ]),
 

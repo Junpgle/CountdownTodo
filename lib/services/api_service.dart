@@ -10,8 +10,6 @@ class ApiService {
   // ==========================================
 
   // 注册 (支持两步验证)
-  // 第一次调用：不传 code -> 后端发送邮件，返回 {require_verify: true}
-  // 第二次调用：传 code -> 后端验证并创建账号
   static Future<Map<String, dynamic>> register(String username, String email, String password, {String? code}) async {
     try {
       final Map<String, dynamic> bodyMap = {
@@ -20,7 +18,6 @@ class ApiService {
         'password': password,
       };
 
-      // 如果有验证码，带上验证码
       if (code != null && code.isNotEmpty) {
         bodyMap['code'] = code;
       }
@@ -33,12 +30,11 @@ class ApiService {
 
       final data = jsonDecode(response.body);
 
-      // 将 HTTP 状态码也纳入判断
       if (response.statusCode == 200) {
         return {
           'success': true,
           'message': data['message'],
-          'require_verify': data['require_verify'] ?? false, // 关键字段
+          'require_verify': data['require_verify'] ?? false,
         };
       } else {
         return {'success': false, 'message': data['error'] ?? '注册失败'};
@@ -120,7 +116,6 @@ class ApiService {
   // 3. 待办事项 (Todos)
   // ==========================================
 
-  /// 获取待办列表
   static Future<List<dynamic>> fetchTodos(int userId) async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/todos?user_id=$userId'));
@@ -131,7 +126,6 @@ class ApiService {
     }
   }
 
-  /// 修改待办添加：支持传递创建时间、截止日期、完成状态等全量数据
   static Future<bool> addTodo(int userId, String content, {bool isCompleted = false, int? timestamp, String? dueDate, String? createdDate}) async {
     try {
       final response = await http.post(
@@ -150,8 +144,6 @@ class ApiService {
     } catch (e) { return false; }
   }
 
-
-  /// 切换完成状态 (简化版，全量同步时用不到，但在单点操作中可以保留)
   static Future<bool> toggleTodo(int id, bool isCompleted) async {
     try {
       final response = await http.post(
@@ -165,7 +157,6 @@ class ApiService {
     }
   }
 
-  /// 删除待办
   static Future<bool> deleteTodo(int id) async {
     try {
       final response = await http.delete(
@@ -286,5 +277,62 @@ class ApiService {
       // ignore
     }
     return [];
+  }
+
+  // ==========================================
+  // 🚀 8. 全局聚合同步 (Sync All) - 节省网络请求次数
+  // ==========================================
+
+  static Future<Map<String, dynamic>> syncAll({
+    required int userId,
+    required List<Map<String, dynamic>> todos,
+    required List<Map<String, dynamic>> countdowns,
+    Map<String, dynamic>? screenTime,
+  }) async {
+    try {
+      final Map<String, dynamic> body = {
+        'user_id': userId,
+        'todos': todos,
+        'countdowns': countdowns,
+      };
+
+      if (screenTime != null) {
+        body['screen_time'] = screenTime;
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/sync_all'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      final data = jsonDecode(response.body);
+
+      // 请求成功处理
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'data': data['data'], // 包含后端返回的最新 todos 和 countdowns 列表
+          'message': data['message'] ?? '同步成功'
+        };
+      }
+      // 拦截 429 频率超限
+      else if (response.statusCode == 429) {
+        return {
+          'success': false,
+          'message': data['error'] ?? '今日同步次数已达上限',
+          'isLimitExceeded': true, // 额外标记用于 UI 层判断并弹窗
+        };
+      }
+      // 其他错误
+      else {
+        return {
+          'success': false,
+          'message': data['error'] ?? '同步失败'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': "网络异常: $e"};
+    }
   }
 }
