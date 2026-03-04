@@ -52,18 +52,22 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _userId;
   int _syncInterval = 0;
   String _themeMode = 'system';
-  String _noCourseBehavior = 'keep'; // 'keep', 'bottom', 'hide'
+  String _noCourseBehavior = 'keep';
 
   // 学期进度状态
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
+  // 🚀 缓存大小状态
+  String _cacheSizeStr = "计算中...";
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
     _setupDownloadListener();
+    _calculateCacheSize();
   }
 
   @override
@@ -72,6 +76,333 @@ class _SettingsPageState extends State<SettingsPage> {
     _port.close();
     super.dispose();
   }
+
+  // === 🚀 深度缓存计算与清理逻辑 ===
+
+  Future<void> _calculateCacheSize() async {
+    try {
+      double size = 0;
+
+      final tempDir = await getTemporaryDirectory();
+      size += _getTotalSizeOfFilesInDir(tempDir);
+
+      final supportDir = await getApplicationSupportDirectory();
+      size += _getTotalSizeOfFilesInDir(supportDir);
+
+      final docDir = await getApplicationDocumentsDirectory();
+      size += _getApkSizeInDir(docDir);
+
+      if (Platform.isAndroid) {
+        final extDir = await getExternalStorageDirectory();
+        if (extDir != null) {
+          size += _getApkSizeInDir(extDir);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _cacheSizeStr = _formatSize(size);
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _cacheSizeStr = "未知");
+    }
+  }
+
+  double _getTotalSizeOfFilesInDir(FileSystemEntity file) {
+    if (file is File) {
+      return file.lengthSync().toDouble();
+    }
+    if (file is Directory) {
+      double total = 0;
+      try {
+        final List<FileSystemEntity> children = file.listSync();
+        for (final FileSystemEntity child in children) {
+          total += _getTotalSizeOfFilesInDir(child);
+        }
+      } catch (e) {
+        // 权限或文件锁定导致读取失败时忽略
+      }
+      return total;
+    }
+    return 0;
+  }
+
+  double _getApkSizeInDir(Directory dir) {
+    double total = 0;
+    if (dir.existsSync()) {
+      try {
+        for (var child in dir.listSync(recursive: true)) {
+          if (child is File && child.path.toLowerCase().endsWith('.apk')) {
+            total += child.lengthSync();
+          }
+        }
+      } catch (e) {}
+    }
+    return total;
+  }
+
+  String _formatSize(double value) {
+    if (value == 0) return '0 B';
+    if (value < 1024) return '${value.toStringAsFixed(0)} B';
+    if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(2)} KB';
+    if (value < 1024 * 1024 * 1024) return '${(value / (1024 * 1024)).toStringAsFixed(2)} MB';
+    return '${(value / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  Future<void> _clearCache() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+
+      final tempDir = await getTemporaryDirectory();
+      _deleteDirectoryContents(tempDir);
+
+      final supportDir = await getApplicationSupportDirectory();
+      _deleteDirectoryContents(supportDir);
+
+      final docDir = await getApplicationDocumentsDirectory();
+      _deleteApkFilesInDir(docDir);
+
+      if (Platform.isAndroid) {
+        final extDir = await getExternalStorageDirectory();
+        if (extDir != null) _deleteApkFilesInDir(extDir);
+      }
+
+      try {
+        final tasks = await FlutterDownloader.loadTasks();
+        if (tasks != null) {
+          for (var task in tasks) {
+            await FlutterDownloader.remove(taskId: task.taskId, shouldDeleteContent: true);
+          }
+        }
+      } catch (e) {}
+
+    } catch (e) {
+      debugPrint("深度清理缓存失败: $e");
+    } finally {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 深度清理完成，设备空间已大幅释放！')));
+        _calculateCacheSize();
+      }
+    }
+  }
+
+  void _deleteDirectoryContents(Directory dir) {
+    if (dir.existsSync()) {
+      try {
+        for (var child in dir.listSync()) {
+          try {
+            child.deleteSync(recursive: true);
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+  }
+
+  void _deleteApkFilesInDir(Directory dir) {
+    if (dir.existsSync()) {
+      try {
+        for (var child in dir.listSync(recursive: true)) {
+          if (child is File && child.path.toLowerCase().endsWith('.apk')) {
+            try {
+              child.deleteSync();
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  // === 🚀 空间占用超级底层分析工具 ===
+  Future<void> _showStorageAnalysis() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    List<Map<String, dynamic>> allFiles = [];
+    Map<String, double> dirSizes = {
+      '沙盒真实根目录 (App Root)': 0,
+      '外部存储 (External)': 0,
+    };
+
+    Future<void> scanDirectory(Directory? dir, String dirName) async {
+      if (dir == null || !dir.existsSync()) return;
+      try {
+        double totalSize = 0;
+        for (var entity in dir.listSync(recursive: true, followLinks: false)) {
+          if (entity is File) {
+            try {
+              final size = entity.lengthSync();
+              totalSize += size;
+              if (size > 50 * 1024) { // 降低到 50KB，揪出大量小文件群
+                allFiles.add({
+                  'path': entity.path,
+                  'size': size,
+                  'file': entity,
+                });
+              }
+            } catch (e) {}
+          }
+        }
+        dirSizes[dirName] = totalSize;
+      } catch (e) {}
+    }
+
+    try {
+      // 🚀 核心越狱级操作：拿到 Documents 路径后，向上跳一级来到 Android 沙盒真正的根目录！
+      // 这将指向 /data/user/0/com.math_quiz.junpgle.com.math_quiz_app/
+      // 包含了所有隐藏的 databases, shared_prefs, app_webview, code_cache 等系统级占用
+      final docDir = await getApplicationDocumentsDirectory();
+      final rootDir = docDir.parent;
+
+      await scanDirectory(rootDir, '沙盒真实根目录 (App Root)');
+
+      if (Platform.isAndroid) {
+        final extDir = await getExternalStorageDirectory();
+        if (extDir != null) await scanDirectory(extDir, '外部存储 (External)');
+      }
+
+      // 按大小降序排序
+      allFiles.sort((a, b) => b['size'].compareTo(a['size']));
+
+      // 提取前 100 个最大的文件 (扩大范围)
+      final topFiles = allFiles.take(100).toList();
+
+      if (mounted) {
+        Navigator.pop(context); // 关闭加载框
+        _showFilesDialog(topFiles, dirSizes);
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('扫描失败: $e')));
+      }
+    }
+  }
+
+  void _showFilesDialog(List<Map<String, dynamic>> topFiles, Map<String, double> dirSizes) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('空间占用深度分析', style: TextStyle(fontSize: 18)),
+              contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: MediaQuery.of(context).size.height * 0.7,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("📁 目录总览:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    ...dirSizes.entries.map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(e.key, style: const TextStyle(fontSize: 13)),
+                          Text(_formatSize(e.value), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                    )),
+                    const Divider(height: 24),
+                    const Text("📄 Top 100 大文件 (点击垃圾桶可直删):", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: topFiles.isEmpty
+                          ? const Center(child: Text("未发现大于 50KB 的文件"))
+                          : ListView.separated(
+                        itemCount: topFiles.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final fileInfo = topFiles[index];
+                          final path = fileInfo['path'] as String;
+                          final size = fileInfo['size'] as int;
+                          final fileName = path.split('/').last;
+                          final File file = fileInfo['file'] as File;
+
+                          // 🚀 强化版保护机制：防误删核心代码和用户数据库
+                          bool isCore = path.contains('flutter_assets') ||
+                              path.endsWith('.db') ||
+                              path.contains('shared_prefs') ||
+                              path.contains('databases');
+
+                          return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                  isCore ? Icons.warning_amber_rounded : Icons.insert_drive_file,
+                                  color: isCore ? Colors.orange : Colors.grey
+                              ),
+                              title: Text(
+                                fileName,
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isCore ? Colors.orange : null),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                  path,
+                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis
+                              ),
+                              trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(_formatSize(size.toDouble()), style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    IconButton(
+                                        padding: const EdgeInsets.only(left: 8),
+                                        constraints: const BoxConstraints(),
+                                        icon: const Icon(Icons.delete_outline, size: 20),
+                                        onPressed: () async {
+                                          if (isCore) {
+                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！')));
+                                            return;
+                                          }
+                                          try {
+                                            if (file.existsSync()) {
+                                              file.deleteSync();
+                                              setDialogState(() {
+                                                topFiles.removeAt(index);
+                                              });
+                                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 文件已删除')));
+                                            }
+                                          } catch(e) {
+                                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败: $e')));
+                                          }
+                                        }
+                                    )
+                                  ]
+                              )
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("关闭")),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // === 既有逻辑 ===
 
   void _setupDownloadListener() {
     IsolateNameServer.removePortNameMapping('downloader_send_port');
@@ -100,9 +431,7 @@ class _SettingsPageState extends State<SettingsPage> {
         await Future.delayed(const Duration(milliseconds: 1500));
         await UpdateService.installApk(fullPath);
       }
-    } catch (e) {
-      print("自动安装逻辑异常: $e");
-    }
+    } catch (e) {}
   }
 
   Future<void> _loadSettings() async {
@@ -229,12 +558,9 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // 将这个方法替换到 lib/pages/home_settings_screen.dart (SettingsPage类中)
-
   void _showHomeSectionManager() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // 💡 智能识别宽度，决定使用哪种拖拽模式
     final bool isTablet = MediaQuery.of(context).size.width >= 768;
 
     List<String>? leftOrder = prefs.getStringList('home_section_order_left');
@@ -242,7 +568,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
 
-    // 💡 兼容老版本：如果从未进入过新版设置，则从老的单栏按奇偶拆分作为默认态
     if (leftOrder == null || rightOrder == null) {
       List<String> oldOrder = prefs.getStringList('home_section_order') ?? defaultOrder;
       leftOrder = [];
@@ -253,10 +578,9 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     }
 
-    // 防御性编程：自动补全因 Bug 丢失的模块，并剔除无效模块
     List<String> combined = [...leftOrder, ...rightOrder];
     for (var key in defaultOrder) {
-      if (!combined.contains(key)) leftOrder.add(key); // 默认补偿到左边
+      if (!combined.contains(key)) leftOrder.add(key);
     }
     leftOrder.removeWhere((key) => !defaultOrder.contains(key));
     rightOrder.removeWhere((key) => !defaultOrder.contains(key));
@@ -281,7 +605,6 @@ class _SettingsPageState extends State<SettingsPage> {
         builder: (ctx) => StatefulBuilder(
             builder: (context, setDialogState) {
 
-              // 核心控制：平板跨栏拖拽转移逻辑
               void moveItem(String item, {String? targetKey, bool? toLeftList}) {
                 setDialogState(() {
                   leftOrder!.remove(item);
@@ -299,11 +622,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 });
               }
 
-              // 平板专用的可拖拽卡片构建器
               Widget buildDraggableItem(String key) {
                 return LongPressDraggable<String>(
                   data: key,
-                  delay: const Duration(milliseconds: 200), // 长按0.2秒后起飞
+                  delay: const Duration(milliseconds: 200),
                   feedback: Material(
                     elevation: 8,
                     borderRadius: BorderRadius.circular(8),
@@ -320,12 +642,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: CheckboxListTile(title: Text(names[key] ?? key), value: visibility[key], onChanged: null),
                   ),
                   child: DragTarget<String>(
-                      onWillAccept: (data) => data != key, // 不能放到自己身上
-                      onAccept: (data) => moveItem(data, targetKey: key), // 放到目标的前面
+                      onWillAccept: (data) => data != key,
+                      onAccept: (data) => moveItem(data, targetKey: key),
                       builder: (context, candidateData, rejectedData) {
                         return Container(
                           decoration: BoxDecoration(
-                            // 当有模块悬停在自己上方时，展示一条蓝色的指示线
                             border: candidateData.isNotEmpty ? Border(top: BorderSide(color: Theme.of(context).colorScheme.primary, width: 3)) : null,
                           ),
                           child: CheckboxListTile(
@@ -341,16 +662,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 );
               }
 
-              // 平板专用的背景承载列
               Widget buildDragColumn(List<String> items, bool isLeft) {
                 return Expanded(
                   child: DragTarget<String>(
                       onWillAccept: (data) => true,
-                      onAccept: (data) => moveItem(data, toLeftList: isLeft), // 放到空白处时追加到列表末尾
+                      onAccept: (data) => moveItem(data, toLeftList: isLeft),
                       builder: (context, candidateData, rejectedData) {
                         return Container(
                           margin: const EdgeInsets.symmetric(horizontal: 4),
-                          padding: const EdgeInsets.only(bottom: 60), // 留出底部空白接住掉落的积木
+                          padding: const EdgeInsets.only(bottom: 60),
                           decoration: BoxDecoration(
                             color: candidateData.isNotEmpty ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1) : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
@@ -389,14 +709,14 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       Expanded(
                         child: isTablet
-                            ? Row( // 🚀 平板模式：双栏 Kanban 看板拖拽
+                            ? Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             buildDragColumn(leftOrder!, true),
                             buildDragColumn(rightOrder!, false),
                           ],
                         )
-                            : ReorderableListView( // 🚀 手机模式：合并两列表，依然使用原生单列排序
+                            : ReorderableListView(
                           shrinkWrap: true,
                           onReorder: (oldIndex, newIndex) {
                             setDialogState(() {
@@ -405,7 +725,6 @@ class _SettingsPageState extends State<SettingsPage> {
                               final item = combined.removeAt(oldIndex);
                               combined.insert(newIndex, item);
 
-                              // 手机端拖拽后，自动折半再分发回底层数据库
                               leftOrder!.clear();
                               rightOrder!.clear();
                               for (int i = 0; i < combined.length; i++) {
@@ -435,7 +754,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
                   FilledButton(
                     onPressed: () {
-                      // 持久化保存
                       prefs.setStringList('home_section_order_left', leftOrder!);
                       prefs.setStringList('home_section_order_right', rightOrder!);
                       prefs.setString('home_section_visibility', jsonEncode(visibility));
@@ -506,7 +824,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // 核心优化逻辑：测试实时通知
   Future<void> _testCourseNotification() async {
-    // 1. 尝试从主页逻辑获取（今日/明日课程）
     final dashboardData = await CourseService.getDashboardCourses();
     List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
@@ -514,7 +831,6 @@ class _SettingsPageState extends State<SettingsPage> {
     if (courses.isNotEmpty) {
       testCourse = courses.first;
     } else {
-      // 2. 如果主页此时没课，调取全量数据库里的任意课程
       final allCourses = await CourseService.getAllCourses();
       if (allCourses.isNotEmpty) {
         testCourse = allCourses.first;
@@ -532,7 +848,6 @@ class _SettingsPageState extends State<SettingsPage> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 已发送测试实时通知，请查看状态栏')));
       }
     } else {
-      // 3. 只有彻底没导入过 JSON 才会提示失败
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 尚未导入课程 JSON，请先在“课程设置”中导入')));
       }
@@ -744,12 +1059,12 @@ class _SettingsPageState extends State<SettingsPage> {
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                leading: const Icon(Icons.notification_important_outlined, color: Colors.amber),
-                title: const Text('测试课程实时通知'),
-                subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
-                trailing: TextButton(onPressed: _testCourseNotification, child: const Text("发送测试")),
-              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              leading: const Icon(Icons.notification_important_outlined, color: Colors.amber),
+              title: const Text('测试课程实时通知'),
+              subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
+              trailing: TextButton(onPressed: _testCourseNotification, child: const Text("发送测试")),
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -795,6 +1110,40 @@ class _SettingsPageState extends State<SettingsPage> {
 
           // --- 7. 关于与系统 ---
           _buildSection('系统与关于', [
+            // 🚀 深度清理缓存功能
+            ListTile(
+              leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
+              title: const Text('深度清理缓存与冗余'),
+              subtitle: const Text('包含更新残留包与深度图片缓存'),
+              trailing: Text(_cacheSizeStr, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+              onTap: () async {
+                bool confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text("深度清理空间"),
+                    content: Text("检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响)"),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
+                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("清理")),
+                    ],
+                  ),
+                ) ?? false;
+
+                if (confirm) {
+                  _clearCache();
+                }
+              },
+            ),
+            const Divider(height: 1, indent: 56),
+            // 🚀 空间分析工具
+            ListTile(
+              leading: const Icon(Icons.data_usage, color: Colors.orange),
+              title: const Text('存储空间深度分析'),
+              subtitle: const Text('找出占用数百MB的隐藏文件'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showStorageAnalysis,
+            ),
+            const Divider(height: 1, indent: 56),
             ListTile(
               leading: const Icon(Icons.system_update, color: Colors.green),
               title: const Text('检查新版本'),

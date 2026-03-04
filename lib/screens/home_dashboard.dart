@@ -123,7 +123,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         DateTime courseTime = DateFormat('yyyy-MM-dd HH:mm').parse('${course.date} ${course.formattedStartTime}');
         int diffMinutes = courseTime.difference(now).inMinutes;
 
-        if (diffMinutes == 20) {
+        if (diffMinutes <= 20 && diffMinutes > 0) {
           NotificationService.showCourseLiveActivity(
             courseName: course.courseName,
             room: course.roomName,
