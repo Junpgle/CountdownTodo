@@ -33,6 +33,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   final double cellHeight = 65.0;      // 每个节次的高度
   final double breakHeight = 24.0;     // 午休/晚休分割线高度
 
+  // 动态课间休息高度
+  double get _shortBreakHeight => _viewMode == 1 ? 0.0 : 15.0;
+
+  // 基础时间系设定：早上 8:00 作为原点(0)
+  final int baseHour = 8;
+  final int baseMinute = 0;
+
   @override
   void initState() {
     super.initState();
@@ -169,6 +176,115 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     }
   }
 
+  // === 🚀 核心重构：精准的基于时间的 Y 轴偏移量计算，带动态课间间隙 ===
+
+  double _getYOffsetByTime(int hour, int minute) {
+    if (hour < 8) return 0.0;
+
+    // 计算总高度
+    double maxPossibleY = 11 * cellHeight + 2 * breakHeight + 8 * _shortBreakHeight;
+    if (hour >= 22) return maxPossibleY;
+
+    int totalMinutesFrom8AM = (hour - 8) * 60 + minute;
+    double yOffset = 0.0;
+
+    // --- 上午区域 (08:00 - 12:00) : 240 分钟 ---
+    // 第1~4节，包含 3 个课间
+    if (totalMinutesFrom8AM <= 240) {
+      if (totalMinutesFrom8AM <= 50) { // 第1节
+        return (totalMinutesFrom8AM / 50) * cellHeight;
+      } else if (totalMinutesFrom8AM <= 60) { // 课间1
+        return cellHeight + ((totalMinutesFrom8AM - 50) / 10) * _shortBreakHeight;
+      } else if (totalMinutesFrom8AM <= 110) { // 第2节
+        return cellHeight + _shortBreakHeight + ((totalMinutesFrom8AM - 60) / 50) * cellHeight;
+      } else if (totalMinutesFrom8AM <= 130) { // 大课间2 (20分钟)
+        return 2 * cellHeight + _shortBreakHeight + ((totalMinutesFrom8AM - 110) / 20) * _shortBreakHeight;
+      } else if (totalMinutesFrom8AM <= 180) { // 第3节
+        return 2 * cellHeight + 2 * _shortBreakHeight + ((totalMinutesFrom8AM - 130) / 50) * cellHeight;
+      } else if (totalMinutesFrom8AM <= 190) { // 课间3
+        return 3 * cellHeight + 2 * _shortBreakHeight + ((totalMinutesFrom8AM - 180) / 10) * _shortBreakHeight;
+      } else { // 第4节 (190-240)
+        return 3 * cellHeight + 3 * _shortBreakHeight + ((totalMinutesFrom8AM - 190) / 50) * cellHeight;
+      }
+    }
+
+    yOffset = 4 * cellHeight + 3 * _shortBreakHeight;
+
+    // --- 午休区域：12:00 - 14:00 (120分钟) ---
+    int minutesAfterNoon = totalMinutesFrom8AM - 240;
+    if (minutesAfterNoon <= 120) {
+      return yOffset + (minutesAfterNoon / 120) * breakHeight;
+    }
+
+    yOffset += breakHeight;
+
+    // --- 下午区域 (14:00 - 17:50) : 230 分钟 ---
+    // 第5~8节，包含 3 个课间
+    int minutesAfter2PM = totalMinutesFrom8AM - 360;
+    if (minutesAfter2PM <= 230) {
+      if (minutesAfter2PM <= 50) { // 第5节
+        return yOffset + (minutesAfter2PM / 50) * cellHeight;
+      } else if (minutesAfter2PM <= 60) { // 课间5
+        return yOffset + cellHeight + ((minutesAfter2PM - 50) / 10) * _shortBreakHeight;
+      } else if (minutesAfter2PM <= 110) { // 第6节
+        return yOffset + cellHeight + _shortBreakHeight + ((minutesAfter2PM - 60) / 50) * cellHeight;
+      } else if (minutesAfter2PM <= 120) { // 课间6
+        return yOffset + 2 * cellHeight + _shortBreakHeight + ((minutesAfter2PM - 110) / 10) * _shortBreakHeight;
+      } else if (minutesAfter2PM <= 170) { // 第7节
+        return yOffset + 2 * cellHeight + 2 * _shortBreakHeight + ((minutesAfter2PM - 120) / 50) * cellHeight;
+      } else if (minutesAfter2PM <= 180) { // 课间7
+        return yOffset + 3 * cellHeight + 2 * _shortBreakHeight + ((minutesAfter2PM - 170) / 10) * _shortBreakHeight;
+      } else { // 第8节 (180-230)
+        return yOffset + 3 * cellHeight + 3 * _shortBreakHeight + ((minutesAfter2PM - 180) / 50) * cellHeight;
+      }
+    }
+
+    yOffset += 4 * cellHeight + 3 * _shortBreakHeight;
+
+    // --- 晚休区域：17:50 - 19:00 (70分钟) ---
+    int minutesAfterAfternoon = totalMinutesFrom8AM - 590;
+    if (minutesAfterAfternoon <= 70) {
+      return yOffset + (minutesAfterAfternoon / 70) * breakHeight;
+    }
+
+    yOffset += breakHeight;
+
+    // --- 晚上区域 (19:00 - 21:50) : 170 分钟 ---
+    // 第9~11节，包含 2 个课间
+    int minutesAfter7PM = totalMinutesFrom8AM - 660;
+    if (minutesAfter7PM <= 170) {
+      if (minutesAfter7PM <= 50) { // 第9节
+        return yOffset + (minutesAfter7PM / 50) * cellHeight;
+      } else if (minutesAfter7PM <= 60) { // 课间9
+        return yOffset + cellHeight + ((minutesAfter7PM - 50) / 10) * _shortBreakHeight;
+      } else if (minutesAfter7PM <= 110) { // 第10节
+        return yOffset + cellHeight + _shortBreakHeight + ((minutesAfter7PM - 60) / 50) * cellHeight;
+      } else if (minutesAfter7PM <= 120) { // 课间10
+        return yOffset + 2 * cellHeight + _shortBreakHeight + ((minutesAfter7PM - 110) / 10) * _shortBreakHeight;
+      } else { // 第11节 (120-170)
+        return yOffset + 2 * cellHeight + 2 * _shortBreakHeight + ((minutesAfter7PM - 120) / 50) * cellHeight;
+      }
+    }
+
+    return maxPossibleY;
+  }
+
+  // 获取课程基于节次的精确边界，引入动态课间高度
+  double getTopOffset(int p) {
+    if (p <= 4) {
+      return (p - 1) * cellHeight + (p - 1) * _shortBreakHeight;
+    } else if (p <= 8) {
+      return 4 * cellHeight + 3 * _shortBreakHeight + breakHeight + (p - 5) * cellHeight + (p - 5) * _shortBreakHeight;
+    } else {
+      return 8 * cellHeight + 6 * _shortBreakHeight + 2 * breakHeight + (p - 9) * cellHeight + (p - 9) * _shortBreakHeight;
+    }
+  }
+
+  double getBottomOffset(int p) {
+    return getTopOffset(p) + cellHeight;
+  }
+
+  // 节次推算
   int getStartPeriod(int startTime) {
     if (startTime <= 850) return 1;
     if (startTime <= 950) return 2;
@@ -195,20 +311,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     if (endTime <= 1950) return 9;
     if (endTime <= 2050) return 10;
     return 11;
-  }
-
-  double getTopOffset(int p) {
-    if (p <= 4) {
-      return (p - 1) * cellHeight;
-    } else if (p <= 8) {
-      return 4 * cellHeight + breakHeight + (p - 5) * cellHeight;
-    } else {
-      return 8 * cellHeight + 2 * breakHeight + (p - 9) * cellHeight;
-    }
-  }
-
-  double getBottomOffset(int p) {
-    return getTopOffset(p) + cellHeight;
   }
 
   Color _getCourseColor(String courseName) {
@@ -420,6 +522,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
       currentY += cellHeight;
 
+      // 绘制课间/午休/晚休
       if (i == 4) {
         children.add(
             Positioned(
@@ -450,6 +553,20 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
             )
         );
         currentY += breakHeight;
+      } else if (i != 11 && _shortBreakHeight > 0) {
+        // 短课间
+        children.add(
+            Positioned(
+              top: currentY,
+              left: 0,
+              right: 0,
+              height: _shortBreakHeight,
+              child: Container(
+                color: isDark ? Colors.white12 : Colors.grey.shade100,
+              ),
+            )
+        );
+        currentY += _shortBreakHeight;
       }
     }
 
@@ -465,103 +582,98 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       );
     }
 
-    // 2. 将待办事项覆盖到网格上 (避开午休晚休)
+    // 2. 将待办事项覆盖到网格上 (🚀 启用时间坐标系渲染)
     if (_viewMode != 1) {
-      Map<String, int> periodTodoCount = {};
+      // 记录某天某时间段是否有堆叠，略微错开 X 轴防遮挡
+      Map<String, int> collisionMap = {};
 
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var todo in _intraDayTodosPerDay[weekday]!) {
           DateTime start = todo.createdAt;
           DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
-          int startTimeInt = start.hour * 100 + start.minute;
-          int endTimeInt = end.hour * 100 + end.minute;
+          // 使用新的坐标系换算时间偏移量
+          double top = _getYOffsetByTime(start.hour, start.minute);
+          double bottom = _getYOffsetByTime(end.hour, end.minute);
 
-          int sPeriod = getStartPeriod(startTimeInt);
-          int ePeriod = getEndPeriod(endTimeInt);
+          double height = bottom - top;
+          // 防止待办时间太短，甚至不足一分钟，导致不可见，强制最低高度为半节课
+          if (height < cellHeight / 2) height = cellHeight / 2;
 
-          // 限制范围 1~11
-          if (sPeriod > 11) sPeriod = 11;
-          if (ePeriod > 11) ePeriod = 11;
-          if (sPeriod < 1) sPeriod = 1;
-          if (ePeriod < 1) ePeriod = 1;
+          // 防重叠策略：如果一个待办的起始高度和其他待办相撞，就稍微往右偏移或者压缩宽度
+          String collisionKey = "${weekday}_${(top / 10).floor()}";
+          int stackIndex = collisionMap[collisionKey] ?? 0;
+          collisionMap[collisionKey] = stackIndex + 1;
 
-          // ⭐ 核心逻辑：切分时间段，跨越休息区则拆成两块绘制
-          List<List<int>> segments = [];
-          if (sPeriod <= 4) {
-            segments.add([sPeriod, (ePeriod < 4) ? ePeriod : 4]);
+          double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
+          double finalWidth = cellWidth - 2;
+          double finalLeft = leftOffset + 1;
+
+          // 发生重叠时，层叠缩进展示
+          if (stackIndex > 0) {
+            finalLeft += 8.0 * stackIndex;
+            finalWidth -= 8.0 * stackIndex;
           }
-          if (sPeriod <= 8 && ePeriod >= 5) {
-            segments.add([(sPeriod > 5) ? sPeriod : 5, (ePeriod < 8) ? ePeriod : 8]);
-          }
-          if (ePeriod >= 9) {
-            segments.add([(sPeriod > 9) ? sPeriod : 9, ePeriod]);
-          }
 
-          for (var seg in segments) {
-            if (seg[0] > seg[1]) continue;
-
-            String periodKey = "${weekday}_${seg[0]}";
-            int offsetIndex = periodTodoCount[periodKey] ?? 0;
-            periodTodoCount[periodKey] = offsetIndex + 1;
-
-            double top = getTopOffset(seg[0]) + (offsetIndex * 18.0);
-            double bottom = getBottomOffset(seg[1]);
-            double height = bottom - top;
-            if (height < cellHeight / 2) height = cellHeight / 2;
-
-            double left = timeColumnWidth + (weekday - 1) * cellWidth;
-
-            children.add(
-                Positioned(
-                  top: top + 1,
-                  left: left + 1,
-                  width: cellWidth - 2,
-                  height: height - 2,
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)));
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
+          children.add(
+              Positioned(
+                top: top + 1,
+                left: finalLeft,
+                width: finalWidth,
+                height: height - 2,
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)));
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2), // 稍微减小垂直内边距
+                    decoration: BoxDecoration(
                         color: todo.isDone ? Colors.green.withOpacity(0.5) : Colors.amber.shade500.withOpacity(0.85),
                         borderRadius: BorderRadius.circular(6),
-                      ),
+                        // 给叠放的待办加点阴影更好辨认
+                        boxShadow: stackIndex > 0 ? [const BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(-1, 1))] : null
+                    ),
+                    // 🚀 核心修复：使用 ClipRRect 防止任何极端情况下的视觉溢出，并去除时间文本
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min, // 尽可能小
                         children: [
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 10, color: Colors.white),
                               const SizedBox(width: 4),
+                              // 🚀 直接将标题放在第一行，并支持自动换行
                               Expanded(
                                 child: Text(
-                                  DateFormat('HH:mm').format(start),
-                                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                  todo.title,
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                                      height: 1.1
+                                  ),
+                                  maxLines: 3, // 允许最多显示3行标题
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            todo.title,
-                            style: TextStyle(color: Colors.white, fontSize: 10, decoration: todo.isDone ? TextDecoration.lineThrough : null, height: 1.1),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
                   ),
-                )
-            );
-          }
+                ),
+              )
+          );
         }
       }
     }
 
-    // 3. 将课程块覆盖到网格上 (课程在待办之后 Add，自动实现重叠时课程置顶)
+    // 3. 将课程块覆盖到网格上
     if (_viewMode != 2) {
       for (var course in _weekCourses) {
         int startPeriod = getStartPeriod(course.startTime);
@@ -689,8 +801,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                 double cellWidth = (constraints.maxWidth - timeColumnWidth) / 7;
                 return SingleChildScrollView(
                   child: SizedBox(
-                    // 计算总高度以保证可以垂直滚动：11节课 + 2次休息区
-                    height: 11 * cellHeight + 2 * breakHeight,
+                    // 计算总高度以保证可以垂直滚动：11节课 + 2次长休息区 + 8次动态短课间
+                    height: 11 * cellHeight + 2 * breakHeight + 8 * _shortBreakHeight,
                     child: _buildGrid(cellWidth),
                   ),
                 );

@@ -120,9 +120,7 @@ class _SettingsPageState extends State<SettingsPage> {
         for (final FileSystemEntity child in children) {
           total += _getTotalSizeOfFilesInDir(child);
         }
-      } catch (e) {
-        // 权限或文件锁定导致读取失败时忽略
-      }
+      } catch (e) {}
       return total;
     }
     return 0;
@@ -244,7 +242,7 @@ class _SettingsPageState extends State<SettingsPage> {
             try {
               final size = entity.lengthSync();
               totalSize += size;
-              if (size > 50 * 1024) { // 降低到 50KB，揪出大量小文件群
+              if (size > 50 * 1024) {
                 allFiles.add({
                   'path': entity.path,
                   'size': size,
@@ -259,9 +257,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     try {
-      // 🚀 核心越狱级操作：拿到 Documents 路径后，向上跳一级来到 Android 沙盒真正的根目录！
-      // 这将指向 /data/user/0/com.math_quiz.junpgle.com.math_quiz_app/
-      // 包含了所有隐藏的 databases, shared_prefs, app_webview, code_cache 等系统级占用
       final docDir = await getApplicationDocumentsDirectory();
       final rootDir = docDir.parent;
 
@@ -272,14 +267,11 @@ class _SettingsPageState extends State<SettingsPage> {
         if (extDir != null) await scanDirectory(extDir, '外部存储 (External)');
       }
 
-      // 按大小降序排序
       allFiles.sort((a, b) => b['size'].compareTo(a['size']));
-
-      // 提取前 100 个最大的文件 (扩大范围)
       final topFiles = allFiles.take(100).toList();
 
       if (mounted) {
-        Navigator.pop(context); // 关闭加载框
+        Navigator.pop(context);
         _showFilesDialog(topFiles, dirSizes);
       }
     } catch (e) {
@@ -333,7 +325,6 @@ class _SettingsPageState extends State<SettingsPage> {
                           final fileName = path.split('/').last;
                           final File file = fileInfo['file'] as File;
 
-                          // 🚀 强化版保护机制：防误删核心代码和用户数据库
                           bool isCore = path.contains('flutter_assets') ||
                               path.endsWith('.db') ||
                               path.contains('shared_prefs') ||
@@ -585,6 +576,9 @@ class _SettingsPageState extends State<SettingsPage> {
     leftOrder.removeWhere((key) => !defaultOrder.contains(key));
     rightOrder.removeWhere((key) => !defaultOrder.contains(key));
 
+    // 🚀 初始化手机端专用的单列合并状态，保证所见即所得
+    List<String> mobileCombinedOrder = [...leftOrder, ...rightOrder];
+
     Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
     String? visStr = prefs.getString('home_section_visibility');
     if (visStr != null) visibility = Map<String, bool>.from(jsonDecode(visStr));
@@ -605,6 +599,7 @@ class _SettingsPageState extends State<SettingsPage> {
         builder: (ctx) => StatefulBuilder(
             builder: (context, setDialogState) {
 
+              // === 平板端专用的拖拽方法 ===
               void moveItem(String item, {String? targetKey, bool? toLeftList}) {
                 setDialogState(() {
                   leftOrder!.remove(item);
@@ -709,31 +704,24 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       Expanded(
                         child: isTablet
-                            ? Row(
+                            ? Row( // 平板渲染双列拖拽
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             buildDragColumn(leftOrder!, true),
                             buildDragColumn(rightOrder!, false),
                           ],
                         )
-                            : ReorderableListView(
+                            : ReorderableListView( // 🚀 手机端渲染单列拖拽，彻底修复错位问题
                           shrinkWrap: true,
                           onReorder: (oldIndex, newIndex) {
                             setDialogState(() {
                               if (newIndex > oldIndex) newIndex -= 1;
-                              List<String> combined = [...leftOrder!, ...rightOrder!];
-                              final item = combined.removeAt(oldIndex);
-                              combined.insert(newIndex, item);
-
-                              leftOrder!.clear();
-                              rightOrder!.clear();
-                              for (int i = 0; i < combined.length; i++) {
-                                if (i % 2 == 0) leftOrder!.add(combined[i]);
-                                else rightOrder!.add(combined[i]);
-                              }
+                              // 仅仅在专门的合并列表上挪动位置，保证平滑跟手
+                              final item = mobileCombinedOrder.removeAt(oldIndex);
+                              mobileCombinedOrder.insert(newIndex, item);
                             });
                           },
-                          children: [...leftOrder!, ...rightOrder!].map((key) {
+                          children: mobileCombinedOrder.map((key) {
                             return CheckboxListTile(
                               key: Key(key),
                               contentPadding: EdgeInsets.zero,
@@ -754,6 +742,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
                   FilledButton(
                     onPressed: () {
+                      if (!isTablet) {
+                        // 🚀 手机端在最后点击“保存”时，才将所见即所得的合并列表均匀分发给底层双栏
+                        leftOrder!.clear();
+                        rightOrder!.clear();
+                        int mid = (mobileCombinedOrder.length / 2).ceil();
+                        for (int i = 0; i < mobileCombinedOrder.length; i++) {
+                          if (i < mid) leftOrder!.add(mobileCombinedOrder[i]);
+                          else rightOrder!.add(mobileCombinedOrder[i]);
+                        }
+                      }
+
                       prefs.setStringList('home_section_order_left', leftOrder!);
                       prefs.setStringList('home_section_order_right', rightOrder!);
                       prefs.setString('home_section_visibility', jsonEncode(visibility));
