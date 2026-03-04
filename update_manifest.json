@@ -1,9 +1,9 @@
 {
   "version_code": 1,
-  "version_name": "1.6.3",
+  "version_name": "1.6.4",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 1.6.3",
+    "title": "版本更新 1.6.4",
     "description": "支持按模块同步\\手动同步\n有开始时间的待办默认提前二十分钟上岛提醒\n优化日历界面显示逻辑\n新增存储空间占用分析\n平板支持首页两栏自由拖动排序\n修复首页模块显示缓存导致的排序错乱问题\n解耦homedashboard",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "patch_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk"
