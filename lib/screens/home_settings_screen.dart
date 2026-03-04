@@ -231,12 +231,37 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showHomeSectionManager() async {
     final prefs = await SharedPreferences.getInstance();
-    List<String> order = prefs.getStringList('home_section_order') ?? ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
-    Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
 
+    // 1. 获取本地保存的顺序
+    List<String> savedOrder = prefs.getStringList('home_section_order') ?? [];
+
+    // 2. 所有的标准默认模块
+    final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
+
+    // 3. 核心修复逻辑：对比并补全缺失的模块
+    List<String> order = List.from(savedOrder);
+    if (order.isEmpty) {
+      order = List.from(defaultOrder);
+    } else {
+      // 检查是否有缺失的模块（比如意外丢失的 'courses'），如果缺失则加到最后
+      for (var key in defaultOrder) {
+        if (!order.contains(key)) {
+          order.add(key);
+        }
+      }
+      // 顺便清理一下可能存在的无效脏数据
+      order.removeWhere((key) => !defaultOrder.contains(key));
+    }
+
+    Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
     String? visStr = prefs.getString('home_section_visibility');
     if (visStr != null) {
       visibility = Map<String, bool>.from(jsonDecode(visStr));
+    }
+
+    // 补全可见性状态，防止 null
+    for (var key in defaultOrder) {
+      visibility.putIfAbsent(key, () => true);
     }
 
     Map<String, String> names = {
@@ -301,6 +326,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       prefs.setStringList('home_section_order', order);
                       prefs.setString('home_section_visibility', jsonEncode(visibility));
                       Navigator.pop(ctx);
+
+                      // 提示需要返回首页以刷新
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(content: Text('已保存，请返回主页查看更新'))
+                      );
                     },
                     child: const Text("保存并应用"),
                   )
