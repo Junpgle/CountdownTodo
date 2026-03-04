@@ -122,7 +122,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         when (type) {
                             "quiz" -> updateQuizNotification(args)
                             "course" -> updateCourseNotification(args)
-                            else -> updateTodoNotification(args)
+                            "upcoming_todo" -> updateUpcomingTodoNotification(args) // 🚀 新增：处理即将开始的具体时间待办
+                            else -> updateTodoNotification(args) // 这里现在只负责“全天”待办汇总
                         }
                         result.success(null)
                     } else result.error("INVALID_ARGS", "Arguments were null", null)
@@ -334,7 +335,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             totalSteps = 0,
             isTodo = false,
             shortText = room, // 这个会被映射到胶囊和锁屏的关键短文本
-            iconResId = R.drawable.play_lesson // 新增：指定课程专属图标
+            iconResId = R.drawable.play_lesson // 使用旧代码里的课程专属图标
         )
     }
 
@@ -378,12 +379,47 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
+    // 🚀 新增：处理即将开始的具体时间待办
+    private fun updateUpcomingTodoNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val todoTitle = args["todoTitle"] as? String ?: "待办事项"
+        val timeStr = args["timeStr"] as? String ?: ""
+
+        val title = todoTitle
+        val text = "时间: $timeStr"
+        val subText = "🕒即将开始"
+        val color = 0xFFFF9800.toInt() // 橙色警示
+
+        buildAndNotify(
+            title = title,
+            text = text,
+            subText = subText,
+            progress = 0,
+            isOngoing = true,
+            color = color,
+            currentStep = 0,
+            totalSteps = 0,
+            isTodo = true,
+            shortText = title, // 胶囊短文本显示时间
+            iconResId = R.drawable.calendar_clock
+        )
+    }
+
+    // 负责“全天”待办的汇总显示
     private fun updateTodoNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val totalCount = (args["totalCount"] as? Number)?.toInt() ?: 0
         val completedCount = (args["completedCount"] as? Number)?.toInt() ?: 0
         val pendingTitlesRaw = args["pendingTitles"] as? List<*>
         val pendingTitles = pendingTitlesRaw?.filterIsInstance<String>() ?: emptyList()
+
+        // 如果连待办都没有了，直接取消（这和 Flutter 端的逻辑对应）
+        if (totalCount == 0) {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.cancel(NOTIFICATION_ID)
+            return
+        }
+
         val isAllDone = completedCount == totalCount && totalCount > 0
         val progress = if (totalCount > 0) (completedCount * 100) / totalCount else 0
 
@@ -393,16 +429,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val color: Int
 
         if (isAllDone) {
-            title = "All Tasks Completed! \uD83C\uDF89"
+            title = "All Day Tasks Completed! \uD83C\uDF89"
             text = "Great job clearing your list."
             color = 0xFF0F9D58.toInt()
         } else {
-            title = if (pendingTitles.isNotEmpty()) "Current: ${pendingTitles[0]}" else "Keep Going!"
+            title = if (pendingTitles.isNotEmpty()) "全天: ${pendingTitles[0]}" else "Keep Going!"
             text = if (pendingTitles.size > 1) "Next: ${pendingTitles.drop(1).joinToString(", ")}" else "Almost there!"
             color = 0xFF4285F4.toInt()
         }
 
-        // 标记为待办任务，传入 isTodo = true
         buildAndNotify(
             title = title,
             text = text,
@@ -427,7 +462,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         totalSteps: Int,
         isTodo: Boolean = false,
         shortText: String? = null,
-        iconResId: Int = R.drawable.ic_notification // 新增：图标资源参数，默认使用旧图标
+        iconResId: Int = R.drawable.ic_notification
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
@@ -442,7 +477,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 🚀 构建基础的 NotificationCompat.Builder
         // ==========================================
         val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(iconResId) // 使用传入的图标
+            .setSmallIcon(iconResId)
             .setLargeIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
             .setContentTitle(title)
             .setContentText(text)
@@ -565,13 +600,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 val hyperBuilder = HyperIslandNotification.Builder(this, "math_quiz_biz", title)
                     .setSmallWindowTarget(MainActivity::class.java.name)
 
-                // 🌟 更新：在这里也使用了传入的 iconResId
                 val islandIcon = HyperPicture("island_icon", this, iconResId)
                 hyperBuilder.addPicture(islandIcon)
 
                 hyperBuilder.setBaseInfo(
                     title = title,
-                    content = shortText ?: text, // 优先显示短文本（比如教室信息）
+                    content = shortText ?: text, // 优先显示短文本（比如教室信息或时间）
                     pictureKey = "island_icon"
                 )
 
@@ -612,7 +646,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         val notification = builder.build()
 
-        // 🚀 核心诊断：通过反射验证系统是否真正赋予了“实时更新”权限
         if (Build.VERSION.SDK_INT >= 36) {
             try {
                 val canPost = notificationManager.javaClass.getMethod("canPostPromotedNotifications").invoke(notificationManager) as? Boolean ?: false

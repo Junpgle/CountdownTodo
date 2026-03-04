@@ -99,7 +99,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       _checkAutoSync();
       _checkUpdatesSilently();
 
-      _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) { _checkUpcomingCourses(); });
+      _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) { _checkUpcomingEvents(); });
     });
   }
 
@@ -112,31 +112,62 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   }
 
   // === 业务与辅助逻辑 ===
-  Future<void> _checkUpcomingCourses() async {
+  Future<void> _checkUpcomingEvents() async {
+    DateTime now = DateTime.now();
+
+    // 1. 优先检查课程
     final dashboardData = await CourseService.getDashboardCourses();
     List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
-    if (courses.isEmpty) return;
 
-    DateTime now = DateTime.now();
+    bool hasUpcomingCourse = false;
     for (var course in courses) {
       try {
         DateTime courseTime = DateFormat('yyyy-MM-dd HH:mm').parse('${course.date} ${course.formattedStartTime}');
         int diffMinutes = courseTime.difference(now).inMinutes;
 
-        if (diffMinutes <= 20 && diffMinutes > 0) {
+        // 如果在课程开始前 20 分钟内
+        if (diffMinutes >= 0 && diffMinutes <= 20) {
           NotificationService.showCourseLiveActivity(
             courseName: course.courseName,
             room: course.roomName,
             timeStr: '${course.formattedStartTime} - ${course.formattedEndTime}',
             teacher: course.teacherName,
           );
-        } else if (diffMinutes == -10) {
-          NotificationService.cancelNotification();
+          hasUpcomingCourse = true;
+          break; // 找到一个最近的就停止，避免通知冲突
         }
       } catch (e) {
         debugPrint("检查课程通知失败: $e");
       }
     }
+
+    if (hasUpcomingCourse) return; // 如果有即将开始的课程，课程提醒优先级最高，直接返回。
+
+    // 2. 如果没有课程，则检查待办事项
+    // 过滤出未完成、不是全天、并且有特定时间线的待办
+    List<TodoItem> upcomingTodos = _todos.where((t) {
+      if (t.isDone) return false;
+      bool isAllDay = t.dueDate != null && t.createdAt.hour == 0 && t.createdAt.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
+      if (isAllDay) return false;
+
+      // 我们假设以 createdAt 作为事件的“开始时间”
+      DateTime startTime = DateTime(now.year, now.month, now.day, t.createdAt.hour, t.createdAt.minute);
+      // 如果跨天了或者时间比较复杂，这里的计算可能需要稍微调整以匹配当前日期
+
+      int diffMinutes = startTime.difference(now).inMinutes;
+      // 在开始前 20 分钟内
+      return diffMinutes >= 0 && diffMinutes <= 20;
+    }).toList();
+
+    if (upcomingTodos.isNotEmpty) {
+      // 对即将到来的待办按时间排序，取最近的一个
+      upcomingTodos.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      NotificationService.showUpcomingTodoNotification(upcomingTodos.first);
+      return;
+    }
+
+    // 3. 如果既没有即将开始的课程，也没有即将开始的具体时间待办，那么就展示普通的“全天待办”汇总
+    NotificationService.updateTodoNotification(_todos);
   }
 
   Future<void> _checkUpdatesSilently() async {

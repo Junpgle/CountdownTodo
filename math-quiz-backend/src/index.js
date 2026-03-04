@@ -1,6 +1,6 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
- * 功能：用户认证、排行榜、待办事项(LWW同步)、倒计时(LWW同步)、屏幕时间同步(含分类映射)、修改密码
+ * 功能：用户认证、排行榜、待办事项(LWW同步)、倒计时(LWW同步)、屏幕时间同步(含分类映射)、修改密码、同步频率限制
  */
 
 export default {
@@ -101,7 +101,6 @@ export default {
         return jsonResponse({ success: true, user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url } });
       }
 
-      // --- 新增：修改密码接口 ---
       if (url.pathname === "/api/auth/change_password" && request.method === "POST") {
         const { user_id, old_password, new_password } = await request.json();
         if (!user_id || !old_password || !new_password) return errorResponse("缺少参数");
@@ -134,52 +133,59 @@ export default {
         return jsonResponse({ success: true });
       }
 
-	// --------------------------
-	// 模块 C: 待办事项 (支持软删除与新属性)
-	// --------------------------
+      // --------------------------
+      // 模块 C: 待办事项 (支持软删除与新属性)
+      // --------------------------
 
-	if (url.pathname === "/api/todos" && request.method === "GET") {
-	  const userId = url.searchParams.get("user_id");
-	  const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
-	  return jsonResponse(results);
-	}
+      if (url.pathname === "/api/todos" && request.method === "GET") {
+        const userId = url.searchParams.get("user_id");
 
-	if (url.pathname === "/api/todos" && request.method === "POST") {
-	  // 接收新增加的 due_date 和 created_date 字段，以及 is_completed 状态
-	  const { user_id, content, is_completed, client_updated_at, due_date, created_date } = await request.json();
-	  const timestamp = client_updated_at || Date.now();
-	  const completedVal = is_completed ? 1 : 0; // 确保传给数据库的是 0 或 1
+        // 🚀 拦截检查
+        const limitError = await enforceSyncLimit(userId, DB);
+        if (limitError) return errorResponse(limitError, 429);
 
-	  const existing = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND content = ?").bind(user_id, content).first();
+        const { results } = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
+        return jsonResponse(results);
+      }
 
-	  if (existing) {
-		const existingTime = parseInt(existing.updated_at) || 0;
-		if (timestamp > existingTime) {
-		  // 全量更新：包含完成状态、截止日期、创建日期
-		  await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ?, is_deleted = 0, due_date = ?, created_date = ? WHERE id = ?")
-			.bind(completedVal, timestamp, due_date || null, created_date || null, existing.id).run();
-		}
-	  } else {
-		// 插入新数据
-		await DB.prepare("INSERT INTO todos (user_id, content, is_completed, updated_at, is_deleted, due_date, created_date) VALUES (?, ?, ?, ?, 0, ?, ?)")
-		  .bind(user_id, content, completedVal, timestamp, due_date || null, created_date || null).run();
-	  }
-	  return jsonResponse({ success: true });
-	}
+      if (url.pathname === "/api/todos" && request.method === "POST") {
+        const { user_id, content, is_completed, client_updated_at, due_date, created_date } = await request.json();
 
-	if (url.pathname === "/api/todos/toggle" && request.method === "POST") {
-	  const { id, is_completed } = await request.json();
-	  await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ? WHERE id = ?")
-		.bind(is_completed ? 1 : 0, Date.now(), id).run();
-	  return jsonResponse({ success: true });
-	}
+        // 🚀 拦截检查
+        const limitError = await enforceSyncLimit(user_id, DB);
+        if (limitError) return errorResponse(limitError, 429);
 
-	if (url.pathname === "/api/todos" && request.method === "DELETE") {
-	  const { id } = await request.json();
-	  await DB.prepare("UPDATE todos SET is_deleted = 1, updated_at = ? WHERE id = ?")
-		.bind(Date.now(), id).run();
-	  return jsonResponse({ success: true });
-	}
+        const timestamp = client_updated_at || Date.now();
+        const completedVal = is_completed ? 1 : 0;
+
+        const existing = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND content = ?").bind(user_id, content).first();
+
+        if (existing) {
+         const existingTime = parseInt(existing.updated_at) || 0;
+         if (timestamp > existingTime) {
+           await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ?, is_deleted = 0, due_date = ?, created_date = ? WHERE id = ?")
+            .bind(completedVal, timestamp, due_date || null, created_date || null, existing.id).run();
+         }
+        } else {
+         await DB.prepare("INSERT INTO todos (user_id, content, is_completed, updated_at, is_deleted, due_date, created_date) VALUES (?, ?, ?, ?, 0, ?, ?)")
+           .bind(user_id, content, completedVal, timestamp, due_date || null, created_date || null).run();
+        }
+        return jsonResponse({ success: true });
+      }
+
+      if (url.pathname === "/api/todos/toggle" && request.method === "POST") {
+        const { id, is_completed } = await request.json();
+        await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ? WHERE id = ?")
+         .bind(is_completed ? 1 : 0, Date.now(), id).run();
+        return jsonResponse({ success: true });
+      }
+
+      if (url.pathname === "/api/todos" && request.method === "DELETE") {
+        const { id } = await request.json();
+        await DB.prepare("UPDATE todos SET is_deleted = 1, updated_at = ? WHERE id = ?")
+         .bind(Date.now(), id).run();
+        return jsonResponse({ success: true });
+      }
 
       // --------------------------
       // 模块 D: 倒计时 (LWW 同步逻辑)
@@ -187,15 +193,24 @@ export default {
 
       if (url.pathname === "/api/countdowns" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
+
+        // 🚀 拦截检查
+        const limitError = await enforceSyncLimit(userId, DB);
+        if (limitError) return errorResponse(limitError, 429);
+
         const { results } = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ?").bind(userId).all();
         return jsonResponse(results);
       }
 
       if (url.pathname === "/api/countdowns" && request.method === "POST") {
         const { user_id, title, target_time, client_updated_at } = await request.json();
+
+        // 🚀 拦截检查
+        const limitError = await enforceSyncLimit(user_id, DB);
+        if (limitError) return errorResponse(limitError, 429);
+
         const timestamp = client_updated_at || Date.now();
 
-        // 核心修复：同样放弃 ON CONFLICT，先查询后更新，兼容任何粗糙的建表结构
         const existing = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ? AND title = ?").bind(user_id, title).first();
 
         if (existing) {
@@ -235,6 +250,10 @@ export default {
           return errorResponse("缺少必要参数或格式错误 (需包含 user_id, device_name, record_date, apps[])");
         }
 
+        // 🚀 拦截检查
+        const limitError = await enforceSyncLimit(user_id, DB);
+        if (limitError) return errorResponse(limitError, 429);
+
         device_name = device_name.trim();
 
         try {
@@ -265,6 +284,10 @@ export default {
         const userId = url.searchParams.get("user_id");
         const date = url.searchParams.get("date");
         if (!userId || !date) return errorResponse("缺少参数 user_id 或 date");
+
+        // 🚀 拦截检查
+        const limitError = await enforceSyncLimit(userId, DB);
+        if (limitError) return errorResponse(limitError, 429);
 
         const { results } = await DB.prepare(`
           SELECT
@@ -316,6 +339,54 @@ export default {
     }
   },
 };
+
+/**
+ * 🚀 新增：核心同步频率检查逻辑 (带有 10 秒聚合机制)
+ */
+async function enforceSyncLimit(userId, DB) {
+  if (!userId) return null; // 未登录时不限制
+
+  const today = new Date().toISOString().split('T')[0];
+  const now = Date.now();
+  const MAX_SYNCS = 100; // 每天最大同步次数，你可以自行修改
+
+  try {
+    const record = await DB.prepare("SELECT * FROM sync_limits WHERE user_id = ?").bind(userId).first();
+
+    // 如果今天没有记录，初始化为 1
+    if (!record || record.sync_date !== today) {
+      await DB.prepare("INSERT OR REPLACE INTO sync_limits (user_id, sync_date, sync_count, last_sync_time) VALUES (?, ?, ?, ?)")
+        .bind(userId, today, 1, now).run();
+      return null;
+    }
+
+    const lastSyncTime = parseInt(record.last_sync_time) || 0;
+
+    // 💡 智能聚合：如果距离上一个接口调用不到 10 秒，算作“同一批次”同步，不扣除次数！
+    // 这样就不会因为 App 一次性发起 3 个请求（待办、倒计时、屏幕时间）而扣 3 次了。
+    if (now - lastSyncTime < 10000) {
+      await DB.prepare("UPDATE sync_limits SET last_sync_time = ? WHERE user_id = ?").bind(now, userId).run();
+      return null;
+    }
+
+    // 检查是否超过上限
+    if (record.sync_count >= MAX_SYNCS) {
+      return `今日同步次数已达上限 (${MAX_SYNCS}次)，为保护服务器资源，请明天再试。`;
+    }
+
+    // 正常增加计数
+    await DB.prepare("UPDATE sync_limits SET sync_count = sync_count + 1, last_sync_time = ? WHERE user_id = ?")
+      .bind(now, userId).run();
+
+    return null; // 允许通过
+
+  } catch (e) {
+    // 防御性编程：如果你还没在数据库里建 sync_limits 表，捕捉到错误直接放行，不影响主流程！
+    if (e.message.includes("no such table")) return null;
+    console.error("Sync limit logic error:", e);
+    return null;
+  }
+}
 
 async function hashPassword(password) {
   const msgUint8 = new TextEncoder().encode(password);
