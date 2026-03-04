@@ -98,7 +98,7 @@ export default {
         if (!user) return errorResponse("用户不存在", 404);
         const inputHash = await hashPassword(password);
         if (inputHash !== user.password_hash) return errorResponse("密码错误", 401);
-        return jsonResponse({ success: true, user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url } });
+        return jsonResponse({ success: true, user: { id: user.id, username: user.username, email: user.email, avatar_url: user.avatar_url, tier: user.tier } });
       }
 
       if (url.pathname === "/api/auth/change_password" && request.method === "POST") {
@@ -140,7 +140,6 @@ export default {
       if (url.pathname === "/api/todos" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
 
-        // 🚀 拦截检查
         const limitError = await enforceSyncLimit(userId, DB);
         if (limitError) return errorResponse(limitError, 429);
 
@@ -151,7 +150,6 @@ export default {
       if (url.pathname === "/api/todos" && request.method === "POST") {
         const { user_id, content, is_completed, client_updated_at, due_date, created_date } = await request.json();
 
-        // 🚀 拦截检查
         const limitError = await enforceSyncLimit(user_id, DB);
         if (limitError) return errorResponse(limitError, 429);
 
@@ -194,7 +192,6 @@ export default {
       if (url.pathname === "/api/countdowns" && request.method === "GET") {
         const userId = url.searchParams.get("user_id");
 
-        // 🚀 拦截检查
         const limitError = await enforceSyncLimit(userId, DB);
         if (limitError) return errorResponse(limitError, 429);
 
@@ -205,7 +202,6 @@ export default {
       if (url.pathname === "/api/countdowns" && request.method === "POST") {
         const { user_id, title, target_time, client_updated_at } = await request.json();
 
-        // 🚀 拦截检查
         const limitError = await enforceSyncLimit(user_id, DB);
         if (limitError) return errorResponse(limitError, 429);
 
@@ -250,7 +246,6 @@ export default {
           return errorResponse("缺少必要参数或格式错误 (需包含 user_id, device_name, record_date, apps[])");
         }
 
-        // 🚀 拦截检查
         const limitError = await enforceSyncLimit(user_id, DB);
         if (limitError) return errorResponse(limitError, 429);
 
@@ -285,7 +280,6 @@ export default {
         const date = url.searchParams.get("date");
         if (!userId || !date) return errorResponse("缺少参数 user_id 或 date");
 
-        // 🚀 拦截检查
         const limitError = await enforceSyncLimit(userId, DB);
         if (limitError) return errorResponse(limitError, 429);
 
@@ -331,6 +325,108 @@ export default {
         }
       }
 
+      // --------------------------
+      // 🚀 模块 G: 全局聚合同步 (Sync All)
+      // --------------------------
+
+      // GET 方法：用于纯拉取数据
+      if (url.pathname === "/api/sync_all" && request.method === "GET") {
+        const userId = url.searchParams.get("user_id");
+        if (!userId) return errorResponse("缺少 user_id");
+
+        const limitError = await enforceSyncLimit(userId, DB);
+        if (limitError) return errorResponse(limitError, 429);
+
+        const todosRes = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
+        const countdownsRes = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ?").bind(userId).all();
+
+        return jsonResponse({
+          success: true,
+          data: {
+            todos: todosRes.results,
+            countdowns: countdownsRes.results
+          }
+        });
+      }
+
+      // POST 方法：支持批量推送，并返回最新数据
+      if (url.pathname === "/api/sync_all" && request.method === "POST") {
+        const body = await request.json();
+        const { user_id, todos, countdowns, screen_time } = body;
+        if (!user_id) return errorResponse("缺少 user_id");
+
+        const limitError = await enforceSyncLimit(user_id, DB);
+        if (limitError) return errorResponse(limitError, 429);
+
+        // 1. 批量处理 Todos
+        if (Array.isArray(todos)) {
+          for (const t of todos) {
+            const timestamp = t.client_updated_at || Date.now();
+            const completedVal = t.is_completed ? 1 : 0;
+            const deletedVal = t.is_deleted ? 1 : 0;
+            const existing = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND content = ?").bind(user_id, t.content).first();
+
+            if (existing) {
+              const existingTime = parseInt(existing.updated_at) || 0;
+              if (timestamp > existingTime) {
+                await DB.prepare("UPDATE todos SET is_completed = ?, updated_at = ?, is_deleted = ?, due_date = ?, created_date = ? WHERE id = ?")
+                  .bind(completedVal, timestamp, deletedVal, t.due_date || null, t.created_date || null, existing.id).run();
+              }
+            } else {
+              await DB.prepare("INSERT INTO todos (user_id, content, is_completed, updated_at, is_deleted, due_date, created_date) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                .bind(user_id, t.content, completedVal, timestamp, deletedVal, t.due_date || null, t.created_date || null).run();
+            }
+          }
+        }
+
+        // 2. 批量处理 Countdowns
+        if (Array.isArray(countdowns)) {
+          for (const c of countdowns) {
+            const timestamp = c.client_updated_at || Date.now();
+            const deletedVal = c.is_deleted ? 1 : 0;
+            const existing = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ? AND title = ?").bind(user_id, c.title).first();
+
+            if (existing) {
+              const existingTime = parseInt(existing.updated_at) || 0;
+              if (timestamp > existingTime) {
+                await DB.prepare("UPDATE countdowns SET target_time = ?, updated_at = ?, is_deleted = ? WHERE id = ?")
+                  .bind(c.target_time, timestamp, deletedVal, existing.id).run();
+              }
+            } else {
+              await DB.prepare("INSERT INTO countdowns (user_id, title, target_time, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?)")
+                .bind(user_id, c.title, c.target_time, timestamp, deletedVal).run();
+            }
+          }
+        }
+
+        // 3. 批量处理 Screen Time
+        if (screen_time && screen_time.device_name && screen_time.record_date && Array.isArray(screen_time.apps)) {
+          const { device_name, record_date, apps } = screen_time;
+          const statements = apps.map(app => {
+            return DB.prepare(`
+              INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
+              VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(user_id, device_name, record_date, app_name)
+              DO UPDATE SET duration = excluded.duration, updated_at = CURRENT_TIMESTAMP
+            `).bind(user_id, device_name.trim(), record_date, app.app_name, app.duration);
+          });
+          if (statements.length > 0) await DB.batch(statements);
+        }
+
+        // 4. 返回最新数据（全量）
+        const todosRes = await DB.prepare("SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC").bind(user_id).all();
+        const countdownsRes = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ?").bind(user_id).all();
+
+        return jsonResponse({
+          success: true,
+          message: "聚合同步完成",
+          data: {
+            todos: todosRes.results,
+            countdowns: countdownsRes.results
+          }
+        });
+      }
+
       // 默认 404
       return errorResponse("API Endpoint Not Found", 404);
 
@@ -341,16 +437,25 @@ export default {
 };
 
 /**
- * 🚀 新增：核心同步频率检查逻辑 (带有 10 秒聚合机制)
+ * 🚀 核心同步频率检查逻辑 (带有 10 秒聚合机制 & 分级限制)
  */
 async function enforceSyncLimit(userId, DB) {
   if (!userId) return null; // 未登录时不限制
 
   const today = new Date().toISOString().split('T')[0];
   const now = Date.now();
-  const MAX_SYNCS = 100; // 每天最大同步次数，你可以自行修改
 
   try {
+    // 1. 查询用户的分级 (Tier)
+    const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
+    const tier = userRow ? userRow.tier : 'free'; // 找不到默认算 free
+
+    // 2. 根据分级设定最大同步次数
+    let MAX_SYNCS = 50; // free 普通用户默认 50 次
+    if (tier === 'pro') MAX_SYNCS = 500;
+    if (tier === 'admin') MAX_SYNCS = 99999;
+
+    // 3. 查询今日同步记录
     const record = await DB.prepare("SELECT * FROM sync_limits WHERE user_id = ?").bind(userId).first();
 
     // 如果今天没有记录，初始化为 1
@@ -363,15 +468,16 @@ async function enforceSyncLimit(userId, DB) {
     const lastSyncTime = parseInt(record.last_sync_time) || 0;
 
     // 💡 智能聚合：如果距离上一个接口调用不到 10 秒，算作“同一批次”同步，不扣除次数！
-    // 这样就不会因为 App 一次性发起 3 个请求（待办、倒计时、屏幕时间）而扣 3 次了。
     if (now - lastSyncTime < 10000) {
       await DB.prepare("UPDATE sync_limits SET last_sync_time = ? WHERE user_id = ?").bind(now, userId).run();
       return null;
     }
 
-    // 检查是否超过上限
+    // 4. 检查是否超过上限
     if (record.sync_count >= MAX_SYNCS) {
-      return `今日同步次数已达上限 (${MAX_SYNCS}次)，为保护服务器资源，请明天再试。`;
+      let msg = `今日同步次数已达上限 (${MAX_SYNCS}次)，请明天再试。`;
+      if (tier === 'free') msg += " 升级为 Pro 可解锁更高额度。";
+      return msg;
     }
 
     // 正常增加计数
@@ -381,7 +487,6 @@ async function enforceSyncLimit(userId, DB) {
     return null; // 允许通过
 
   } catch (e) {
-    // 防御性编程：如果你还没在数据库里建 sync_limits 表，捕捉到错误直接放行，不影响主流程！
     if (e.message.includes("no such table")) return null;
     console.error("Sync limit logic error:", e);
     return null;
