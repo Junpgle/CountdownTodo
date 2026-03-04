@@ -284,7 +284,7 @@ export default {
         try {
           const statements = apps.map(app => {
            return DB.prepare(`
-             INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
+             INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration, date)
              VALUES (?, ?, ?, ?, ?)
              ON CONFLICT(user_id, device_name, record_date, app_name)
              DO UPDATE SET

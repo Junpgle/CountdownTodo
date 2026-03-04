@@ -142,6 +142,7 @@ class CourseService {
       'weekday': c.weekday,
       'week_index': c.weekIndex,
       'lesson_type': c.lessonType,
+      'date': c.date,
     }).toList();
 
     return await ApiService.uploadCourses(
