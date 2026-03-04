@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../screens/historical_todos_screen.dart';
@@ -30,6 +32,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   bool _isTodoExpanded = true;
   bool _isPastTodosExpanded = false;
   bool _hasInitializedExpansion = false;
+
+  // 🚀 缓存每一个待办事项的唯一 Key。
+  // 用于彻底解决从回收站恢复时，Dismissible 重复 Key 导致的红屏报错。
+  final Map<String, Key> _todoKeys = {};
+
+  Key _getTodoKey(String idPrefix, String todoId) {
+    String mapKey = '${idPrefix}_$todoId';
+    // 如果是全新的或者刚从回收站恢复的(旧Key已被清除)，则生成一个全新的 UniqueKey
+    _todoKeys.putIfAbsent(mapKey, () => UniqueKey());
+    return _todoKeys[mapKey]!;
+  }
 
   @override
   void didUpdateWidget(TodoSectionWidget oldWidget) {
@@ -425,11 +438,33 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     );
 
     return Dismissible(
-      key: key ?? Key(todo.id),
+      // 🚀 核心修复：使用缓存分配的全新 UniqueKey
+      key: key ?? _getTodoKey('dismiss', todo.id),
       background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
       onDismissed: (_) async {
+        // 🚀 必须清除！这样它从回收站恢复出来时，_getTodoKey才会重新分配它的“身份证”，防止红屏报错。
+        _todoKeys.remove('drag_${todo.id}');
+        _todoKeys.remove('dismiss_${todo.id}');
+
         String titleToDelete = todo.title;
         List<TodoItem> updatedList = List.from(widget.todos)..removeWhere((t) => t.id == todo.id);
+
+        // 🚀 将主页划掉的待办移入回收站
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final String key = 'deleted_todos_${widget.username}';
+          List<TodoItem> deleted = [];
+          String? str = prefs.getString(key);
+          if (str != null) {
+            deleted = (jsonDecode(str) as Iterable).map((e) => TodoItem.fromJson(e)).toList();
+          }
+          todo.lastUpdated = DateTime.now(); // 记录删除时间
+          deleted.insert(0, todo);
+          await prefs.setString(key, jsonEncode(deleted.map((e) => e.toJson()).toList()));
+        } catch (e) {
+          debugPrint("保存至回收站失败: $e");
+        }
+
         await StorageService.deleteTodoGlobally(widget.username, titleToDelete);
         widget.onTodosChanged(updatedList);
       },
@@ -505,7 +540,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           )
       );
       if (_isPastTodosExpanded) {
-        sections.addAll(pastTodos.map((t) => _buildTodoItemCard(t, isPast: true, isFuture: false)));
+        // 使用 _getTodoKey 保证每个卡片的身份独立
+        sections.addAll(pastTodos.map((t) => _buildTodoItemCard(t, isPast: true, isFuture: false, key: _getTodoKey('dismiss', t.id))));
       }
       sections.add(const SizedBox(height: 8));
     }
@@ -564,9 +600,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               int index = entry.key;
               TodoItem t = entry.value;
               return ReorderableDelayedDragStartListener(
-                key: Key(t.id),
+                // 🚀 使用专门的 Key 缓存，防止恢复后和旧的 Key 撞车
+                key: _getTodoKey('drag', t.id),
                 index: index,
-                child: _buildTodoItemCard(t, isPast: false, isFuture: false, key: Key('dismiss_${t.id}')),
+                child: _buildTodoItemCard(t, isPast: false, isFuture: false, key: _getTodoKey('dismiss', t.id)),
               );
             }).toList(),
           ),
@@ -619,7 +656,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         return a.dueDate!.compareTo(b.dueDate!);
       });
 
-      sections.addAll(sortedFutureTodos.map((t) => _buildTodoItemCard(t, isPast: false, isFuture: true)));
+      // 使用 _getTodoKey
+      sections.addAll(sortedFutureTodos.map((t) => _buildTodoItemCard(t, isPast: false, isFuture: true, key: _getTodoKey('dismiss', t.id))));
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections);
@@ -640,6 +678,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 IconButton(
                     icon: Icon(Icons.history, color: widget.isLight ? Colors.white70 : Colors.grey),
                     onPressed: () async {
+                      // 🚀 核心：等待历史页面关闭后，立刻通知主页重新加载数据
                       await Navigator.push(context, MaterialPageRoute(builder: (_) => HistoricalTodosScreen(username: widget.username)));
                       widget.onRefreshRequested();
                     }
