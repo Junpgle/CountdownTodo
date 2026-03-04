@@ -933,6 +933,74 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _uploadCoursesToCloud() async {
+    if (_userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录账号')),
+      );
+      return;
+    }
+
+    final allCourses = await CourseService.getAllCourses();
+    if (allCourses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('当前没有课表数据可上传')),
+      );
+      return;
+    }
+
+    // 二次确认
+    bool confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("上传课表到云端"),
+        content: const Text(
+            "这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text("取消")),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text("上传")),
+        ],
+      ),
+    ) ??
+        false;
+
+    if (!confirm) return;
+
+    // loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final result =
+    await CourseService.syncCoursesToCloud(_userId!);
+
+    if (!mounted) return;
+    Navigator.pop(context); // 关闭 loading
+
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ 课表已成功同步到云端')),
+      );
+
+      // 同步后刷新额度显示
+      _fetchAccountStatus();
+    } else if (result['isLimitExceeded'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['message'] ?? '今日同步次数已达上限')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['message'] ?? '同步失败')),
+      );
+    }
+  }
+
   Future<void> _checkUpdatesAndNotices() async {
     setState(() => _isCheckingUpdate = true);
     await UpdateService.checkUpdateAndPrompt(context, isManual: true);
@@ -1045,6 +1113,13 @@ class _SettingsPageState extends State<SettingsPage> {
 
           // --- 2. 课程设置 ---
           _buildSection('课程设置', [
+            ListTile(
+              leading: const Icon(Icons.cloud_upload_outlined, color: Colors.blue),
+              title: const Text('上传课表到云端'),
+              subtitle: const Text('用于与电脑或其他设备同步'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _uploadCoursesToCloud,
+            ),
             ListTile(
               leading: const Icon(Icons.file_upload_outlined),
               title: const Text('导入课表 (JSON)'),

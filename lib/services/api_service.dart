@@ -280,7 +280,7 @@ class ApiService {
   }
 
   // ==========================================
-  // 🚀 8. 全局聚合同步 (Sync All) - 节省网络请求次数
+  // 8. 全局聚合同步 (Sync All)
   // ==========================================
 
   static Future<Map<String, dynamic>> syncAll({
@@ -308,23 +308,20 @@ class ApiService {
 
       final data = jsonDecode(response.body);
 
-      // 请求成功处理
       if (response.statusCode == 200 && data['success'] == true) {
         return {
           'success': true,
-          'data': data['data'], // 包含后端返回的最新 todos 和 countdowns 列表
+          'data': data['data'],
           'message': data['message'] ?? '同步成功'
         };
       }
-      // 拦截 429 频率超限
       else if (response.statusCode == 429) {
         return {
           'success': false,
           'message': data['error'] ?? '今日同步次数已达上限',
-          'isLimitExceeded': true, // 额外标记用于 UI 层判断并弹窗
+          'isLimitExceeded': true,
         };
       }
-      // 其他错误
       else {
         return {
           'success': false,
@@ -333,6 +330,68 @@ class ApiService {
       }
     } catch (e) {
       return {'success': false, 'message': "网络异常: $e"};
+    }
+  }
+
+  // ==========================================
+  // 9. 课表同步 (Courses)
+  // ==========================================
+
+  /// 获取当前用户的完整课表
+  static Future<List<dynamic>> fetchCourses(int userId, {String semester = "default"}) async {
+    try {
+      final response = await http.get(
+          Uri.parse('$baseUrl/api/courses?user_id=$userId&semester=$semester')
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// 上传并覆盖当前用户的完整课表
+  static Future<Map<String, dynamic>> uploadCourses({
+    required int userId,
+    required List<Map<String, dynamic>> courses,
+    String semester = "default", // 默认分配到一个基础学期中
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/courses'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'semester': semester,
+          'courses': courses,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'message': data['message'] ?? '课表同步成功'
+        };
+      }
+      else if (response.statusCode == 429) {
+        return {
+          'success': false,
+          'message': data['error'] ?? '今日同步次数已达上限',
+          'isLimitExceeded': true,
+        };
+      }
+      else {
+        return {
+          'success': false,
+          'message': data['error'] ?? '课表同步失败'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': '网络异常: $e'};
     }
   }
 }

@@ -1,7 +1,14 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
- * 功能：用户认证、排行榜、待办事项(LWW同步)、倒计时(LWW同步)、屏幕时间同步(含分类映射)、修改密码、同步频率限制
+ * 功能：用户认证、排行榜、待办事项(LWW同步)、倒计时(LWW同步)、屏幕时间同步(含分类映射)、修改密码、同步频率限制、课表同步
  */
+
+// === 🚀 全局配置：各等级用户的每日最大同步次数 ===
+const SYNC_LIMITS = {
+  free: 200,
+  pro: 2000,
+  admin: 99999
+};
 
 export default {
   async fetch(request, env) {
@@ -125,7 +132,8 @@ export default {
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
         const tier = userRow ? userRow.tier : 'free';
 
-        let sync_limit = (tier === 'pro') ? 500 : ((tier === 'admin') ? 99999 : 50);
+        // 🚀 使用全局常量
+        const sync_limit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
 
         const today = new Date().toISOString().split('T')[0];
         const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, today).first();
@@ -333,13 +341,14 @@ export default {
       if (url.pathname === "/api/debug/reset_database" && request.method === "POST") {
         try {
           await DB.batch([
+            DB.prepare("DELETE FROM courses"), // 🚀 包含课表一并清理
             DB.prepare("DELETE FROM screen_time_logs"),
             DB.prepare("DELETE FROM countdowns"),
             DB.prepare("DELETE FROM todos"),
             DB.prepare("DELETE FROM leaderboard"),
             DB.prepare("DELETE FROM pending_registrations"),
             DB.prepare("DELETE FROM users"),
-            DB.prepare("DELETE FROM sqlite_sequence WHERE name IN ('users', 'todos', 'countdowns', 'leaderboard', 'screen_time_logs')")
+            DB.prepare("DELETE FROM sqlite_sequence WHERE name IN ('users', 'todos', 'countdowns', 'leaderboard', 'screen_time_logs', 'courses')")
           ]);
           return jsonResponse({ success: true, message: "数据库已完全重置" });
         } catch (e) {
@@ -365,7 +374,8 @@ export default {
         // 提取用户状态
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
         const tier = userRow ? userRow.tier : 'free';
-        let sync_limit = (tier === 'pro') ? 500 : ((tier === 'admin') ? 99999 : 50);
+
+        const sync_limit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
 
         const today = new Date().toISOString().split('T')[0];
         const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, today).first();
@@ -450,7 +460,8 @@ export default {
         // 4. 获取账户额度和最新数据
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(user_id).first();
         const tier = userRow ? userRow.tier : 'free';
-        let sync_limit = (tier === 'pro') ? 500 : ((tier === 'admin') ? 99999 : 50);
+
+        const sync_limit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
 
         const today = new Date().toISOString().split('T')[0];
         const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(user_id, today).first();
@@ -470,6 +481,92 @@ export default {
             countdowns: countdownsRes.results
           }
         });
+      }
+
+      // --------------------------
+      // 🚀 模块 H: 课程表 (Courses - 手动全量同步)
+      // --------------------------
+
+      // 获取当前用户的完整课表 (支持 semester)
+      if (url.pathname === "/api/courses" && request.method === "GET") {
+        const userId = url.searchParams.get("user_id");
+        const semester = url.searchParams.get("semester") || "default";
+
+        if (!userId) return errorResponse("缺少 user_id");
+
+        const limitError = await enforceSyncLimit(userId, DB);
+        if (limitError) return errorResponse(limitError, 429);
+
+        const { results } = await DB.prepare(`
+          SELECT * FROM courses
+          WHERE user_id = ?
+            AND semester = ?
+            AND is_deleted = 0
+          ORDER BY week_index, weekday, start_time
+        `).bind(userId, semester).all();
+
+        return jsonResponse(results);
+      }
+
+      // 上传并覆盖当前用户的完整课表 (支持 semester)
+      if (url.pathname === "/api/courses" && request.method === "POST") {
+        const body = await request.json();
+        const { user_id, courses, semester = "default" } = body;
+
+        if (!user_id) return errorResponse("缺少 user_id");
+        if (!Array.isArray(courses)) return errorResponse("courses 必须是数组");
+
+        const limitError = await enforceSyncLimit(user_id, DB);
+        if (limitError) return errorResponse(limitError, 429);
+
+        const timestamp = Date.now();
+
+        try {
+          const statements = [];
+
+          // ✅ 只删除当前学期
+          statements.push(
+            DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?")
+              .bind(user_id, semester)
+          );
+
+          for (const c of courses) {
+            statements.push(
+              DB.prepare(`
+                INSERT INTO courses (
+                  user_id, semester,
+                  course_name, room_name, teacher_name,
+                  start_time, end_time, weekday, week_index,
+                  lesson_type, created_at, updated_at, is_deleted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+              `).bind(
+                user_id,
+                semester,
+                c.course_name || '未知课程',
+                c.room_name || '未知教室',
+                c.teacher_name || '未知教师',
+                c.start_time || 0,
+                c.end_time || 0,
+                c.weekday || 1,
+                c.week_index || 1,
+                c.lesson_type || null,
+                timestamp,
+                timestamp
+              )
+            );
+          }
+
+          await DB.batch(statements);
+
+          return jsonResponse({
+            success: true,
+            message: `成功同步 ${courses.length} 节课程`,
+            semester
+          });
+
+        } catch (e) {
+          return errorResponse("课表同步失败: " + e.message, 500);
+        }
       }
 
       // 默认 404
@@ -496,9 +593,7 @@ async function enforceSyncLimit(userId, DB) {
     const tier = userRow ? userRow.tier : 'free'; // 找不到默认算 free
 
     // 2. 根据分级设定最大同步次数
-    let MAX_SYNCS = 50; // free 普通用户默认 50 次
-    if (tier === 'pro') MAX_SYNCS = 500;
-    if (tier === 'admin') MAX_SYNCS = 99999;
+    const MAX_SYNCS = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
 
     // 3. 查询今日同步记录
     const record = await DB.prepare("SELECT * FROM sync_limits WHERE user_id = ?").bind(userId).first();

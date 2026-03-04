@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import '../services/api_service.dart';
 
 // 引入刚才提取出来的解析器
 import 'hfut_schedule_parser.dart';
@@ -125,5 +126,27 @@ class CourseService {
     final weeks = courses.map((c) => c.weekIndex).toSet().toList();
     weeks.sort();
     return weeks;
+  }
+
+  // 上传本地课表到云端
+  static Future<Map<String, dynamic>> syncCoursesToCloud(int userId) async {
+    final courses = await getAllCourses();
+
+    // 转换为后端需要的结构
+    final courseMaps = courses.map((c) => {
+      'course_name': c.courseName,
+      'room_name': c.roomName,
+      'teacher_name': c.teacherName,
+      'start_time': c.startTime,
+      'end_time': c.endTime,
+      'weekday': c.weekday,
+      'week_index': c.weekIndex,
+      'lesson_type': c.lessonType,
+    }).toList();
+
+    return await ApiService.uploadCourses(
+      userId: userId,
+      courses: courseMaps,
+    );
   }
 }
