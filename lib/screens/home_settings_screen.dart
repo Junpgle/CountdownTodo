@@ -229,40 +229,42 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  // 将这个方法替换到 lib/pages/home_settings_screen.dart (SettingsPage类中)
+
   void _showHomeSectionManager() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // 1. 获取本地保存的顺序
-    List<String> savedOrder = prefs.getStringList('home_section_order') ?? [];
+    // 💡 智能识别宽度，决定使用哪种拖拽模式
+    final bool isTablet = MediaQuery.of(context).size.width >= 768;
 
-    // 2. 所有的标准默认模块
+    List<String>? leftOrder = prefs.getStringList('home_section_order_left');
+    List<String>? rightOrder = prefs.getStringList('home_section_order_right');
+
     final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
 
-    // 3. 核心修复逻辑：对比并补全缺失的模块
-    List<String> order = List.from(savedOrder);
-    if (order.isEmpty) {
-      order = List.from(defaultOrder);
-    } else {
-      // 检查是否有缺失的模块（比如意外丢失的 'courses'），如果缺失则加到最后
-      for (var key in defaultOrder) {
-        if (!order.contains(key)) {
-          order.add(key);
-        }
+    // 💡 兼容老版本：如果从未进入过新版设置，则从老的单栏按奇偶拆分作为默认态
+    if (leftOrder == null || rightOrder == null) {
+      List<String> oldOrder = prefs.getStringList('home_section_order') ?? defaultOrder;
+      leftOrder = [];
+      rightOrder = [];
+      for (int i = 0; i < oldOrder.length; i++) {
+        if (i % 2 == 0) leftOrder.add(oldOrder[i]);
+        else rightOrder.add(oldOrder[i]);
       }
-      // 顺便清理一下可能存在的无效脏数据
-      order.removeWhere((key) => !defaultOrder.contains(key));
     }
+
+    // 防御性编程：自动补全因 Bug 丢失的模块，并剔除无效模块
+    List<String> combined = [...leftOrder, ...rightOrder];
+    for (var key in defaultOrder) {
+      if (!combined.contains(key)) leftOrder.add(key); // 默认补偿到左边
+    }
+    leftOrder.removeWhere((key) => !defaultOrder.contains(key));
+    rightOrder.removeWhere((key) => !defaultOrder.contains(key));
 
     Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
     String? visStr = prefs.getString('home_section_visibility');
-    if (visStr != null) {
-      visibility = Map<String, bool>.from(jsonDecode(visStr));
-    }
-
-    // 补全可见性状态，防止 null
-    for (var key in defaultOrder) {
-      visibility.putIfAbsent(key, () => true);
-    }
+    if (visStr != null) visibility = Map<String, bool>.from(jsonDecode(visStr));
+    for (var key in defaultOrder) visibility.putIfAbsent(key, () => true);
 
     Map<String, String> names = {
       'courses': '课程提醒',
@@ -278,29 +280,141 @@ class _SettingsPageState extends State<SettingsPage> {
         context: context,
         builder: (ctx) => StatefulBuilder(
             builder: (context, setDialogState) {
+
+              // 核心控制：平板跨栏拖拽转移逻辑
+              void moveItem(String item, {String? targetKey, bool? toLeftList}) {
+                setDialogState(() {
+                  leftOrder!.remove(item);
+                  rightOrder!.remove(item);
+                  if (targetKey != null) {
+                    if (leftOrder!.contains(targetKey)) {
+                      leftOrder!.insert(leftOrder!.indexOf(targetKey), item);
+                    } else if (rightOrder!.contains(targetKey)) {
+                      rightOrder!.insert(rightOrder!.indexOf(targetKey), item);
+                    }
+                  } else if (toLeftList != null) {
+                    if (toLeftList) leftOrder!.add(item);
+                    else rightOrder!.add(item);
+                  }
+                });
+              }
+
+              // 平板专用的可拖拽卡片构建器
+              Widget buildDraggableItem(String key) {
+                return LongPressDraggable<String>(
+                  data: key,
+                  delay: const Duration(milliseconds: 200), // 长按0.2秒后起飞
+                  feedback: Material(
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.transparent,
+                    child: Container(
+                      width: 250,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
+                      child: Text(names[key] ?? key, style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onPrimaryContainer)),
+                    ),
+                  ),
+                  childWhenDragging: Opacity(
+                    opacity: 0.3,
+                    child: CheckboxListTile(title: Text(names[key] ?? key), value: visibility[key], onChanged: null),
+                  ),
+                  child: DragTarget<String>(
+                      onWillAccept: (data) => data != key, // 不能放到自己身上
+                      onAccept: (data) => moveItem(data, targetKey: key), // 放到目标的前面
+                      builder: (context, candidateData, rejectedData) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            // 当有模块悬停在自己上方时，展示一条蓝色的指示线
+                            border: candidateData.isNotEmpty ? Border(top: BorderSide(color: Theme.of(context).colorScheme.primary, width: 3)) : null,
+                          ),
+                          child: CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(names[key] ?? key, style: const TextStyle(fontSize: 14)),
+                            value: visibility[key],
+                            secondary: const Icon(Icons.drag_indicator, color: Colors.grey, size: 20),
+                            onChanged: (val) => setDialogState(() => visibility[key] = val ?? true),
+                          ),
+                        );
+                      }
+                  ),
+                );
+              }
+
+              // 平板专用的背景承载列
+              Widget buildDragColumn(List<String> items, bool isLeft) {
+                return Expanded(
+                  child: DragTarget<String>(
+                      onWillAccept: (data) => true,
+                      onAccept: (data) => moveItem(data, toLeftList: isLeft), // 放到空白处时追加到列表末尾
+                      builder: (context, candidateData, rejectedData) {
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.only(bottom: 60), // 留出底部空白接住掉落的积木
+                          decoration: BoxDecoration(
+                            color: candidateData.isNotEmpty ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Text(isLeft ? "屏幕左栏" : "屏幕右栏", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                              ),
+                              ...items.map((key) => buildDraggableItem(key)),
+                            ],
+                          ),
+                        );
+                      }
+                  ),
+                );
+              }
+
               return AlertDialog(
                 title: const Text("首页模块管理"),
                 content: SizedBox(
-                  width: double.maxFinite,
-                  height: 320,
+                  width: isTablet ? 600 : double.maxFinite,
+                  height: 400,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 8.0),
-                        child: Text("长按拖拽可改变显示顺序，勾选可控制是否展示。", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: Text(
+                            isTablet ? "长按模块，可跨越左右栏进行拖拽。\n勾选控制该模块是否在首页展示。" : "长按右侧把手拖拽改变顺序，勾选控制是否展示。",
+                            style: const TextStyle(color: Colors.grey, fontSize: 13)
+                        ),
                       ),
                       Expanded(
-                        child: ReorderableListView(
+                        child: isTablet
+                            ? Row( // 🚀 平板模式：双栏 Kanban 看板拖拽
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            buildDragColumn(leftOrder!, true),
+                            buildDragColumn(rightOrder!, false),
+                          ],
+                        )
+                            : ReorderableListView( // 🚀 手机模式：合并两列表，依然使用原生单列排序
                           shrinkWrap: true,
                           onReorder: (oldIndex, newIndex) {
                             setDialogState(() {
                               if (newIndex > oldIndex) newIndex -= 1;
-                              final item = order.removeAt(oldIndex);
-                              order.insert(newIndex, item);
+                              List<String> combined = [...leftOrder!, ...rightOrder!];
+                              final item = combined.removeAt(oldIndex);
+                              combined.insert(newIndex, item);
+
+                              // 手机端拖拽后，自动折半再分发回底层数据库
+                              leftOrder!.clear();
+                              rightOrder!.clear();
+                              for (int i = 0; i < combined.length; i++) {
+                                if (i % 2 == 0) leftOrder!.add(combined[i]);
+                                else rightOrder!.add(combined[i]);
+                              }
                             });
                           },
-                          children: order.map((key) {
+                          children: [...leftOrder!, ...rightOrder!].map((key) {
                             return CheckboxListTile(
                               key: Key(key),
                               contentPadding: EdgeInsets.zero,
@@ -308,9 +422,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               value: visibility[key] ?? true,
                               secondary: const Icon(Icons.drag_handle, color: Colors.grey),
                               onChanged: (val) {
-                                setDialogState(() {
-                                  visibility[key] = val ?? true;
-                                });
+                                setDialogState(() => visibility[key] = val ?? true);
                               },
                             );
                           }).toList(),
@@ -323,14 +435,12 @@ class _SettingsPageState extends State<SettingsPage> {
                   TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
                   FilledButton(
                     onPressed: () {
-                      prefs.setStringList('home_section_order', order);
+                      // 持久化保存
+                      prefs.setStringList('home_section_order_left', leftOrder!);
+                      prefs.setStringList('home_section_order_right', rightOrder!);
                       prefs.setString('home_section_visibility', jsonEncode(visibility));
                       Navigator.pop(ctx);
-
-                      // 提示需要返回首页以刷新
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                          const SnackBar(content: Text('已保存，请返回主页查看更新'))
-                      );
+                      ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text('已保存，请返回主页查看更新')));
                     },
                     child: const Text("保存并应用"),
                   )

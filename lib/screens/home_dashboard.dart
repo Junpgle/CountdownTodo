@@ -63,7 +63,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  List<String> _sectionOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
+  // 🚀 新增：彻底分离的左右双栏状态
+  List<String> _leftSections = ['courses', 'todos', 'math'];
+  List<String> _rightSections = ['countdowns', 'screenTime'];
+
   Map<String, bool> _sectionVisibility = {
     'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true,
   };
@@ -168,19 +171,36 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
   Future<void> _loadSectionPreferences() async {
     final prefs = await SharedPreferences.getInstance();
-    List<String>? savedOrder = prefs.getStringList('home_section_order');
-    if (savedOrder != null && savedOrder.isNotEmpty) {
-      if (mounted) setState(() => _sectionOrder = savedOrder);
+
+    // 🚀 读取新的左右双栏缓存
+    List<String>? leftOrder = prefs.getStringList('home_section_order_left');
+    List<String>? rightOrder = prefs.getStringList('home_section_order_right');
+
+    // 💡 兼容老版本：如果没存过双栏，就读取老的单栏配置并拆分
+    if (leftOrder == null || rightOrder == null) {
+      List<String> oldOrder = prefs.getStringList('home_section_order') ?? ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
+      leftOrder = [];
+      rightOrder = [];
+      for (int i = 0; i < oldOrder.length; i++) {
+        if (i % 2 == 0) leftOrder.add(oldOrder[i]);
+        else rightOrder.add(oldOrder[i]);
+      }
     }
+
     String? savedVisibilityStr = prefs.getString('home_section_visibility');
     if (savedVisibilityStr != null) {
       if (mounted) {
         setState(() => _sectionVisibility = Map<String, bool>.from(jsonDecode(savedVisibilityStr)));
       }
     }
+
     String? noCourseBehav = prefs.getString('no_course_behavior');
-    if (noCourseBehav != null && mounted) {
-      setState(() => _noCourseBehavior = noCourseBehav);
+    if (mounted) {
+      setState(() {
+        _leftSections = leftOrder!;
+        _rightSections = rightOrder!;
+        if (noCourseBehav != null) _noCourseBehavior = noCourseBehav;
+      });
     }
   }
 
@@ -205,19 +225,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       if (lastSync == null || now.difference(lastSync).inMinutes >= interval) {
         _handleManualSync(silent: true);
       }
-    }
-  }
-
-  bool _isHistoricalTodo(TodoItem t) {
-    if (!t.isDone) return false;
-    DateTime today = DateTime.now();
-    today = DateTime(today.year, today.month, today.day);
-    if (t.dueDate != null) {
-      DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-      return d.isBefore(today);
-    } else {
-      DateTime c = DateTime(t.createdAt.year, t.createdAt.month, t.createdAt.day);
-      return c.isBefore(today);
     }
   }
 
@@ -462,7 +469,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
               children: [
                 _buildSemesterProgressBar(isLight),
 
-                // 使用拆分出去的 AppBar
                 HomeAppBar(
                   username: widget.username,
                   timeSalutation: _timeSalutation,
@@ -481,27 +487,14 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
+                      // 💡 智能平板断点识别
                       final bool isTablet = constraints.maxWidth >= 768;
 
-                      // 构造各个 Section
-                      Widget courseSection = CourseSectionWidget(
-                        dashboardCourseData: _dashboardCourseData,
-                        isLight: isLight,
-                      );
-
-                      // 使用拆分出去的 Countdown 模块
-                      Widget countdownSection = CountdownSectionWidget(
-                          countdowns: _countdowns,
-                          username: widget.username,
-                          isLight: isLight,
-                          onDataChanged: _loadAllData
-                      );
-
+                      // === 构建5个功能区块 ===
+                      Widget courseSection = CourseSectionWidget(dashboardCourseData: _dashboardCourseData, isLight: isLight);
+                      Widget countdownSection = CountdownSectionWidget(countdowns: _countdowns, username: widget.username, isLight: isLight, onDataChanged: _loadAllData);
                       Widget todoSection = TodoSectionWidget(
-                        key: _todoSectionKey,
-                        todos: _todos,
-                        username: widget.username,
-                        isLight: isLight,
+                        key: _todoSectionKey, todos: _todos, username: widget.username, isLight: isLight,
                         onTodosChanged: (newTodos) async {
                           setState(() => _todos = newTodos);
                           await StorageService.saveTodos(widget.username, _todos);
@@ -510,7 +503,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         },
                         onRefreshRequested: _loadAllData,
                       );
-
                       Widget screenTimeSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -522,7 +514,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                           ),
                         ],
                       );
-
                       Widget mathSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -535,25 +526,34 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         'courses': courseSection, 'countdowns': countdownSection, 'todos': todoSection, 'screenTime': screenTimeSection, 'math': mathSection,
                       };
 
-                      // 动态显隐逻辑
+                      // 💡 处理没课时的行为逻辑
                       bool hasNoCourse = (_dashboardCourseData['courses'] == null || (_dashboardCourseData['courses'] as List).isEmpty);
-                      List<String> currentOrder = List.from(_sectionOrder);
+                      List<String> currentLeft = List.from(_leftSections);
+                      List<String> currentRight = List.from(_rightSections);
 
-                      if (hasNoCourse) {
-                        if (_noCourseBehavior == 'hide') {
-                          currentOrder.remove('courses');
-                        } else if (_noCourseBehavior == 'bottom') {
-                          if (currentOrder.contains('courses')) {
-                            currentOrder.remove('courses');
-                            currentOrder.add('courses');
+                      void applyNoCourseBehavior(List<String> targetList) {
+                        if (hasNoCourse && targetList.contains('courses')) {
+                          if (_noCourseBehavior == 'hide') {
+                            targetList.remove('courses');
+                          } else if (_noCourseBehavior == 'bottom') {
+                            targetList.remove('courses');
+                            targetList.add('courses');
                           }
                         }
                       }
+                      applyNoCourseBehavior(currentLeft);
+                      applyNoCourseBehavior(currentRight);
 
-                      List<Widget> visibleSections = currentOrder
-                          .where((key) => _sectionVisibility[key] == true && sectionsMap.containsKey(key))
-                          .map((key) => Padding(padding: const EdgeInsets.only(bottom: 24.0), child: sectionsMap[key]!))
-                          .toList();
+                      // 提取组件
+                      List<Widget> buildColumnWidgets(List<String> keys) {
+                        return keys
+                            .where((key) => _sectionVisibility[key] == true && sectionsMap.containsKey(key))
+                            .map((key) => Padding(padding: const EdgeInsets.only(bottom: 24.0), child: sectionsMap[key]!))
+                            .toList();
+                      }
+
+                      List<Widget> leftWidgets = buildColumnWidgets(currentLeft);
+                      List<Widget> rightWidgets = buildColumnWidgets(currentRight);
 
                       return SingleChildScrollView(
                         padding: EdgeInsets.symmetric(horizontal: isTablet ? 32 : 16, vertical: 16),
@@ -562,8 +562,18 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 1200),
                             child: isTablet
-                                ? _buildTabletGrid(visibleSections)
-                                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: visibleSections),
+                                ? Row( // 🚀 平板模式：强制渲染左右两栏，由双栏配置决定排版
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: leftWidgets)),
+                                if (rightWidgets.isNotEmpty) const SizedBox(width: 32),
+                                if (rightWidgets.isNotEmpty) Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rightWidgets)),
+                              ],
+                            )
+                                : Column( // 🚀 手机模式：自动把左右栏拼接为单列长流
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [...leftWidgets, ...rightWidgets],
+                            ),
                           ),
                         ),
                       );
@@ -580,30 +590,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           icon: const Icon(Icons.add_task),
           label: const Text("记待办")
       ),
-    );
-  }
-
-  // 平板双栏瀑布流布局
-  Widget _buildTabletGrid(List<Widget> sections) {
-    List<Widget> leftCol = [];
-    List<Widget> rightCol = [];
-
-    // 交替分配区块，保证左右视觉平衡
-    for (int i = 0; i < sections.length; i++) {
-      if (i % 2 == 0) {
-        leftCol.add(sections[i]);
-      } else {
-        rightCol.add(sections[i]);
-      }
-    }
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: leftCol)),
-        const SizedBox(width: 32),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rightCol)),
-      ],
     );
   }
 }
