@@ -31,7 +31,7 @@
     </queries>
 
     <application
-        android:label="效率 &amp; 数学"
+        android:label="CountDownTodo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
