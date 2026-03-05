@@ -6,7 +6,7 @@ import 'dart:convert';
 import 'dart:ui';
 import 'dart:isolate';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http; // 🚀 新增 http 引入
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
@@ -21,10 +21,8 @@ import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import 'login_screen.dart';
 
-// 引入课程数据服务来处理 JSON 导入和通知测试
+// 引入课程数据服务来处理导入和通知测试
 import '../services/course_service.dart';
-import 'historical_countdowns_screen.dart';
-import 'historical_todos_screen.dart';
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
@@ -63,7 +61,7 @@ class _SettingsPageState extends State<SettingsPage> {
   // 缓存大小状态
   String _cacheSizeStr = "计算中...";
 
-  // 🚀 账户状态：等级与同步额度
+  // 账户状态：等级与同步额度
   String _userTier = "加载中...";
   double _syncProgress = 0.0;
   bool _isLoadingStatus = true;
@@ -83,7 +81,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  // 🚀 获取当前账户等级和同步额度，加入缓存机制
+  // 获取当前账户等级和同步额度
   Future<void> _fetchAccountStatus() async {
     if (_userId == null) {
       if (mounted) {
@@ -100,14 +98,12 @@ class _SettingsPageState extends State<SettingsPage> {
     final String cacheKey = 'account_status_cache_$_userId';
     final String timeKey = 'account_status_time_$_userId';
 
-    // 1. 尝试从缓存加载
     final String? cachedDataStr = prefs.getString(cacheKey);
     final int? lastSyncTime = prefs.getInt(timeKey);
 
     bool useCache = false;
     if (cachedDataStr != null && lastSyncTime != null) {
       final DateTime lastSync = DateTime.fromMillisecondsSinceEpoch(lastSyncTime);
-      // 检查缓存是否在 5 分钟内
       if (DateTime.now().difference(lastSync).inMinutes < 5) {
         useCache = true;
         try {
@@ -122,21 +118,18 @@ class _SettingsPageState extends State<SettingsPage> {
             });
           }
         } catch(e) {
-          useCache = false; // 解析失败，回退到网络请求
+          useCache = false;
         }
       }
     }
 
-    // 2. 如果缓存有效，则直接返回，不再发起网络请求
     if (useCache) return;
 
-    // 3. 如果缓存无效或不存在，则发起网络请求
     try {
       final response = await http.get(Uri.parse('${ApiService.baseUrl}/api/user/status?user_id=$_userId'));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
-        // 更新缓存
         await prefs.setString(cacheKey, response.body);
         await prefs.setInt(timeKey, DateTime.now().millisecondsSinceEpoch);
 
@@ -157,8 +150,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // === 🚀 深度缓存计算与清理逻辑 ===
-
+  // === 深度缓存计算与清理 ===
   Future<void> _calculateCacheSize() async {
     try {
       double size = 0;
@@ -299,7 +291,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // === 🚀 空间占用超级底层分析工具 ===
+  // === 空间占用超级底层分析工具 ===
   Future<void> _showStorageAnalysis() async {
     showDialog(
       context: context,
@@ -474,7 +466,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   // === 既有逻辑 ===
-
   void _setupDownloadListener() {
     IsolateNameServer.removePortNameMapping('downloader_send_port');
     IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
@@ -484,7 +475,6 @@ class _SettingsPageState extends State<SettingsPage> {
       DownloadTaskStatus status = DownloadTaskStatus.fromInt(data[1]);
 
       if (status == DownloadTaskStatus.complete) {
-        print("UI 线程监听到下载完成，准备弹出安装器...");
         _handleDownloadCompleted(id);
       }
     });
@@ -656,7 +646,6 @@ class _SettingsPageState extends State<SettingsPage> {
     leftOrder.removeWhere((key) => !defaultOrder.contains(key));
     rightOrder.removeWhere((key) => !defaultOrder.contains(key));
 
-    // 🚀 初始化手机端专用的单列合并状态，保证所见即所得
     List<String> mobileCombinedOrder = [...leftOrder, ...rightOrder];
 
     Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
@@ -679,7 +668,6 @@ class _SettingsPageState extends State<SettingsPage> {
         builder: (ctx) => StatefulBuilder(
             builder: (context, setDialogState) {
 
-              // === 平板端专用的拖拽方法 ===
               void moveItem(String item, {String? targetKey, bool? toLeftList}) {
                 setDialogState(() {
                   leftOrder!.remove(item);
@@ -784,19 +772,18 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       Expanded(
                         child: isTablet
-                            ? Row( // 平板渲染双列拖拽
+                            ? Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             buildDragColumn(leftOrder!, true),
                             buildDragColumn(rightOrder!, false),
                           ],
                         )
-                            : ReorderableListView( // 🚀 手机端渲染单列拖拽，彻底修复错位问题
+                            : ReorderableListView(
                           shrinkWrap: true,
                           onReorder: (oldIndex, newIndex) {
                             setDialogState(() {
                               if (newIndex > oldIndex) newIndex -= 1;
-                              // 仅仅在专门的合并列表上挪动位置，保证平滑跟手
                               final item = mobileCombinedOrder.removeAt(oldIndex);
                               mobileCombinedOrder.insert(newIndex, item);
                             });
@@ -823,7 +810,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   FilledButton(
                     onPressed: () {
                       if (!isTablet) {
-                        // 🚀 手机端在最后点击“保存”时，才将所见即所得的合并列表均匀分发给底层双栏
                         leftOrder!.clear();
                         rightOrder!.clear();
                         int mid = (mobileCombinedOrder.length / 2).ceil();
@@ -886,22 +872,108 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _requestShizukuPermission() async {
-    try {
-      final bool result = await platform.invokeMethod('requestShizukuPermission');
-      setState(() {
-        if (result) {
-          _shizukuStatus = "已获得权限，或系统已弹出提示";
-        } else {
-          _shizukuStatus = "未检测到服务，请激活 Shizuku";
+  // 🚀 弹出课表来源选择面板
+  void _showImportSourcePicker() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text('选择课表来源', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.school, color: Colors.blue),
+                title: const Text('聚在工大 (合肥工业大学)'),
+                subtitle: const Text('支持 JSON / TXT 格式数据'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _importCourse('hfut');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.account_balance, color: Colors.redAccent),
+                title: const Text('我的课表App (厦门大学)'),
+                subtitle: const Text('支持 MHTML / HTML 网页导出格式'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _importCourse('xmu');
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 🚀 统一的课表导入处理逻辑
+  Future<void> _importCourse(String source) async {
+    // 厦大课表需要知道开学日期来推算具体的上课日期 (yyyy-MM-dd)
+    if (source == 'xmu' && _semesterStart == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ 请先在下方【学期设置】中设置“开学日期”！')),
+      );
+      return;
+    }
+
+    // 🚀 核心修复：将 type 改为 FileType.any，完全绕过安卓自带的文件类型过滤限制
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+    );
+
+    if (result != null && result.files.single.path != null) {
+      String filePath = result.files.single.path!;
+      String ext = filePath.split('.').last.toLowerCase();
+
+      // 在 Dart 层面做简单的后缀名软提示
+      if (source == 'xmu' && !['mhtml', 'html', 'txt'].contains(ext)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('⚠️ 提示：建议选择 .mhtml 或 .html 格式的文件')),
+        );
+      } else if (source == 'hfut' && !['json', 'txt'].contains(ext)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('⚠️ 提示：建议选择 .json 格式的文件')),
+        );
+      }
+
+      File file = File(filePath);
+      String fileContent = await file.readAsString();
+      bool success = false;
+
+      // 显示 Loading 弹窗
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        if (source == 'hfut') {
+          success = await CourseService.importScheduleFromJson(fileContent);
+        } else if (source == 'xmu') {
+          success = await CourseService.importXmuScheduleFromHtml(fileContent, _semesterStart!);
         }
-      });
-    } on PlatformException catch (e) {
-      setState(() => _shizukuStatus = "请求失败: '${e.message}'.");
+      } catch (e) {
+        debugPrint('导入课表发生异常: $e');
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // 关闭 Loading 弹窗
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(success ? '✅ 课表导入成功' : '❌ 课表解析失败，请检查文件格式')),
+        );
+      }
     }
   }
 
-  // 核心优化逻辑：测试实时通知
   Future<void> _testCourseNotification() async {
     final dashboardData = await CourseService.getDashboardCourses();
     List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
@@ -928,7 +1000,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 尚未导入课程 JSON，请先在“课程设置”中导入')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 尚未导入课表数据，请先在“课程设置”中导入')));
       }
     }
   }
@@ -949,7 +1021,6 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    // 二次确认
     bool confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -970,25 +1041,22 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (!confirm) return;
 
-    // loading
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
-    final result =
-    await CourseService.syncCoursesToCloud(_userId!);
+    final result = await CourseService.syncCoursesToCloud(_userId!);
 
     if (!mounted) return;
-    Navigator.pop(context); // 关闭 loading
+    Navigator.pop(context);
 
     if (result['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('✅ 课表已成功同步到云端')),
       );
 
-      // 同步后刷新额度显示
       _fetchAccountStatus();
     } else if (result['isLimitExceeded'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1068,7 +1136,6 @@ class _SettingsPageState extends State<SettingsPage> {
               trailing: const Icon(Icons.edit_square, size: 20, color: Colors.grey),
               onTap: _showChangePasswordDialog,
             ),
-            // 🚀 新增：等级与同步额度显示
             const Divider(height: 1, indent: 56),
             Padding(
               padding: const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
@@ -1120,28 +1187,13 @@ class _SettingsPageState extends State<SettingsPage> {
               trailing: const Icon(Icons.chevron_right),
               onTap: _uploadCoursesToCloud,
             ),
+            // 🚀 替换为全新的多来源导入菜单
             ListTile(
               leading: const Icon(Icons.file_upload_outlined),
-              title: const Text('导入课表 (JSON)'),
-              subtitle: const Text('支持 聚在工大 课程数据格式导入'),
+              title: const Text('导入本地课表'),
+              subtitle: const Text('支持多高校格式 (聚在工大 / 厦大)'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                FilePickerResult? result = await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['json', 'txt'],
-                );
-
-                if (result != null && result.files.single.path != null) {
-                  File file = File(result.files.single.path!);
-                  String jsonString = await file.readAsString();
-                  bool success = await CourseService.importScheduleFromJson(jsonString);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(success ? '课表导入成功' : '课表解析失败，请检查文件格式')),
-                    );
-                  }
-                }
-              },
+              onTap: _showImportSourcePicker,
             ),
             const Divider(height: 1, indent: 56),
             ListTile(
@@ -1305,7 +1357,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
           // --- 7. 关于与系统 ---
           _buildSection('系统与关于', [
-            // 🚀 深度清理缓存功能
             ListTile(
               leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
               title: const Text('深度清理缓存与冗余'),
@@ -1330,7 +1381,6 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
             const Divider(height: 1, indent: 56),
-            // 🚀 空间分析工具
             ListTile(
               leading: const Icon(Icons.data_usage, color: Colors.orange),
               title: const Text('存储空间深度分析'),

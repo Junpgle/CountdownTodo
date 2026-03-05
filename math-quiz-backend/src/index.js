@@ -5,7 +5,7 @@
 
 // === 🚀 全局配置：各等级用户的每日最大同步次数 ===
 const SYNC_LIMITS = {
-  free: 200,
+  free: 500,
   pro: 2000,
   admin: 99999
 };
@@ -284,7 +284,7 @@ export default {
         try {
           const statements = apps.map(app => {
            return DB.prepare(`
-             INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration, date)
+             INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
              VALUES (?, ?, ?, ?, ?)
              ON CONFLICT(user_id, device_name, record_date, app_name)
              DO UPDATE SET

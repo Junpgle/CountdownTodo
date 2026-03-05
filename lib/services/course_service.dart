@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+
 import '../services/api_service.dart';
 
-// 引入刚才提取出来的解析器
+// 引入不同高校的解析器
 import 'hfut_schedule_parser.dart';
+import 'xmu_schedule_parser.dart';
 
 class CourseItem {
   final String courseName;
@@ -32,12 +35,52 @@ class CourseItem {
   // 格式化时间，如 800 -> 08:00
   String get formattedStartTime => '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
   String get formattedEndTime => '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
+
+  // 用于统一序列化存储
+  Map<String, dynamic> toJson() {
+    return {
+      'courseName': courseName,
+      'teacherName': teacherName,
+      'date': date,
+      'weekday': weekday,
+      'startTime': startTime,
+      'endTime': endTime,
+      'weekIndex': weekIndex,
+      'roomName': roomName,
+      'lessonType': lessonType,
+    };
+  }
+
+  // 用于从统一存储中反序列化
+  factory CourseItem.fromJson(Map<String, dynamic> json) {
+    return CourseItem(
+      courseName: json['courseName'] ?? '未知课程',
+      teacherName: json['teacherName'] ?? '未知教师',
+      date: json['date'] ?? '',
+      weekday: json['weekday'] ?? 1,
+      startTime: json['startTime'] ?? 0,
+      endTime: json['endTime'] ?? 0,
+      weekIndex: json['weekIndex'] ?? 1,
+      roomName: json['roomName'] ?? '未知地点',
+      lessonType: json['lessonType'],
+    );
+  }
 }
 
 class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
 
-  // 1. 从字符串导入课表 (基础逻辑)
+  // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
+  static Future<void> _saveCourses(List<CourseItem> courses) async {
+    final prefs = await SharedPreferences.getInstance();
+    // 统一转换为标准的 List<Map> JSON 字符串，极大地提升后续读取效率
+    final String encodedData = jsonEncode(courses.map((c) => c.toJson()).toList());
+    await prefs.setString(_keyCourseData, encodedData);
+  }
+
+  // ================= 导入与解析逻辑 =================
+
+  // 1. 从字符串导入课表 (合工大)
   static Future<bool> importScheduleFromJson(String jsonString) async {
     // 调用提取的 parser 进行校验
     if (!HfutScheduleParser.isValid(jsonString)) {
@@ -45,36 +88,73 @@ class CourseService {
     }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyCourseData, jsonString);
+      List<CourseItem> parsedCourses = HfutScheduleParser.parse(jsonString);
+      if (parsedCourses.isEmpty) return false;
+
+      // 保存标准格式
+      await _saveCourses(parsedCourses);
       return true;
     } catch (e) {
+      print("解析工大课表出错: $e");
       return false;
     }
   }
 
-  // 2. 从文件路径导入课表 (供外部 App 唤起时调用)
+  // 2. 导入厦大（正方教务系统）课表
+  static Future<bool> importXmuScheduleFromHtml(String htmlString, DateTime semesterStart) async {
+    try {
+      List<CourseItem> parsedCourses = XmuScheduleParser.parseHtml(htmlString, semesterStart);
+      if (parsedCourses.isEmpty) return false;
+
+      // 保存标准格式
+      await _saveCourses(parsedCourses);
+      return true;
+    } catch (e) {
+      print("解析厦大课表出错: $e");
+      return false;
+    }
+  }
+
+  // 3. 从文件路径导入课表 (供外部 App 唤起时调用，主要用于处理早期工大 JSON 文件)
   static Future<bool> importScheduleFromFile(String filePath) async {
     try {
       File file = File(filePath);
-      String jsonString = await file.readAsString();
-      return await importScheduleFromJson(jsonString);
+      String content = await file.readAsString();
+      return await importScheduleFromJson(content);
     } catch (e) {
       return false;
     }
   }
 
-  // 3. 获取所有解析后的课程对象
+  // ================= 提取与业务逻辑 =================
+
+  // 4. 获取所有解析后的课程对象
   static Future<List<CourseItem>> getAllCourses() async {
     final prefs = await SharedPreferences.getInstance();
-    final jsonStr = prefs.getString(_keyCourseData);
-    if (jsonStr == null || jsonStr.isEmpty) return [];
+    final String? data = prefs.getString(_keyCourseData);
+    if (data == null || data.isEmpty) return [];
 
-    // 直接委托给 Parser 进行解析，业务层不再堆积 JSON 提取逻辑
-    return HfutScheduleParser.parse(jsonStr);
+    try {
+      final decoded = jsonDecode(data);
+
+      // 🚀 兼容旧版本防崩溃：如果是 List，说明是我们新的统一结构，否则是旧版的合工大原始 JSON
+      if (decoded is List) {
+        return decoded.map((item) => CourseItem.fromJson(item)).toList();
+      } else {
+        // 无缝兼容旧数据，防止用户更新 App 后课表丢失
+        return HfutScheduleParser.parse(data);
+      }
+    } catch (e) {
+      // 极端情况下的兜底回退
+      try {
+        return HfutScheduleParser.parse(data);
+      } catch (e2) {
+        return [];
+      }
+    }
   }
 
-  // 4. 获取主页今日/明日需要显示的课程
+  // 5. 获取主页今日/明日需要显示的课程
   static Future<Map<String, dynamic>> getDashboardCourses() async {
     final courses = await getAllCourses();
     if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
@@ -102,25 +182,26 @@ class CourseService {
       }
     }
 
-    // 今天的课没排或者已经上完了，找明天的
+    // 今天的课没排，找明天的
     DateTime tomorrow = now.add(const Duration(days: 1));
     String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
     List<CourseItem> tomorrowCourses = courses.where((c) => c.date == tomorrowStr).toList();
 
     if (tomorrowCourses.isNotEmpty) {
+      tomorrowCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
       return {'title': '明日课程', 'courses': tomorrowCourses};
     }
 
     return {'title': '近期无课', 'courses': <CourseItem>[]};
   }
 
-  // 5. 按周获取课程
+  // 6. 按周获取课程
   static Future<List<CourseItem>> getCoursesByWeek(int weekIndex) async {
     final courses = await getAllCourses();
     return courses.where((c) => c.weekIndex == weekIndex).toList();
   }
 
-  // 6. 获取包含课程的所有周数列表
+  // 7. 获取包含课程的所有周数列表
   static Future<List<int>> getAvailableWeeks() async {
     final courses = await getAllCourses();
     final weeks = courses.map((c) => c.weekIndex).toSet().toList();
@@ -128,7 +209,9 @@ class CourseService {
     return weeks;
   }
 
-  // 上传本地课表到云端
+  // ================= 云端同步逻辑 =================
+
+  // 8. 上传本地课表到云端
   static Future<Map<String, dynamic>> syncCoursesToCloud(int userId) async {
     final courses = await getAllCourses();
 
@@ -141,7 +224,7 @@ class CourseService {
       'end_time': c.endTime,
       'weekday': c.weekday,
       'week_index': c.weekIndex,
-      'lesson_type': c.lessonType,
+      'lesson_type': c.lessonType ?? '',
       'date': c.date,
     }).toList();
 

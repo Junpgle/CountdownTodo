@@ -29,6 +29,7 @@ dependencies:
   device_info_plus: ^11.1.0
   file_picker: ^10.3.10
   receive_sharing_intent: ^1.8.1
+  html: ^0.15.4
 
 dev_dependencies:
   flutter_test:

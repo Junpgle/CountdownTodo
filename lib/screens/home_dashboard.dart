@@ -114,7 +114,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   Future<void> _checkUpcomingEvents() async {
     DateTime now = DateTime.now();
 
-    // 1. 优先检查课程
     final dashboardData = await CourseService.getDashboardCourses();
     List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
@@ -124,7 +123,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         DateTime courseTime = DateFormat('yyyy-MM-dd HH:mm').parse('${course.date} ${course.formattedStartTime}');
         int diffMinutes = courseTime.difference(now).inMinutes;
 
-        // 如果在课程开始前 20 分钟内
         if (diffMinutes >= 0 && diffMinutes <= 20) {
           NotificationService.showCourseLiveActivity(
             courseName: course.courseName,
@@ -133,39 +131,31 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
             teacher: course.teacherName,
           );
           hasUpcomingCourse = true;
-          break; // 找到一个最近的就停止，避免通知冲突
+          break;
         }
       } catch (e) {
         debugPrint("检查课程通知失败: $e");
       }
     }
 
-    if (hasUpcomingCourse) return; // 如果有即将开始的课程，课程提醒优先级最高，直接返回。
+    if (hasUpcomingCourse) return;
 
-    // 2. 如果没有课程，则检查待办事项
-    // 过滤出未完成、不是全天、并且有特定时间线的待办
     List<TodoItem> upcomingTodos = _todos.where((t) {
       if (t.isDone) return false;
       bool isAllDay = t.dueDate != null && t.createdAt.hour == 0 && t.createdAt.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
       if (isAllDay) return false;
 
-      // 我们假设以 createdAt 作为事件的“开始时间”
       DateTime startTime = DateTime(now.year, now.month, now.day, t.createdAt.hour, t.createdAt.minute);
-      // 如果跨天了或者时间比较复杂，这里的计算可能需要稍微调整以匹配当前日期
-
       int diffMinutes = startTime.difference(now).inMinutes;
-      // 在开始前 20 分钟内
       return diffMinutes >= 0 && diffMinutes <= 20;
     }).toList();
 
     if (upcomingTodos.isNotEmpty) {
-      // 对即将到来的待办按时间排序，取最近的一个
       upcomingTodos.sort((a, b) => a.createdAt.compareTo(b.createdAt));
       NotificationService.showUpcomingTodoNotification(upcomingTodos.first);
       return;
     }
 
-    // 3. 如果既没有即将开始的课程，也没有即将开始的具体时间待办，那么就展示普通的“全天待办”汇总
     NotificationService.updateTodoNotification(_todos);
   }
 
@@ -204,21 +194,39 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
     List<String>? leftOrder = prefs.getStringList('home_section_order_left');
     List<String>? rightOrder = prefs.getStringList('home_section_order_right');
+    final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
 
+    // 🚀 核心修复 1：防缺失。如果用户以前拖拽过布局，旧缓存里绝对没有 'courses'，这里强制给它插到最前面
     if (leftOrder == null || rightOrder == null) {
-      List<String> oldOrder = prefs.getStringList('home_section_order') ?? ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
+      List<String> oldOrder = prefs.getStringList('home_section_order') ?? defaultOrder;
       leftOrder = [];
       rightOrder = [];
       for (int i = 0; i < oldOrder.length; i++) {
         if (i % 2 == 0) leftOrder.add(oldOrder[i]);
         else rightOrder.add(oldOrder[i]);
       }
+    } else {
+      List<String> combined = [...leftOrder, ...rightOrder];
+      for (var key in defaultOrder) {
+        if (!combined.contains(key)) {
+          leftOrder.insert(0, key); // 强行把缺少的新功能放在左上角
+        }
+      }
     }
 
     String? savedVisibilityStr = prefs.getString('home_section_visibility');
     if (savedVisibilityStr != null) {
       if (mounted) {
-        setState(() => _sectionVisibility = Map<String, bool>.from(jsonDecode(savedVisibilityStr)));
+        setState(() {
+          Map<String, bool> savedMap = Map<String, bool>.from(jsonDecode(savedVisibilityStr));
+          // 🚀 核心修复 2：如果以前的缓存没有 'courses' 这个显隐键值对，默认给它设为显示 (true)
+          savedMap.putIfAbsent('courses', () => true);
+          savedMap.putIfAbsent('countdowns', () => true);
+          savedMap.putIfAbsent('todos', () => true);
+          savedMap.putIfAbsent('screenTime', () => true);
+          savedMap.putIfAbsent('math', () => true);
+          _sectionVisibility = savedMap;
+        });
       }
     }
 
@@ -398,7 +406,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  // 🚀 核心更新：支持分模块同步，并完美捕获 429 超限提示
   Future<void> _handleManualSync({
     bool silent = false,
     bool syncTodos = true,
@@ -418,7 +425,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
       bool hasChanges = false;
 
-      // 根据用户选择决定是否调用底层同步
       if (syncTodos || syncCountdowns) {
         hasChanges = await StorageService.syncData(
           widget.username,
@@ -446,7 +452,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       debugPrint("Sync Error: $e");
       if (mounted && !silent) {
         String msg = e.toString();
-        // 🚀 智能拦截并展示 429 报错提示
         if (msg.contains("LIMIT_EXCEEDED:")) {
           msg = msg.split("LIMIT_EXCEEDED:").last;
         } else {
@@ -466,7 +471,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  // 🚀 呼出同步选择对话框
   void _showSyncOptionsDialog() {
     bool syncTodos = true;
     bool syncCountdowns = true;
@@ -504,7 +508,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
               actions: [
                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
                 FilledButton(
-                  // 只有至少选中一个才能点击同步
                   onPressed: (syncTodos || syncCountdowns || syncScreenTime) ? () {
                     Navigator.pop(ctx);
                     _handleManualSync(
@@ -535,8 +538,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     } catch (e) { debugPrint("获取壁纸失败: $e"); }
   }
 
-  // === UI 构建相关方法 ===
-
   Widget _buildSemesterProgressBar(bool isLight) {
     if (!_semesterEnabled || _semesterStart == null || _semesterEnd == null) return const SizedBox.shrink();
 
@@ -565,7 +566,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
   }
 
-  // === 核心构建页面 ===
   @override
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -592,7 +592,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                   currentGreeting: _currentGreeting,
                   isLight: isLight,
                   isSyncing: _isSyncing,
-                  // 🚀 将原本的直接调用改为呼出我们新写的弹窗
                   onSync: _showSyncOptionsDialog,
                   onSettings: () async {
                     await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
