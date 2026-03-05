@@ -872,6 +872,47 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  // 🚀 专门解析 MHTML 的 quoted-printable 编码（底层安全解码）
+  Future<String> _readAndDecodeMhtml(File file) async {
+    try {
+      // 1. 强制按字节读取，避免 readAsString 错误处理 utf8 导致乱码崩溃
+      List<int> rawBytes = await file.readAsBytes();
+      String rawString = String.fromCharCodes(rawBytes);
+
+      // 如果根本没包含这种编码，直接回退为 UTF-8
+      if (!rawString.contains('quoted-printable') && !rawString.contains('QUOTED-PRINTABLE')) {
+        return utf8.decode(rawBytes, allowMalformed: true);
+      }
+
+      // 2. 剥离行尾延续符 (=\r\n 或 =\n)
+      String cleaned = rawString.replaceAll(RegExp(r'=\r?\n'), '');
+
+      // 3. 将 =XX 转换为真实的字节数组
+      List<int> decodedBytes = [];
+      int i = 0;
+      while (i < cleaned.length) {
+        if (cleaned[i] == '=' && i + 2 < cleaned.length) {
+          String hex = cleaned.substring(i + 1, i + 3);
+          int? byte = int.tryParse(hex, radix: 16);
+          if (byte != null) {
+            decodedBytes.add(byte);
+            i += 3;
+            continue;
+          }
+        }
+        decodedBytes.add(cleaned.codeUnitAt(i));
+        i++;
+      }
+
+      // 4. 将提取出的干净字节按 UTF-8 正确解码出中文 HTML 结构
+      return utf8.decode(decodedBytes, allowMalformed: true);
+    } catch (e) {
+      debugPrint("MHTML底层解码失败: $e");
+      // 兜底回退
+      return await file.readAsString();
+    }
+  }
+
   // 🚀 弹出课表来源选择面板
   void _showImportSourcePicker() {
     showModalBottomSheet(
@@ -906,6 +947,16 @@ class _SettingsPageState extends State<SettingsPage> {
                   _importCourse('xmu');
                 },
               ),
+              // 🚀 新增：西电课表入口
+              ListTile(
+                leading: const Icon(Icons.event_note, color: Colors.purple),
+                title: const Text('系统日历导出 (西安电子科技大学)'),
+                subtitle: const Text('支持 ICS / iCalendar 格式'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _importCourse('xidian');
+                },
+              ),
               const SizedBox(height: 10),
             ],
           ),
@@ -916,15 +967,15 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // 🚀 统一的课表导入处理逻辑
   Future<void> _importCourse(String source) async {
-    // 厦大课表需要知道开学日期来推算具体的上课日期 (yyyy-MM-dd)
-    if (source == 'xmu' && _semesterStart == null) {
+    // 厦大和西电课表都需要知道开学日期来推算具体的上课日期
+    if ((source == 'xmu' || source == 'xidian') && _semesterStart == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('⚠️ 请先在下方【学期设置】中设置“开学日期”！')),
       );
       return;
     }
 
-    // 🚀 核心修复：将 type 改为 FileType.any，完全绕过安卓自带的文件类型过滤限制
+    // 核心修复：将 type 改为 FileType.any，完全绕过安卓自带的文件类型过滤限制
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.any,
     );
@@ -942,11 +993,13 @@ class _SettingsPageState extends State<SettingsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('⚠️ 提示：建议选择 .json 格式的文件')),
         );
+      } else if (source == 'xidian' && !['ics', 'txt'].contains(ext)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('⚠️ 提示：建议选择 .ics 格式的文件')),
+        );
       }
 
       File file = File(filePath);
-      String fileContent = await file.readAsString();
-      bool success = false;
 
       // 显示 Loading 弹窗
       showDialog(
@@ -955,11 +1008,18 @@ class _SettingsPageState extends State<SettingsPage> {
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
 
+      bool success = false;
       try {
         if (source == 'hfut') {
+          String fileContent = await file.readAsString();
           success = await CourseService.importScheduleFromJson(fileContent);
         } else if (source == 'xmu') {
-          success = await CourseService.importXmuScheduleFromHtml(fileContent, _semesterStart!);
+          String htmlContent = await _readAndDecodeMhtml(file);
+          success = await CourseService.importXmuScheduleFromHtml(htmlContent, _semesterStart!);
+        } else if (source == 'xidian') {
+          // 🚀 增加西电解析处理
+          String icsContent = await file.readAsString();
+          success = await CourseService.importXidianScheduleFromIcs(icsContent, _semesterStart!);
         }
       } catch (e) {
         debugPrint('导入课表发生异常: $e');

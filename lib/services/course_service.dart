@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 // 引入不同高校的解析器
 import 'hfut_schedule_parser.dart';
 import 'xmu_schedule_parser.dart';
+import 'xidian_schedule_parser.dart'; // 🚀 1. 新增西电解析器引入
 
 class CourseItem {
   final String courseName;
@@ -115,7 +116,22 @@ class CourseService {
     }
   }
 
-  // 3. 从文件路径导入课表 (供外部 App 唤起时调用，主要用于处理早期工大 JSON 文件)
+  // 🚀 3. 新增：导入西电 ics 课表
+  static Future<bool> importXidianScheduleFromIcs(String icsString, DateTime semesterStart) async {
+    try {
+      List<CourseItem> parsedCourses = XidianScheduleParser.parseIcs(icsString, semesterStart);
+      if (parsedCourses.isEmpty) return false;
+
+      // 保存标准格式
+      await _saveCourses(parsedCourses);
+      return true;
+    } catch (e) {
+      print("解析西电课表出错: $e");
+      return false;
+    }
+  }
+
+  // 4. 从文件路径导入课表 (供外部 App 唤起时调用，主要用于处理早期工大 JSON 文件)
   static Future<bool> importScheduleFromFile(String filePath) async {
     try {
       File file = File(filePath);
@@ -137,14 +153,16 @@ class CourseService {
     try {
       final decoded = jsonDecode(data);
 
-      // 🚀 兼容旧版本防崩溃：如果是 List，说明是我们新的统一结构，否则是旧版的合工大原始 JSON
       if (decoded is List) {
-        return decoded.map((item) => CourseItem.fromJson(item)).toList();
+        // 🚀 核心修复：必须显式声明泛型 <CourseItem> 并在 fromJson 前对 Map 强转，
+        // 彻底根除 "List<dynamic> is not a subtype of List<CourseItem>" 导致的静默崩溃！
+        return decoded.map<CourseItem>((item) => CourseItem.fromJson(Map<String, dynamic>.from(item))).toList();
       } else {
         // 无缝兼容旧数据，防止用户更新 App 后课表丢失
         return HfutScheduleParser.parse(data);
       }
     } catch (e) {
+      print("读取所有课表时发生崩溃: $e");
       // 极端情况下的兜底回退
       try {
         return HfutScheduleParser.parse(data);
@@ -156,43 +174,37 @@ class CourseService {
 
   // 5. 获取主页今日/明日需要显示的课程
   static Future<Map<String, dynamic>> getDashboardCourses() async {
-    final courses = await getAllCourses();
-    if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
+    try {
+      final courses = await getAllCourses();
+      if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
 
-    DateTime now = DateTime.now();
-    String todayStr = DateFormat('yyyy-MM-dd').format(now);
+      DateTime now = DateTime.now();
+      String todayStr = DateFormat('yyyy-MM-dd').format(now);
 
-    // 筛选今天的课程
-    List<CourseItem> todayCourses = courses.where((c) => c.date == todayStr).toList();
+      // 筛选今天的课程
+      List<CourseItem> todayCourses = courses.where((c) => c.date == todayStr).toList();
 
-    if (todayCourses.isNotEmpty) {
-      // 检查今天课程是否已全部结束
-      int currentTotalMinutes = now.hour * 60 + now.minute;
-      bool allFinished = true;
-      for (var c in todayCourses) {
-        int endMinutes = (c.endTime ~/ 100) * 60 + (c.endTime % 100);
-        if (currentTotalMinutes <= endMinutes) {
-          allFinished = false;
-          break;
-        }
-      }
-
-      if (!allFinished) {
+      if (todayCourses.isNotEmpty) {
+        todayCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
         return {'title': '今日课程', 'courses': todayCourses};
       }
+
+      // 今天的课没排，找明天的
+      DateTime tomorrow = now.add(const Duration(days: 1));
+      String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
+      List<CourseItem> tomorrowCourses = courses.where((c) => c.date == tomorrowStr).toList();
+
+      if (tomorrowCourses.isNotEmpty) {
+        tomorrowCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
+        return {'title': '明日课程', 'courses': tomorrowCourses};
+      }
+
+      return {'title': '近期无课', 'courses': <CourseItem>[]};
+    } catch (e) {
+      // 🚀 核心修复：即使上面有异常，也安全返回兜底数据，绝不打断主页刷新流程
+      print("获取主页课程时发生崩溃: $e");
+      return {'title': '近期无课', 'courses': <CourseItem>[]};
     }
-
-    // 今天的课没排，找明天的
-    DateTime tomorrow = now.add(const Duration(days: 1));
-    String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
-    List<CourseItem> tomorrowCourses = courses.where((c) => c.date == tomorrowStr).toList();
-
-    if (tomorrowCourses.isNotEmpty) {
-      tomorrowCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
-      return {'title': '明日课程', 'courses': tomorrowCourses};
-    }
-
-    return {'title': '近期无课', 'courses': <CourseItem>[]};
   }
 
   // 6. 按周获取课程
