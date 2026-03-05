@@ -144,12 +144,16 @@ class ApiService {
     } catch (e) { return false; }
   }
 
-  static Future<bool> toggleTodo(int id, bool isCompleted) async {
+  static Future<bool> toggleTodo(int id, bool isCompleted, {int? timestamp}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/todos/toggle'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'id': id, 'is_completed': isCompleted}),
+        body: jsonEncode({
+          'id': id,
+          'is_completed': isCompleted,
+          'client_updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+        }),
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -157,12 +161,15 @@ class ApiService {
     }
   }
 
-  static Future<bool> deleteTodo(int id) async {
+  static Future<bool> deleteTodo(int id, {int? timestamp}) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/api/todos'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'id': id}),
+        body: jsonEncode({
+          'id': id,
+          'client_updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+        }),
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -290,10 +297,32 @@ class ApiService {
     Map<String, dynamic>? screenTime,
   }) async {
     try {
+      // 🚀 核心修复：强制清洗来自本地存储的数据，确保发给后端的时间全部是规范的毫秒级 Int 格式
+      final sanitizedTodos = todos.map((t) {
+        final newT = Map<String, dynamic>.from(t);
+        if (newT['client_updated_at'] is String) {
+          // 如果传入的是类似 "2026-03-05..." 的字符串，尝试解析转换
+          newT['client_updated_at'] = DateTime.tryParse(newT['client_updated_at'])?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+        } else if (newT['client_updated_at'] == null) {
+          newT['client_updated_at'] = DateTime.now().millisecondsSinceEpoch;
+        }
+        return newT;
+      }).toList();
+
+      final sanitizedCountdowns = countdowns.map((c) {
+        final newC = Map<String, dynamic>.from(c);
+        if (newC['client_updated_at'] is String) {
+          newC['client_updated_at'] = DateTime.tryParse(newC['client_updated_at'])?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+        } else if (newC['client_updated_at'] == null) {
+          newC['client_updated_at'] = DateTime.now().millisecondsSinceEpoch;
+        }
+        return newC;
+      }).toList();
+
       final Map<String, dynamic> body = {
         'user_id': userId,
-        'todos': todos,
-        'countdowns': countdowns,
+        'todos': sanitizedTodos,
+        'countdowns': sanitizedCountdowns,
       };
 
       if (screenTime != null) {

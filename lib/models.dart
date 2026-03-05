@@ -91,6 +91,14 @@ class QuestionGenerator {
 
 // --- 效率功能相关 (新增部分) ---
 
+// 🚀 抽取出的通用安全时间解析器，防止脏数据引发崩溃
+DateTime _parseTimeSafely(dynamic val, {bool isNullable = false, DateTime? fallback}) {
+  if (val == null) return isNullable ? (fallback ?? DateTime.now()) : DateTime.now();
+  if (val is int) return DateTime.fromMillisecondsSinceEpoch(val);
+  if (val is String) return DateTime.tryParse(val) ?? (fallback ?? DateTime.now());
+  return fallback ?? DateTime.now();
+}
+
 class CountdownItem {
   String title;
   DateTime targetDate;
@@ -105,13 +113,13 @@ class CountdownItem {
   Map<String, dynamic> toJson() => {
     'title': title,
     'targetDate': targetDate.toIso8601String(),
-    'lastUpdated': lastUpdated.millisecondsSinceEpoch, // 存储为时间戳
+    'lastUpdated': lastUpdated.millisecondsSinceEpoch, // 统一存储为时间戳
   };
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) => CountdownItem(
-    title: json['title'],
-    targetDate: DateTime.parse(json['targetDate']),
-    lastUpdated: DateTime.fromMillisecondsSinceEpoch(json['lastUpdated'] ?? 0),
+    title: json['title'] ?? '',
+    targetDate: _parseTimeSafely(json['targetDate']),
+    lastUpdated: _parseTimeSafely(json['lastUpdated']), // 🚀 兼容 int 和 String
   );
 }
 
@@ -147,20 +155,21 @@ class TodoItem {
     'recurrence': recurrence.index,
     'customIntervalDays': customIntervalDays,
     'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
-    'lastUpdated': lastUpdated.toIso8601String(),
+    'lastUpdated': lastUpdated.millisecondsSinceEpoch, // 🚀 核心修复：统一存储为数字时间戳，不再使用 String
     'dueDate': dueDate?.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) => TodoItem(
-    id: json['id'],
-    title: json['title'],
-    isDone: json['isDone'],
+    id: json['id'] ?? '',
+    title: json['title'] ?? '',
+    isDone: json['isDone'] ?? false,
     recurrence: RecurrenceType.values[json['recurrence'] ?? 0],
     customIntervalDays: json['customIntervalDays'],
-    recurrenceEndDate: json['recurrenceEndDate'] != null ? DateTime.parse(json['recurrenceEndDate']) : null,
-    lastUpdated: json['lastUpdated'] != null ? DateTime.parse(json['lastUpdated']) : DateTime.now(),
-    dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
-    createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
+    recurrenceEndDate: json['recurrenceEndDate'] != null ? _parseTimeSafely(json['recurrenceEndDate']) : null,
+    // 🚀 核心修复：兼容老数据库里的 String 时间和新版本的 int 时间戳
+    lastUpdated: _parseTimeSafely(json['lastUpdated']),
+    dueDate: json['dueDate'] != null ? _parseTimeSafely(json['dueDate']) : null,
+    createdAt: _parseTimeSafely(json['createdAt']),
   );
 }
