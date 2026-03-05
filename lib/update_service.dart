@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -75,7 +76,20 @@ class WallpaperConfig {
 class UpdateService {
   static const String MANIFEST_URL = "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
 
-  // 生成基于版本号的文件名，确保唯一性
+  static bool _isDialogShowing = false;
+
+  // 🚀 全局下载状态：脱离UI独立存活，弹窗重开也能接上进度
+  static bool _isDownloading = false;
+  static double _downloadProgress = 0.0;
+  static bool _isDownloaded = false;
+  static String? _localApkPath;
+  static StreamSubscription<List<int>>? _downloadSubscription;
+
+  // 用于动态绑定最新打开的弹窗回调
+  static Function(double)? _uiProgressCallback;
+  static Function(String)? _uiCompleteCallback;
+  static Function(String)? _uiErrorCallback;
+
   static String getUpdateFileName(String versionName) => "MathQuiz_v$versionName.apk";
 
   static Future<AppManifest?> checkManifest() async {
@@ -99,27 +113,24 @@ class UpdateService {
     final fileName = getUpdateFileName(versionName);
     File file = File("$path/$fileName");
 
-    // 如果正常的 apk 找不到，看看有没有被加了 .zip 后缀的
     if (!await file.exists()) {
       final zipFile = File("$path/$fileName.zip");
       if (await zipFile.exists()) {
-        file = zipFile; // 如果有 zip，就检查这个 zip 的大小
+        file = zipFile;
       }
     }
 
-    if (await file.exists()) {
-      if (await file.length() > 1024 * 1024) { // 大于 1MB 认为完整
-        return file.path;
-      }
+    // 🚀 因为我们引入了 .download 临时后缀，所以能走到这的绝对是 100% 下载完毕的好包
+    if (await file.exists() && await file.length() > 1024 * 1024) {
+      return file.path;
     }
     return null;
   }
 
-  /// 1. 环境准备：清理旧版本残留包，并仅请求安装权限
+  /// 1. 环境准备：清理所有旧版本和损坏的包，并请求权限
   static Future<bool> prepareForDownload(String targetVersionName) async {
     if (!Platform.isAndroid) return true;
 
-    // 我们要写入公共目录的子文件夹，所以必须请求权限
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
 
@@ -137,20 +148,17 @@ class UpdateService {
       await Permission.requestInstallPackages.request();
     }
 
-    // 强力物理清理：扫描指定目录，删除所有“非本次版本”的安装包
     try {
       final path = await getDownloadDirectory();
       if (path != null) {
         final dir = Directory(path);
         if (await dir.exists()) {
           final List<FileSystemEntity> files = dir.listSync();
-          final targetFileName = getUpdateFileName(targetVersionName);
-
           for (var file in files) {
-            String name = file.path.split(Platform.pathSeparator).last;
-            // 清理旧版本包 (包含 .apk 和 .apk.zip)
-            if (name.startsWith("MathQuiz_v") && !name.contains(targetFileName)) {
-              print("发现旧版本包，正在物理删除: ${file.path}");
+            String name = file.path.split(Platform.pathSeparator).last.toLowerCase();
+            // 清理旧包与各种下载残骸
+            if (name.endsWith(".apk") || name.endsWith(".zip") || name.endsWith(".download")) {
+              print("清理发现的残留或旧包: ${file.path}");
               await file.delete();
             }
           }
@@ -166,7 +174,6 @@ class UpdateService {
   /// 2. 获取公开下载目录中的专属文件夹
   static Future<String?> getDownloadDirectory() async {
     if (Platform.isAndroid) {
-      // 尝试在公共 Download 目录下创建 CountdownTodo 文件夹
       const String baseDownloadPath = '/storage/emulated/0/Download';
       final String customPath = '$baseDownloadPath/CountdownTodo';
       final customDir = Directory(customPath);
@@ -175,16 +182,13 @@ class UpdateService {
         if (!await customDir.exists()) {
           await customDir.create(recursive: true);
         }
-        return customDir.path; // 成功返回 /storage/emulated/0/Download/CountdownTodo
+        return customDir.path;
       } catch (e) {
-        print("创建公开专属目录失败，回退到私有目录: $e");
-        // 如果因为权限或其他原因创建失败，回退到应用专属外部目录
         final externalDir = await getExternalStorageDirectory();
         return externalDir?.path;
       }
     }
 
-    // 非 Android 平台逻辑
     final downloadDir = await getDownloadsDirectory();
     if (downloadDir != null) {
       final customDir = Directory('${downloadDir.path}/CountdownTodo');
@@ -196,46 +200,33 @@ class UpdateService {
     return null;
   }
 
-  /// 3. 安装唤起：处理恶心的 .zip 后缀，精准匹配 MIME 拉起安装器
+  /// 3. 安装唤起
   static Future<void> installApk(String filePath) async {
     File file = File(filePath);
 
-    // 💡 终极杀招：检查文件到底叫什么，并强制重命名回 .apk
     if (!await file.exists()) {
-      // 假设我们传进来的是 .apk，但实际被存成了 .apk.zip
       final zipFile = File("$filePath.zip");
       if (await zipFile.exists()) {
-        print("检测到该死的 .zip 后缀，正在强制改回 .apk ...");
-        file = await zipFile.rename(filePath); // 改名回原本的 .apk
+        file = await zipFile.rename(filePath);
       } else {
-        // 反过来：假设传进来的是 .apk.zip，把它改成 .apk
         if (filePath.endsWith(".zip")) {
-          final apkPath = filePath.substring(0, filePath.length - 4); // 去掉 .zip
-          print("收到 .zip 路径，正在重命名为纯正的 APK: $apkPath");
+          final apkPath = filePath.substring(0, filePath.length - 4);
           file = await file.rename(apkPath);
         } else {
-          print("安装失败：找不到文件 $filePath，连 .zip 也没有。");
           return;
         }
       }
     } else {
-      // 如果文件存在，但后缀是 .zip，也要改掉它，否则安装器不认
       if (filePath.endsWith(".zip")) {
         final apkPath = filePath.substring(0, filePath.length - 4);
-        print("文件存在，但带着 .zip 尾巴，正在重命名...");
         file = await file.rename(apkPath);
       }
     }
 
-    print("正在唤起包管理器安装，文件路径: ${file.path}，大小: ${await file.length()} 字节");
-
-    // 唤起安装
-    final result = await OpenFile.open(
+    await OpenFile.open(
       file.path,
       type: "application/vnd.android.package-archive",
     );
-
-    print("安装唤起结果: ${result.message}");
   }
 
   static Future<void> launchURL(String url) async {
@@ -245,10 +236,9 @@ class UpdateService {
     }
   }
 
-  // =========================================================================
-  // 👉 提取的公共逻辑：自动检查更新与公告并弹窗 (首页与设置页通用)
-  // =========================================================================
   static Future<void> checkUpdateAndPrompt(BuildContext context, {bool isManual = false}) async {
+    if (_isDialogShowing) return;
+
     AppManifest? manifest = await checkManifest();
     if (manifest == null) {
       if (isManual && context.mounted) {
@@ -263,7 +253,6 @@ class UpdateService {
 
     bool hasUpdate = false;
     try {
-      // 智能比对点分十进制版本号 (例如 1.4.8 -> 1.4.9)
       List<int> v1 = manifest.versionName.split('.').map(int.parse).toList();
       List<int> v2 = localVersion.split('.').map(int.parse).toList();
       int minLen = v1.length < v2.length ? v1.length : v2.length;
@@ -281,7 +270,6 @@ class UpdateService {
         }
       }
 
-      // 如果前面都一样，对比 versionCode
       if (!isVersionDifferent) {
         hasUpdate = manifest.versionCode > localBuild;
       }
@@ -310,122 +298,256 @@ class UpdateService {
     }
   }
 
-  // =========================================================================
-  // 👉 提取的公共 UI 方法：展示更新弹窗
-  // =========================================================================
-  static void showUpdateDialog(BuildContext context, AppManifest manifest, String currentVersion, {bool hasUpdate = true, bool hasNotice = false}) {
-    showDialog(
-      context: context,
-      barrierDismissible: !manifest.forceUpdate,
-      builder: (ctx) {
-        return AlertDialog(
-          contentPadding: EdgeInsets.zero,
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (manifest.wallpaper.show && manifest.wallpaper.imageUrl.isNotEmpty)
-                  ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                      child: CachedNetworkImage(
-                        imageUrl: manifest.wallpaper.imageUrl,
-                        height: 200,
-                        fit: BoxFit.cover,
-                        errorWidget: (context, url, error) => Container(color: Colors.grey[200]),
-                      )
-                  ),
-                Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (hasUpdate) ...[
-                        Row(
-                            children: [
-                              const Icon(Icons.new_releases, color: Colors.blue),
-                              const SizedBox(width: 8),
-                              Text(manifest.updateInfo.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))
-                            ]
-                        ),
-                        const SizedBox(height: 6),
-                        Text("当前: $currentVersion  →  最新: ${manifest.versionName}", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10),
-                        Text(manifest.updateInfo.description),
-                        const SizedBox(height: 15),
-                        if (manifest.updateInfo.fullPackageUrl.isNotEmpty)
-                          ElevatedButton.icon(
-                              icon: const Icon(Icons.download),
-                              label: const Text("立即安装新版本"),
-                              onPressed: () {
-                                Navigator.pop(ctx); // 点击下载后关闭弹窗
-                                startDownload(context, manifest); // 调用统一的下载逻辑
-                              }
-                          ),
-                        if (hasNotice) const Divider(height: 30),
-                      ],
-                      if (hasNotice) ...[
-                        Row(
-                            children: [
-                              const Icon(Icons.campaign, color: Colors.orange),
-                              const SizedBox(width: 8),
-                              Text(manifest.announcement.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))
-                            ]
-                        ),
-                        const SizedBox(height: 8),
-                        Text(manifest.announcement.content),
-                      ]
-                    ],
-                  ),
-                )
-              ],
-            ),
-          ),
-          actions: [
-            if (!manifest.forceUpdate)
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("关闭"))
-          ],
-        );
-      },
-    );
-  }
+  static Future<void> showUpdateDialog(BuildContext context, AppManifest manifest, String currentVersion, {bool hasUpdate = true, bool hasNotice = false}) async {
+    if (_isDialogShowing) return;
+    _isDialogShowing = true;
 
-  // =========================================================================
-  // 👉 提取的公共逻辑：处理下载前置检查和发起下载
-  // =========================================================================
-  static Future<void> startDownload(BuildContext context, AppManifest manifest) async {
-    // 1. 先检查是否已经下载过这个版本的完整包
-    String? existingPath = await isApkAlreadyDownloaded(manifest.versionName);
+    // 💡 渲染前检查本地是否已经有现成的安装包（仅当没在下载时才检查）
+    if (!_isDownloading && !_isDownloaded) {
+      String? existingPath = await isApkAlreadyDownloaded(manifest.versionName);
+      if (existingPath != null) {
+        _isDownloaded = true;
+        _localApkPath = existingPath;
+      }
+    }
 
-    if (existingPath != null) {
-      print("检测到本地已存在完整安装包，直接安装");
-      await installApk(existingPath);
+    if (!context.mounted) {
+      _isDialogShowing = false;
       return;
     }
 
-    // 2. 如果没有，则准备环境（清理旧版本包并请求权限）
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return PopScope(
+          // 只要不是强制更新，无论是不是在下载，都允许返回（隐藏弹窗），完美支持后台下载！
+          canPop: !manifest.forceUpdate,
+          child: StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
+
+                // 🚀 动态绑定回调到当前弹出的UI上，任何数据流变动直接驱动这里的 setState
+                _uiProgressCallback = (p) { if (context.mounted) setState(() {}); };
+                _uiCompleteCallback = (path) { if (context.mounted) setState(() {}); };
+                _uiErrorCallback = (err) {
+                  if (context.mounted) {
+                    setState(() {});
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(err)));
+                  }
+                };
+
+                return AlertDialog(
+                  contentPadding: EdgeInsets.zero,
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (manifest.wallpaper.show && manifest.wallpaper.imageUrl.isNotEmpty)
+                          ClipRRect(
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                              child: CachedNetworkImage(
+                                imageUrl: manifest.wallpaper.imageUrl,
+                                height: 200,
+                                fit: BoxFit.cover,
+                                errorWidget: (context, url, error) => Container(color: Colors.grey[200]),
+                              )
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (hasUpdate) ...[
+                                Row(
+                                    children: [
+                                      const Icon(Icons.new_releases, color: Colors.blue),
+                                      const SizedBox(width: 8),
+                                      Text(manifest.updateInfo.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))
+                                    ]
+                                ),
+                                const SizedBox(height: 6),
+                                Text("当前: $currentVersion  →  最新: ${manifest.versionName}", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 10),
+                                Text(manifest.updateInfo.description),
+                                const SizedBox(height: 20),
+
+                                if (manifest.updateInfo.fullPackageUrl.isNotEmpty)
+                                  if (_isDownloaded)
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
+                                        ElevatedButton.icon(
+                                          icon: const Icon(Icons.system_update),
+                                          label: const Text("下载完成，立即安装"),
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                                          onPressed: () {
+                                            if (_localApkPath != null) installApk(_localApkPath!);
+                                          },
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            if (_isDownloading) return;
+                                            setState(() {}); // 触发UI转入等待动画
+                                            _startForegroundDownload(manifest);
+                                          },
+                                          child: const Text("安装失败？点击强制重新下载", style: TextStyle(color: Colors.grey, fontSize: 13, decoration: TextDecoration.underline)),
+                                        )
+                                      ],
+                                    )
+                                  else if (_isDownloading)
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Text("正在下载更新包...", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                                            Text("${(_downloadProgress * 100).toStringAsFixed(1)}%", style: const TextStyle(fontSize: 13, color: Colors.blue, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: LinearProgressIndicator(
+                                            value: _downloadProgress,
+                                            minHeight: 12,
+                                            backgroundColor: Colors.grey[200],
+                                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  else
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                          icon: const Icon(Icons.download),
+                                          label: const Text("立即下载新版本"),
+                                          onPressed: () {
+                                            if (_isDownloading) return;
+                                            setState(() {});
+                                            _startForegroundDownload(manifest);
+                                          }
+                                      ),
+                                    ),
+                                if (hasNotice) const Divider(height: 30),
+                              ],
+                              if (hasNotice) ...[
+                                Row(
+                                    children: [
+                                      const Icon(Icons.campaign, color: Colors.orange),
+                                      const SizedBox(width: 8),
+                                      Text(manifest.announcement.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))
+                                    ]
+                                ),
+                                const SizedBox(height: 8),
+                                Text(manifest.announcement.content),
+                              ]
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    if (!manifest.forceUpdate)
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          // 动态文本提示：如果正在下载，允许用户把弹窗藏到后台
+                          child: Text(_isDownloading ? "后台下载" : (_isDownloaded ? "关闭" : "稍后再说"), style: const TextStyle(color: Colors.grey))
+                      ),
+                  ],
+                );
+              }
+          ),
+        );
+      },
+    ).then((_) {
+      // 弹窗销毁时释放锁，并剥离绑定的回调防止内存泄漏（但保留下载状态！）
+      _isDialogShowing = false;
+      _uiProgressCallback = null;
+      _uiCompleteCallback = null;
+      _uiErrorCallback = null;
+    });
+  }
+
+  // =========================================================================
+  // 👉 终极防御：带 .download 安全后缀与断点续联的流式下载
+  // =========================================================================
+  static Future<void> _startForegroundDownload(AppManifest manifest) async {
+    // 强制斩断上一个未完结的流（防止重下时产生幽灵线程）
+    await _downloadSubscription?.cancel();
+
+    _isDownloading = true;
+    _isDownloaded = false;
+    _downloadProgress = 0.0;
+    _uiProgressCallback?.call(0.0);
+
     bool ready = await prepareForDownload(manifest.versionName);
-    if (!ready) return;
+    if (!ready) {
+      _isDownloading = false;
+      _uiErrorCallback?.call("准备下载环境失败，请检查存储权限");
+      return;
+    }
 
     final path = await getDownloadDirectory();
-    if (path == null) return;
+    if (path == null) {
+      _isDownloading = false;
+      _uiErrorCallback?.call("无法获取下载保存目录");
+      return;
+    }
 
-    // 3. 执行真正的下载
-    await FlutterDownloader.enqueue(
-      url: manifest.updateInfo.fullPackageUrl,
-      savedDir: path, // 路径指向 /storage/emulated/0/Download/CountdownTodo
-      fileName: getUpdateFileName(manifest.versionName),
-      showNotification: true,
-      openFileFromNotification: false,
-      // 💡 核心修复：这里必须设为 false ！！！
-      // 设为 false 后，下载器不再调用 MediaStore（媒体库会无视子目录强制放入 Download 根目录）
-      // 而是直接使用我们申请好的 MANAGE_EXTERNAL_STORAGE 权限，把文件写入 savedDir 制定的子目录里。
-      saveInPublicStorage: false,
-    );
+    String fileName = getUpdateFileName(manifest.versionName);
+    String savePath = "$path/$fileName";
+    // 🚀 核心防御：下载过程中的临时后缀！
+    String tempPath = "$savePath.download";
+    File tempFile = File(tempPath);
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("正在后台下载更新，完成后将自动弹出安装界面..."))
-      );
+    try {
+      var client = HttpClient();
+      var request = await client.getUrl(Uri.parse(manifest.updateInfo.fullPackageUrl));
+      var response = await request.close();
+
+      if (response.statusCode == 200) {
+        int totalBytes = response.contentLength;
+        int receivedBytes = 0;
+        var sink = tempFile.openWrite();
+
+        _downloadSubscription = response.listen(
+              (List<int> chunk) {
+            receivedBytes += chunk.length;
+            sink.add(chunk);
+            if (totalBytes > 0) {
+              _downloadProgress = receivedBytes / totalBytes;
+              // 通知绑定的弹窗（如果弹窗关了，回调是 null，也不影响后台继续跑）
+              _uiProgressCallback?.call(_downloadProgress);
+            }
+          },
+          onDone: () async {
+            await sink.close();
+            // 🚀 下载到100%了，终于可以光明正大把名字改回 .apk！
+            File finalFile = await tempFile.rename(savePath);
+
+            _isDownloading = false;
+            _isDownloaded = true;
+            _localApkPath = finalFile.path;
+
+            _uiCompleteCallback?.call(finalFile.path);
+          },
+          onError: (e) async {
+            await sink.close();
+            _isDownloading = false;
+            _uiErrorCallback?.call("下载连接中断: $e");
+          },
+          cancelOnError: true,
+        );
+      } else {
+        _isDownloading = false;
+        _uiErrorCallback?.call("服务器响应异常: HTTP ${response.statusCode}");
+      }
+    } catch (e) {
+      _isDownloading = false;
+      _uiErrorCallback?.call("网络请求发生异常: $e");
     }
   }
 }
