@@ -1,30 +1,28 @@
-import 'dart:convert'; // 🚀 新增：用于 UTF-8 解码
+import 'dart:convert';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
 import 'package:intl/intl.dart';
-import 'course_service.dart'; // 引入你的 CourseItem 模型
+import 'course_service.dart';
 
 class XmuScheduleParser {
   /// 传入 MHTML/HTML 字符串和 本学期第一周的周一日期
   static List<CourseItem> parseHtml(String htmlString, DateTime semesterStartDate) {
     List<CourseItem> courses = [];
 
-    // 🚀 核心修复：如果是 MHTML 导出的带编码文本，先进行深度解码还原成真实 HTML
+    // 🚀 核心修复：执行绝对安全的底层解码，确保绝不破坏 HTML 标签和现有中文字符
     String cleanHtml = _decodeMhtml(htmlString);
 
     // 解析纯净的 HTML 树
     Document document = parser.parse(cleanHtml);
 
-    // 找到所有带有 "arrage" 类的课程节点
-    var arrageNodes = document.querySelectorAll('.arrage');
+    // 增加类名容错适配：防止教务系统更新更改类名 (.arrage -> .arrange)
+    var arrageNodes = document.querySelectorAll('.arrage, .arrange');
 
     for (var node in arrageNodes) {
       // 1. 从父节点 <td> 获取节次和星期信息
       var tdNode = node.parent;
       if (tdNode == null) continue;
 
-      // 🚀 核心修复：教务系统使用 rowspan 合并单元格时，会生成带有 display:none 的多余隐藏格子
-      // 必须把隐藏的格子过滤掉，否则会抓取到重叠的课程，导致界面卡片文字堆叠发虚
       String? styleAttr = tdNode.attributes['style'];
       if (styleAttr != null && styleAttr.replaceAll(' ', '').contains('display:none')) {
         continue;
@@ -57,9 +55,8 @@ class XmuScheduleParser {
       // 4. 将节次映射为具体的时分戳 (例如 第1节 -> 800)
       List<int> times = _mapJcToTime(startJc, endJc);
 
-      // 5. 因为你的 CourseItem 需要具体的 date，我们通过周次和星期推算出来
+      // 5. 因为 CourseItem 需要具体的 date，通过周次和星期推算出来
       for (int week in activeWeeks) {
-        // 计算当前这节课所在的具体日期
         DateTime classDate = semesterStartDate
             .add(Duration(days: (week - 1) * 7)) // 加上周的偏移
             .add(Duration(days: weekday - 1));   // 加上星期的偏移
@@ -83,53 +80,57 @@ class XmuScheduleParser {
     return courses;
   }
 
-  /// 🚀 底层解码方法：将 MHTML 乱码转为标准 UTF-8 HTML
+  /// 🚀 底层安全解码方法：将 MHTML 乱码转为标准 UTF-8 HTML，且绝不破坏现有的中文字符
   static String _decodeMhtml(String rawString) {
-    // 判断是否包含 quoted-printable 特征（比如 =3D 或者 =E8）
-    if (!rawString.contains('=3D') && !rawString.contains('quoted-printable') && !rawString.contains('QUOTED-PRINTABLE')) {
-      return rawString; // 已经是纯 HTML，直接返回
+    if (!rawString.contains('quoted-printable') && !rawString.contains('QUOTED-PRINTABLE') && !rawString.contains('=3D')) {
+      return rawString;
     }
 
     try {
-      // 1. 剥离行尾软回车延续符 (=\r\n 或 =\n)
+      // 1. 剥离行尾软回车延续符
       String cleaned = rawString.replaceAll(RegExp(r'=\r?\n'), '');
 
-      // 2. 将 =XX 转换为真实的字节数组
-      List<int> decodedBytes = [];
+      // 2. 安全解码：只转换 =XX 为字节，保留原本正常的字符（防止破坏已存在的中文）
+      List<int> bytes = [];
       int i = 0;
       while (i < cleaned.length) {
-        if (cleaned[i] == '=' && i + 2 < cleaned.length) {
+        int code = cleaned.codeUnitAt(i);
+        if (code == 61 && i + 2 < cleaned.length) { // 61 is '='
           String hex = cleaned.substring(i + 1, i + 3);
           int? byte = int.tryParse(hex, radix: 16);
           if (byte != null) {
-            decodedBytes.add(byte);
+            bytes.add(byte);
             i += 3;
             continue;
           }
         }
-        decodedBytes.add(cleaned.codeUnitAt(i));
+
+        // 🚀 核心防御：如果是 ASCII 字符直接存入；如果是中文字符(>127)，必须先转换为 UTF-8 字节流再拼入
+        if (code <= 127) {
+          bytes.add(code);
+        } else {
+          bytes.addAll(utf8.encode(String.fromCharCode(code)));
+        }
         i++;
       }
 
-      // 3. 将提取出的干净字节按 UTF-8 正确解码出中文
-      return utf8.decode(decodedBytes, allowMalformed: true);
+      return utf8.decode(bytes, allowMalformed: true);
     } catch (e) {
       print("MHTML底层解码失败: $e");
-      return rawString; // 如果解码抛出异常，返回原字符串兜底
+      return rawString;
     }
   }
 
   /// 辅助方法：解析 "1-15周", "2-14双周", "9-15单周" 为数组
   static List<int> _parseWeeks(String weekStr) {
     List<int> weeks = [];
-    // 正则匹配，提取起始周、结束周，以及是否包含单双字眼
     RegExp regExp = RegExp(r'(\d+)-(\d+)(单|双)?周');
     var match = regExp.firstMatch(weekStr);
 
     if (match != null) {
       int start = int.parse(match.group(1)!);
       int end = int.parse(match.group(2)!);
-      String? type = match.group(3); // '单' 或者 '双' 或者 null
+      String? type = match.group(3);
 
       for (int i = start; i <= end; i++) {
         if (type == '单' && i % 2 == 0) continue;
@@ -140,7 +141,7 @@ class XmuScheduleParser {
     return weeks;
   }
 
-  /// 辅助方法：把第几节课映射为真实时间 (依据你提供的骨架提取)
+  /// 辅助方法：把第几节课映射为真实时间
   static List<int> _mapJcToTime(int startJc, int endJc) {
     // 开始时间映射表
     const Map<int, int> startTimes = {

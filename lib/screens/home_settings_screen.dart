@@ -872,164 +872,133 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // 🚀 专门解析 MHTML 的 quoted-printable 编码（底层安全解码）
-  Future<String> _readAndDecodeMhtml(File file) async {
-    try {
-      // 1. 强制按字节读取，避免 readAsString 错误处理 utf8 导致乱码崩溃
-      List<int> rawBytes = await file.readAsBytes();
-      String rawString = String.fromCharCodes(rawBytes);
+  // 🚀 全新的智能导入核心方法：自动探嗅，自带精美进度弹窗
+  Future<void> _smartImportCourse() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+    );
 
-      // 如果根本没包含这种编码，直接回退为 UTF-8
-      if (!rawString.contains('quoted-printable') && !rawString.contains('QUOTED-PRINTABLE')) {
-        return utf8.decode(rawBytes, allowMalformed: true);
-      }
+    if (result == null || result.files.single.path == null) return;
 
-      // 2. 剥离行尾延续符 (=\r\n 或 =\n)
-      String cleaned = rawString.replaceAll(RegExp(r'=\r?\n'), '');
+    String filePath = result.files.single.path!;
+    File file = File(filePath);
 
-      // 3. 将 =XX 转换为真实的字节数组
-      List<int> decodedBytes = [];
-      int i = 0;
-      while (i < cleaned.length) {
-        if (cleaned[i] == '=' && i + 2 < cleaned.length) {
-          String hex = cleaned.substring(i + 1, i + 3);
-          int? byte = int.tryParse(hex, radix: 16);
-          if (byte != null) {
-            decodedBytes.add(byte);
-            i += 3;
-            continue;
-          }
-        }
-        decodedBytes.add(cleaned.codeUnitAt(i));
-        i++;
-      }
+    // 使用 ValueNotifier 驱动局部 UI 刷新
+    ValueNotifier<String> statusNotifier = ValueNotifier("获取课表文件中...");
+    BuildContext? dialogContext;
 
-      // 4. 将提取出的干净字节按 UTF-8 正确解码出中文 HTML 结构
-      return utf8.decode(decodedBytes, allowMalformed: true);
-    } catch (e) {
-      debugPrint("MHTML底层解码失败: $e");
-      // 兜底回退
-      return await file.readAsString();
-    }
-  }
-
-  // 🚀 弹出课表来源选择面板
-  void _showImportSourcePicker() {
-    showModalBottomSheet(
+    // 弹出不可取消的进度弹窗
+    showDialog(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      barrierDismissible: false,
+      useRootNavigator: true,
       builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        dialogContext = ctx;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Row(
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text('选择课表来源', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const CircularProgressIndicator(),
+              const SizedBox(width: 20),
+              Expanded(
+                child: ValueListenableBuilder<String>(
+                  valueListenable: statusNotifier,
+                  builder: (context, value, child) {
+                    return Text(
+                      value,
+                      style: const TextStyle(fontSize: 15, height: 1.4),
+                    );
+                  },
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.school, color: Colors.blue),
-                title: const Text('聚在工大 (合肥工业大学)'),
-                subtitle: const Text('支持 JSON / TXT 格式数据'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _importCourse('hfut');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.account_balance, color: Colors.redAccent),
-                title: const Text('我的课表App (厦门大学)'),
-                subtitle: const Text('支持 MHTML / HTML 网页导出格式'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _importCourse('xmu');
-                },
-              ),
-              // 🚀 新增：西电课表入口
-              ListTile(
-                leading: const Icon(Icons.event_note, color: Colors.purple),
-                title: const Text('系统日历导出 (西安电子科技大学)'),
-                subtitle: const Text('支持 ICS / iCalendar 格式'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _importCourse('xidian');
-                },
-              ),
-              const SizedBox(height: 10),
             ],
           ),
         );
       },
     );
-  }
 
-  // 🚀 统一的课表导入处理逻辑
-  Future<void> _importCourse(String source) async {
-    // 厦大和西电课表都需要知道开学日期来推算具体的上课日期
-    if ((source == 'xmu' || source == 'xidian') && _semesterStart == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('⚠️ 请先在下方【学期设置】中设置“开学日期”！')),
-      );
-      return;
-    }
+    try {
+      await Future.delayed(const Duration(milliseconds: 400));
+      statusNotifier.value = "正在智能识别文件类型...";
 
-    // 核心修复：将 type 改为 FileType.any，完全绕过安卓自带的文件类型过滤限制
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-    );
-
-    if (result != null && result.files.single.path != null) {
-      String filePath = result.files.single.path!;
+      String content;
       String ext = filePath.split('.').last.toLowerCase();
 
-      // 在 Dart 层面做简单的后缀名软提示
-      if (source == 'xmu' && !['mhtml', 'html', 'txt'].contains(ext)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('⚠️ 提示：建议选择 .mhtml 或 .html 格式的文件')),
-        );
-      } else if (source == 'hfut' && !['json', 'txt'].contains(ext)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('⚠️ 提示：建议选择 .json 格式的文件')),
-        );
-      } else if (source == 'xidian' && !['ics', 'txt'].contains(ext)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('⚠️ 提示：建议选择 .ics 格式的文件')),
-        );
+      // 安全读取文件：防止特殊网页编码直接造成 readAsString 崩溃
+      try {
+        content = await file.readAsString();
+      } catch (e) {
+        List<int> bytes = await file.readAsBytes();
+        content = utf8.decode(bytes, allowMalformed: true);
       }
 
-      File file = File(filePath);
-
-      // 显示 Loading 弹窗
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
+      await Future.delayed(const Duration(milliseconds: 400));
 
       bool success = false;
-      try {
-        if (source == 'hfut') {
-          String fileContent = await file.readAsString();
-          success = await CourseService.importScheduleFromJson(fileContent);
-        } else if (source == 'xmu') {
-          String htmlContent = await _readAndDecodeMhtml(file);
-          success = await CourseService.importXmuScheduleFromHtml(htmlContent, _semesterStart!);
-        } else if (source == 'xidian') {
-          // 🚀 增加西电解析处理
-          String icsContent = await file.readAsString();
-          success = await CourseService.importXidianScheduleFromIcs(icsContent, _semesterStart!);
+      String sourceName = "";
+
+      // 👉 1. 判断是否为西电 ICS 日历
+      if (ext == 'ics' || content.contains('BEGIN:VCALENDAR')) {
+        sourceName = "西安电子科技大学";
+        statusNotifier.value = "识别到: $sourceName\n正在导入...";
+
+        if (_semesterStart == null) {
+          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
+          await Future.delayed(const Duration(seconds: 2));
+          if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
+          return;
         }
-      } catch (e) {
-        debugPrint('导入课表发生异常: $e');
+        success = await CourseService.importXidianScheduleFromIcs(content, _semesterStart!);
+      }
+      // 👉 2. 判断是否为厦大 MHTML/HTML 网页档案
+      else if (['mhtml', 'html', 'htm'].contains(ext) || content.contains('quoted-printable') || content.toLowerCase().contains('<html')) {
+        sourceName = "厦门大学";
+        statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
+
+        if (_semesterStart == null) {
+          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
+          await Future.delayed(const Duration(seconds: 2));
+          if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
+          return;
+        }
+        // 🚀 核心修复：直接传递给 Service，底层 XmuScheduleParser 会负责极其安全的 quoted-printable 解码
+        success = await CourseService.importXmuScheduleFromHtml(content, _semesterStart!);
+      }
+      // 👉 3. 判断是否为合工大 JSON 数据
+      else if (['json', 'txt'].contains(ext) || content.trim().startsWith('[') || content.trim().startsWith('{')) {
+        sourceName = "聚在工大";
+        statusNotifier.value = "识别到: $sourceName\n正在导入...";
+        success = await CourseService.importScheduleFromJson(content);
+      }
+      // 👉 4. 无法识别
+      else {
+        statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
+        await Future.delayed(const Duration(seconds: 2));
+        if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
+        return;
       }
 
-      if (mounted) {
-        Navigator.pop(context); // 关闭 Loading 弹窗
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(success ? '✅ 课表导入成功' : '❌ 课表解析失败，请检查文件格式')),
-        );
+      // 提示结果并关闭弹窗
+      if (success) {
+        statusNotifier.value = "✅ $sourceName 导入成功！\n请返回主页查看课表";
+        await Future.delayed(const Duration(milliseconds: 1200)); // 让用户能看清成功提示
+        if (dialogContext != null && dialogContext!.mounted) {
+          Navigator.pop(dialogContext!);
+        }
+      } else {
+        statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
+        await Future.delayed(const Duration(seconds: 2));
+        if (dialogContext != null && dialogContext!.mounted) {
+          Navigator.pop(dialogContext!);
+        }
+      }
+
+    } catch (e) {
+      debugPrint("处理智能导入时崩溃: $e");
+      statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
+      await Future.delayed(const Duration(seconds: 2));
+      if (dialogContext != null && dialogContext!.mounted) {
+        Navigator.pop(dialogContext!);
       }
     }
   }
@@ -1247,13 +1216,13 @@ class _SettingsPageState extends State<SettingsPage> {
               trailing: const Icon(Icons.chevron_right),
               onTap: _uploadCoursesToCloud,
             ),
-            // 🚀 替换为全新的多来源导入菜单
+            // 🚀 替换为全新的智能导入入口
             ListTile(
               leading: const Icon(Icons.file_upload_outlined),
-              title: const Text('导入本地课表'),
-              subtitle: const Text('支持多高校格式 (聚在工大 / 厦大)'),
+              title: const Text('智能导入本地课表'),
+              subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电)'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: _showImportSourcePicker,
+              onTap: _smartImportCourse,
             ),
             const Divider(height: 1, indent: 56),
             ListTile(
@@ -1288,7 +1257,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 StorageService.saveAppSetting(StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
               },
             ),
-            if (_semesterEnabled) ...[
+            if (_semesterEnabled || true) ...[ // 移除限制条件以保证随时可设开学日期
               ListTile(
                 contentPadding: const EdgeInsets.only(left: 56, right: 16),
                 title: const Text('开学日期'),
