@@ -116,7 +116,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
   Widget _buildList() {
     final List<CountdownItem> activeCountdowns = widget.countdowns.where((item) {
       return item.targetDate.difference(DateTime.now()).inDays + 1 >= 0;
-    }).toList();
+    }).toList()
+      ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
     if (activeCountdowns.isEmpty) return EmptyState(text: "暂无有效倒计时", isLight: widget.isLight);
 
