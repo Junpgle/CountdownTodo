@@ -28,6 +28,7 @@ import 'home_settings_screen.dart';
 import 'course_screens.dart';
 import 'historical_countdowns_screen.dart';
 import 'historical_todos_screen.dart';
+import 'upgrade_guide_screen.dart';
 
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
@@ -252,6 +253,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   }
 
   Future<void> _checkAutoSync() async {
+    // 🛡️ 安全检查：升级引导未完成时禁止任何自动同步
+    // 防止用户跳过引导进入主页后，空的本地数据被推送并覆盖云端数据
+    final guideNeeded = await UpgradeGuideScreen.shouldShow();
+    if (guideNeeded) return;
+
     int interval = await StorageService.getSyncInterval();
     DateTime? lastSync = await StorageService.getLastAutoSyncTime();
     DateTime now = DateTime.now();

@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
+import 'screens/upgrade_guide_screen.dart';
 import 'storage_service.dart';
 
 void main() {
@@ -27,6 +28,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   String? _loggedInUser;
   bool _isChecking = true;
+  bool _showUpgradeGuide = false;
 
   @override
   void initState() {
@@ -42,14 +44,18 @@ class _MyAppState extends State<MyApp> {
     // 1. 读取硬盘获取登录状态
     final user = await StorageService.getLoginSession();
 
+    // 2. 检查是否需要显示升级引导
+    final needGuide = await UpgradeGuideScreen.shouldShow();
+
     if (mounted) {
       setState(() {
         _loggedInUser = user;
-        _isChecking = false; // 检查完毕，切换页面
+        _showUpgradeGuide = needGuide;
+        _isChecking = false;
       });
     }
 
-    // 2. 异步初始化耗时的底层插件
+    // 3. 异步初始化耗时的底层插件
     _initHeavyPlugins();
   }
 
@@ -133,18 +139,21 @@ class _MyAppState extends State<MyApp> {
             Locale('en', 'US'),
           ],
 
-          // 路由控制：如果在检查中，显示加载圈；检查完毕再跳转
+          // 路由控制：加载中 → 升级引导 → 主页/登录
           home: _isChecking
               ? Scaffold(
-            // 蓝屏加载页也可以根据主题稍作适配，这里保留你的原版深蓝底色
-            backgroundColor: currentThemeMode == ThemeMode.dark ? Colors.grey[900] : Colors.blue,
-            body: const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-          )
-              : (_loggedInUser != null && _loggedInUser!.isNotEmpty
-              ? HomeDashboard(username: _loggedInUser!)
-              : const LoginScreen()),
+                  backgroundColor: currentThemeMode == ThemeMode.dark
+                      ? Colors.grey[900]
+                      : Colors.blue,
+                  body: const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+                )
+              : _showUpgradeGuide
+                  ? UpgradeGuideScreen(loggedInUser: _loggedInUser)
+                  : (_loggedInUser != null && _loggedInUser!.isNotEmpty
+                      ? HomeDashboard(username: _loggedInUser!)
+                      : const LoginScreen()),
         );
       },
     );
