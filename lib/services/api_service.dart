@@ -5,7 +5,22 @@ class ApiService {
   // ⚠️ 请替换为你部署后的 Worker URL
   static const String baseUrl = "https://mathquiz.junpgle.me";
 
-  // 🚀 将不管传入的 time 是 int 还是 String，都强制清洗输出标准的 ISO 时间格式。
+  // 🛡️ 内存中持有最新 Token
+  static String? _authToken;
+
+  static void setToken(String token) {
+    _authToken = token;
+  }
+
+  // 统一构建安全 Header
+  static Map<String, String> _getHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      if (_authToken != null && _authToken!.isNotEmpty)
+        'Authorization': 'Bearer $_authToken',
+    };
+  }
+
   static String _formatTime(dynamic time) {
     if (time is String) return time;
     if (time is int) return DateTime.fromMillisecondsSinceEpoch(time).toIso8601String();
@@ -16,7 +31,6 @@ class ApiService {
   // 1. 用户认证 (Auth)
   // ==========================================
 
-  // 注册 (支持两步验证)
   static Future<Map<String, dynamic>> register(String username, String email, String password, {String? code}) async {
     try {
       final Map<String, dynamic> bodyMap = {
@@ -25,9 +39,7 @@ class ApiService {
         'password': password,
       };
 
-      if (code != null && code.isNotEmpty) {
-        bodyMap['code'] = code;
-      }
+      if (code != null && code.isNotEmpty) bodyMap['code'] = code;
 
       final response = await http.post(
         Uri.parse('$baseUrl/api/auth/register'),
@@ -51,7 +63,6 @@ class ApiService {
     }
   }
 
-  // 登录
   static Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final response = await http.post(
@@ -66,7 +77,11 @@ class ApiService {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
-        return {'success': true, 'user': data['user']};
+        return {
+          'success': true,
+          'user': data['user'],
+          'token': data['token']
+        };
       } else {
         return {'success': false, 'message': data['error'] ?? '登录失败'};
       }
@@ -75,12 +90,11 @@ class ApiService {
     }
   }
 
-  // 修改密码
   static Future<Map<String, dynamic>> changePassword(int userId, String oldPassword, String newPassword) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/auth/change_password'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({
           'user_id': userId,
           'old_password': oldPassword,
@@ -112,7 +126,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/score'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({'user_id': userId, 'username': username, 'score': score, 'duration': duration}),
       );
       return response.statusCode == 200;
@@ -125,7 +139,7 @@ class ApiService {
 
   static Future<List<dynamic>> fetchTodos(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/todos?user_id=$userId'));
+      final response = await http.get(Uri.parse('$baseUrl/api/todos?user_id=$userId'), headers: _getHeaders());
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -133,33 +147,33 @@ class ApiService {
     }
   }
 
-  // 🚀 ApiService 兼容传入动态类型的 ID
-  static Future<bool> addTodo(int userId, String content, {dynamic id, bool isCompleted = false, dynamic timestamp, String? dueDate, String? createdDate}) async {
+  // 🚀 ApiService 中的单独操作现在通过传递 created_at 来代替 id 定位数据
+  static Future<bool> addTodo(int userId, String content, {bool isCompleted = false, dynamic timestamp, String? dueDate, String? createdDate}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/todos'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({
-          'id': id,
           'user_id': userId,
           'content': content,
           'is_completed': isCompleted,
           'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
           'due_date': dueDate,
           'created_date': createdDate,
+          'created_at': createdDate, // 确保两端兼容
         }),
       );
       return response.statusCode == 200;
     } catch (e) { return false; }
   }
 
-  static Future<bool> toggleTodo(dynamic id, bool isCompleted, {dynamic timestamp}) async {
+  static Future<bool> toggleTodo(String createdAt, bool isCompleted, {dynamic timestamp}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/todos/toggle'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({
-          'id': id,
+          'created_at': createdAt,
           'is_completed': isCompleted,
           'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
         }),
@@ -170,13 +184,13 @@ class ApiService {
     }
   }
 
-  static Future<bool> deleteTodo(dynamic id, {dynamic timestamp}) async {
+  static Future<bool> deleteTodo(String createdAt, {dynamic timestamp}) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/api/todos'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({
-          'id': id,
+          'created_at': createdAt,
           'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
         }),
       );
@@ -192,19 +206,18 @@ class ApiService {
 
   static Future<List<dynamic>> fetchCountdowns(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/countdowns?user_id=$userId'));
+      final response = await http.get(Uri.parse('$baseUrl/api/countdowns?user_id=$userId'), headers: _getHeaders());
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) { return []; }
   }
 
-  static Future<bool> addCountdown(int userId, String title, DateTime targetTime, dynamic lastUpdated, {dynamic id}) async {
+  static Future<bool> addCountdown(int userId, String title, DateTime targetTime, dynamic lastUpdated) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/countdowns'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({
-          'id': id,
           'user_id': userId,
           'title': title,
           'target_time': targetTime.toIso8601String(),
@@ -215,13 +228,13 @@ class ApiService {
     } catch (e) { return false; }
   }
 
-  static Future<bool> deleteCountdown(dynamic id) async {
+  static Future<bool> deleteCountdown(String title) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/api/countdowns'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({
-          'id': id,
+          'title': title,
           'updated_at': DateTime.now().toIso8601String(),
         }),
       );
@@ -244,7 +257,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/screen_time'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({
           'user_id': userId,
           'device_name': deviceName,
@@ -258,7 +271,7 @@ class ApiService {
 
   static Future<List<dynamic>> fetchScreenTime(int userId, String date) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/screen_time?user_id=$userId&date=$date'));
+      final response = await http.get(Uri.parse('$baseUrl/api/screen_time?user_id=$userId&date=$date'), headers: _getHeaders());
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) { return []; }
@@ -272,7 +285,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/debug/reset_database'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -307,23 +320,24 @@ class ApiService {
     Map<String, dynamic>? screenTime,
   }) async {
     try {
-      // 🚀 核心修复：强制清洗来自本地存储的数据，确保全部转换成了字符串
       final sanitizedTodos = todos.map((t) {
         final newT = Map<String, dynamic>.from(t);
-        if (newT['client_updated_at'] is int) {
-          newT['client_updated_at'] = DateTime.fromMillisecondsSinceEpoch(newT['client_updated_at']).toIso8601String();
-        } else if (newT['client_updated_at'] == null) {
-          newT['client_updated_at'] = DateTime.now().toIso8601String();
+        if (newT['updated_at'] is int) {
+          newT['updated_at'] = DateTime.fromMillisecondsSinceEpoch(newT['updated_at']).toIso8601String();
+        } else if (newT['updated_at'] == null) {
+          newT['updated_at'] = DateTime.now().toIso8601String();
         }
+        // 确保把 createdAt 也作为凭证带过去
+        newT['created_at'] = newT['created_date'];
         return newT;
       }).toList();
 
       final sanitizedCountdowns = countdowns.map((c) {
         final newC = Map<String, dynamic>.from(c);
-        if (newC['client_updated_at'] is int) {
-          newC['client_updated_at'] = DateTime.fromMillisecondsSinceEpoch(newC['client_updated_at']).toIso8601String();
-        } else if (newC['client_updated_at'] == null) {
-          newC['client_updated_at'] = DateTime.now().toIso8601String();
+        if (newC['updated_at'] is int) {
+          newC['updated_at'] = DateTime.fromMillisecondsSinceEpoch(newC['updated_at']).toIso8601String();
+        } else if (newC['updated_at'] == null) {
+          newC['updated_at'] = DateTime.now().toIso8601String();
         }
         return newC;
       }).toList();
@@ -340,7 +354,7 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse('$baseUrl/api/sync_all'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode(body),
       );
 
@@ -375,11 +389,11 @@ class ApiService {
   // 9. 课表同步 (Courses)
   // ==========================================
 
-  /// 获取当前用户的完整课表
   static Future<List<dynamic>> fetchCourses(int userId, {String semester = "default"}) async {
     try {
       final response = await http.get(
-          Uri.parse('$baseUrl/api/courses?user_id=$userId&semester=$semester')
+          Uri.parse('$baseUrl/api/courses?user_id=$userId&semester=$semester'),
+          headers: _getHeaders()
       );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -390,16 +404,15 @@ class ApiService {
     }
   }
 
-  /// 上传并覆盖当前用户的完整课表
   static Future<Map<String, dynamic>> uploadCourses({
     required int userId,
     required List<Map<String, dynamic>> courses,
-    String semester = "default", // 默认分配到一个基础学期中
+    String semester = "default",
   }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/courses'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _getHeaders(),
         body: jsonEncode({
           'user_id': userId,
           'semester': semester,

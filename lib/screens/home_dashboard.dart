@@ -430,6 +430,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           widget.username,
           syncTodos: syncTodos,
           syncCountdowns: syncCountdowns,
+          context: context,
         );
       }
 

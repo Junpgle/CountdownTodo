@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart'; // 引入 foundation.dart 以使用 ValueNotifier
+import 'package:flutter/material.dart'; // 🚀 引入 material.dart 替代 foundation.dart，以使用 BuildContext 和高级弹窗
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -32,6 +32,8 @@ class StorageService {
   static const String KEY_APP_MAPPINGS = "app_category_mappings";
   // ignore: constant_identifier_names
   static const String KEY_LAST_MAPPINGS_SYNC = "last_mappings_sync";
+  // 🛡️ 新增：缓存用户的安全认证 Token
+  static const String KEY_AUTH_TOKEN = "auth_session_token";
 
   // 设置相关的 Key
   static const String KEY_SYNC_INTERVAL = "app_sync_interval"; // 同步频率 (分钟)
@@ -73,13 +75,23 @@ class StorageService {
     return users.containsKey(username) && users[username] == password;
   }
 
-  static Future<void> saveLoginSession(String username) async {
+  // 🚀 记录 Session 时一并存储并启用 Token
+  static Future<void> saveLoginSession(String username, {String? token}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(KEY_CURRENT_USER, username);
+    if (token != null && token.isNotEmpty) {
+      await prefs.setString(KEY_AUTH_TOKEN, token);
+      ApiService.setToken(token); // 立刻向请求引擎注入 Token
+    }
   }
 
   static Future<String?> getLoginSession() async {
     final prefs = await SharedPreferences.getInstance();
+    // 恢复状态时，重载 Token 供通信使用
+    String? token = prefs.getString(KEY_AUTH_TOKEN);
+    if (token != null && token.isNotEmpty) {
+      ApiService.setToken(token);
+    }
     return prefs.getString(KEY_CURRENT_USER);
   }
 
@@ -87,6 +99,8 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(KEY_CURRENT_USER);
     await prefs.remove(KEY_LAST_SCREEN_TIME_SYNC);
+    await prefs.remove(KEY_AUTH_TOKEN);
+    ApiService.setToken(''); // 清空内存 Token
   }
 
   static Future<void> saveSettings(Map<String, dynamic> settings) async {
@@ -250,7 +264,7 @@ class StorageService {
     return todos;
   }
 
-  // 🚀 核心优化：直接基于 ID 进行全局删除，再也不用根据名字去找了
+  // 🚀 倒计时依然保持通过 title 唯一性判断
   static Future<void> deleteCountdownGlobally(String username, String title) async {
     List<CountdownItem> localCds = await getCountdowns(username);
     localCds.removeWhere((c) => c.title == title);
@@ -260,35 +274,31 @@ class StorageService {
     int? userId = prefs.getInt('current_user_id');
     if (userId != null) {
       try {
-        List<dynamic> cloudCds = await ApiService.fetchCountdowns(userId);
-        dynamic match;
-        for (var c in cloudCds) {
-          if (c['title'] == title) {
-            match = c;
-            break;
-          }
-        }
-        if (match != null && match['id'] != null) {
-          await ApiService.deleteCountdown(match['id']);
-        }
+        await ApiService.deleteCountdown(title);
       } catch (e) {
         print("全局删除倒计时失败: $e");
       }
     }
   }
 
-  // 🚀 核心优化：直接基于 ID 进行全局删除
+  // 🚀 核心优化：直接基于 created_at 发送删除指令，不再依赖 DB_ID
   static Future<void> deleteTodoGlobally(String username, String idToDelete) async {
     List<TodoItem> localTodos = await getTodos(username);
+
+    // 先找出这条待办，提取它的 createdAt 作为向云端汇报的唯一凭据
+    TodoItem? targetTodo;
+    try {
+      targetTodo = localTodos.firstWhere((t) => t.id == idToDelete);
+    } catch (_) {}
+
     localTodos.removeWhere((t) => t.id == idToDelete);
     await saveTodos(username, localTodos, sync: false);
 
     final prefs = await SharedPreferences.getInstance();
     int? userId = prefs.getInt('current_user_id');
-    if (userId != null) {
+    if (userId != null && targetTodo != null) {
       try {
-        // 直接使用唯一的 ID 向后端发起删除，不需要再查列表了！
-        await ApiService.deleteTodo(idToDelete);
+        await ApiService.deleteTodo(targetTodo.createdAt.toIso8601String());
       } catch (e) {
         print("全局删除待办失败: $e");
       }
@@ -394,36 +404,73 @@ class StorageService {
   }
 
   // ==========================================
-  // 🚀 核心同步机制优化 (使用 Batch Sync API)
-  // 支持分模块选择同步 (syncTodos, syncCountdowns)
+  // 🚀 核心同步机制优化 (引入 BuildContext 高级弹窗)
   // ==========================================
   static Future<bool> syncData(
       String username, {
         bool syncTodos = true,
         bool syncCountdowns = true,
+        BuildContext? context, // 🚀 传入 context 即开启弹窗模式
       }) async {
     if (!syncTodos && !syncCountdowns) return false;
 
     if (_isSyncing) return false;
     _isSyncing = true;
     bool hasChanges = false;
+    bool dialogClosed = false;
+
+    // 🚀 创建局部状态通知器，控制弹窗内的实时文字刷新
+    ValueNotifier<String> statusNotifier = ValueNotifier("准备同步...");
+
+    // 只有在外界主动触发并传了 Context 的时候，才弹出居中的漂亮指示器
+    if (context != null && context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false, // 阻止点击外部关闭，强制等待同步完成
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.0),
+            child: Row(
+              children: [
+                const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.5)
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: statusNotifier,
+                    builder: (context, val, child) {
+                      return Text(val, style: const TextStyle(fontSize: 15));
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     try {
       final prefs = await SharedPreferences.getInstance();
       int? userId = prefs.getInt('current_user_id');
       if (userId == null) return false;
 
-      // 1. 组装本地待办 Payload
+      statusNotifier.value = "正在打包本地数据...";
+
+      // 1. 组装本地待办 Payload (不再发送无意义的 UUID，重点是 created_date)
       List<TodoItem> localTodos = [];
       List<Map<String, dynamic>> todoPayload = [];
       if (syncTodos) {
         localTodos = await getTodos(username);
         todoPayload = localTodos.map((t) => {
-          'id': t.id, // 🚀 将本地唯一的 ID 发给云端
           'content': t.title,
           'is_completed': t.isDone,
           'is_deleted': false,
-          'updated_at': t.lastUpdated.toIso8601String(),
+          'client_updated_at': t.lastUpdated.toIso8601String(),
           'due_date': t.dueDate?.toIso8601String(),
           'created_date': t.createdAt.toIso8601String(),
         }).toList();
@@ -437,10 +484,12 @@ class StorageService {
         countdownPayload = localCountdowns.map((c) => {
           'title': c.title,
           'target_time': c.targetDate.toIso8601String(),
-          'updated_at': c.lastUpdated.toIso8601String(),
+          'client_updated_at': c.lastUpdated.toIso8601String(),
           'is_deleted': false,
         }).toList();
       }
+
+      statusNotifier.value = "正在与云端服务器通信...";
 
       // 3. 呼叫聚合同步 API 🚀
       final response = await ApiService.syncAll(
@@ -449,14 +498,14 @@ class StorageService {
         countdowns: countdownPayload,
       );
 
-      // 拦截 429 和错误处理
       if (response['success'] != true) {
         if (response['isLimitExceeded'] == true) {
           throw Exception("LIMIT_EXCEEDED:${response['message']}");
         }
-        print("同步失败: ${response['message']}");
-        return false;
+        throw Exception("${response['message'] ?? '发生未知错误'}");
       }
+
+      statusNotifier.value = "正在处理云端最新数据...";
 
       final data = response['data'] ?? {};
 
@@ -478,36 +527,47 @@ class StorageService {
       List<dynamic> cloudCountdowns = data['countdowns'] ?? [];
 
       // ===========================
-      // 4. LWW 合并待办事项 (🚀 深度引入基于 ID 的绑定)
+      // 4. LWW 合并待办事项 (🚀 坚不可摧的防重复比对算法)
       // ===========================
       if (syncTodos) {
-        // 构建云端字典：优先根据真实 ID 查找，兼容以前只靠 content 查找的数据
-        Map<String, dynamic> cloudTodoById = { for (var t in cloudTodos) if (t['id'] != null) t['id'].toString(): t };
-        Map<String, dynamic> cloudTodoByContent = { for (var t in cloudTodos) if (t['content'] != null) t['content']: t };
+        statusNotifier.value = "正在智能合并待办事项...";
+
+        // 构建云端字典：双保险主键匹配，彻底消灭时区和精度丢失导致的格式漂移
+        Map<String, dynamic> cloudTodoByCreatedAt = {};
+        for (var t in cloudTodos) {
+          if (t['created_at'] != null || t['created_date'] != null) {
+            String rawCloudStr = (t['created_at'] ?? t['created_date']).toString();
+            cloudTodoByCreatedAt[rawCloudStr] = t;
+
+            // 🚀 备用匹配策略：利用秒级时间戳，防止极端情况下的字符串微秒级精度丢失
+            DateTime parsed = _parseCloudTime(rawCloudStr);
+            cloudTodoByCreatedAt[(parsed.millisecondsSinceEpoch ~/ 1000).toString()] = t;
+          }
+        }
 
         List<TodoItem> todosToRemove = [];
 
         for (var local in localTodos) {
           try {
-            // 🚀 核心合并逻辑：优先使用 ID 绑定，如果本地 UUID 云端还没有，就用旧版本的 Content 去“认亲”
-            var cloud = cloudTodoById[local.id] ?? cloudTodoByContent[local.title];
+            String localIso = local.createdAt.toIso8601String();
+            String localSec = (local.createdAt.millisecondsSinceEpoch ~/ 1000).toString();
+
+            // 🚀 寻找分身：先用精准字符串找，找不到再用粗略秒级时间戳兜底
+            var cloud = cloudTodoByCreatedAt[localIso] ?? cloudTodoByCreatedAt[localSec];
 
             if (cloud != null) {
-              DateTime cloudTime = _parseCloudTime(cloud['updated_at'] ?? cloud['created_at']);
+              DateTime cloudTime = _parseCloudTime(cloud['updated_at']);
               bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
 
-              // 🚀 一旦“认亲”成功，立刻将本地的临时 UUID 替换为云端的真实 ID（下一次同步时就会基于此真实 ID 通信了）
-              local.id = cloud['id']?.toString() ?? local.id;
-
+              // 时间戳比对决胜负
               if (cloudTime.isAfter(local.lastUpdated)) {
                 if (isCloudDeleted) {
                   todosToRemove.add(local);
                   hasChanges = true;
                 } else {
-                  local.title = cloud['content'] ?? local.title; // 🚀 完美支持改名：如果另一端改了名字，这里会正常覆盖
+                  local.title = cloud['content'] ?? local.title; // 即使另一台设备修改了名字也能同步过来
                   local.isDone = cloud['is_completed'] == 1 || cloud['is_completed'] == true;
                   local.dueDate = cloud['due_date'] != null ? DateTime.tryParse(cloud['due_date'].toString()) : null;
-                  local.createdAt = cloud['created_date'] != null ? (DateTime.tryParse(cloud['created_date'].toString()) ?? local.createdAt) : local.createdAt;
                   local.lastUpdated = cloudTime;
                   hasChanges = true;
                 }
@@ -523,17 +583,25 @@ class StorageService {
         for (var cloud in cloudTodos) {
           try {
             bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
-            String cloudId = cloud['id']?.toString() ?? '';
+            String cloudRawStr = (cloud['created_at'] ?? cloud['created_date'])?.toString() ?? '';
+            DateTime cloudCreatedAt = _parseCloudTime(cloudRawStr);
+            String cloudSecStr = (cloudCreatedAt.millisecondsSinceEpoch ~/ 1000).toString();
 
-            if (!isCloudDeleted && cloud['content'] != null && !localTodos.any((l) => l.id == cloudId || l.title == cloud['content'])) {
+            // 🚀 严格排重检验：确保本地真的没有任何形式的此待办的旧数据残留
+            bool existsLocally = localTodos.any((l) {
+              return l.createdAt.toIso8601String() == cloudRawStr ||
+                  (l.createdAt.millisecondsSinceEpoch ~/ 1000).toString() == cloudSecStr;
+            });
+
+            if (!isCloudDeleted && cloud['content'] != null && !existsLocally) {
               localTodos.add(TodoItem(
-                id: cloudId.isNotEmpty ? cloudId : const Uuid().v4(), // 🚀 继承云端分配的真实 ID
+                id: const Uuid().v4(), // 本地依然生成离线 UUID 供 UI 组件使用，但不用来跟后端通信
                 title: cloud['content'],
                 isDone: cloud['is_completed'] == 1 || cloud['is_completed'] == true,
-                lastUpdated: _parseCloudTime(cloud['updated_at'] ?? cloud['created_at']),
+                lastUpdated: _parseCloudTime(cloud['updated_at']),
                 recurrence: RecurrenceType.none,
                 dueDate: cloud['due_date'] != null ? DateTime.tryParse(cloud['due_date'].toString()) : null,
-                createdAt: cloud['created_date'] != null ? (DateTime.tryParse(cloud['created_date'].toString()) ?? DateTime.now()) : DateTime.now(),
+                createdAt: cloudCreatedAt, // 将云端分配的时间原封不动地接下来
               ));
               hasChanges = true;
             }
@@ -545,6 +613,8 @@ class StorageService {
       // 5. LWW 合并倒计时
       // ===========================
       if (syncCountdowns) {
+        statusNotifier.value = "正在智能合并倒计时...";
+
         Map<String, dynamic> cloudCdMap = { for (var c in cloudCountdowns) if (c['title'] != null) c['title']: c };
         List<CountdownItem> cdsToRemove = [];
 
@@ -587,17 +657,32 @@ class StorageService {
         }
       }
 
+      statusNotifier.value = "正在保存合并结果...";
+
       // 6. 保存最终结果
       if (hasChanges){
         if (syncTodos) await saveTodos(username, localTodos, sync: false);
         if (syncCountdowns) await saveCountdowns(username, localCountdowns, sync: false);
       }
 
+      statusNotifier.value = "同步完成！";
+      // 停留短暂时间让用户看到"同步完成"
+      if (context != null) await Future.delayed(const Duration(milliseconds: 400));
+
     } catch (e) {
       print("全局同步异常中断: $e");
+      if (context != null && context.mounted && !dialogClosed) {
+        Navigator.of(context, rootNavigator: true).pop();
+        dialogClosed = true;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("同步异常: $e")));
+      }
       rethrow;
     } finally {
       _isSyncing = false;
+      if (context != null && context.mounted && !dialogClosed) {
+        Navigator.of(context, rootNavigator: true).pop(); // 🚀 安全关掉弹窗
+        dialogClosed = true;
+      }
     }
 
     return hasChanges;
@@ -611,9 +696,7 @@ class StorageService {
       int? parsedInt = int.tryParse(timeData);
       if (parsedInt != null) return DateTime.fromMillisecondsSinceEpoch(parsedInt);
 
-      String t = timeData;
-      if (!t.endsWith('Z') && !t.contains('+')) t += 'Z';
-      return DateTime.tryParse(t)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return DateTime.tryParse(timeData)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
     }
     return DateTime.fromMillisecondsSinceEpoch(0);
   }

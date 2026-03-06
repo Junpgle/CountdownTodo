@@ -67,7 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // 2. 同步数据 (保持原逻辑不变)
+  // 2. 同步数据 (带安全鉴权的重构版)
   Future<void> _syncLocalDataToCloud(int targetUserId, String currentUsername) async {
     final String sourceUsername = _legacyLocalUser ?? currentUsername;
     print("同步数据: $sourceUsername -> ID: $targetUserId");
@@ -96,9 +96,14 @@ class _LoginScreenState extends State<LoginScreen> {
             String content = item['title'] ?? item['content'] ?? '';
             bool isDone = item['isDone'] ?? item['isCompleted'] ?? false;
             if (content.isNotEmpty && !isDone) {
-              // === 修复点：addTodo 调用 (如果 API 已更新) ===
-              await ApiService.addTodo(targetUserId, content,
-                  timestamp: DateTime.now().millisecondsSinceEpoch);
+              // 🚀 核心修复：为老数据统一补齐 createdDate 作为其唯一的身份 ID
+              await ApiService.addTodo(
+                targetUserId,
+                content,
+                isCompleted: isDone,
+                timestamp: DateTime.now().toIso8601String(),
+                createdDate: DateTime.now().toIso8601String(),
+              );
             }
           }
         } catch (_) {}
@@ -115,12 +120,12 @@ class _LoginScreenState extends State<LoginScreen> {
             if (title.isNotEmpty && dateStr.isNotEmpty) {
               DateTime? targetTime = DateTime.tryParse(dateStr);
               if (targetTime != null && targetTime.isAfter(DateTime.now())) {
-                // === 修复点：addCountdown 现在需要 4 个参数 ===
+                // 🚀 核心修复：传递标准的时间字符串
                 await ApiService.addCountdown(
                   targetUserId,
                   title,
                   targetTime,
-                  DateTime.now().millisecondsSinceEpoch, // 增加第四个参数：修改时间戳
+                  DateTime.now().toIso8601String(),
                 );
               }
             }
@@ -149,11 +154,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (result['success'] == true) {
       final user = result['user'];
-      // 登录成功也尝试合并老数据
+      final String token = result['token'] ?? ''; // 🚀 提取后端返回的安全 Token
+
+      // 🚀 第 1 步：必须先保存并激活 Token，使后续的接口调用能够通过后端的安全鉴权
+      await StorageService.saveLoginSession(user['username'], token: token);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('current_user_id', user['id']);
+
+      // 🚀 第 2 步：此时调用同步方法，内部携带安全 Token，畅通无阻
       if (_legacyLocalUser != null) {
         await _syncLocalDataToCloud(user['id'], user['username']);
       }
-      _finalizeLogin(user['id'], user['username']);
+
+      // 第 3 步：完成跳转
+      _finalizeLoginAndNavigate(user['username']);
     } else {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('登录失败：${result['message']}')));
@@ -182,8 +196,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     // 调用 API
-    // 第一次调用(无code): 发邮件
-    // 第二次调用(有code): 验证并创建
     var regResult = await ApiService.register(
         user,
         email,
@@ -222,25 +234,27 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (loginResult['success'] == true) {
       final userInfo = loginResult['user'];
+      final String token = loginResult['token'] ?? ''; // 🚀 提取 Token
 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('注册成功，正在同步数据...')));
+
+      // 🚀 核心防御：在触发 API 调用前，优先锁定并激活本地 Token 凭证
+      await StorageService.saveLoginSession(username, token: token);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('current_user_id', userInfo['id']);
 
       // 同步老数据
       await _syncLocalDataToCloud(userInfo['id'], username);
 
-      _finalizeLogin(userInfo['id'], username);
+      _finalizeLoginAndNavigate(username);
     } else {
       setState(() { _isLoading = false; _awaitingVerification = false; _isRegisterMode = false; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('注册成功，请手动登录')));
     }
   }
 
-  // 辅助：完成登录跳转
-  void _finalizeLogin(int userId, String username) async {
-    await StorageService.saveLoginSession(username);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('current_user_id', userId);
-
+  // 辅助：完成界面跳转 (不再处理业务逻辑)
+  void _finalizeLoginAndNavigate(String username) {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
@@ -272,7 +286,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Icon(
                   _awaitingVerification ? Icons.mark_email_read : Icons.cloud_upload,
                   size: 80,
-                  color: Colors.indigo
+                  color: Theme.of(context).colorScheme.primary
               ),
               const SizedBox(height: 20),
 
