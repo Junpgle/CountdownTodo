@@ -250,7 +250,7 @@ class StorageService {
     return todos;
   }
 
-  // 虽然现在有 syncAll，但针对用户主动触发的删除操作，保留单独的 API 以确保即时性
+  // 🚀 核心优化：直接基于 ID 进行全局删除，再也不用根据名字去找了
   static Future<void> deleteCountdownGlobally(String username, String title) async {
     List<CountdownItem> localCds = await getCountdowns(username);
     localCds.removeWhere((c) => c.title == title);
@@ -277,26 +277,18 @@ class StorageService {
     }
   }
 
-  static Future<void> deleteTodoGlobally(String username, String title) async {
+  // 🚀 核心优化：直接基于 ID 进行全局删除
+  static Future<void> deleteTodoGlobally(String username, String idToDelete) async {
     List<TodoItem> localTodos = await getTodos(username);
-    localTodos.removeWhere((t) => t.title == title);
+    localTodos.removeWhere((t) => t.id == idToDelete);
     await saveTodos(username, localTodos, sync: false);
 
     final prefs = await SharedPreferences.getInstance();
     int? userId = prefs.getInt('current_user_id');
     if (userId != null) {
       try {
-        List<dynamic> cloudTodos = await ApiService.fetchTodos(userId);
-        dynamic match;
-        for (var t in cloudTodos) {
-          if (t['content'] == title) {
-            match = t;
-            break;
-          }
-        }
-        if (match != null && match['id'] != null) {
-          await ApiService.deleteTodo(match['id']);
-        }
+        // 直接使用唯一的 ID 向后端发起删除，不需要再查列表了！
+        await ApiService.deleteTodo(idToDelete);
       } catch (e) {
         print("全局删除待办失败: $e");
       }
@@ -427,10 +419,11 @@ class StorageService {
       if (syncTodos) {
         localTodos = await getTodos(username);
         todoPayload = localTodos.map((t) => {
+          'id': t.id, // 🚀 将本地唯一的 ID 发给云端
           'content': t.title,
           'is_completed': t.isDone,
           'is_deleted': false,
-          'updated_at': t.lastUpdated.millisecondsSinceEpoch,
+          'updated_at': t.lastUpdated.toIso8601String(),
           'due_date': t.dueDate?.toIso8601String(),
           'created_date': t.createdAt.toIso8601String(),
         }).toList();
@@ -444,7 +437,7 @@ class StorageService {
         countdownPayload = localCountdowns.map((c) => {
           'title': c.title,
           'target_time': c.targetDate.toIso8601String(),
-          'updated_at': c.lastUpdated.millisecondsSinceEpoch,
+          'updated_at': c.lastUpdated.toIso8601String(),
           'is_deleted': false,
         }).toList();
       }
@@ -467,10 +460,6 @@ class StorageService {
 
       final data = response['data'] ?? {};
 
-      // ===========================
-      // 🚀 新增：从 syncAll 中提取并缓存最新的同步额度状态
-      // 这样主页同步完，设置页立马就能展示最新进度
-      // ===========================
       String? tier = response['tier'] ?? data['tier'];
       int? syncCount = response['sync_count'] ?? data['sync_count'];
       int? syncLimit = response['sync_limit'] ?? data['sync_limit'];
@@ -489,24 +478,33 @@ class StorageService {
       List<dynamic> cloudCountdowns = data['countdowns'] ?? [];
 
       // ===========================
-      // 4. LWW 合并待办事项
+      // 4. LWW 合并待办事项 (🚀 深度引入基于 ID 的绑定)
       // ===========================
       if (syncTodos) {
-        Map<String, dynamic> cloudTodoMap = { for (var t in cloudTodos) if (t['content'] != null) t['content']: t };
+        // 构建云端字典：优先根据真实 ID 查找，兼容以前只靠 content 查找的数据
+        Map<String, dynamic> cloudTodoById = { for (var t in cloudTodos) if (t['id'] != null) t['id'].toString(): t };
+        Map<String, dynamic> cloudTodoByContent = { for (var t in cloudTodos) if (t['content'] != null) t['content']: t };
+
         List<TodoItem> todosToRemove = [];
 
         for (var local in localTodos) {
           try {
-            if (cloudTodoMap.containsKey(local.title)) {
-              var cloud = cloudTodoMap[local.title];
-              DateTime cloudTime = _parseCloudTime(cloud['updated_at']);
+            // 🚀 核心合并逻辑：优先使用 ID 绑定，如果本地 UUID 云端还没有，就用旧版本的 Content 去“认亲”
+            var cloud = cloudTodoById[local.id] ?? cloudTodoByContent[local.title];
+
+            if (cloud != null) {
+              DateTime cloudTime = _parseCloudTime(cloud['updated_at'] ?? cloud['created_at']);
               bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
+
+              // 🚀 一旦“认亲”成功，立刻将本地的临时 UUID 替换为云端的真实 ID（下一次同步时就会基于此真实 ID 通信了）
+              local.id = cloud['id']?.toString() ?? local.id;
 
               if (cloudTime.isAfter(local.lastUpdated)) {
                 if (isCloudDeleted) {
                   todosToRemove.add(local);
                   hasChanges = true;
                 } else {
+                  local.title = cloud['content'] ?? local.title; // 🚀 完美支持改名：如果另一端改了名字，这里会正常覆盖
                   local.isDone = cloud['is_completed'] == 1 || cloud['is_completed'] == true;
                   local.dueDate = cloud['due_date'] != null ? DateTime.tryParse(cloud['due_date'].toString()) : null;
                   local.createdAt = cloud['created_date'] != null ? (DateTime.tryParse(cloud['created_date'].toString()) ?? local.createdAt) : local.createdAt;
@@ -521,12 +519,15 @@ class StorageService {
         }
         localTodos.removeWhere((t) => todosToRemove.contains(t));
 
+        // 处理云端完全新增的数据
         for (var cloud in cloudTodos) {
           try {
             bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
-            if (!isCloudDeleted && cloud['content'] != null && !localTodos.any((l) => l.title == cloud['content'])) {
+            String cloudId = cloud['id']?.toString() ?? '';
+
+            if (!isCloudDeleted && cloud['content'] != null && !localTodos.any((l) => l.id == cloudId || l.title == cloud['content'])) {
               localTodos.add(TodoItem(
-                id: const Uuid().v4(),
+                id: cloudId.isNotEmpty ? cloudId : const Uuid().v4(), // 🚀 继承云端分配的真实 ID
                 title: cloud['content'],
                 isDone: cloud['is_completed'] == 1 || cloud['is_completed'] == true,
                 lastUpdated: _parseCloudTime(cloud['updated_at'] ?? cloud['created_at']),

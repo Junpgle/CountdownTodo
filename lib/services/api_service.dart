@@ -5,6 +5,13 @@ class ApiService {
   // ⚠️ 请替换为你部署后的 Worker URL
   static const String baseUrl = "https://mathquiz.junpgle.me";
 
+  // 🚀 将不管传入的 time 是 int 还是 String，都强制清洗输出标准的 ISO 时间格式。
+  static String _formatTime(dynamic time) {
+    if (time is String) return time;
+    if (time is int) return DateTime.fromMillisecondsSinceEpoch(time).toIso8601String();
+    return DateTime.now().toIso8601String();
+  }
+
   // ==========================================
   // 1. 用户认证 (Auth)
   // ==========================================
@@ -126,16 +133,18 @@ class ApiService {
     }
   }
 
-  static Future<bool> addTodo(int userId, String content, {bool isCompleted = false, int? timestamp, String? dueDate, String? createdDate}) async {
+  // 🚀 ApiService 兼容传入动态类型的 ID
+  static Future<bool> addTodo(int userId, String content, {dynamic id, bool isCompleted = false, dynamic timestamp, String? dueDate, String? createdDate}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/todos'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
+          'id': id,
           'user_id': userId,
           'content': content,
           'is_completed': isCompleted,
-          'updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+          'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
           'due_date': dueDate,
           'created_date': createdDate,
         }),
@@ -144,7 +153,7 @@ class ApiService {
     } catch (e) { return false; }
   }
 
-  static Future<bool> toggleTodo(int id, bool isCompleted, {int? timestamp}) async {
+  static Future<bool> toggleTodo(dynamic id, bool isCompleted, {dynamic timestamp}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/todos/toggle'),
@@ -152,7 +161,7 @@ class ApiService {
         body: jsonEncode({
           'id': id,
           'is_completed': isCompleted,
-          'updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+          'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
         }),
       );
       return response.statusCode == 200;
@@ -161,14 +170,14 @@ class ApiService {
     }
   }
 
-  static Future<bool> deleteTodo(int id, {int? timestamp}) async {
+  static Future<bool> deleteTodo(dynamic id, {dynamic timestamp}) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/api/todos'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'id': id,
-          'updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+          'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
         }),
       );
       return response.statusCode == 200;
@@ -189,30 +198,31 @@ class ApiService {
     } catch (e) { return []; }
   }
 
-  static Future<bool> addCountdown(int userId, String title, DateTime targetTime, int lastUpdatedMs) async {
+  static Future<bool> addCountdown(int userId, String title, DateTime targetTime, dynamic lastUpdated, {dynamic id}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/countdowns'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
+          'id': id,
           'user_id': userId,
           'title': title,
           'target_time': targetTime.toIso8601String(),
-          'updated_at': lastUpdatedMs,
+          'updated_at': _formatTime(lastUpdated),
         }),
       );
       return response.statusCode == 200;
     } catch (e) { return false; }
   }
 
-  static Future<bool> deleteCountdown(int id) async {
+  static Future<bool> deleteCountdown(dynamic id) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/api/countdowns'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'id': id,
-          'updated_at': DateTime.now().millisecondsSinceEpoch,
+          'updated_at': DateTime.now().toIso8601String(),
         }),
       );
       return response.statusCode == 200;
@@ -297,24 +307,23 @@ class ApiService {
     Map<String, dynamic>? screenTime,
   }) async {
     try {
-      // 🚀 核心修复：强制清洗来自本地存储的数据，确保发给后端的时间全部是规范的毫秒级 Int 格式
+      // 🚀 核心修复：强制清洗来自本地存储的数据，确保全部转换成了字符串
       final sanitizedTodos = todos.map((t) {
         final newT = Map<String, dynamic>.from(t);
-        if (newT['updated_at'] is String) {
-          // 如果传入的是类似 "2026-03-05..." 的字符串，尝试解析转换
-          newT['updated_at'] = DateTime.tryParse(newT['updated_at'])?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
-        } else if (newT['updated_at'] == null) {
-          newT['updated_at'] = DateTime.now().millisecondsSinceEpoch;
+        if (newT['client_updated_at'] is int) {
+          newT['client_updated_at'] = DateTime.fromMillisecondsSinceEpoch(newT['client_updated_at']).toIso8601String();
+        } else if (newT['client_updated_at'] == null) {
+          newT['client_updated_at'] = DateTime.now().toIso8601String();
         }
         return newT;
       }).toList();
 
       final sanitizedCountdowns = countdowns.map((c) {
         final newC = Map<String, dynamic>.from(c);
-        if (newC['updated_at'] is String) {
-          newC['updated_at'] = DateTime.tryParse(newC['updated_at'])?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
-        } else if (newC['updated_at'] == null) {
-          newC['updated_at'] = DateTime.now().millisecondsSinceEpoch;
+        if (newC['client_updated_at'] is int) {
+          newC['client_updated_at'] = DateTime.fromMillisecondsSinceEpoch(newC['client_updated_at']).toIso8601String();
+        } else if (newC['client_updated_at'] == null) {
+          newC['client_updated_at'] = DateTime.now().toIso8601String();
         }
         return newC;
       }).toList();

@@ -113,7 +113,7 @@ class CountdownItem {
   Map<String, dynamic> toJson() => {
     'title': title,
     'targetDate': targetDate.toIso8601String(),
-    'lastUpdated': lastUpdated.millisecondsSinceEpoch, // 统一存储为时间戳
+    'lastUpdated': lastUpdated.toIso8601String(), // 统一存储为时间戳
   };
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) => CountdownItem(
@@ -155,19 +155,19 @@ class TodoItem {
     'recurrence': recurrence.index,
     'customIntervalDays': customIntervalDays,
     'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
-    'lastUpdated': lastUpdated.millisecondsSinceEpoch, // 🚀 核心修复：统一存储为数字时间戳，不再使用 String
+    'lastUpdated': lastUpdated.toIso8601String(), // 🚀 存储为数字时间戳
     'dueDate': dueDate?.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) => TodoItem(
-    id: json['id'] ?? '',
+    // 🚀 安全处理：如果云端返回的是自增 int ID，必须安全转为 String
+    id: json['id']?.toString() ?? '',
     title: json['title'] ?? '',
     isDone: json['isDone'] ?? false,
     recurrence: RecurrenceType.values[json['recurrence'] ?? 0],
     customIntervalDays: json['customIntervalDays'],
     recurrenceEndDate: json['recurrenceEndDate'] != null ? _parseTimeSafely(json['recurrenceEndDate']) : null,
-    // 🚀 核心修复：兼容老数据库里的 String 时间和新版本的 int 时间戳
     lastUpdated: _parseTimeSafely(json['lastUpdated']),
     dueDate: json['dueDate'] != null ? _parseTimeSafely(json['dueDate']) : null,
     createdAt: _parseTimeSafely(json['createdAt']),
