@@ -283,7 +283,7 @@ class StorageService {
 
       if (todo.recurrenceEndDate != null && now.isAfter(todo.recurrenceEndDate!)) continue;
 
-      DateTime lastUpdateDate = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
+      DateTime lastUpdateDate = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal();
       bool isNewDay = !_isSameDay(lastUpdateDate, now);
 
       if (isNewDay) {
@@ -409,7 +409,7 @@ class StorageService {
   static Future<DateTime?> getLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
     int? timestamp = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
-    if (timestamp != null) return DateTime.fromMillisecondsSinceEpoch(timestamp);
+    if (timestamp != null) return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).toLocal();
     return null;
   }
 
@@ -418,7 +418,7 @@ class StorageService {
     int? lastSync = prefs.getInt(KEY_LAST_MAPPINGS_SYNC);
     DateTime now = DateTime.now();
     if (lastSync != null) {
-      DateTime lastDate = DateTime.fromMillisecondsSinceEpoch(lastSync);
+      DateTime lastDate = DateTime.fromMillisecondsSinceEpoch(lastSync, isUtc: true).toLocal();
       if (now.difference(lastDate).inDays < 7) return;
     }
     List<dynamic> mappings = await ApiService.fetchAppMappings();
@@ -448,10 +448,18 @@ class StorageService {
   // ==========================================
   // 🚀 核心：增量同步算法 (纯净版，无弹窗与自动去重)
   // ==========================================
+
+  /// 重置本地水位线，下次 syncData 会强制从云端拉取所有数据
+  static Future<void> resetSyncTime(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('last_sync_time_$username');
+  }
+
   static Future<bool> syncData(
       String username, {
         bool syncTodos = true,
         bool syncCountdowns = true,
+        bool forceFullSync = false, // true = 强制全量拉取（lastSyncTime 置 0）
         BuildContext? context,
       }) async {
 
@@ -465,9 +473,11 @@ class StorageService {
       int? userId = prefs.getInt('current_user_id');
       if (userId == null) throw Exception("User not logged in");
 
-      // 这里现在会将 deviceId 强制与当前 username 绑定
       final String deviceId = await _getUniqueDeviceId(username);
-      final int lastSyncTime = prefs.getInt('last_sync_time_$username') ?? 0;
+      // forceFullSync 时传 0，让云端返回该用户所有记录
+      final int lastSyncTime = forceFullSync
+          ? 0
+          : (prefs.getInt('last_sync_time_$username') ?? 0);
 
       List<TodoItem> allLocalTodos = await getTodos(username);
       List<CountdownItem> allLocalCountdowns = await getCountdowns(username);
@@ -613,7 +623,7 @@ class StorageService {
   static Future<DateTime?> getLastAutoSyncTime() async {
     final prefs = await SharedPreferences.getInstance();
     int? timestamp = prefs.getInt(KEY_LAST_AUTO_SYNC);
-    if (timestamp != null) return DateTime.fromMillisecondsSinceEpoch(timestamp);
+    if (timestamp != null) return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).toLocal();
     return null;
   }
 }

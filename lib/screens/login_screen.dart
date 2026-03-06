@@ -125,7 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 dirtyCountdowns.add({
                   'id': const Uuid().v4(),
                   'title': title,
-                  'target_time': targetTime.toIso8601String(),
+                  'target_time': targetTime.millisecondsSinceEpoch,
                   'is_deleted': 0,
                   'version': 1,
                   'updated_at': nowMs,

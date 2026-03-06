@@ -144,11 +144,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     List<TodoItem> upcomingTodos = _todos.where((t) {
       if (t.isDone) return false;
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      bool isAllDay = t.dueDate != null && DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).hour == 0 && DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
+      bool isAllDay = t.dueDate != null && DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal().hour == 0 && DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal().minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
       if (isAllDay) return false;
 
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime created = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
+      DateTime created = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
       DateTime startTime = DateTime(now.year, now.month, now.day, created.hour, created.minute);
       int diffMinutes = startTime.difference(now).inMinutes;
       return diffMinutes >= 0 && diffMinutes <= 20;

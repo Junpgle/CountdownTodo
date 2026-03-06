@@ -79,7 +79,7 @@ class NotificationService {
       if (t.dueDate == null) return false;
 
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
       bool isAllDayAttr = cDate.hour == 0 && cDate.minute == 0 &&
           t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
 
@@ -129,7 +129,7 @@ class NotificationService {
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
     try {
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      String timeStr = DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt));
+      String timeStr = DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal());
       if (todo.dueDate != null) {
         timeStr += " - ${DateFormat('HH:mm').format(todo.dueDate!)}";
       }

@@ -235,7 +235,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     bool useCache = false;
     if (cachedDataStr != null && lastSyncTime != null) {
-      final DateTime lastSync = DateTime.fromMillisecondsSinceEpoch(lastSyncTime);
+      final DateTime lastSync = DateTime.fromMillisecondsSinceEpoch(lastSyncTime, isUtc: true).toLocal();
       if (DateTime.now().difference(lastSync).inMinutes < 5) {
         useCache = true;
         try {
@@ -1166,6 +1166,56 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _forceFullSync() async {
+    if (_username.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录账号')),
+      );
+      return;
+    }
+
+    // 二次确认
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('强制全量同步'),
+        content: const Text(
+          '这将重置本地同步记录，从云端拉取所有最新数据。\n\n本地未同步的数据会先上传，再合并云端数据。\n\n是否继续？',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🔄 正在全量同步...'), duration: Duration(seconds: 10)),
+    );
+
+    try {
+      // 重置水位线 → 下次 syncData 会让服务端返回所有记录
+      await StorageService.resetSyncTime(_username);
+      await StorageService.syncData(_username, forceFullSync: true);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ 全量同步完成')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ 同步失败: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _uploadCoursesToCloud() async {
     if (_userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1491,6 +1541,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ],
               ),
+            ),
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: const Icon(Icons.cloud_sync, color: Colors.deepPurple),
+              title: const Text('强制全量同步'),
+              subtitle: const Text('重置同步水位，从云端拉取所有最新数据'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _forceFullSync,
             ),
           ]),
 

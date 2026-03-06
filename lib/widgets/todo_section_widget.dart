@@ -65,7 +65,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       return d.isBefore(today);
     } else {
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
       DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
     }
@@ -207,7 +207,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   void _editTodo(TodoItem todo) {
     TextEditingController titleCtrl = TextEditingController(text: todo.title);
     // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
+    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
     DateTime? dueDate = todo.dueDate;
     RecurrenceType recurrence = todo.recurrence;
     int? customDays = todo.customIntervalDays;
@@ -360,7 +360,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
     String dateStr = "";
     // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-    DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
+    DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
     if (todo.dueDate != null) {
       String dueDateStr = DateFormat('MM-dd HH:mm').format(todo.dueDate!);
       String createDateStr = DateFormat('MM-dd HH:mm').format(cDate);
@@ -511,7 +511,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   // 计算一条待办的进度值（0.0 ~ 1.0）
   // ─────────────────────────────────────────────
   double _calcProgress(TodoItem todo, DateTime now) {
-    final DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
+    final DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
     final DateTime start = cDate;
     final DateTime end = todo.dueDate != null
         ? DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, todo.dueDate!.hour, todo.dueDate!.minute, 59)
@@ -530,7 +530,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   // ─────────────────────────────────────────────
   List<TodoItem> _sortTodayTodos(List<TodoItem> list, DateTime now) {
     int durationMinutes(TodoItem t) {
-      final DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
+      final DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
       final DateTime end = t.dueDate != null
           ? DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day, t.dueDate!.hour, t.dueDate!.minute, 59)
           : DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);

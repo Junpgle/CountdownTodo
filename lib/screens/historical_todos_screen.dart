@@ -42,7 +42,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
     } else {
       // 🚀 修复：createdAt 现在是 int 毫秒时间戳，需要先转换为 DateTime
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
       DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
     }
@@ -196,7 +196,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
               ),
             ),
             subtitle: Text(
-              "完成于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt))}",
+              "完成于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
               style: const TextStyle(fontSize: 12),
             ),
             trailing: IconButton(
@@ -242,7 +242,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
                 child: ListTile(
                   title: Text(todo.title, style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
                   subtitle: Text(
-                    "删除于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt))}",
+                    "删除于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
                     style: const TextStyle(fontSize: 12),
                   ),
                   trailing: Row(
