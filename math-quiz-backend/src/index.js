@@ -34,6 +34,21 @@ async function requireAuth(request, env) {
   return null;
 }
 
+// 🛡️ 全局辅助：将任意格式的时间值统一转为毫秒整数（兼容毫秒时间戳 / ISO 字符串 / SQLite TIMESTAMP 字符串）
+function normalizeToMs(val) {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string') {
+    const asInt = parseInt(val, 10);
+    // 纯数字字符串且 >= 13 位 → 毫秒时间戳
+    if (!isNaN(asInt) && String(asInt) === val.trim() && val.trim().length >= 13) return asInt;
+    // 否则尝试当 ISO / SQLite TIMESTAMP 字符串解析
+    const dt = new Date(val);
+    if (!isNaN(dt.getTime())) return dt.getTime();
+  }
+  return 0;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -181,7 +196,8 @@ export default {
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError === 'IGNORE') {
-            return jsonResponse({ success: true, server_todos: [], server_countdowns: [], new_sync_time: now });
+            // 返回原来的 last_sync_time，不推进水位线，防止漏同步
+            return jsonResponse({ success: true, server_todos: [], server_countdowns: [], new_sync_time: last_sync_time });
         } else if (limitError) {
             return errorResponse(limitError, 429);
         }
@@ -196,7 +212,8 @@ export default {
             const tContent = String(t.content ?? t.title ?? "");
             const tIsCompleted = (t.is_completed ?? t.isCompleted ?? t.isDone) ? 1 : 0;
             const tIsDeleted = (t.is_deleted ?? t.isDeleted) ? 1 : 0;
-            const tUpdatedAt = parseInt(t.updated_at ?? t.updatedAt ?? now, 10);
+            // 🔧 客户端时间戳仅用于版本冲突判断，数据库写入统一使用服务端时间 (now)
+            const tUpdatedAtClient = parseInt(t.updated_at ?? t.updatedAt ?? now, 10);
             const tVersion = parseInt(t.version || 1, 10);
 
             // 🚀 修复：智能解析 due_date（处理毫秒时间戳和 ISO 日期字符串两种格式）
@@ -219,28 +236,30 @@ export default {
 
             const tCreatedDate = (t.created_date ?? t.createdDate) ? parseInt(t.created_date ?? t.createdDate, 10) : null;
 
-            let existing = await DB.prepare("SELECT id, version, due_date, created_date FROM todos WHERE uuid = ? AND user_id = ?").bind(tUuid, authUserId).first();
+            let existing = await DB.prepare("SELECT id, version, due_date, created_date, updated_at FROM todos WHERE uuid = ? AND user_id = ?").bind(tUuid, authUserId).first();
 
             // 兜底策略：兼容完全没有 UUID 的上古时代旧数据
             if (!existing) {
-              existing = await DB.prepare("SELECT id, version, due_date, created_date FROM todos WHERE user_id = ? AND content = ? AND (uuid IS NULL OR uuid = '')").bind(authUserId, tContent).first();
+              existing = await DB.prepare("SELECT id, version, due_date, created_date, updated_at FROM todos WHERE user_id = ? AND content = ? AND (uuid IS NULL OR uuid = '')").bind(authUserId, tContent).first();
             }
 
             if (!existing) {
-              // 彻底没找到，是真正的新数据
+              // 新记录：updated_at 使用服务端时间
               batchStatements.push(DB.prepare(`
                 INSERT INTO todos (uuid, user_id, content, is_completed, is_deleted, updated_at, version, device_id, due_date, created_date)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `).bind(tUuid, authUserId, tContent, tIsCompleted, tIsDeleted, tUpdatedAt, tVersion, device_id, tDueDate, tCreatedDate));
+              `).bind(tUuid, authUserId, tContent, tIsCompleted, tIsDeleted, now, tVersion, device_id, tDueDate, tCreatedDate));
             } else {
               // 找到了老数据！执行版本 LWW (Last Write Wins) 冲突覆盖策略
               const finalDueDate = tDueDate || existing.due_date;
-              const finalCreatedDate = tCreatedDate || existing.created_date; // 🚀 新增：保留已有的业务开始时间
-              if (tVersion > existing.version || tUpdatedAt > parseInt(existing.updated_at || 0) || !existing.uuid) {
+              const finalCreatedDate = tCreatedDate || existing.created_date;
+              const existingUpdatedAtMs = normalizeToMs(existing.updated_at);
+              if (tVersion > existing.version || tUpdatedAtClient > existingUpdatedAtMs || !existing.uuid) {
+                  // 更新记录：updated_at 使用服务端时间
                   batchStatements.push(DB.prepare(`
                     UPDATE todos SET uuid = ?, content = ?, is_completed = ?, is_deleted = ?, updated_at = ?, version = ?, device_id = ?, due_date = ?, created_date = ?
                     WHERE id = ?
-                  `).bind(tUuid, tContent, tIsCompleted, tIsDeleted, tUpdatedAt, tVersion, device_id, finalDueDate, finalCreatedDate, existing.id));
+                  `).bind(tUuid, tContent, tIsCompleted, tIsDeleted, now, tVersion, device_id, finalDueDate, finalCreatedDate, existing.id));
               }
             }
           }
@@ -272,27 +291,33 @@ export default {
             }
 
             const cIsDeleted = (c.is_deleted ?? c.isDeleted) ? 1 : 0;
-            const cUpdatedAt = parseInt(c.updated_at ?? c.updatedAt ?? now, 10);
+            // 🔧 客户端时间戳仅用于版本冲突判断，数据库实际存储统一使用服务端时间 (now)
+            // 这样可彻底解决客户端时钟偏差导致 updated_at < last_sync_time 的漏同步问题
+            const cUpdatedAtClient = parseInt(c.updated_at ?? c.updatedAt ?? now, 10);
             const cVersion = parseInt(c.version || 1, 10);
 
-            let existing = await DB.prepare("SELECT id, version, target_time FROM countdowns WHERE uuid = ? AND user_id = ?").bind(cUuid, authUserId).first();
+            let existing = await DB.prepare("SELECT id, version, target_time, updated_at, uuid FROM countdowns WHERE uuid = ? AND user_id = ?").bind(cUuid, authUserId).first();
 
             if (!existing) {
-               existing = await DB.prepare("SELECT id, version, target_time FROM countdowns WHERE user_id = ? AND title = ? AND (uuid IS NULL OR uuid = '')").bind(authUserId, cTitle).first();
+               existing = await DB.prepare("SELECT id, version, target_time, updated_at, uuid FROM countdowns WHERE user_id = ? AND title = ? AND (uuid IS NULL OR uuid = '')").bind(authUserId, cTitle).first();
             }
 
             if (!existing) {
+              // 新记录：updated_at 使用服务端时间，确保其他设备的 updated_at > last_sync_time 过滤能正确命中
               batchStatements.push(DB.prepare(`
                 INSERT INTO countdowns (uuid, user_id, title, target_time, is_deleted, updated_at, version, device_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              `).bind(cUuid, authUserId, cTitle, cTargetTime, cIsDeleted, cUpdatedAt, cVersion, device_id));
+              `).bind(cUuid, authUserId, cTitle, cTargetTime, cIsDeleted, now, cVersion, device_id));
             } else {
               const finalTargetTime = cTargetTime || existing.target_time;
-              if (cVersion > existing.version || cUpdatedAt > parseInt(existing.updated_at || 0) || !existing.uuid) {
+              const existingUpdatedAtMs = normalizeToMs(existing.updated_at);
+              const existingVersionMs = existing.version || 0;
+              if (cVersion > existingVersionMs || cUpdatedAtClient > existingUpdatedAtMs || !existing.uuid) {
+                  // 更新记录：updated_at 同样使用服务端时间
                   batchStatements.push(DB.prepare(`
                     UPDATE countdowns SET uuid = ?, title = ?, target_time = ?, is_deleted = ?, updated_at = ?, version = ?, device_id = ?
                     WHERE id = ?
-                  `).bind(cUuid, cTitle, finalTargetTime, cIsDeleted, cUpdatedAt, cVersion, device_id, existing.id));
+                  `).bind(cUuid, cTitle, finalTargetTime, cIsDeleted, now, cVersion, device_id, existing.id));
               }
             }
           }
@@ -319,48 +344,28 @@ export default {
         // 4. 拉取最终的增量数据下发给客户端
         // ==========================================
 
+        // 🔧 修复断点1/断点3：updated_at 字段在数据库中可能混存毫秒整数和 ISO 字符串（触发器写入）
+        // 直接用 SQL "updated_at > ?" 做数字 vs 字符串比较会导致历史记录永远拉不到。
+        // 改为：先拉取所有 updated_at > 0 的记录（兜底），在 JS 层用 normalizeToMs 统一转换后再过滤。
         const serverTodosRaw = await DB.prepare(`
           SELECT * FROM todos
-          WHERE user_id = ? AND updated_at > ? AND (device_id != ? OR device_id IS NULL)
-        `).bind(authUserId, last_sync_time, device_id).all();
+          WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
+        `).bind(authUserId, device_id).all();
 
         const serverCountdownsRaw = await DB.prepare(`
           SELECT * FROM countdowns
-          WHERE user_id = ? AND updated_at > ? AND (device_id != ? OR device_id IS NULL)
-        `).bind(authUserId, last_sync_time, device_id).all();
+          WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
+        `).bind(authUserId, device_id).all();
 
-        // 🚀 辅助函数：智能转换时间戳（处理毫秒时间戳和 ISO 字符串两种格式）
-        const normalizeTimestamp = (val) => {
-          if (val === null || val === undefined) return null;
+        // 🔧 用全局 normalizeToMs 在 JS 层做 updated_at 过滤，彻底绕开字符串/数字混比问题
+        const normalizeTimestamp = (val) => normalizeToMs(val);
 
-          // 如果已经是数字，直接返回（毫秒时间戳）
-          if (typeof val === 'number') {
-            return val;
-          }
-
-          // 如果是字符串
-          if (typeof val === 'string') {
-            // 首先尝试当作整数解析（防止 SQLite 返回字符串化的毫秒时间戳）
-            const asInt = parseInt(val, 10);
-            if (!isNaN(asInt) && asInt > 0) {
-              // 如果是一个很大的数字（13 位以上），就是毫秒时间戳
-              if (asInt.toString().length >= 13) {
-                return asInt;
-              }
-            }
-
-            // 尝试当作 ISO 8601 字符串解析（SQLite TIMESTAMP 格式）
-            const dt = new Date(val);
-            if (!isNaN(dt.getTime())) {
-              return dt.getTime();
-            }
-          }
-
-          return null;
-        };
+        // 🔧 在 JS 层过滤：只下发 updated_at > last_sync_time 的增量记录
+        const filteredTodos = serverTodosRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
+        const filteredCountdowns = serverCountdownsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
 
         // 🚀 修复点 3：下发时不再删除 UUID。确保下发的记录中既有 id 也有 uuid，让 Flutter 端完美兼容无缝解析
-        const mappedTodos = serverTodosRaw.results.map(row => {
+        const mappedTodos = filteredTodos.map(row => {
             const idStr = row.uuid || String(row.id);
             // 🚀 修复时区问题：智能转换所有时间戳字段（处理毫秒时间戳和 ISO 字符串两种格式）
             return {
@@ -374,7 +379,7 @@ export default {
             };
         });
 
-        const mappedCountdowns = serverCountdownsRaw.results.map(row => {
+        const mappedCountdowns = filteredCountdowns.map(row => {
              const idStr = row.uuid || String(row.id);
              return {
                ...row,

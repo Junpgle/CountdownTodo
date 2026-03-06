@@ -472,19 +472,14 @@ class StorageService {
       List<TodoItem> allLocalTodos = await getTodos(username);
       List<CountdownItem> allLocalCountdowns = await getCountdowns(username);
 
-      // 打包增量数据
+      // 打包增量数据：只发送本设备本地修改过的记录（updatedAt > lastSyncTime）
+      // 注意：删除操作会调用 markAsChanged() 更新 updatedAt，所以无需额外的 isDeleted 条件
       List<Map<String, dynamic>> dirtyTodos = allLocalTodos
-          .where((t) =>
-      t.updatedAt > lastSyncTime ||
-          t.isDeleted == true
-      )
+          .where((t) => t.updatedAt > lastSyncTime)
           .map((t) => t.toJson()).toList();
 
       List<Map<String, dynamic>> dirtyCountdowns = allLocalCountdowns
-          .where((t) =>
-      t.updatedAt > lastSyncTime ||
-          t.isDeleted == true
-      )
+          .where((c) => c.updatedAt > lastSyncTime)
           .map((c) => c.toJson()).toList();
 
       // 发送请求
