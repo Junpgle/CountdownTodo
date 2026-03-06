@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
@@ -32,7 +30,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
     super.dispose();
   }
 
-  // 判断是否属于历史待办
+  // 判断是否属于历史待办 (只有已完成且在今天之前的，才算历史)
   bool _isHistorical(TodoItem t) {
     if (!t.isDone) return false;
     DateTime today = DateTime.now();
@@ -42,74 +40,48 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
       DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
       return d.isBefore(today);
     } else {
-      DateTime c = DateTime(t.createdAt.year, t.createdAt.month, t.createdAt.day);
+      // 🚀 修复：createdAt 现在是 int 毫秒时间戳，需要先转换为 DateTime
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdAt);
+      DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
     }
   }
 
+  // 🚀 核心重构：回收站直接源于全局列表的逻辑删除标记
   Future<void> _loadData() async {
     final allTodos = await StorageService.getTodos(widget.username);
 
-    // 独立读取回收站数据
-    final prefs = await SharedPreferences.getInstance();
-    final String key = 'deleted_todos_${widget.username}';
-    final String? deletedStr = prefs.getString(key);
-    List<TodoItem> deleted = [];
-    if (deletedStr != null) {
-      try {
-        Iterable decoded = jsonDecode(deletedStr);
-        deleted = decoded.map((e) => TodoItem.fromJson(e)).toList();
-      } catch (e) {
-        debugPrint("解析回收站数据失败: $e");
-      }
-    }
-
     setState(() {
-      _history = allTodos.where((t) => _isHistorical(t)).toList();
-      _history.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
+      // 历史记录：已完成、是历史日期，并且【未被删除】
+      _history = allTodos.where((t) => _isHistorical(t) && !t.isDeleted).toList();
+      // 🚀 修复：使用 updatedAt 进行排序
+      _history.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-      _deletedTodos = deleted;
-      _deletedTodos.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
+      // 回收站：直接筛选逻辑删除的数据
+      _deletedTodos = allTodos.where((t) => t.isDeleted).toList();
+      // 🚀 修复：使用 updatedAt 进行排序
+      _deletedTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       _isLoading = false;
     });
   }
 
-  Future<void> _saveDeletedTodos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String key = 'deleted_todos_${widget.username}';
-    final String encoded = jsonEncode(_deletedTodos.map((e) => e.toJson()).toList());
-    await prefs.setString(key, encoded);
-  }
-
   Future<void> _deleteItem(TodoItem item) async {
-    // 从当前列表移除
-    setState(() => _history.remove(item));
-
-    // 从主数据库彻底移除
-    final allTodos = await StorageService.getTodos(widget.username);
-    allTodos.removeWhere((t) => t.id == item.id);
-    await StorageService.saveTodos(widget.username, allTodos);
-
-    // 🚀 核心：移入回收站
-    item.lastUpdated = DateTime.now(); // 记录被删除的时间
-    setState(() => _deletedTodos.insert(0, item));
-    await _saveDeletedTodos();
-
+    // 🚀 调用统一的全局逻辑删除，触发 Delta Sync 增量同步
+    await StorageService.deleteTodoGlobally(widget.username, item.id);
+    _loadData();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移至回收站')));
     }
   }
 
   Future<void> _uncheckItem(TodoItem item) async {
-    item.isDone = false;
-    item.lastUpdated = DateTime.now();
-
     final allTodos = await StorageService.getTodos(widget.username);
     int idx = allTodos.indexWhere((t) => t.id == item.id);
     if (idx != -1) {
-      allTodos[idx] = item;
-      await StorageService.saveTodos(widget.username, allTodos);
+      allTodos[idx].isDone = false;
+      allTodos[idx].markAsChanged();
+      await StorageService.saveTodos(widget.username, allTodos, sync: true);
     }
     _loadData();
     if (mounted) {
@@ -117,14 +89,15 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
     }
   }
 
-  // 🚀 从回收站恢复
+  // 🚀 从回收站恢复 (取消逻辑删除标记)
   Future<void> _restoreDeletedItem(TodoItem item) async {
-    setState(() => _deletedTodos.remove(item));
-    await _saveDeletedTodos();
-
     final allTodos = await StorageService.getTodos(widget.username);
-    allTodos.add(item);
-    await StorageService.saveTodos(widget.username, allTodos);
+    int idx = allTodos.indexWhere((t) => t.id == item.id);
+    if (idx != -1) {
+      allTodos[idx].isDeleted = false; // 取消删除标记
+      allTodos[idx].markAsChanged();   // 升级版本号
+      await StorageService.saveTodos(widget.username, allTodos, sync: true); // 触发同步，让云端也恢复
+    }
 
     _loadData(); // 重新加载分类数据
 
@@ -133,10 +106,14 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
     }
   }
 
-  // 🚀 从回收站彻底删除
+  // 🚀 从回收站彻底删除 (本地物理删除)
   Future<void> _permanentlyDeleteItem(TodoItem item) async {
-    setState(() => _deletedTodos.remove(item));
-    await _saveDeletedTodos();
+    final allTodos = await StorageService.getTodos(widget.username);
+    allTodos.removeWhere((t) => t.id == item.id);
+    // 物理删除不需要同步，因为远端已经是 isDeleted = 1 状态
+    await StorageService.saveTodos(widget.username, allTodos, sync: false);
+
+    _loadData();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已彻底删除')));
     }
@@ -161,8 +138,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
     ) ?? false;
 
     if (confirm) {
-      setState(() => _deletedTodos.clear());
-      await _saveDeletedTodos();
+      final allTodos = await StorageService.getTodos(widget.username);
+      allTodos.removeWhere((t) => t.isDeleted);
+      await StorageService.saveTodos(widget.username, allTodos, sync: false);
+      _loadData();
     }
   }
 
@@ -192,7 +171,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
               ),
             ),
             subtitle: Text(
-              "完成于: ${DateFormat('yyyy-MM-dd HH:mm').format(todo.lastUpdated)}",
+              "完成于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt))}",
               style: const TextStyle(fontSize: 12),
             ),
             trailing: IconButton(
@@ -238,7 +217,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
                 child: ListTile(
                   title: Text(todo.title, style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
                   subtitle: Text(
-                    "删除于: ${DateFormat('yyyy-MM-dd HH:mm').format(todo.lastUpdated)}",
+                    "删除于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt))}",
                     style: const TextStyle(fontSize: 12),
                   ),
                   trailing: Row(

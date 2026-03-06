@@ -24,7 +24,8 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
         for (var t in todos) {
           if (t.id == id) {
             t.isDone = !t.isDone;
-            t.lastUpdated = DateTime.now();
+            // 🚀 修复：采用最新的版本提升函数替换直接修改 lastUpdated
+            t.markAsChanged();
             changed = true;
             break;
           }
@@ -59,8 +60,8 @@ class WidgetService {
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
     // --- 提取并排序最紧急的待办 ---
 
-    // 1. 我们只想要展示未完成的待办
-    List<TodoItem> pendingTodos = todos.where((t) => !t.isDone).toList();
+    // 1. 我们只想要展示未完成且未被逻辑删除的待办
+    List<TodoItem> pendingTodos = todos.where((t) => !t.isDone && !t.isDeleted).toList();
 
     DateTime now = DateTime.now();
     DateTime todayStart = DateTime(now.year, now.month, now.day);
@@ -68,16 +69,17 @@ class WidgetService {
 
     // 辅助函数：判断待办是否与今天相关 (创建在今天 或 截止在今天，甚至跨越今天)
     bool isTodayRelevant(TodoItem todo) {
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
       if (todo.dueDate != null) {
         DateTime dueDateStart = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
-        // 如果今天在创建时间和截止时间之间（包含今天）
-        if (!todayEnd.isBefore(DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day)) &&
+        // 🚀 修复：将 createdAt int 转为 DateTime 做比较
+        if (!todayEnd.isBefore(DateTime(cDate.year, cDate.month, cDate.day)) &&
             !todayStart.isAfter(dueDateStart)) {
           return true;
         }
       } else {
         // 如果没有截止时间，只看是不是今天创建的
-        if (todo.createdAt.year == now.year && todo.createdAt.month == now.month && todo.createdAt.day == now.day) {
+        if (cDate.year == now.year && cDate.month == now.month && cDate.day == now.day) {
           return true;
         }
       }
@@ -100,7 +102,7 @@ class WidgetService {
       if (a.dueDate != null && b.dueDate == null) return -1;
       if (a.dueDate == null && b.dueDate != null) return 1;
 
-      // 都没有截止日期：按创建时间排序，早的在前
+      // 都没有截止日期：按创建时间 (int) 排序，数字小的（早的）在前
       return a.createdAt.compareTo(b.createdAt);
     });
 

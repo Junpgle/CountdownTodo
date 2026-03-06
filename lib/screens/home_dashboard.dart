@@ -142,10 +142,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
     List<TodoItem> upcomingTodos = _todos.where((t) {
       if (t.isDone) return false;
-      bool isAllDay = t.dueDate != null && t.createdAt.hour == 0 && t.createdAt.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
+      bool isAllDay = t.dueDate != null && DateTime.fromMillisecondsSinceEpoch(t.createdAt).hour == 0 && DateTime.fromMillisecondsSinceEpoch(t.createdAt).minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
       if (isAllDay) return false;
 
-      DateTime startTime = DateTime(now.year, now.month, now.day, t.createdAt.hour, t.createdAt.minute);
+      DateTime created = DateTime.fromMillisecondsSinceEpoch(t.createdAt);
+      DateTime startTime = DateTime(now.year, now.month, now.day, created.hour, created.minute);
       int diffMinutes = startTime.difference(now).inMinutes;
       return diffMinutes >= 0 && diffMinutes <= 20;
     }).toList();
@@ -196,7 +197,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     List<String>? rightOrder = prefs.getStringList('home_section_order_right');
     final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
 
-    // 🚀 核心修复 1：防缺失。如果用户以前拖拽过布局，旧缓存里绝对没有 'courses'，这里强制给它插到最前面
     if (leftOrder == null || rightOrder == null) {
       List<String> oldOrder = prefs.getStringList('home_section_order') ?? defaultOrder;
       leftOrder = [];
@@ -209,7 +209,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       List<String> combined = [...leftOrder, ...rightOrder];
       for (var key in defaultOrder) {
         if (!combined.contains(key)) {
-          leftOrder.insert(0, key); // 强行把缺少的新功能放在左上角
+          leftOrder.insert(0, key);
         }
       }
     }
@@ -219,7 +219,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       if (mounted) {
         setState(() {
           Map<String, bool> savedMap = Map<String, bool>.from(jsonDecode(savedVisibilityStr));
-          // 🚀 核心修复 2：如果以前的缓存没有 'courses' 这个显隐键值对，默认给它设为显示 (true)
           savedMap.putIfAbsent('courses', () => true);
           savedMap.putIfAbsent('countdowns', () => true);
           savedMap.putIfAbsent('todos', () => true);
@@ -285,11 +284,16 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     if (currentTodo != null) {
       setState(() {
         currentTodo!.isDone = true;
-        currentTodo!.lastUpdated = DateTime.now();
+        currentTodo!.markAsChanged();
         _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
       });
 
-      await StorageService.saveTodos(widget.username, _todos);
+      // 所有的待办都需要连同隐藏的逻辑删除数据一起存
+      final allTodos = await StorageService.getTodos(widget.username);
+      int idx = allTodos.indexWhere((x) => x.id == currentTodo!.id);
+      if(idx != -1) allTodos[idx] = currentTodo!;
+      await StorageService.saveTodos(widget.username, allTodos);
+
       _syncTodoNotification();
       await WidgetService.updateTodoWidget(_todos);
 
@@ -370,16 +374,17 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
+  // 🚀 核心重构：渲染主页时，绝对不能将 isDeleted 的数据加载到视图层！
   Future<void> _loadAllData() async {
-    final countdowns = await StorageService.getCountdowns(widget.username);
-    final todos = await StorageService.getTodos(widget.username);
+    final allCountdowns = await StorageService.getCountdowns(widget.username);
+    final allTodos = await StorageService.getTodos(widget.username);
     final stats = await StorageService.getMathStats(widget.username);
     final courseData = await CourseService.getDashboardCourses();
 
     if (mounted) {
       setState(() {
-        _countdowns = countdowns;
-        _todos = todos;
+        _countdowns = allCountdowns.where((c) => !c.isDeleted).toList();
+        _todos = allTodos.where((t) => !t.isDeleted).toList();
         _mathStats = stats;
         _dashboardCourseData = courseData;
       });
@@ -613,7 +618,14 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                         key: _todoSectionKey, todos: _todos, username: widget.username, isLight: isLight,
                         onTodosChanged: (newTodos) async {
                           setState(() => _todos = newTodos);
-                          await StorageService.saveTodos(widget.username, _todos);
+                          // 🚀 这里只修改当前展示的待办，存回数据库前要和隐藏的老数据合并
+                          final allTodos = await StorageService.getTodos(widget.username);
+                          for(var newT in _todos){
+                            int idx = allTodos.indexWhere((x) => x.id == newT.id);
+                            if(idx != -1) allTodos[idx] = newT;
+                            else allTodos.add(newT);
+                          }
+                          await StorageService.saveTodos(widget.username, allTodos);
                           _syncTodoNotification();
                           await WidgetService.updateTodoWidget(_todos);
                         },

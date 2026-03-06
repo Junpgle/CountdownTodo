@@ -1,6 +1,9 @@
 import 'dart:math';
+import 'package:uuid/uuid.dart';
 
-// --- 测验相关 ---
+// ==========================================
+// 1. 测验相关 (完整保留原有逻辑)
+// ==========================================
 
 class Question {
   int num1;
@@ -89,87 +92,148 @@ class QuestionGenerator {
   }
 }
 
-// --- 效率功能相关 (新增部分) ---
-
-// 🚀 抽取出的通用安全时间解析器，防止脏数据引发崩溃
-DateTime _parseTimeSafely(dynamic val, {bool isNullable = false, DateTime? fallback}) {
-  if (val == null) return isNullable ? (fallback ?? DateTime.now()) : DateTime.now();
-  if (val is int) return DateTime.fromMillisecondsSinceEpoch(val);
-  if (val is String) return DateTime.tryParse(val) ?? (fallback ?? DateTime.now());
-  return fallback ?? DateTime.now();
-}
-
-class CountdownItem {
-  String title;
-  DateTime targetDate;
-  DateTime lastUpdated; // 新增：记录最后修改时间
-
-  CountdownItem({
-    required this.title,
-    required this.targetDate,
-    required this.lastUpdated,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'title': title,
-    'targetDate': targetDate.toIso8601String(),
-    'lastUpdated': lastUpdated.toIso8601String(), // 统一存储为时间戳
-  };
-
-  factory CountdownItem.fromJson(Map<String, dynamic> json) => CountdownItem(
-    title: json['title'] ?? '',
-    targetDate: _parseTimeSafely(json['targetDate']),
-    lastUpdated: _parseTimeSafely(json['lastUpdated']), // 🚀 兼容 int 和 String
-  );
-}
+// ==========================================
+// 🚀 2. 效率功能：支持 Delta Sync 的数据模型
+// ==========================================
 
 enum RecurrenceType { none, daily, customDays }
 
 class TodoItem {
-  String id;
+  String id; // 核心：全局唯一 UUID
   String title;
   bool isDone;
+  bool isDeleted; // 核心：逻辑删除标记
+  int version;    // 核心：并发版本号
+  int updatedAt;  // 核心：最后修改时间戳 (毫秒)
+  int createdAt;  // 创建时间戳 (毫秒)
+
   RecurrenceType recurrence;
-  int? customIntervalDays; // 隔几天重复
-  DateTime? recurrenceEndDate; // 重复截止日期
-  DateTime lastUpdated; // 上次更新状态的时间
-  DateTime? dueDate; // 单次待办的截止日期
-  DateTime createdAt; // 新增：待办的创建日期
+  int? customIntervalDays;
+  DateTime? recurrenceEndDate;
+  DateTime? dueDate;
 
   TodoItem({
-    required this.id,
+    String? id,
     required this.title,
     this.isDone = false,
+    this.isDeleted = false,
+    this.version = 1,
+    int? updatedAt,
+    int? createdAt,
     this.recurrence = RecurrenceType.none,
     this.customIntervalDays,
     this.recurrenceEndDate,
-    required this.lastUpdated,
     this.dueDate,
-    DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now(); // 若未提供则默认为今日
+  }) :
+        this.id = id ?? const Uuid().v4(),
+        this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+        this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  // 🚀 核心方法：每次本地对任务的修改，都必须调用此方法！
+  void markAsChanged() {
+    version++;
+    updatedAt = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'content': title,
+    'is_completed': isDone ? 1 : 0,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'updated_at': updatedAt,
+    'created_at': createdAt,
+    'recurrence': recurrence.index,
+    'customIntervalDays': customIntervalDays,
+    'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
+    'due_date': dueDate?.toIso8601String(),
+  };
+
+  factory TodoItem.fromJson(Map<String, dynamic> json) {
+    // 兼容旧数据，如果没有 id 则赋予一个 UUID
+    String parsedId = json['id']?.toString() ?? const Uuid().v4();
+    if (!parsedId.contains('-')) parsedId = const Uuid().v4(); // 如果旧数据是自增ID，强制转UUID
+
+    return TodoItem(
+      id: parsedId,
+      title: json['content'] ?? json['title'] ?? '',
+      isDone: json['is_completed'] == 1 || json['is_completed'] == true || json['isDone'] == true,
+      isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true || json['isDeleted'] == true,
+      version: json['version'] ?? 1,
+      updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
+      createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
+      recurrence: RecurrenceType.values[json['recurrence'] ?? 0],
+      customIntervalDays: json['customIntervalDays'],
+      recurrenceEndDate: json['recurrenceEndDate'] != null ? DateTime.tryParse(json['recurrenceEndDate'].toString()) : null,
+      dueDate: json['due_date'] != null ? DateTime.tryParse(json['due_date'].toString()) : null,
+    );
+  }
+}
+
+class CountdownItem {
+  String id;
+  String title;
+  DateTime targetDate;
+  bool isDeleted;
+  int version;
+  int updatedAt;
+  int createdAt;
+
+  CountdownItem({
+    String? id,
+    required this.title,
+    required this.targetDate,
+    this.isDeleted = false,
+    this.version = 1,
+    int? updatedAt,
+    int? createdAt,
+  }) :
+        this.id = id ?? const Uuid().v4(),
+        this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+        this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  // 🚀 核心方法：每次本地对倒计时的修改，都必须调用此方法！
+  void markAsChanged() {
+    version++;
+    updatedAt = DateTime.now().millisecondsSinceEpoch;
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
-    'isDone': isDone,
-    'recurrence': recurrence.index,
-    'customIntervalDays': customIntervalDays,
-    'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
-    'lastUpdated': lastUpdated.toIso8601String(), // 🚀 存储为数字时间戳
-    'dueDate': dueDate?.toIso8601String(),
-    'createdAt': createdAt.toIso8601String(),
+    'target_time': targetDate.toIso8601String(),
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'updated_at': updatedAt,
+    'created_at': createdAt,
   };
 
-  factory TodoItem.fromJson(Map<String, dynamic> json) => TodoItem(
-    // 🚀 安全处理：如果云端返回的是自增 int ID，必须安全转为 String
-    id: json['id']?.toString() ?? '',
-    title: json['title'] ?? '',
-    isDone: json['isDone'] ?? false,
-    recurrence: RecurrenceType.values[json['recurrence'] ?? 0],
-    customIntervalDays: json['customIntervalDays'],
-    recurrenceEndDate: json['recurrenceEndDate'] != null ? _parseTimeSafely(json['recurrenceEndDate']) : null,
-    lastUpdated: _parseTimeSafely(json['lastUpdated']),
-    dueDate: json['dueDate'] != null ? _parseTimeSafely(json['dueDate']) : null,
-    createdAt: _parseTimeSafely(json['createdAt']),
-  );
+  factory CountdownItem.fromJson(Map<String, dynamic> json) {
+    String parsedId = json['id']?.toString() ?? const Uuid().v4();
+    if (!parsedId.contains('-')) parsedId = const Uuid().v4();
+
+    return CountdownItem(
+      id: parsedId,
+      title: json['title'] ?? '',
+      targetDate: DateTime.tryParse(json['target_time'] ?? json['targetDate'] ?? '') ?? DateTime.now(),
+      isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true || json['isDeleted'] == true,
+      version: json['version'] ?? 1,
+      updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
+      createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
+    );
+  }
+}
+
+// 🛡️ 时间戳安全解析器
+int _parseTimestamp(dynamic val) {
+  if (val == null) return DateTime.now().millisecondsSinceEpoch;
+  if (val is int) return val;
+  if (val is double) return val.toInt();
+  if (val is String) {
+    int? parsed = int.tryParse(val);
+    if (parsed != null) return parsed;
+    DateTime? dt = DateTime.tryParse(val);
+    if (dt != null) return dt.millisecondsSinceEpoch;
+  }
+  return DateTime.now().millisecondsSinceEpoch;
 }

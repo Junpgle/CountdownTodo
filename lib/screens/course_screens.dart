@@ -42,7 +42,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final weeks = await CourseService.getAvailableWeeks();
-    _allTodos = await StorageService.getTodos(widget.username);
+    final allTodosRaw = await StorageService.getTodos(widget.username);
+
+    // 🚀 核心：全局列表中剔除回收站里逻辑删除的待办！
+    _allTodos = allTodosRaw.where((t) => !t.isDeleted).toList();
 
     if (weeks.isNotEmpty) {
       _availableWeeks = weeks;
@@ -104,7 +107,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     DateTime currentWeekMondayStart = DateTime(currentWeekMonday.year, currentWeekMonday.month, currentWeekMonday.day);
 
     for (var todo in _allTodos) {
-      DateTime start = todo.createdAt;
+      DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
       DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
       bool isAllDayFlag = todo.dueDate != null &&
@@ -200,7 +203,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                                 return ListTile(
                                   leading: Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, color: todo.isDone ? Colors.green : Colors.amber),
                                   title: Text(todo.title, style: TextStyle(decoration: todo.isDone ? TextDecoration.lineThrough : null)),
-                                  subtitle: Text("开始: ${DateFormat('MM-dd HH:mm').format(todo.createdAt)}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
+                                  subtitle: Text("开始: ${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdAt))}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
                                   onTap: () {
                                     Navigator.pop(ctx);
                                     Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)));
@@ -379,7 +382,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var todo in _intraDayTodosPerDay[weekday]!) {
-          DateTime start = todo.createdAt;
+          DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
           DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
           double top = _timeToY(start.hour, start.minute, minuteHeight);
@@ -660,7 +663,7 @@ class CourseDetailScreen extends StatelessWidget {
           _buildDetailRow(Icons.access_time, '时间', '${course.formattedStartTime} - ${course.formattedEndTime}'),
           if (course.lessonType != null && course.lessonType!.isNotEmpty) ...[
             const Divider(),
-            // 自动翻译内部可能存在的英文类型，防止显示出“EXPERIMENT”等纯英文
+            // 自动翻译内部可能存在的英文类型
             _buildDetailRow(Icons.category, '类型/备注', course.lessonType! == 'EXPERIMENT' ? '实验课' : (course.lessonType! == 'THEORY' ? '理论课' : course.lessonType!)),
           ]
         ],
@@ -697,13 +700,14 @@ class TodoDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
     bool isAllDay = todo.dueDate != null &&
-        todo.createdAt.hour == 0 && todo.createdAt.minute == 0 &&
+        createdAt.hour == 0 && createdAt.minute == 0 &&
         todo.dueDate!.hour == 23 && todo.dueDate!.minute == 59;
 
     String startTimeStr = isAllDay
-        ? DateFormat('yyyy-MM-dd (全天)').format(todo.createdAt)
-        : DateFormat('yyyy-MM-dd HH:mm').format(todo.createdAt);
+        ? DateFormat('yyyy-MM-dd (全天)').format(createdAt)
+        : DateFormat('yyyy-MM-dd HH:mm').format(createdAt);
 
     String endTimeStr = todo.dueDate == null
         ? '无截止时间'
@@ -714,7 +718,7 @@ class TodoDetailScreen extends StatelessWidget {
     // 计算进度
     double progress = 0.0;
     DateTime now = DateTime.now();
-    DateTime start = todo.createdAt;
+    DateTime start = createdAt;
     DateTime end = todo.dueDate ?? DateTime(start.year, start.month, start.day, 23, 59, 59);
 
     if (todo.isDone) {
@@ -781,7 +785,7 @@ class TodoDetailScreen extends StatelessWidget {
           const Divider(),
           _buildDetailRow(Icons.stop_circle_outlined, '截止时间', endTimeStr),
           const Divider(),
-          _buildDetailRow(Icons.update, '最近更新', DateFormat('yyyy-MM-dd HH:mm').format(todo.lastUpdated)),
+          _buildDetailRow(Icons.update, '最近更新', DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt))),
         ],
       ),
     );

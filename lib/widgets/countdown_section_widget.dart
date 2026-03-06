@@ -52,7 +52,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
               onPressed: () async {
                 if (titleCtrl.text.isNotEmpty) {
                   List<CountdownItem> updatedList = List.from(widget.countdowns);
-                  updatedList.add(CountdownItem(title: titleCtrl.text, targetDate: selectedDate, lastUpdated: DateTime.now()));
+                  // 🚀 修复：去除旧版的 lastUpdated 属性，采用模型的默认版本号初始化
+                  updatedList.add(CountdownItem(title: titleCtrl.text, targetDate: selectedDate));
                   await StorageService.saveCountdowns(widget.username, updatedList);
                   widget.onDataChanged(); // 通知父组件更新
                   if (mounted) Navigator.pop(ctx);

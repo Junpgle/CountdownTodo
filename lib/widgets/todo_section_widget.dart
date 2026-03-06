@@ -33,13 +33,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   bool _isPastTodosExpanded = false;
   bool _hasInitializedExpansion = false;
 
-  // 🚀 缓存每一个待办事项的唯一 Key。
-  // 用于彻底解决从回收站恢复时，Dismissible 重复 Key 导致的红屏报错。
   final Map<String, Key> _todoKeys = {};
 
   Key _getTodoKey(String idPrefix, String todoId) {
     String mapKey = '${idPrefix}_$todoId';
-    // 如果是全新的或者刚从回收站恢复的(旧Key已被清除)，则生成一个全新的 UniqueKey
     _todoKeys.putIfAbsent(mapKey, () => UniqueKey());
     return _todoKeys[mapKey]!;
   }
@@ -61,12 +58,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
       return d.isBefore(today);
     } else {
-      DateTime c = DateTime(t.createdAt.year, t.createdAt.month, t.createdAt.day);
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdAt);
+      DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
     }
   }
 
-  /// 供父组件调用的公有方法：打开添加待办对话框
   void showAddTodoDialog() {
     TextEditingController titleCtrl = TextEditingController();
     DateTime createdAt = DateTime.now();
@@ -180,14 +177,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               onPressed: () {
                 if (titleCtrl.text.isNotEmpty) {
                   final newTodo = TodoItem(
-                    id: const Uuid().v4(), // 🚀 离线生成唯一的 UUID
                     title: titleCtrl.text,
                     recurrence: recurrence,
                     customIntervalDays: customDays,
                     recurrenceEndDate: recurrenceEndDate,
-                    lastUpdated: DateTime.now(),
                     dueDate: dueDate,
-                    createdAt: createdAt,
+                    createdAt: createdAt.millisecondsSinceEpoch,
                   );
                   List<TodoItem> updatedList = List.from(widget.todos)..insert(0, newTodo);
                   widget.onTodosChanged(updatedList);
@@ -204,7 +199,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
   void _editTodo(TodoItem todo) {
     TextEditingController titleCtrl = TextEditingController(text: todo.title);
-    DateTime createdAt = todo.createdAt;
+    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
     DateTime? dueDate = todo.dueDate;
     RecurrenceType recurrence = todo.recurrence;
     int? customDays = todo.customIntervalDays;
@@ -315,14 +310,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             FilledButton(
               onPressed: () {
                 if (titleCtrl.text.isNotEmpty) {
-                  // 🚀 核心优化：更改名字不再怕引发重复条目，因为背后由真实的 UUID/ID 保证身份不变！
                   todo.title = titleCtrl.text;
-                  todo.createdAt = createdAt;
+                  todo.createdAt = createdAt.millisecondsSinceEpoch;
                   todo.dueDate = dueDate;
                   todo.recurrence = recurrence;
                   todo.customIntervalDays = customDays;
                   todo.recurrenceEndDate = recurrenceEndDate;
-                  todo.lastUpdated = DateTime.now();
+                  todo.markAsChanged();
 
                   List<TodoItem> updatedList = List.from(widget.todos);
                   widget.onTodosChanged(updatedList);
@@ -357,9 +351,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     );
 
     String dateStr = "";
+    DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
     if (todo.dueDate != null) {
       String dueDateStr = DateFormat('MM-dd HH:mm').format(todo.dueDate!);
-      String createDateStr = DateFormat('MM-dd HH:mm').format(todo.createdAt);
+      String createDateStr = DateFormat('MM-dd HH:mm').format(cDate);
 
       if (isFuture) {
         DateTime now = DateTime.now();
@@ -373,7 +368,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         dateStr = "$createDateStr 至 $dueDateStr (今天截止)";
       }
     } else {
-      dateStr = "开始于 ${DateFormat('MM-dd HH:mm').format(todo.createdAt)}";
+      dateStr = "开始于 ${DateFormat('MM-dd HH:mm').format(cDate)}";
     }
 
     Color subColor = todo.isDone
@@ -388,11 +383,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     DateTime now = DateTime.now();
 
     if (todo.dueDate != null) {
-      start = todo.createdAt;
+      start = cDate;
       end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, todo.dueDate!.hour, todo.dueDate!.minute, 59);
     } else {
-      start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, todo.createdAt.hour, todo.createdAt.minute);
-      end = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, 23, 59, 59);
+      start = DateTime(cDate.year, cDate.month, cDate.day, cDate.hour, cDate.minute);
+      end = DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
     }
 
     bool isSameDay = start.year == end.year && start.month == end.month && start.day == end.day;
@@ -445,7 +440,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         _todoKeys.remove('drag_${todo.id}');
         _todoKeys.remove('dismiss_${todo.id}');
 
-        // 🚀 核心优化：记录被删除对象的 ID，通过 ID 彻底击杀它
         String idToDelete = todo.id;
         List<TodoItem> updatedList = List.from(widget.todos)..removeWhere((t) => t.id == todo.id);
 
@@ -457,14 +451,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           if (str != null) {
             deleted = (jsonDecode(str) as Iterable).map((e) => TodoItem.fromJson(e)).toList();
           }
-          todo.lastUpdated = DateTime.now(); // 记录删除时间
+          todo.markAsChanged();
+          todo.isDeleted = true;
           deleted.insert(0, todo);
           await prefs.setString(key, jsonEncode(deleted.map((e) => e.toJson()).toList()));
         } catch (e) {
           debugPrint("保存至回收站失败: $e");
         }
 
-        // 传递 ID 给云端删除接口
         await StorageService.deleteTodoGlobally(widget.username, idToDelete);
         widget.onTodosChanged(updatedList);
       },
@@ -480,7 +474,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               value: todo.isDone,
               onChanged: (val) {
                 todo.isDone = val!;
-                todo.lastUpdated = DateTime.now();
+                todo.markAsChanged();
                 List<TodoItem> updatedList = List.from(widget.todos);
                 updatedList.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
                 widget.onTodosChanged(updatedList);
@@ -628,12 +622,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       double calculateProgress(TodoItem todo) {
         DateTime start;
         DateTime end;
+        DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
         if (todo.dueDate != null) {
-          start = todo.createdAt;
+          start = cDate;
           end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, todo.dueDate!.hour, todo.dueDate!.minute, 59);
         } else {
-          start = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, todo.createdAt.hour, todo.createdAt.minute);
-          end = DateTime(todo.createdAt.year, todo.createdAt.month, todo.createdAt.day, 23, 59, 59);
+          start = DateTime(cDate.year, cDate.month, cDate.day, cDate.hour, cDate.minute);
+          end = DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
         }
         bool isSameDay = start.year == end.year && start.month == end.month && start.day == end.day;
         if (isSameDay && now.isBefore(start)) return 0.0;

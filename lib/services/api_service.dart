@@ -21,12 +21,6 @@ class ApiService {
     };
   }
 
-  static String _formatTime(dynamic time) {
-    if (time is String) return time;
-    if (time is int) return DateTime.fromMillisecondsSinceEpoch(time).toIso8601String();
-    return DateTime.now().toIso8601String();
-  }
-
   // ==========================================
   // 1. 用户认证 (Auth)
   // ==========================================
@@ -134,118 +128,64 @@ class ApiService {
   }
 
   // ==========================================
-  // 3. 待办事项 (Todos)
+  // 🚀 3. 全新 Delta Sync 增量同步引擎 (替代旧版单条CRUD)
   // ==========================================
-
-  static Future<List<dynamic>> fetchTodos(int userId) async {
+  static Future<Map<String, dynamic>> postDeltaSync({
+    required int userId,
+    required int lastSyncTime,
+    required String deviceId,
+    required List<Map<String, dynamic>> todosChanges,
+    required List<Map<String, dynamic>> countdownsChanges,
+    Map<String, dynamic>? screenTime,
+  }) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/todos?user_id=$userId'), headers: _getHeaders());
-      if (response.statusCode == 200) return jsonDecode(response.body);
-      return [];
-    } catch (e) {
-      return [];
-    }
-  }
+      final Map<String, dynamic> body = {
+        'user_id': userId,
+        'last_sync_time': lastSyncTime,
+        'device_id': deviceId,
+        'todos': todosChanges,
+        'countdowns': countdownsChanges,
+      };
 
-  // 🚀 ApiService 中的单独操作现在通过传递 created_at 来代替 id 定位数据
-  static Future<bool> addTodo(int userId, String content, {bool isCompleted = false, dynamic timestamp, String? dueDate, String? createdDate}) async {
-    try {
+      if (screenTime != null) {
+        body['screen_time'] = screenTime;
+      }
+
       final response = await http.post(
-        Uri.parse('$baseUrl/api/todos'),
+        Uri.parse('$baseUrl/api/sync'),
         headers: _getHeaders(),
-        body: jsonEncode({
-          'user_id': userId,
-          'content': content,
-          'is_completed': isCompleted,
-          'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
-          'due_date': dueDate,
-          'created_date': createdDate,
-          'created_at': createdDate, // 确保两端兼容
-        }),
+        body: jsonEncode(body),
       );
-      return response.statusCode == 200;
-    } catch (e) { return false; }
-  }
 
-  static Future<bool> toggleTodo(String createdAt, bool isCompleted, {dynamic timestamp}) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/todos/toggle'),
-        headers: _getHeaders(),
-        body: jsonEncode({
-          'created_at': createdAt,
-          'is_completed': isCompleted,
-          'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
-        }),
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      return false;
-    }
-  }
+      final data = jsonDecode(response.body);
 
-  static Future<bool> deleteTodo(String createdAt, {dynamic timestamp}) async {
-    try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/api/todos'),
-        headers: _getHeaders(),
-        body: jsonEncode({
-          'created_at': createdAt,
-          'updated_at': timestamp != null ? _formatTime(timestamp) : DateTime.now().toIso8601String(),
-        }),
-      );
-      return response.statusCode == 200;
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'server_todos': data['server_todos'] ?? [],
+          'server_countdowns': data['server_countdowns'] ?? [],
+          'new_sync_time': data['new_sync_time'],
+          'status': data['status'],
+        };
+      } else if (response.statusCode == 429) {
+        return {
+          'success': false,
+          'message': data['error'] ?? '今日同步次数已达上限',
+          'isLimitExceeded': true,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['error'] ?? '同步失败'
+        };
+      }
     } catch (e) {
-      return false;
+      return {'success': false, 'message': "网络异常: $e"};
     }
   }
 
   // ==========================================
-  // 4. 倒计时 (Countdowns)
-  // ==========================================
-
-  static Future<List<dynamic>> fetchCountdowns(int userId) async {
-    try {
-      final response = await http.get(Uri.parse('$baseUrl/api/countdowns?user_id=$userId'), headers: _getHeaders());
-      if (response.statusCode == 200) return jsonDecode(response.body);
-      return [];
-    } catch (e) { return []; }
-  }
-
-  static Future<bool> addCountdown(int userId, String title, DateTime targetTime, dynamic lastUpdated) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/countdowns'),
-        headers: _getHeaders(),
-        body: jsonEncode({
-          'user_id': userId,
-          'title': title,
-          'target_time': targetTime.toIso8601String(),
-          'updated_at': _formatTime(lastUpdated),
-        }),
-      );
-      return response.statusCode == 200;
-    } catch (e) { return false; }
-  }
-
-  static Future<bool> deleteCountdown(String title) async {
-    try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/api/countdowns'),
-        headers: _getHeaders(),
-        body: jsonEncode({
-          'title': title,
-          'updated_at': DateTime.now().toIso8601String(),
-        }),
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // ==========================================
-  // 5. 屏幕使用时间 (Screen Time)
+  // 4. 屏幕使用时间 (Screen Time)
   // ==========================================
 
   static Future<bool> uploadScreenTime({
@@ -278,7 +218,7 @@ class ApiService {
   }
 
   // ==========================================
-  // 6. 调试工具 (Debug Tools)
+  // 5. 调试工具 (Debug Tools)
   // ==========================================
 
   static Future<Map<String, dynamic>> debugResetDatabase() async {
@@ -294,7 +234,7 @@ class ApiService {
   }
 
   // ==========================================
-  // 7. 分类映射 (Category Mappings)
+  // 6. 分类映射 (Category Mappings)
   // ==========================================
 
   static Future<List<dynamic>> fetchAppMappings() async {
@@ -310,83 +250,7 @@ class ApiService {
   }
 
   // ==========================================
-  // 8. 全局聚合同步 (Sync All)
-  // ==========================================
-
-  static Future<Map<String, dynamic>> syncAll({
-    required int userId,
-    required List<Map<String, dynamic>> todos,
-    required List<Map<String, dynamic>> countdowns,
-    Map<String, dynamic>? screenTime,
-  }) async {
-    try {
-      final sanitizedTodos = todos.map((t) {
-        final newT = Map<String, dynamic>.from(t);
-        if (newT['updated_at'] is int) {
-          newT['updated_at'] = DateTime.fromMillisecondsSinceEpoch(newT['updated_at']).toIso8601String();
-        } else if (newT['updated_at'] == null) {
-          newT['updated_at'] = DateTime.now().toIso8601String();
-        }
-        // 确保把 createdAt 也作为凭证带过去
-        newT['created_at'] = newT['created_date'];
-        return newT;
-      }).toList();
-
-      final sanitizedCountdowns = countdowns.map((c) {
-        final newC = Map<String, dynamic>.from(c);
-        if (newC['updated_at'] is int) {
-          newC['updated_at'] = DateTime.fromMillisecondsSinceEpoch(newC['updated_at']).toIso8601String();
-        } else if (newC['updated_at'] == null) {
-          newC['updated_at'] = DateTime.now().toIso8601String();
-        }
-        return newC;
-      }).toList();
-
-      final Map<String, dynamic> body = {
-        'user_id': userId,
-        'todos': sanitizedTodos,
-        'countdowns': sanitizedCountdowns,
-      };
-
-      if (screenTime != null) {
-        body['screen_time'] = screenTime;
-      }
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/sync_all'),
-        headers: _getHeaders(),
-        body: jsonEncode(body),
-      );
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        return {
-          'success': true,
-          'data': data['data'],
-          'message': data['message'] ?? '同步成功'
-        };
-      }
-      else if (response.statusCode == 429) {
-        return {
-          'success': false,
-          'message': data['error'] ?? '今日同步次数已达上限',
-          'isLimitExceeded': true,
-        };
-      }
-      else {
-        return {
-          'success': false,
-          'message': data['error'] ?? '同步失败'
-        };
-      }
-    } catch (e) {
-      return {'success': false, 'message': "网络异常: $e"};
-    }
-  }
-
-  // ==========================================
-  // 9. 课表同步 (Courses)
+  // 7. 课表同步 (Courses)
   // ==========================================
 
   static Future<List<dynamic>> fetchCourses(int userId, {String semester = "default"}) async {

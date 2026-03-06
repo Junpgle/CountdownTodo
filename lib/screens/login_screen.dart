@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart'; // 新增 UUID 用于老数据迁移
 import '../services/api_service.dart';
 import '../storage_service.dart';
 import 'home_dashboard.dart';
@@ -17,16 +18,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
 
-  // 新增：验证码输入框
   final TextEditingController _codeController = TextEditingController();
 
   bool _isLoading = false;
   bool _isRegisterMode = false;
-
-  // 新增：是否正在等待输入验证码
   bool _awaitingVerification = false;
-
-  // 记录本地检测到的老用户名
   String? _legacyLocalUser;
 
   @override
@@ -40,11 +36,10 @@ class _LoginScreenState extends State<LoginScreen> {
     _userController.dispose();
     _emailController.dispose();
     _passController.dispose();
-    _codeController.dispose(); // 记得销毁
+    _codeController.dispose();
     super.dispose();
   }
 
-  // 1. 检查是否有本地老用户数据
   void _checkLocalLegacyAccount() async {
     final prefs = await SharedPreferences.getInstance();
     String? legacyUser = prefs.getString('login_session');
@@ -67,15 +62,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // 2. 同步数据 (带安全鉴权的重构版)
+  // 🚀 核心重构：将原本的单次调用替换为组装成 Delta Sync 数据包批量上传
   Future<void> _syncLocalDataToCloud(int targetUserId, String currentUsername) async {
     final String sourceUsername = _legacyLocalUser ?? currentUsername;
-    print("同步数据: $sourceUsername -> ID: $targetUserId");
+    print("同步老旧存档数据: $sourceUsername -> ID: $targetUserId");
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      final String deviceId = prefs.getString('app_device_uuid') ?? const Uuid().v4();
 
-      // 同步分数
       int localScore = prefs.getInt('${sourceUsername}_best_score') ?? 0;
       int localDuration = prefs.getInt('${sourceUsername}_best_duration') ?? 0;
       if (localScore > 0) {
@@ -87,7 +82,10 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
 
-      // 同步待办
+      List<Map<String, dynamic>> dirtyTodos = [];
+      List<Map<String, dynamic>> dirtyCountdowns = [];
+
+      // 提取老待办并组装成增量同步包
       String? todosJson = prefs.getString('todos_$sourceUsername') ?? prefs.getString('todos');
       if (todosJson != null) {
         try {
@@ -96,20 +94,23 @@ class _LoginScreenState extends State<LoginScreen> {
             String content = item['title'] ?? item['content'] ?? '';
             bool isDone = item['isDone'] ?? item['isCompleted'] ?? false;
             if (content.isNotEmpty && !isDone) {
-              // 🚀 核心修复：为老数据统一补齐 createdDate 作为其唯一的身份 ID
-              await ApiService.addTodo(
-                targetUserId,
-                content,
-                isCompleted: isDone,
-                timestamp: DateTime.now().toIso8601String(),
-                createdDate: DateTime.now().toIso8601String(),
-              );
+              int nowMs = DateTime.now().millisecondsSinceEpoch;
+              dirtyTodos.add({
+                'id': const Uuid().v4(),
+                'content': content,
+                'is_completed': isDone ? 1 : 0,
+                'is_deleted': 0,
+                'version': 1,
+                'updated_at': nowMs,
+                'created_at': nowMs,
+                'device_id': deviceId
+              });
             }
           }
         } catch (_) {}
       }
 
-      // 同步倒计时
+      // 提取老倒计时并组装成增量同步包
       String? countdownsJson = prefs.getString('countdowns_$sourceUsername') ?? prefs.getString('countdowns');
       if (countdownsJson != null) {
         try {
@@ -120,24 +121,39 @@ class _LoginScreenState extends State<LoginScreen> {
             if (title.isNotEmpty && dateStr.isNotEmpty) {
               DateTime? targetTime = DateTime.tryParse(dateStr);
               if (targetTime != null && targetTime.isAfter(DateTime.now())) {
-                // 🚀 核心修复：传递标准的时间字符串
-                await ApiService.addCountdown(
-                  targetUserId,
-                  title,
-                  targetTime,
-                  DateTime.now().toIso8601String(),
-                );
+                int nowMs = DateTime.now().millisecondsSinceEpoch;
+                dirtyCountdowns.add({
+                  'id': const Uuid().v4(),
+                  'title': title,
+                  'target_time': targetTime.toIso8601String(),
+                  'is_deleted': 0,
+                  'version': 1,
+                  'updated_at': nowMs,
+                  'created_at': nowMs,
+                  'device_id': deviceId
+                });
               }
             }
           }
         } catch (_) {}
       }
+
+      // 如果有数据，直接发往 Delta Sync 接口完成上传
+      if (dirtyTodos.isNotEmpty || dirtyCountdowns.isNotEmpty) {
+        await ApiService.postDeltaSync(
+          userId: targetUserId,
+          lastSyncTime: 0,
+          deviceId: deviceId,
+          todosChanges: dirtyTodos,
+          countdownsChanges: dirtyCountdowns,
+        );
+      }
+
     } catch (e) {
-      print("同步错误: $e");
+      print("老数据迁移错误: $e");
     }
   }
 
-  // 处理登录
   void _handleLogin() async {
     String email = _emailController.text.trim();
     String pass = _passController.text.trim();
@@ -154,19 +170,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (result['success'] == true) {
       final user = result['user'];
-      final String token = result['token'] ?? ''; // 🚀 提取后端返回的安全 Token
+      final String token = result['token'] ?? '';
 
-      // 🚀 第 1 步：必须先保存并激活 Token，使后续的接口调用能够通过后端的安全鉴权
       await StorageService.saveLoginSession(user['username'], token: token);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', user['id']);
 
-      // 🚀 第 2 步：此时调用同步方法，内部携带安全 Token，畅通无阻
       if (_legacyLocalUser != null) {
         await _syncLocalDataToCloud(user['id'], user['username']);
       }
 
-      // 第 3 步：完成跳转
       _finalizeLoginAndNavigate(user['username']);
     } else {
       setState(() => _isLoading = false);
@@ -174,13 +187,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // 处理注册 (改造为两步验证)
   void _handleRegister() async {
     String user = _userController.text.trim();
     String email = _emailController.text.trim();
     String pass = _passController.text.trim();
 
-    // 基础校验
     if (!_awaitingVerification) {
       if (user.isEmpty || email.isEmpty || pass.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写完整注册信息')));
@@ -195,7 +206,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
 
-    // 调用 API
     var regResult = await ApiService.register(
         user,
         email,
@@ -207,7 +217,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (regResult['success'] == true) {
-      // 场景 1: 邮件发送成功，等待输入验证码
       if (regResult['require_verify'] == true) {
         setState(() {
           _awaitingVerification = true;
@@ -216,7 +225,6 @@ class _LoginScreenState extends State<LoginScreen> {
           const SnackBar(content: Text('验证码已发送至邮箱，请查收并输入')),
         );
       }
-      // 场景 2: 验证码校验通过，注册完成 -> 自动登录
       else {
         _performAutoLoginAfterRegister(email, pass, user);
       }
@@ -227,23 +235,20 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // 辅助：注册成功后自动登录并同步
   void _performAutoLoginAfterRegister(String email, String pass, String username) async {
     setState(() => _isLoading = true);
     var loginResult = await ApiService.login(email, pass);
 
     if (loginResult['success'] == true) {
       final userInfo = loginResult['user'];
-      final String token = loginResult['token'] ?? ''; // 🚀 提取 Token
+      final String token = loginResult['token'] ?? '';
 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('注册成功，正在同步数据...')));
 
-      // 🚀 核心防御：在触发 API 调用前，优先锁定并激活本地 Token 凭证
       await StorageService.saveLoginSession(username, token: token);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', userInfo['id']);
 
-      // 同步老数据
       await _syncLocalDataToCloud(userInfo['id'], username);
 
       _finalizeLoginAndNavigate(username);
@@ -253,7 +258,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // 辅助：完成界面跳转 (不再处理业务逻辑)
   void _finalizeLoginAndNavigate(String username) {
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -264,11 +268,10 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // 切换模式时重置状态
   void _toggleMode() {
     setState(() {
       _isRegisterMode = !_isRegisterMode;
-      _awaitingVerification = false; // 重置验证状态
+      _awaitingVerification = false;
       _codeController.clear();
     });
   }
@@ -306,7 +309,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Text("本地存档: $_legacyLocalUser\n注册后自动同步", textAlign: TextAlign.center, style: TextStyle(color: Colors.amber.shade900, fontSize: 12)),
                 ),
 
-              // === 验证码模式 UI ===
               if (_awaitingVerification) ...[
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20.0),
@@ -328,18 +330,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   width: double.infinity,
                   height: 50,
                   child: FilledButton(
-                    onPressed: _handleRegister, // 这里复用方法，带上 code 提交
+                    onPressed: _handleRegister,
                     child: const Text("验证并完成注册"),
                   ),
                 ),
                 const SizedBox(height: 15),
                 TextButton(
-                  onPressed: () => setState(() => _awaitingVerification = false), // 返回修改邮箱
+                  onPressed: () => setState(() => _awaitingVerification = false),
                   child: const Text("返回修改邮箱"),
                 ),
               ]
-
-              // === 普通登录/注册 UI ===
               else ...[
                 if (_isRegisterMode) ...[
                   TextField(
@@ -353,7 +353,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(labelText: '邮箱', border: OutlineInputBorder(), prefixIcon: Icon(Icons.email)),
-                  enabled: !_awaitingVerification, // 验证时锁定
+                  enabled: !_awaitingVerification,
                 ),
                 const SizedBox(height: 15),
 
