@@ -1,7 +1,7 @@
 {
   "version_code": 1,
   "version_name": "1.7.1",
-  "force_update": true,
+  "force_update": false,
   "update_info": {
     "title": "版本更新 1.7.1",
     "description": "- 适配厦大课表[我的课表App]-mhtml\n- 适配西电课表[标准日历格式]-ics\n- 新增 课表导入弹窗进度\n- 新增 将支持的课表文件直接分享到本软件可以智能识别并导入\n- 修复 首页课程提醒消失的问题【设置内重新排列首页顺序即可解决】\n- 修复 日历视图内排列问题 - 修复更新逻辑",
