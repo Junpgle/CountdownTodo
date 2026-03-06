@@ -174,8 +174,10 @@ class TodoItem {
 
       recurrence: RecurrenceType.values[json['recurrence'] ?? 0],
       customIntervalDays: json['customIntervalDays'],
-      recurrenceEndDate: json['recurrenceEndDate'] != null ? DateTime.tryParse(json['recurrenceEndDate'].toString()) : null,
-      dueDate: json['due_date'] != null ? DateTime.tryParse(json['due_date'].toString()) : null,
+      // 🚀 修复：正确解析 recurrenceEndDate（可能是毫秒时间戳或 ISO 字符串）
+      recurrenceEndDate: _parseDateField(json['recurrenceEndDate']),
+      // 🚀 修复：正确解析 dueDate（可能是毫秒时间戳或 ISO 字符串）
+      dueDate: _parseDateField(json['due_date']),
     );
   }
 }
@@ -227,7 +229,8 @@ class CountdownItem {
     return CountdownItem(
       id: parsedId,
       title: json['title'] ?? '',
-      targetDate: DateTime.tryParse(json['target_time'] ?? json['targetDate'] ?? '') ?? DateTime.now(),
+      // 🚀 修复：正确解析 targetDate（可能是毫秒时间戳或 ISO 字符串）
+      targetDate: _parseDateField(json['target_time'] ?? json['targetDate']) ?? DateTime.now(),
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true || json['isDeleted'] == true,
       version: json['version'] ?? 1,
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
@@ -249,3 +252,37 @@ int _parseTimestamp(dynamic val) {
   }
   return DateTime.now().millisecondsSinceEpoch;
 }
+
+// 🛡️ 日期字段安全解析器（处理毫秒时间戳和 ISO 字符串两种格式）
+DateTime? _parseDateField(dynamic val) {
+  if (val == null) return null;
+
+  // 如果是整数，当作毫秒时间戳处理
+  if (val is int) {
+    return DateTime.fromMillisecondsSinceEpoch(val);
+  }
+
+  // 如果是浮点数，转为整数后当作毫秒时间戳处理
+  if (val is double) {
+    return DateTime.fromMillisecondsSinceEpoch(val.toInt());
+  }
+
+  // 如果是字符串
+  if (val is String) {
+    // 首先尝试当作毫秒时间戳（纯数字字符串）
+    int? asInt = int.tryParse(val);
+    if (asInt != null && asInt > 0) {
+      // 如果是一个很大的数字（13 位以上），就是毫秒时间戳
+      if (val.length >= 13) {
+        return DateTime.fromMillisecondsSinceEpoch(asInt);
+      }
+    }
+
+    // 尝试当作 ISO 8601 字符串解析
+    DateTime? dt = DateTime.tryParse(val);
+    if (dt != null) return dt;
+  }
+
+  return null;
+}
+
