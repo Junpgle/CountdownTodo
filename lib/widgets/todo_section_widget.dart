@@ -29,8 +29,14 @@ class TodoSectionWidget extends StatefulWidget {
 }
 
 class TodoSectionWidgetState extends State<TodoSectionWidget> {
-  bool _isTodoExpanded = true;
+  /// 整个待办清单区块是否展开（顶部三角控制）
+  bool _isWholeListExpanded = true;
+  /// 今日待办子区块是否展开（自动折叠后可手动重新展开）
+  bool _isTodayExpanded = true;
+  /// 今日是否被用户手动展开（覆盖自动折叠）
+  bool _isTodayManuallyExpanded = false;
   bool _isPastTodosExpanded = false;
+  bool _isFutureExpanded = true;
   bool _hasInitializedExpansion = false;
 
   final Map<String, Key> _todoKeys = {};
@@ -45,7 +51,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   void didUpdateWidget(TodoSectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_hasInitializedExpansion && widget.todos.isNotEmpty) {
-      _isTodoExpanded = !widget.todos.where((t) => !_isHistoricalTodo(t)).every((t) => t.isDone);
+      _isTodayExpanded = !widget.todos.where((t) => !_isHistoricalTodo(t)).every((t) => t.isDone);
       _hasInitializedExpansion = true;
     }
   }
@@ -501,22 +507,109 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // 计算一条待办的进度值（0.0 ~ 1.0）
+  // ─────────────────────────────────────────────
+  double _calcProgress(TodoItem todo, DateTime now) {
+    final DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
+    final DateTime start = cDate;
+    final DateTime end = todo.dueDate != null
+        ? DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, todo.dueDate!.hour, todo.dueDate!.minute, 59)
+        : DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+
+    if (now.isBefore(start)) return 0.0;
+    final int totalMinutes = end.difference(start).inMinutes;
+    if (totalMinutes <= 0) return 1.0;
+    return (now.difference(start).inMinutes / totalMinutes).clamp(0.0, 1.0);
+  }
+
+  // ─────────────────────────────────────────────
+  // 当日待办排序：
+  //   未完成 → 进度高的优先；进度相同 → 持续时间短的优先
+  //   已完成 → 排在未完成之后
+  // ─────────────────────────────────────────────
+  List<TodoItem> _sortTodayTodos(List<TodoItem> list, DateTime now) {
+    int durationMinutes(TodoItem t) {
+      final DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
+      final DateTime end = t.dueDate != null
+          ? DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day, t.dueDate!.hour, t.dueDate!.minute, 59)
+          : DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final int mins = end.difference(cDate).inMinutes;
+      return mins <= 0 ? 1 : mins;
+    }
+
+    final undone = list.where((t) => !t.isDone).toList()
+      ..sort((a, b) {
+        final double pa = _calcProgress(a, now);
+        final double pb = _calcProgress(b, now);
+        // 进度更高的排前面（降序）
+        final int cmp = pb.compareTo(pa);
+        if (cmp != 0) return cmp;
+        // 进度相同：持续时间短的排前面（升序）
+        return durationMinutes(a).compareTo(durationMinutes(b));
+      });
+
+    final done = list.where((t) => t.isDone).toList();
+    return [...undone, ...done];
+  }
+
+  // ─────────────────────────────────────────────
+  // 未来待办排序：
+  //   未完成 → 进度高的优先；进度相同 → 截止日期近的优先
+  //   已完成 → 排在未完成之后
+  // ─────────────────────────────────────────────
+  List<TodoItem> _sortFutureTodos(List<TodoItem> list, DateTime now) {
+    final undone = list.where((t) => !t.isDone).toList()
+      ..sort((a, b) {
+        final double pa = _calcProgress(a, now);
+        final double pb = _calcProgress(b, now);
+        final int cmp = pb.compareTo(pa);
+        if (cmp != 0) return cmp;
+        // 进度相同：截止时间近的排前面（升序）
+        final DateTime da = a.dueDate ?? DateTime(9999);
+        final DateTime db = b.dueDate ?? DateTime(9999);
+        return da.compareTo(db);
+      });
+
+    final done = list.where((t) => t.isDone).toList();
+    return [...undone, ...done];
+  }
+
   Widget _buildTodoList() {
-    if (widget.todos.where((t) => !t.isDeleted && !_isHistoricalTodo(t)).isEmpty) return EmptyState(text: "暂无待办", isLight: widget.isLight);
+    final Iterable<TodoItem> activeTodos =
+        widget.todos.where((t) => !t.isDeleted && !_isHistoricalTodo(t));
+
+    if (activeTodos.isEmpty) {
+      return EmptyState(text: "暂无待办", isLight: widget.isLight);
+    }
+
+    // ── 整体折叠：只显示一行摘要 ──
+    if (!_isWholeListExpanded) {
+      final int undoneCount = activeTodos.where((t) => !t.isDone).length;
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          undoneCount == 0 ? "🎉 所有待办均已完成" : "还有 $undoneCount 个待办未完成",
+          style: TextStyle(color: widget.isLight ? Colors.white : null),
+        ),
+        trailing: Icon(Icons.expand_more, color: widget.isLight ? Colors.white70 : null),
+        onTap: () => setState(() => _isWholeListExpanded = true),
+      );
+    }
 
     List<TodoItem> pastTodos = [];
     List<TodoItem> todayTodos = [];
     List<TodoItem> futureTodos = [];
 
-    DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
 
-    for (var t in widget.todos) {
+    for (final t in widget.todos) {
       if (_isHistoricalTodo(t)) continue;
-      if (t.isDeleted) continue;   // ← 关键
+      if (t.isDeleted) continue;
 
       if (t.dueDate != null) {
-        DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+        final DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
         if (d.isBefore(today)) {
           pastTodos.add(t);
         } else if (d.isAfter(today)) {
@@ -529,42 +622,96 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       }
     }
 
-    List<Widget> sections = [];
+    // 当日全部完成 → 自动折叠今日区块（除非用户手动展开）
+    final bool allTodayDone = todayTodos.isNotEmpty && todayTodos.every((t) => t.isDone);
+    // 今日区块是否实际展开：手动控制优先，否则遵循自动折叠
+    final bool showTodayItems = _isTodayManuallyExpanded || (!allTodayDone && _isTodayExpanded);
 
+    // 排序
+    final List<TodoItem> sortedTodayTodos = _sortTodayTodos(todayTodos, now);
+    final List<TodoItem> sortedFutureTodos = _sortFutureTodos(futureTodos, now);
+
+    final List<Widget> sections = [];
+
+    // ── 以往待办（逾期）──
     if (pastTodos.isNotEmpty) {
       sections.add(
-          InkWell(
-            onTap: () => setState(() => _isPastTodosExpanded = !_isPastTodosExpanded),
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-              child: Row(
-                children: [
-                  Icon(_isPastTodosExpanded ? Icons.expand_more : Icons.chevron_right, size: 20, color: widget.isLight ? Colors.white70 : Colors.grey),
-                  const SizedBox(width: 8),
-                  Text("以往待办 (${pastTodos.length})", style: TextStyle(color: widget.isLight ? Colors.white70 : Colors.grey, fontWeight: FontWeight.bold, fontSize: 13)),
-                ],
-              ),
+        InkWell(
+          onTap: () => setState(() => _isPastTodosExpanded = !_isPastTodosExpanded),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+            child: Row(
+              children: [
+                Icon(_isPastTodosExpanded ? Icons.expand_more : Icons.chevron_right,
+                    size: 20, color: widget.isLight ? Colors.white70 : Colors.grey),
+                const SizedBox(width: 8),
+                Text("以往待办 (${pastTodos.length})",
+                    style: TextStyle(
+                        color: widget.isLight ? Colors.white70 : Colors.grey,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13)),
+              ],
             ),
-          )
+          ),
+        ),
       );
       if (_isPastTodosExpanded) {
-        sections.addAll(pastTodos.map((t) => _buildTodoItemCard(t, isPast: true, isFuture: false, key: _getTodoKey('dismiss', t.id))));
+        sections.addAll(pastTodos.map(
+            (t) => _buildTodoItemCard(t, isPast: true, isFuture: false, key: _getTodoKey('dismiss', t.id))));
       }
       sections.add(const SizedBox(height: 8));
     }
 
-    if (!_isTodoExpanded) {
+    // ── 今日待办区块 ──
+    if (!showTodayItems && todayTodos.isNotEmpty) {
+      // 折叠行（自动折叠 或 手动折叠）→ 点击可手动展开
       sections.add(
-          ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(todayTodos.every((t) => t.isDone) ? "今日待办均已完成" : "还有 ${todayTodos.where((t) => !t.isDone).length} 个今日待办未完成", style: TextStyle(color: widget.isLight ? Colors.white : null)),
-              trailing: Icon(Icons.expand_more, color: widget.isLight ? Colors.white70 : null),
-              onTap: () => setState(() => _isTodoExpanded = true)
-          )
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            allTodayDone
+                ? "🎉 今日待办均已完成"
+                : "还有 ${todayTodos.where((t) => !t.isDone).length} 个今日待办未完成",
+            style: TextStyle(color: widget.isLight ? Colors.white : null),
+          ),
+          trailing: Icon(Icons.expand_more, color: widget.isLight ? Colors.white70 : null),
+          onTap: () => setState(() {
+            _isTodayManuallyExpanded = true;
+            _isTodayExpanded = true;
+          }),
+        ),
       );
-    } else {
+    } else if (showTodayItems) {
+      // 展开状态：显示收起按钮 + 列表
       if (todayTodos.isNotEmpty) {
+        // 今日区块标题行（可点击收起）
+        sections.add(
+          InkWell(
+            onTap: () => setState(() {
+              _isTodayExpanded = false;
+              _isTodayManuallyExpanded = false;
+            }),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
+              child: Row(
+                children: [
+                  Icon(Icons.expand_more,
+                      size: 18, color: widget.isLight ? Colors.white60 : Colors.grey),
+                  const SizedBox(width: 6),
+                  Text(
+                    "今日待办 (${todayTodos.where((t) => t.isDone).length}/${todayTodos.length})",
+                    style: TextStyle(
+                        color: widget.isLight ? Colors.white60 : Colors.grey,
+                        fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+
         sections.add(
           ReorderableListView(
             padding: EdgeInsets.zero,
@@ -583,89 +730,91 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             onReorder: (oldIndex, newIndex) {
               if (newIndex > oldIndex) newIndex -= 1;
 
-              List<int> todayIndices = [];
+              final List<int> todayIndices = [];
               for (int i = 0; i < widget.todos.length; i++) {
                 final t = widget.todos[i];
-                if (_isHistoricalTodo(t)) continue;
+                if (_isHistoricalTodo(t) || t.isDeleted) continue;
                 if (t.dueDate != null) {
-                  DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+                  final DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
                   if (!d.isBefore(today) && !d.isAfter(today)) todayIndices.add(i);
                 } else {
                   todayIndices.add(i);
                 }
               }
 
-              final item = todayTodos.removeAt(oldIndex);
-              todayTodos.insert(newIndex, item);
+              final List<TodoItem> reordered = List.from(sortedTodayTodos);
+              final item = reordered.removeAt(oldIndex);
+              reordered.insert(newIndex, item);
 
-              List<TodoItem> updatedList = List.from(widget.todos);
-              for (int i = 0; i < todayIndices.length; i++) {
-                updatedList[todayIndices[i]] = todayTodos[i];
+              final List<TodoItem> updatedList = List.from(widget.todos);
+              for (int i = 0; i < todayIndices.length && i < reordered.length; i++) {
+                updatedList[todayIndices[i]] = reordered[i];
               }
               widget.onTodosChanged(updatedList);
             },
-            children: todayTodos.asMap().entries.map((entry) {
-              int index = entry.key;
-              TodoItem t = entry.value;
+            children: sortedTodayTodos.asMap().entries.map((entry) {
+              final int index = entry.key;
+              final TodoItem t = entry.value;
               return ReorderableDelayedDragStartListener(
                 key: _getTodoKey('drag', t.id),
                 index: index,
-                child: _buildTodoItemCard(t, isPast: false, isFuture: false, key: _getTodoKey('dismiss', t.id)),
+                child: _buildTodoItemCard(t, isPast: false, isFuture: false,
+                    key: _getTodoKey('dismiss', t.id)),
               );
             }).toList(),
           ),
         );
       } else if (futureTodos.isEmpty) {
-        sections.add(Padding(padding: const EdgeInsets.all(8.0), child: Text("今日无待办", style: TextStyle(color: widget.isLight ? Colors.white70 : Colors.grey))));
+        sections.add(Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text("今日无待办",
+                style: TextStyle(color: widget.isLight ? Colors.white70 : Colors.grey))));
       }
     }
 
-    if (_isTodoExpanded && futureTodos.isNotEmpty) {
+    // ── 未来待办区块（可折叠）──
+    if (sortedFutureTodos.isNotEmpty) {
+      final int futureUndone = sortedFutureTodos.where((t) => !t.isDone).length;
       sections.add(
-          Padding(
+        InkWell(
+          onTap: () => setState(() => _isFutureExpanded = !_isFutureExpanded),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
             padding: const EdgeInsets.only(top: 20.0, bottom: 8.0, left: 4.0),
             child: Row(
               children: [
-                Icon(Icons.calendar_month, size: 16, color: widget.isLight ? Colors.white60 : Colors.grey),
+                Icon(
+                  _isFutureExpanded ? Icons.expand_more : Icons.chevron_right,
+                  size: 18,
+                  color: widget.isLight ? Colors.white60 : Colors.grey,
+                ),
                 const SizedBox(width: 6),
-                Text("未来待办", style: TextStyle(color: widget.isLight ? Colors.white70 : Colors.grey, fontWeight: FontWeight.bold, fontSize: 13)),
+                Icon(Icons.calendar_month,
+                    size: 16, color: widget.isLight ? Colors.white60 : Colors.grey),
+                const SizedBox(width: 6),
+                Text(
+                  "未来待办",
+                  style: TextStyle(
+                      color: widget.isLight ? Colors.white70 : Colors.grey,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  "($futureUndone 未完成)",
+                  style: TextStyle(
+                      color: widget.isLight ? Colors.white38 : Colors.grey.shade400,
+                      fontSize: 12),
+                ),
               ],
             ),
-          )
+          ),
+        ),
       );
-
-      double calculateProgress(TodoItem todo) {
-        DateTime start;
-        DateTime end;
-        // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-        DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
-        if (todo.dueDate != null) {
-          start = cDate;
-          end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, todo.dueDate!.hour, todo.dueDate!.minute, 59);
-        } else {
-          start = DateTime(cDate.year, cDate.month, cDate.day, cDate.hour, cDate.minute);
-          end = DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-        }
-        bool isSameDay = start.year == end.year && start.month == end.month && start.day == end.day;
-        if (isSameDay && now.isBefore(start)) return 0.0;
-
-        int totalMinutes = end.difference(start).inMinutes;
-        if (totalMinutes <= 0) return now.isBefore(start) ? 0.0 : 1.0;
-        if (now.isBefore(start)) return 0.0;
-        int passedMinutes = now.difference(start).inMinutes;
-        return (passedMinutes / totalMinutes).clamp(0.0, 1.0);
+      if (_isFutureExpanded) {
+        sections.addAll(sortedFutureTodos.map((t) =>
+            _buildTodoItemCard(t, isPast: false, isFuture: true, key: _getTodoKey('dismiss', t.id))));
       }
-
-      final sortedFutureTodos = futureTodos.toList();
-      sortedFutureTodos.sort((a, b) {
-        double progressA = calculateProgress(a);
-        double progressB = calculateProgress(b);
-        int progressComparison = progressB.compareTo(progressA);
-        if (progressComparison != 0) return progressComparison;
-        return a.dueDate!.compareTo(b.dueDate!);
-      });
-
-      sections.addAll(sortedFutureTodos.map((t) => _buildTodoItemCard(t, isPast: false, isFuture: true, key: _getTodoKey('dismiss', t.id))));
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections);
@@ -673,26 +822,65 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final int undoneCount = widget.todos
+        .where((t) => !t.isDeleted && !_isHistoricalTodo(t) && !t.isDone)
+        .length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(child: SectionHeader(title: "待办清单", icon: Icons.check_circle_outline, onAdd: showAddTodoDialog, isLight: widget.isLight)),
+            Expanded(
+              child: SectionHeader(
+                title: "待办清单",
+                icon: Icons.check_circle_outline,
+                onAdd: showAddTodoDialog,
+                isLight: widget.isLight,
+              ),
+            ),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // 未完成数量徽章（整体折叠时显示）
+                if (!_isWholeListExpanded && undoneCount > 0)
+                  Container(
+                    margin: const EdgeInsets.only(right: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: widget.isLight
+                          ? Colors.white.withOpacity(0.25)
+                          : Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      "$undoneCount 未完成",
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: widget.isLight
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
                 IconButton(
-                    icon: Icon(Icons.history, color: widget.isLight ? Colors.white70 : Colors.grey),
-                    onPressed: () async {
-                      await Navigator.push(context, MaterialPageRoute(builder: (_) => HistoricalTodosScreen(username: widget.username)));
-                      widget.onRefreshRequested();
-                    }
+                  icon: Icon(Icons.history,
+                      color: widget.isLight ? Colors.white70 : Colors.grey),
+                  onPressed: () async {
+                    await Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => HistoricalTodosScreen(username: widget.username)));
+                    widget.onRefreshRequested();
+                  },
                 ),
+                // 整体折叠/展开
                 IconButton(
-                    icon: Icon(_isTodoExpanded ? Icons.expand_less : Icons.expand_more, color: widget.isLight ? Colors.white70 : Colors.grey),
-                    onPressed: () => setState(() => _isTodoExpanded = !_isTodoExpanded)
+                  icon: Icon(
+                    _isWholeListExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: widget.isLight ? Colors.white70 : Colors.grey,
+                  ),
+                  onPressed: () => setState(() => _isWholeListExpanded = !_isWholeListExpanded),
                 ),
               ],
             ),
