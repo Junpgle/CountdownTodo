@@ -78,7 +78,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
-              await StorageService.deleteCountdownGlobally(widget.username, itemToDelete.title);
+              // 🚀 修复：使用 ID 而非 title 来删除倒计时
+              await StorageService.deleteCountdownGlobally(widget.username, itemToDelete.id);
               widget.onDataChanged();
               if (mounted) Navigator.pop(ctx);
             },

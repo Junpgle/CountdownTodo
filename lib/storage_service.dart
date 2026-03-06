@@ -531,9 +531,20 @@ class StorageService {
         CountdownItem sItem = CountdownItem.fromJson(raw);
         int index = allLocalCountdowns.indexWhere((l) => l.id.toString() == sItem.id.toString());
         if (index == -1) {
-          if (!sItem.isDeleted) { allLocalCountdowns.add(sItem); hasChanges = true; }
+          // 如果本地不存在，只有在云端未删除时才添加
+          if (!sItem.isDeleted) {
+            allLocalCountdowns.add(sItem);
+            hasChanges = true;
+          }
         } else {
-          if (sItem.version > allLocalCountdowns[index].version || sItem.updatedAt > allLocalCountdowns[index].updatedAt) {
+          // 🚀 修复：与待办项逻辑一致，特殊处理云端已删除的项
+          if (sItem.isDeleted) {
+            // 云端已删除，覆盖本地数据并标记为已删除（tombstone）
+            allLocalCountdowns[index] = sItem;
+            hasChanges = true;
+          } else if (sItem.version > allLocalCountdowns[index].version ||
+              sItem.updatedAt > allLocalCountdowns[index].updatedAt) {
+            // 云端未删除但版本更新，进行更新
             allLocalCountdowns[index] = sItem;
             hasChanges = true;
           }

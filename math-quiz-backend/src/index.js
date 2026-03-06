@@ -198,8 +198,25 @@ export default {
             const tIsDeleted = (t.is_deleted ?? t.isDeleted) ? 1 : 0;
             const tUpdatedAt = parseInt(t.updated_at ?? t.updatedAt ?? now, 10);
             const tVersion = parseInt(t.version || 1, 10);
-            const tDueDate = (t.due_date ?? t.dueDate) ? String(t.due_date ?? t.dueDate) : null;
-            const tCreatedDate = (t.created_date ?? t.createdDate) ? parseInt(t.created_date ?? t.createdDate, 10) : null; // 🚀 新增：业务开始时间
+
+            // 🚀 修复：智能解析 due_date（处理毫秒时间戳和 ISO 日期字符串两种格式）
+            let tDueDate = null;
+            const dueDateRaw = t.due_date ?? t.dueDate;
+            if (dueDateRaw) {
+              const asInt = parseInt(dueDateRaw, 10);
+              // 如果能解析为整数且位数 >= 13，则是毫秒时间戳
+              if (!isNaN(asInt) && dueDateRaw.toString().length >= 13) {
+                tDueDate = asInt;
+              } else {
+                // 否则当作 ISO 日期字符串解析
+                const dt = new Date(dueDateRaw);
+                if (!isNaN(dt.getTime())) {
+                  tDueDate = dt.getTime();
+                }
+              }
+            }
+
+            const tCreatedDate = (t.created_date ?? t.createdDate) ? parseInt(t.created_date ?? t.createdDate, 10) : null;
 
             let existing = await DB.prepare("SELECT id, version, due_date, created_date FROM todos WHERE uuid = ? AND user_id = ?").bind(tUuid, authUserId).first();
 
@@ -234,7 +251,24 @@ export default {
             // 🚀 修复点 2：倒数日同理
             const cUuid = String(c.uuid ?? c.id ?? c._id);
             const cTitle = String(c.title ?? "");
-            const cTargetTime = (c.target_time ?? c.targetTime ?? c.targetDate) ? String(c.target_time ?? c.targetTime ?? c.targetDate) : null;
+
+            // 🚀 修复：智能解析 target_time（处理毫秒时间戳和 ISO 日期字符串两种格式）
+            let cTargetTime = null;
+            const targetTimeRaw = c.target_time ?? c.targetTime ?? c.targetDate;
+            if (targetTimeRaw) {
+              const asInt = parseInt(targetTimeRaw, 10);
+              // 如果能解析为整数且位数 >= 13，则是毫秒时间戳
+              if (!isNaN(asInt) && targetTimeRaw.toString().length >= 13) {
+                cTargetTime = asInt;
+              } else {
+                // 否则当作 ISO 日期字符串解析
+                const dt = new Date(targetTimeRaw);
+                if (!isNaN(dt.getTime())) {
+                  cTargetTime = dt.getTime();
+                }
+              }
+            }
+
             const cIsDeleted = (c.is_deleted ?? c.isDeleted) ? 1 : 0;
             const cUpdatedAt = parseInt(c.updated_at ?? c.updatedAt ?? now, 10);
             const cVersion = parseInt(c.version || 1, 10);
@@ -333,7 +367,8 @@ export default {
               uuid: idStr,
               created_at: normalizeTimestamp(row.created_at),     // 物理创建时间
               updated_at: normalizeTimestamp(row.updated_at),     // 最后修改时间
-              created_date: normalizeTimestamp(row.created_date)  // 业务开始时间
+              created_date: normalizeTimestamp(row.created_date),  // 业务开始时间
+              due_date: normalizeTimestamp(row.due_date)          // 截止时间
             };
         });
 
