@@ -78,8 +78,8 @@ class NotificationService {
     final List<TodoItem> allDayTodos = todos.where((t) {
       if (t.dueDate == null) return false;
 
-      // 🚀 修复：将 int createdAt 转换为 DateTime 来进行判断
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdAt);
+      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
       bool isAllDayAttr = cDate.hour == 0 && cDate.minute == 0 &&
           t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
 
@@ -128,8 +128,8 @@ class NotificationService {
   // 2. 即将开始的特定时间待办通知 (类似课程提醒)
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
     try {
-      // 🚀 修复：转换成 DateTime 供格式化
-      String timeStr = DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdAt));
+      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+      String timeStr = DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt));
       if (todo.dueDate != null) {
         timeStr += " - ${DateFormat('HH:mm').format(todo.dueDate!)}";
       }

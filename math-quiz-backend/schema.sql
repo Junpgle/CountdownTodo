@@ -36,7 +36,8 @@ CREATE TABLE todos (
   user_id INTEGER NOT NULL,
   content TEXT NOT NULL,
   is_completed BOOLEAN DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- 🚀 记录的创建时间（物理生成时间）
+  created_date TIMESTAMP,                           -- 🚀 任务的真实开始时间（用户设定的业务时间）
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

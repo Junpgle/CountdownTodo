@@ -105,7 +105,8 @@ class TodoItem {
   bool isDeleted; // 核心：逻辑删除标记
   int version;    // 核心：并发版本号
   int updatedAt;  // 核心：最后修改时间戳 (毫秒)
-  int createdAt;  // 创建时间戳 (毫秒)
+  int createdAt;  // 🚀 真正的创建时间戳 (物理生成时间，毫秒)
+  int? createdDate; // 🚀 真正的开始时间戳 (业务逻辑设定的开始日期，毫秒)
 
   RecurrenceType recurrence;
   int? customIntervalDays;
@@ -120,6 +121,7 @@ class TodoItem {
     this.version = 1,
     int? updatedAt,
     int? createdAt,
+    this.createdDate, // 🚀 新增入参
     this.recurrence = RecurrenceType.none,
     this.customIntervalDays,
     this.recurrenceEndDate,
@@ -136,13 +138,15 @@ class TodoItem {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
+    'id': id,           // 兼容本地读取
+    'uuid': id,         // 对齐后端数据库主键
     'content': title,
     'is_completed': isDone ? 1 : 0,
     'is_deleted': isDeleted ? 1 : 0,
     'version': version,
     'updated_at': updatedAt,
-    'created_at': createdAt,
+    'created_at': createdAt,       // 🚀 物理创建时间（记录何时被添加到系统）
+    'created_date': createdDate,   // 🚀 业务开始时间（用户设定的任务开始时间）
     'recurrence': recurrence.index,
     'customIntervalDays': customIntervalDays,
     'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
@@ -150,8 +154,8 @@ class TodoItem {
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
-    // 兼容旧数据，如果没有 id 则赋予一个 UUID
-    String parsedId = json['id']?.toString() ?? const Uuid().v4();
+    // 优先读取后端的 uuid 字段，如果没有再尝试 id 字段，最后才兜底生成
+    String parsedId = json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
     if (!parsedId.contains('-')) parsedId = const Uuid().v4(); // 如果旧数据是自增ID，强制转UUID
 
     return TodoItem(
@@ -161,7 +165,13 @@ class TodoItem {
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true || json['isDeleted'] == true,
       version: json['version'] ?? 1,
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
-      createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
+      createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']), // 🚀 回归物理创建本意
+
+      // 🚀 独立解析业务开始时间，不再和 createdAt 混用
+      createdDate: (json['created_date'] != null)
+          ? _parseTimestamp(json['created_date'])
+          : ((json['createdDate'] != null) ? _parseTimestamp(json['createdDate']) : null),
+
       recurrence: RecurrenceType.values[json['recurrence'] ?? 0],
       customIntervalDays: json['customIntervalDays'],
       recurrenceEndDate: json['recurrenceEndDate'] != null ? DateTime.tryParse(json['recurrenceEndDate'].toString()) : null,
@@ -199,7 +209,8 @@ class CountdownItem {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
+    'id': id,           // 兼容本地读取
+    'uuid': id,         // 对齐后端数据库主键
     'title': title,
     'target_time': targetDate.toIso8601String(),
     'is_deleted': isDeleted ? 1 : 0,
@@ -209,7 +220,8 @@ class CountdownItem {
   };
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) {
-    String parsedId = json['id']?.toString() ?? const Uuid().v4();
+    // 优先读取后端的 uuid 字段
+    String parsedId = json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
     if (!parsedId.contains('-')) parsedId = const Uuid().v4();
 
     return CountdownItem(

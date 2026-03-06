@@ -1,7 +1,6 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
- * 终极生产级：Delta Sync (增量同步) + Versioning (并发控制) + 逻辑删除
- * 包含所有完整业务模块（注册/排榜/课表/屏幕时间等）
+ * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题 + 移除危险的同名合并逻辑
  */
 
 const SYNC_LIMITS = {
@@ -35,18 +34,6 @@ async function requireAuth(request, env) {
   return null;
 }
 
-// 🚀 全能时间解析器 (用于部分旧业务模块)
-function getTimeMs(t) {
-  if (!t) return 0;
-  if (typeof t === 'number') return t;
-  if (typeof t === 'string') {
-    if (/^\d+$/.test(t)) return parseInt(t, 10);
-    const parsed = new Date(t).getTime();
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
-}
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -77,53 +64,53 @@ export default {
       // 模块 A: 用户认证 (Auth)
       // --------------------------
       if (url.pathname === "/api/auth/register" && request.method === "POST") {
-        const body = await request.json();
-        const { email, code, username, password } = body;
+         const body = await request.json();
+         const { email, code, username, password } = body;
 
-        if (code) {
-            if (!email) return errorResponse("验证需提供邮箱");
-            const pending = await DB.prepare("SELECT * FROM pending_registrations WHERE email = ?").bind(email).first();
-            if (!pending) return errorResponse("验证请求不存在或已过期，请重新注册");
-            if (pending.code !== code.toString()) return errorResponse("验证码错误");
+         if (code) {
+             if (!email) return errorResponse("验证需提供邮箱");
+             const pending = await DB.prepare("SELECT * FROM pending_registrations WHERE email = ?").bind(email).first();
+             if (!pending) return errorResponse("验证请求不存在或已过期，请重新注册");
+             if (pending.code !== code.toString()) return errorResponse("验证码错误");
 
-            const createdTime = new Date(pending.created_at).getTime();
-            if (Date.now() - createdTime > 15 * 60 * 1000) return errorResponse("验证码已过期，请重新获取");
+             const createdTime = new Date(pending.created_at).getTime();
+             if (Date.now() - createdTime > 15 * 60 * 1000) return errorResponse("验证码已过期，请重新获取");
 
-            try {
-              await DB.prepare("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)").bind(pending.username, pending.email, pending.password_hash).run();
-              await DB.prepare("DELETE FROM pending_registrations WHERE email = ?").bind(email).run();
-              return jsonResponse({ success: true, message: "注册成功，请登录" });
-            } catch (e) {
-              if (e.message && e.message.includes("UNIQUE")) return errorResponse("该邮箱已完成注册，请直接登录");
-              throw e;
-            }
-        }
+             try {
+               await DB.prepare("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)").bind(pending.username, pending.email, pending.password_hash).run();
+               await DB.prepare("DELETE FROM pending_registrations WHERE email = ?").bind(email).run();
+               return jsonResponse({ success: true, message: "注册成功，请登录" });
+             } catch (e) {
+               if (e.message && e.message.includes("UNIQUE")) return errorResponse("该邮箱已完成注册，请直接登录");
+               throw e;
+             }
+         }
 
-        if (!username || !email || !password) return errorResponse("缺少必要字段");
-        if (!env.RESEND_API_KEY) return errorResponse("服务端未配置邮件服务", 500);
+         if (!username || !email || !password) return errorResponse("缺少必要字段");
+         if (!env.RESEND_API_KEY) return errorResponse("服务端未配置邮件服务", 500);
 
-        const existing = await DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
-        if (existing) return errorResponse("该邮箱已被注册，请直接登录");
+         const existing = await DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+         if (existing) return errorResponse("该邮箱已被注册，请直接登录");
 
-        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-        const passwordHash = await hashPassword(password);
+         const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+         const passwordHash = await hashPassword(password);
 
-        await DB.prepare("INSERT OR REPLACE INTO pending_registrations (email, username, password_hash, code) VALUES (?, ?, ?, ?)")
-          .bind(email, username, passwordHash, newCode).run();
+         await DB.prepare("INSERT OR REPLACE INTO pending_registrations (email, username, password_hash, code) VALUES (?, ?, ?, ?)")
+           .bind(email, username, passwordHash, newCode).run();
 
-        const resendResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: "Math Quiz <Math&Quiz@junpgle.me>",
-            to: email,
-            subject: "验证您的账号 - Math Quiz",
-            html: `<div style="font-family: sans-serif; padding: 20px;"><h2>欢迎注册!</h2><p>您的验证码是：</p><p style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #4F46E5;">${newCode}</p></div>`
-          })
-        });
+         const resendResponse = await fetch("https://api.resend.com/emails", {
+           method: "POST",
+           headers: { "Authorization": `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+           body: JSON.stringify({
+             from: "Math Quiz <Math&Quiz@junpgle.me>",
+             to: email,
+             subject: "验证您的账号 - Math Quiz",
+             html: `<div style="font-family: sans-serif; padding: 20px;"><h2>欢迎注册!</h2><p>您的验证码是：</p><p style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #4F46E5;">${newCode}</p></div>`
+           })
+         });
 
-        if (!resendResponse.ok) return errorResponse("验证邮件发送失败");
-        return jsonResponse({ success: true, message: "验证码已发送", require_verify: true });
+         if (!resendResponse.ok) return errorResponse("验证邮件发送失败");
+         return jsonResponse({ success: true, message: "验证码已发送", require_verify: true });
       }
 
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
@@ -147,8 +134,6 @@ export default {
         const { user_id, old_password, new_password } = await request.json();
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("无权操作此账号", 403);
 
-        if (!user_id || !old_password || !new_password) return errorResponse("缺少参数");
-
         const user = await DB.prepare("SELECT * FROM users WHERE id = ?").bind(user_id).first();
         if (!user) return errorResponse("用户不存在", 404);
 
@@ -159,22 +144,6 @@ export default {
         await DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(newHash, user_id).run();
 
         return jsonResponse({ success: true, message: "密码修改成功" });
-      }
-
-      if (url.pathname === "/api/user/status" && request.method === "GET") {
-        if (!authUserId) return errorResponse("未授权", 401);
-        const userId = url.searchParams.get("user_id");
-        if (authUserId !== parseInt(userId, 10)) return errorResponse("越权访问被拒绝", 403);
-
-        const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
-        const tier = userRow ? userRow.tier : 'free';
-        const sync_limit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
-
-        const today = new Date().toISOString().split('T')[0];
-        const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, today).first();
-        const sync_count = record ? record.sync_count : 0;
-
-        return jsonResponse({ success: true, tier: tier, sync_count: sync_count, sync_limit: sync_limit });
       }
 
       // --------------------------
@@ -196,132 +165,204 @@ export default {
       }
 
       // --------------------------
-      // 🚀 模块 C: 核心 Delta Sync (增量同步引擎)
+      // 🚀 模块 C: 核心 Delta Sync
       // --------------------------
       if (url.pathname === "/api/sync" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
 
-        const { user_id, last_sync_time = 0, device_id, todos = [], countdowns = [], screen_time } = await request.json();
+        const payload = await request.json();
+        const { user_id, last_sync_time = 0, device_id, screen_time } = payload;
+        const todos = payload.todos || payload.todosChanges || [];
+        const countdowns = payload.countdowns || payload.countdownsChanges || [];
 
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
         if (!device_id) return errorResponse("缺少 device_id", 400);
 
-        // 1. 频率与额度控制
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError === 'IGNORE') {
-            // 防风暴：距离上次同步太近，直接返回服务器时间，忽略本次合并
             return jsonResponse({ success: true, server_todos: [], server_countdowns: [], new_sync_time: now });
         } else if (limitError) {
             return errorResponse(limitError, 429);
         }
 
-        // ==========================================
-        // 第一步：处理客户端上传的增量变化 (Todos)
-        // ==========================================
-        if (Array.isArray(todos) && todos.length > 0) {
-          const statements = [];
+        const batchStatements = [];
+
+        // 1. 处理 Todos
+        if (Array.isArray(todos)) {
           for (const t of todos) {
-            const existing = await DB.prepare("SELECT version FROM todos WHERE id = ?").bind(t.id).first();
+            // 🚀 修复点 1：同时接收 uuid, id, _id 三种可能的字段格式
+            const tUuid = String(t.uuid ?? t.id ?? t._id);
+            const tContent = String(t.content ?? t.title ?? "");
+            const tIsCompleted = (t.is_completed ?? t.isCompleted ?? t.isDone) ? 1 : 0;
+            const tIsDeleted = (t.is_deleted ?? t.isDeleted) ? 1 : 0;
+            const tUpdatedAt = parseInt(t.updated_at ?? t.updatedAt ?? now, 10);
+            const tVersion = parseInt(t.version || 1, 10);
+            const tDueDate = (t.due_date ?? t.dueDate) ? String(t.due_date ?? t.dueDate) : null;
+            const tCreatedDate = (t.created_date ?? t.createdDate) ? parseInt(t.created_date ?? t.createdDate, 10) : null; // 🚀 新增：业务开始时间
+
+            let existing = await DB.prepare("SELECT id, version, due_date, created_date FROM todos WHERE uuid = ? AND user_id = ?").bind(tUuid, authUserId).first();
+
+            // 兜底策略：兼容完全没有 UUID 的上古时代旧数据
+            if (!existing) {
+              existing = await DB.prepare("SELECT id, version, due_date, created_date FROM todos WHERE user_id = ? AND content = ? AND (uuid IS NULL OR uuid = '')").bind(authUserId, tContent).first();
+            }
 
             if (!existing) {
-              // 不存在，直接插入
-              statements.push(DB.prepare(`
-                INSERT INTO todos (id, user_id, content, is_completed, is_deleted, updated_at, created_at, version, device_id, due_date)
+              // 彻底没找到，是真正的新数据
+              batchStatements.push(DB.prepare(`
+                INSERT INTO todos (uuid, user_id, content, is_completed, is_deleted, updated_at, version, device_id, due_date, created_date)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `).bind(
-                t.id, authUserId, t.content, t.is_completed ? 1 : 0, t.is_deleted ? 1 : 0,
-                t.updated_at, t.created_at, t.version || 1, device_id, t.due_date || null
-              ));
-            } else if (t.version > existing.version) {
-              // 存在且版本更高，允许覆盖
-              statements.push(DB.prepare(`
-                UPDATE todos SET content = ?, is_completed = ?, is_deleted = ?, updated_at = ?, version = ?, device_id = ?, due_date = ?
-                WHERE id = ?
-              `).bind(
-                t.content, t.is_completed ? 1 : 0, t.is_deleted ? 1 : 0, t.updated_at, t.version, device_id, t.due_date || null, t.id
-              ));
+              `).bind(tUuid, authUserId, tContent, tIsCompleted, tIsDeleted, tUpdatedAt, tVersion, device_id, tDueDate, tCreatedDate));
+            } else {
+              // 找到了老数据！执行版本 LWW (Last Write Wins) 冲突覆盖策略
+              const finalDueDate = tDueDate || existing.due_date;
+              const finalCreatedDate = tCreatedDate || existing.created_date; // 🚀 新增：保留已有的业务开始时间
+              if (tVersion > existing.version || tUpdatedAt > parseInt(existing.updated_at || 0) || !existing.uuid) {
+                  batchStatements.push(DB.prepare(`
+                    UPDATE todos SET uuid = ?, content = ?, is_completed = ?, is_deleted = ?, updated_at = ?, version = ?, device_id = ?, due_date = ?, created_date = ?
+                    WHERE id = ?
+                  `).bind(tUuid, tContent, tIsCompleted, tIsDeleted, tUpdatedAt, tVersion, device_id, finalDueDate, finalCreatedDate, existing.id));
+              }
             }
           }
-          if (statements.length > 0) await DB.batch(statements);
         }
 
-        // ==========================================
-        // 第二步：处理客户端上传的增量变化 (Countdowns)
-        // ==========================================
-        if (Array.isArray(countdowns) && countdowns.length > 0) {
-          const statements = [];
+        // 2. 处理 Countdowns
+        if (Array.isArray(countdowns)) {
           for (const c of countdowns) {
-            const existing = await DB.prepare("SELECT version FROM countdowns WHERE id = ?").bind(c.id).first();
+            // 🚀 修复点 2：倒数日同理
+            const cUuid = String(c.uuid ?? c.id ?? c._id);
+            const cTitle = String(c.title ?? "");
+            const cTargetTime = (c.target_time ?? c.targetTime ?? c.targetDate) ? String(c.target_time ?? c.targetTime ?? c.targetDate) : null;
+            const cIsDeleted = (c.is_deleted ?? c.isDeleted) ? 1 : 0;
+            const cUpdatedAt = parseInt(c.updated_at ?? c.updatedAt ?? now, 10);
+            const cVersion = parseInt(c.version || 1, 10);
+
+            let existing = await DB.prepare("SELECT id, version, target_time FROM countdowns WHERE uuid = ? AND user_id = ?").bind(cUuid, authUserId).first();
 
             if (!existing) {
-              statements.push(DB.prepare(`
-                INSERT INTO countdowns (id, user_id, title, target_time, is_deleted, updated_at, created_at, version, device_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `).bind(
-                c.id, authUserId, c.title, c.target_time, c.is_deleted ? 1 : 0,
-                c.updated_at, c.created_at, c.version || 1, device_id
-              ));
-            } else if (c.version > existing.version) {
-              statements.push(DB.prepare(`
-                UPDATE countdowns SET title = ?, target_time = ?, is_deleted = ?, updated_at = ?, version = ?, device_id = ?
-                WHERE id = ?
-              `).bind(
-                c.title, c.target_time, c.is_deleted ? 1 : 0, c.updated_at, c.version, device_id, c.id
-              ));
+               existing = await DB.prepare("SELECT id, version, target_time FROM countdowns WHERE user_id = ? AND title = ? AND (uuid IS NULL OR uuid = '')").bind(authUserId, cTitle).first();
+            }
+
+            if (!existing) {
+              batchStatements.push(DB.prepare(`
+                INSERT INTO countdowns (uuid, user_id, title, target_time, is_deleted, updated_at, version, device_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              `).bind(cUuid, authUserId, cTitle, cTargetTime, cIsDeleted, cUpdatedAt, cVersion, device_id));
+            } else {
+              const finalTargetTime = cTargetTime || existing.target_time;
+              if (cVersion > existing.version || cUpdatedAt > parseInt(existing.updated_at || 0) || !existing.uuid) {
+                  batchStatements.push(DB.prepare(`
+                    UPDATE countdowns SET uuid = ?, title = ?, target_time = ?, is_deleted = ?, updated_at = ?, version = ?, device_id = ?
+                    WHERE id = ?
+                  `).bind(cUuid, cTitle, finalTargetTime, cIsDeleted, cUpdatedAt, cVersion, device_id, existing.id));
+              }
             }
           }
-          if (statements.length > 0) await DB.batch(statements);
         }
 
-        // ==========================================
-        // 第三步：同步过程中顺便处理 Screen Time
-        // ==========================================
+        // 3. 屏幕时间
         if (screen_time && screen_time.device_name && screen_time.record_date && Array.isArray(screen_time.apps)) {
           const { device_name, record_date, apps } = screen_time;
-          const statements = apps.map(app => {
-            return DB.prepare(`
+          apps.forEach(app => {
+            batchStatements.push(DB.prepare(`
               INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
-              VALUES (?, ?, ?, ?, ?)
-              ON CONFLICT(user_id, device_name, record_date, app_name)
+              VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, device_name, record_date, app_name)
               DO UPDATE SET duration = excluded.duration, updated_at = CURRENT_TIMESTAMP
-            `).bind(user_id, device_name.trim(), record_date, app.app_name, app.duration);
+            `).bind(authUserId, device_name.trim(), record_date, app.app_name, app.duration));
           });
-          if (statements.length > 0) await DB.batch(statements);
         }
 
+        // 提交所有客户端传来的批处理操作
+        if (batchStatements.length > 0) await DB.batch(batchStatements);
+
+        // ⚠️ 删除了之前那个非常危险的服务端按名字合并(deduplicateItems)的逻辑！
+
         // ==========================================
-        // 第四步：提取服务器的新变化返回给客户端
+        // 4. 拉取最终的增量数据下发给客户端
         // ==========================================
-        // 核心：查询 updated_at > last_sync_time 的数据，并且排除当前设备刚刚上传的数据
-        const serverTodos = await DB.prepare(`
+
+        const serverTodosRaw = await DB.prepare(`
           SELECT * FROM todos
           WHERE user_id = ? AND updated_at > ? AND (device_id != ? OR device_id IS NULL)
         `).bind(authUserId, last_sync_time, device_id).all();
 
-        const serverCountdowns = await DB.prepare(`
+        const serverCountdownsRaw = await DB.prepare(`
           SELECT * FROM countdowns
           WHERE user_id = ? AND updated_at > ? AND (device_id != ? OR device_id IS NULL)
         `).bind(authUserId, last_sync_time, device_id).all();
 
-        // 提取账号状态 (用于 UI 刷新)
+        // 🚀 辅助函数：智能转换时间戳（处理毫秒时间戳和 ISO 字符串两种格式）
+        const normalizeTimestamp = (val) => {
+          if (val === null || val === undefined) return null;
+
+          // 如果已经是数字，直接返回（毫秒时间戳）
+          if (typeof val === 'number') {
+            return val;
+          }
+
+          // 如果是字符串
+          if (typeof val === 'string') {
+            // 首先尝试当作整数解析（防止 SQLite 返回字符串化的毫秒时间戳）
+            const asInt = parseInt(val, 10);
+            if (!isNaN(asInt) && asInt > 0) {
+              // 如果是一个很大的数字（13 位以上），就是毫秒时间戳
+              if (asInt.toString().length >= 13) {
+                return asInt;
+              }
+            }
+
+            // 尝试当作 ISO 8601 字符串解析（SQLite TIMESTAMP 格式）
+            const dt = new Date(val);
+            if (!isNaN(dt.getTime())) {
+              return dt.getTime();
+            }
+          }
+
+          return null;
+        };
+
+        // 🚀 修复点 3：下发时不再删除 UUID。确保下发的记录中既有 id 也有 uuid，让 Flutter 端完美兼容无缝解析
+        const mappedTodos = serverTodosRaw.results.map(row => {
+            const idStr = row.uuid || String(row.id);
+            // 🚀 修复时区问题：智能转换所有时间戳字段（处理毫秒时间戳和 ISO 字符串两种格式）
+            return {
+              ...row,
+              id: idStr,
+              uuid: idStr,
+              created_at: normalizeTimestamp(row.created_at),     // 物理创建时间
+              updated_at: normalizeTimestamp(row.updated_at),     // 最后修改时间
+              created_date: normalizeTimestamp(row.created_date)  // 业务开始时间
+            };
+        });
+
+        const mappedCountdowns = serverCountdownsRaw.results.map(row => {
+             const idStr = row.uuid || String(row.id);
+             return {
+               ...row,
+               id: idStr,
+               uuid: idStr,
+               // 🚀 修复：所有时间戳字段都要智能转换
+               created_at: normalizeTimestamp(row.created_at),
+               updated_at: normalizeTimestamp(row.updated_at),
+               target_time: normalizeTimestamp(row.target_time)
+             };
+        });
+
+        // 提取账号状态
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(authUserId).first();
         const tier = userRow ? userRow.tier : 'free';
         const syncLimit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
-
-        const today = new Date().toISOString().split('T')[0];
-        const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(authUserId, today).first();
+        const todayStr = new Date().toISOString().split('T')[0];
+        const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(authUserId, todayStr).first();
 
         return jsonResponse({
           success: true,
-          server_todos: serverTodos.results,
-          server_countdowns: serverCountdowns.results,
-          new_sync_time: now, // 核心：下发全新的时间戳
-          status: {
-             tier: tier,
-             sync_count: record ? record.sync_count : 1,
-             sync_limit: syncLimit
-          }
+          server_todos: mappedTodos,
+          server_countdowns: mappedCountdowns,
+          new_sync_time: now,
+          status: { tier, sync_count: record ? record.sync_count : 1, sync_limit: syncLimit }
         });
       }
 
@@ -330,96 +371,49 @@ export default {
       // --------------------------
       if (url.pathname === "/api/screen_time" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const body = await request.json();
-        let { user_id, device_name, record_date, apps } = body;
+        const { user_id, device_name, record_date, apps } = await request.json();
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
 
-        if (!user_id || !device_name || !record_date || !Array.isArray(apps)) return errorResponse("参数错误");
-
-        // 使用现有的时间戳判断逻辑，复用现在毫秒级的时间
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError && limitError !== 'IGNORE') return errorResponse(limitError, 429);
 
-        try {
-          const statements = apps.map(app => {
-           return DB.prepare(`
-             INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(user_id, device_name, record_date, app_name)
-             DO UPDATE SET duration = excluded.duration, updated_at = CURRENT_TIMESTAMP
-           `).bind(user_id, device_name.trim(), record_date, app.app_name, app.duration);
-          });
-          await DB.batch(statements);
-          return jsonResponse({ success: true, received_device: device_name });
-        } catch (e) {
-          return errorResponse("数据库更新失败: " + e.message, 500);
-        }
+        const batchStatements = apps.map(app => DB.prepare(`
+          INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration)
+          VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, device_name, record_date, app_name)
+          DO UPDATE SET duration = excluded.duration, updated_at = CURRENT_TIMESTAMP
+        `).bind(authUserId, device_name.trim(), record_date, app.app_name, app.duration));
+
+        if (batchStatements.length > 0) await DB.batch(batchStatements);
+        return jsonResponse({ success: true });
       }
 
       if (url.pathname === "/api/screen_time" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const userId = url.searchParams.get("user_id");
+        const date = url.searchParams.get("date");
         if (authUserId !== parseInt(userId, 10)) return errorResponse("越权访问被拒绝", 403);
 
-        const date = url.searchParams.get("date");
-        if (!userId || !date) return errorResponse("缺少参数");
-
         const { results } = await DB.prepare(`
-          SELECT
-            COALESCE(m.mapped_name, s.app_name) AS app_name,
-            COALESCE(m.category, '未分类') AS category,
-            s.device_name,
-            SUM(s.duration) AS duration
-          FROM screen_time_logs s
-          LEFT JOIN app_name_mappings m ON s.app_name = m.package_name
+          SELECT COALESCE(m.mapped_name, s.app_name) AS app_name, COALESCE(m.category, '未分类') AS category, s.device_name, SUM(s.duration) AS duration
+          FROM screen_time_logs s LEFT JOIN app_name_mappings m ON s.app_name = m.package_name
           WHERE s.user_id = ? AND s.record_date = ?
           GROUP BY COALESCE(m.mapped_name, s.app_name), COALESCE(m.category, '未分类'), s.device_name
           ORDER BY duration DESC
         `).bind(userId, date).all();
-
         return jsonResponse(results);
       }
 
       // --------------------------
-      // 模块 E: 映射与调试 (Mappings & Debug)
-      // --------------------------
-      if (url.pathname === "/api/mappings" && request.method === "GET") {
-        const { results } = await DB.prepare(`SELECT package_name, mapped_name, category FROM app_name_mappings`).all();
-        return jsonResponse(results);
-      }
-
-      if (url.pathname === "/api/debug/reset_database" && request.method === "POST") {
-        if (!authUserId) return errorResponse("未授权", 401);
-        try {
-          // 清空所有主要业务表
-          await DB.batch([
-            DB.prepare("DELETE FROM courses"),
-            DB.prepare("DELETE FROM screen_time_logs"),
-            DB.prepare("DELETE FROM countdowns"),
-            DB.prepare("DELETE FROM todos"),
-            DB.prepare("DELETE FROM leaderboard")
-            // 不删除 users, sync_limits 和 mappings
-          ]);
-          return jsonResponse({ success: true, message: "所有业务数据已重置" });
-        } catch (e) {
-          return errorResponse("重置失败", 500);
-        }
-      }
-
-      // --------------------------
-      // 模块 F: 课程表 (Courses)
+      // 模块 E: 课程表 (Courses)
       // --------------------------
       if (url.pathname === "/api/courses" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const userId = url.searchParams.get("user_id");
+        const semester = url.searchParams.get("semester") || "default";
         if (authUserId !== parseInt(userId, 10)) return errorResponse("越权访问被拒绝", 403);
 
-        const semester = url.searchParams.get("semester") || "default";
-
-        const { results } = await DB.prepare(`
-          SELECT * FROM courses WHERE user_id = ? AND semester = ? AND is_deleted = 0 ORDER BY week_index, weekday, start_time
-        `).bind(userId, semester).all();
+        const { results } = await DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND semester = ? AND is_deleted = 0 ORDER BY week_index, weekday, start_time`).bind(userId, semester).all();
         return jsonResponse(results);
       }
 
@@ -427,34 +421,18 @@ export default {
         if (!authUserId) return errorResponse("未授权", 401);
         const { user_id, courses, semester = "default" } = await request.json();
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
-        if (!Array.isArray(courses)) return errorResponse("参数错误");
 
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError && limitError !== 'IGNORE') return errorResponse(limitError, 429);
 
-        const timestamp = Date.now();
-        try {
-          const statements = [
-            DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?").bind(user_id, semester)
-          ];
-          for (const c of courses) {
-            statements.push(
-              DB.prepare(`
-                INSERT INTO courses (
-                  user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-              `).bind(
-                user_id, semester, c.course_name || '未知', c.room_name || '未知', c.teacher_name || '未知',
-                c.start_time || 0, c.end_time || 0, c.weekday || 1, c.week_index || 1, c.lesson_type || null, timestamp, timestamp
-              )
-            );
-          }
-          await DB.batch(statements);
-          return jsonResponse({ success: true, message: `成功同步 ${courses.length} 节课程` });
-        } catch (e) {
-          return errorResponse("课表同步失败: " + e.message, 500);
+        const batchStatements = [DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?").bind(user_id, semester)];
+        for (const c of courses) {
+          batchStatements.push(DB.prepare(`INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(user_id, semester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, now, now));
         }
+
+        if (batchStatements.length > 0) await DB.batch(batchStatements);
+        return jsonResponse({ success: true });
       }
 
       return errorResponse("API Endpoint Not Found", 404);
@@ -466,45 +444,28 @@ export default {
 };
 
 /**
- * 🚀 核心同步频率检查逻辑 (带有防风暴机制)
+ * 🚀 同步频率检查逻辑
  */
 async function enforceSyncLimit(userId, DB, now) {
-  if (!userId) return null;
   const today = new Date(now).toISOString().split('T')[0];
-
   try {
     const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
     const tier = userRow ? userRow.tier : 'free';
-    const MAX_SYNCS = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
+    const limit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
 
-    const record = await DB.prepare("SELECT * FROM sync_limits WHERE user_id = ?").bind(userId).first();
+    const record = await DB.prepare("SELECT * FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, today).first();
 
-    if (!record || record.sync_date !== today) {
-      await DB.prepare("INSERT OR REPLACE INTO sync_limits (user_id, sync_date, sync_count, last_sync_time) VALUES (?, ?, ?, ?)")
-        .bind(userId, today, 1, now).run();
+    if (!record) {
+      await DB.prepare("INSERT INTO sync_limits (user_id, sync_date, sync_count, last_sync_time) VALUES (?, ?, ?, ?)").bind(userId, today, 1, now).run();
       return null;
     }
 
-    const lastSyncTime = parseInt(record.last_sync_time) || 0;
-    // 🛡️ 防风暴：如果距离上次同步小于 3 秒，忽略本次同步计数
-    if (now - lastSyncTime < 3000) {
-      return 'IGNORE';
-    }
+    if (now - parseInt(record.last_sync_time) < 3000) return 'IGNORE';
+    if (record.sync_count >= limit) return `今日同步次数已达上限 (${limit}次)`;
 
-    if (record.sync_count >= MAX_SYNCS) {
-      let msg = `今日同步次数已达上限 (${MAX_SYNCS}次)，请明天再试。`;
-      if (tier === 'free') msg += " 升级为 Pro 可解锁更高额度。";
-      return msg;
-    }
-
-    await DB.prepare("UPDATE sync_limits SET sync_count = sync_count + 1, last_sync_time = ? WHERE user_id = ?")
-      .bind(now, userId).run();
-
+    await DB.prepare("UPDATE sync_limits SET sync_count = sync_count + 1, last_sync_time = ? WHERE user_id = ? AND sync_date = ?").bind(now, userId, today).run();
     return null;
-
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 async function hashPassword(password) {

@@ -15,52 +15,45 @@ class StorageService {
   static const String KEY_SETTINGS = "quiz_settings";
   // ignore: constant_identifier_names
   static const String KEY_CURRENT_USER = "current_login_user";
-
   // ignore: constant_identifier_names
   static const String KEY_TODOS = "user_todos";
   // ignore: constant_identifier_names
   static const String KEY_COUNTDOWNS = "user_countdowns";
-
   // ignore: constant_identifier_names
   static const String KEY_SCREEN_TIME_CACHE = "screen_time_cache";
   // ignore: constant_identifier_names
   static const String KEY_LAST_SCREEN_TIME_SYNC = "last_screen_time_sync";
   // ignore: constant_identifier_names
   static const String KEY_SCREEN_TIME_HISTORY = "screen_time_history";
-
   // ignore: constant_identifier_names
   static const String KEY_APP_MAPPINGS = "app_category_mappings";
   // ignore: constant_identifier_names
   static const String KEY_LAST_MAPPINGS_SYNC = "last_mappings_sync";
 
-  // 🛡️ 鉴权验证相关缓存
   static const String KEY_AUTH_TOKEN = "auth_session_token";
   static const String KEY_DEVICE_ID = "app_device_uuid";
+  static const String KEY_SYNC_INTERVAL = "app_sync_interval";
+  static const String KEY_THEME_MODE = "app_theme_mode";
+  static const String KEY_LAST_AUTO_SYNC = "last_auto_sync_time";
 
-  // 设置相关的 Key
-  static const String KEY_SYNC_INTERVAL = "app_sync_interval"; // 同步频率 (分钟)
-  static const String KEY_THEME_MODE = "app_theme_mode"; // 主题外观
-  static const String KEY_LAST_AUTO_SYNC = "last_auto_sync_time"; // 上次自动同步的时间
-
-  // 学期进度设置相关的 Key
   static const String KEY_SEMESTER_PROGRESS_ENABLED = "semester_progress_enabled";
   static const String KEY_SEMESTER_START = "semester_start_date";
   static const String KEY_SEMESTER_END = "semester_end_date";
 
   static bool _isSyncing = false;
-
-  // 全局监听主题变化的状态
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
   // ==========================================
   // 🛡️ 设备唯一标识管理
   // ==========================================
-  static Future<String> _getUniqueDeviceId() async {
+  static Future<String> _getUniqueDeviceId(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    String? deviceId = prefs.getString(KEY_DEVICE_ID);
+    // 将设备 UUID 与具体账号绑定，确保同一个账号在该设备上 UUID 恒定不变
+    String accountDeviceKey = "${KEY_DEVICE_ID}_$username";
+    String? deviceId = prefs.getString(accountDeviceKey);
     if (deviceId == null) {
       deviceId = const Uuid().v4();
-      await prefs.setString(KEY_DEVICE_ID, deviceId);
+      await prefs.setString(accountDeviceKey, deviceId);
     }
     return deviceId;
   }
@@ -97,7 +90,7 @@ class StorageService {
     await prefs.setString(KEY_CURRENT_USER, username);
     if (token != null && token.isNotEmpty) {
       await prefs.setString(KEY_AUTH_TOKEN, token);
-      ApiService.setToken(token); // 立刻向请求引擎注入 Token
+      ApiService.setToken(token);
     }
   }
 
@@ -115,7 +108,7 @@ class StorageService {
     await prefs.remove(KEY_CURRENT_USER);
     await prefs.remove(KEY_LAST_SCREEN_TIME_SYNC);
     await prefs.remove(KEY_AUTH_TOKEN);
-    ApiService.setToken(''); // 清空内存 Token
+    ApiService.setToken('');
   }
 
   static Future<void> saveSettings(Map<String, dynamic> settings) async {
@@ -221,11 +214,19 @@ class StorageService {
   }
 
   // ==========================================
-  // 本地数据读写 (自带安全验证与逻辑保留)
+  // 本地数据读写 (保留基于 ID 的基础结构安全验证)
   // ==========================================
   static Future<void> saveCountdowns(String username, List<CountdownItem> items, {bool sync = true}) async {
     final prefs = await SharedPreferences.getInstance();
-    List<String> jsonList = items.map((e) => jsonEncode(e.toJson())).toList();
+    // 🛡️ 强制 ID 唯一
+    Map<String, CountdownItem> dedupeMap = {};
+    for (var item in items) {
+      String id = item.id.toString();
+      if (!dedupeMap.containsKey(id) || item.updatedAt > dedupeMap[id]!.updatedAt) {
+        dedupeMap[id] = item;
+      }
+    }
+    List<String> jsonList = dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
     if (sync) Future.microtask(() => syncData(username));
   }
@@ -244,7 +245,18 @@ class StorageService {
 
   static Future<void> saveTodos(String username, List<TodoItem> items, {bool sync = true}) async {
     final prefs = await SharedPreferences.getInstance();
-    List<String> jsonList = items.map((e) => jsonEncode(e.toJson())).toList();
+    final Map<String, TodoItem> dedupeMap = {};
+
+    for (var item in items) {
+      final existing = dedupeMap[item.id];
+      if (existing == null || item.updatedAt > existing.updatedAt) {
+        dedupeMap[item.id] = item;
+      }
+    }
+
+    List<TodoItem> result = dedupeMap.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    List<String> jsonList = dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
     if (sync) Future.microtask(() => syncData(username));
   }
@@ -257,13 +269,18 @@ class StorageService {
     for (var e in list) {
       try {
         todos.add(TodoItem.fromJson(jsonDecode(e)));
-      } catch (err) { print("Parse Todo Error: $err"); }
+      } catch (err) {
+        print("Parse Todo Error: $err");
+      }
     }
 
-    // 🚀 保留原有的日常重置逻辑 (利用 markAsChanged() 升级版本并触发同步)
+    // 🚀 保留原有的日常重置逻辑
     DateTime now = DateTime.now();
     bool needSave = false;
+
     for (var todo in todos) {
+      if (todo.isDeleted) continue;   // ⭐ 跳过已删除
+
       if (todo.recurrenceEndDate != null && now.isAfter(todo.recurrenceEndDate!)) continue;
 
       DateTime lastUpdateDate = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
@@ -272,21 +289,38 @@ class StorageService {
       if (isNewDay) {
         if (todo.recurrence == RecurrenceType.daily) {
           todo.isDone = false;
-          todo.markAsChanged();
+
+          try {
+            todo.markAsChanged();
+          } catch (_) {
+            todo.updatedAt = DateTime.now().millisecondsSinceEpoch;
+            todo.version += 1;
+          }
+
           needSave = true;
         } else if (todo.recurrence == RecurrenceType.customDays && todo.customIntervalDays != null) {
           int diff = now.difference(lastUpdateDate).inDays;
+
           if (diff >= todo.customIntervalDays!) {
             todo.isDone = false;
-            todo.markAsChanged();
+
+            try {
+              todo.markAsChanged();
+            } catch (_) {
+              todo.updatedAt = DateTime.now().millisecondsSinceEpoch;
+              todo.version += 1;
+            }
+
             needSave = true;
           }
         }
       }
     }
-    if (needSave) await saveTodos(username, todos, sync: true);
 
-    // 注意：UI 展示时应过滤掉 isDeleted == true 的项目，这里全部返回以用于同步
+    if (needSave) {
+      await saveTodos(username, todos, sync: true);
+    }
+
     return todos;
   }
 
@@ -295,16 +329,26 @@ class StorageService {
   }
 
   // ==========================================
-  // 🚀 彻底的逻辑删除机制 (不再直接移除元素，而是标记)
+  // 🚀 彻底的逻辑删除机制
   // ==========================================
-  static Future<void> deleteTodoGlobally(String username, String idToDelete) async {
+  static Future<bool> deleteTodoGlobally(String username, String idToDelete) async {
     List<TodoItem> localTodos = await getTodos(username);
     int index = localTodos.indexWhere((t) => t.id == idToDelete);
-    if (index != -1) {
-      localTodos[index].isDeleted = true;
-      localTodos[index].markAsChanged(); // 触发 Version 升级
-      await saveTodos(username, localTodos, sync: true); // 触发增量同步
+
+    if (index == -1) return false;
+
+    localTodos[index].isDeleted = true;
+
+    try {
+      localTodos[index].markAsChanged();
+    } catch (_) {
+      localTodos[index].updatedAt = DateTime.now().millisecondsSinceEpoch;
+      localTodos[index].version += 1;
     }
+
+    await saveTodos(username, localTodos, sync: true);
+
+    return true;
   }
 
   static Future<void> deleteCountdownGlobally(String username, String idToDelete) async {
@@ -312,32 +356,28 @@ class StorageService {
     int index = localCds.indexWhere((t) => t.id == idToDelete);
     if (index != -1) {
       localCds[index].isDeleted = true;
-      localCds[index].markAsChanged();
+      try { localCds[index].markAsChanged(); } catch (_) {
+        localCds[index].updatedAt = DateTime.now().millisecondsSinceEpoch;
+        localCds[index].version += 1;
+      }
       await saveCountdowns(username, localCds, sync: true);
     }
   }
 
   // ==========================================
-  // 屏幕时间缓存机制增强
+  // 屏幕时间缓存机制
   // ==========================================
   static Future<void> saveScreenTimeCache(List<dynamic> stats) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(KEY_SCREEN_TIME_CACHE, jsonEncode(stats));
-
     String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
     String? histStr = prefs.getString(KEY_SCREEN_TIME_HISTORY);
     Map<String, dynamic> history = {};
-    if (histStr != null) {
-      try { history = jsonDecode(histStr); } catch (_) {}
-    }
-
+    if (histStr != null) { try { history = jsonDecode(histStr); } catch (_) {} }
     history[today] = stats;
-
     if (history.length > 14) {
       var keys = history.keys.toList()..sort();
-      while (history.length > 14) {
-        history.remove(keys.removeAt(0));
-      }
+      while (history.length > 14) { history.remove(keys.removeAt(0)); }
     }
     await prefs.setString(KEY_SCREEN_TIME_HISTORY, jsonEncode(history));
   }
@@ -373,21 +413,14 @@ class StorageService {
     return null;
   }
 
-  // ==========================================
-  // 应用分类映射缓存机制
-  // ==========================================
   static Future<void> syncAppMappings() async {
     final prefs = await SharedPreferences.getInstance();
     int? lastSync = prefs.getInt(KEY_LAST_MAPPINGS_SYNC);
     DateTime now = DateTime.now();
-
     if (lastSync != null) {
       DateTime lastDate = DateTime.fromMillisecondsSinceEpoch(lastSync);
-      if (now.difference(lastDate).inDays < 7) {
-        return;
-      }
+      if (now.difference(lastDate).inDays < 7) return;
     }
-
     List<dynamic> mappings = await ApiService.fetchAppMappings();
     if (mappings.isNotEmpty) {
       Map<String, String> lookupMap = {};
@@ -395,7 +428,6 @@ class StorageService {
         String pkg = item['package_name'] ?? '';
         String mapped = item['mapped_name'] ?? '';
         String cat = item['category'] ?? '未分类';
-
         if (pkg.isNotEmpty) lookupMap[pkg] = cat;
         if (mapped.isNotEmpty) lookupMap[mapped] = cat;
       }
@@ -408,15 +440,13 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     String? jsonStr = prefs.getString(KEY_APP_MAPPINGS);
     if (jsonStr != null) {
-      try {
-        return Map<String, String>.from(jsonDecode(jsonStr));
-      } catch (_) {}
+      try { return Map<String, String>.from(jsonDecode(jsonStr)); } catch (_) {}
     }
     return {};
   }
 
   // ==========================================
-  // 🚀 核心：增量同步算法 (Delta Sync)
+  // 🚀 核心：增量同步算法 (纯净版，无弹窗与自动去重)
   // ==========================================
   static Future<bool> syncData(
       String username, {
@@ -429,69 +459,35 @@ class StorageService {
     if (_isSyncing) return false;
     _isSyncing = true;
     bool hasChanges = false;
-    bool dialogClosed = false;
-
-    ValueNotifier<String> statusNotifier = ValueNotifier("准备增量同步...");
-
-    if (context != null && context.mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6.0),
-            child: Row(
-              children: [
-                const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: ValueListenableBuilder<String>(
-                    valueListenable: statusNotifier,
-                    builder: (context, val, child) => Text(val, style: const TextStyle(fontSize: 15)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
 
     try {
       final prefs = await SharedPreferences.getInstance();
       int? userId = prefs.getInt('current_user_id');
       if (userId == null) throw Exception("User not logged in");
 
-      final String deviceId = await _getUniqueDeviceId();
+      // 这里现在会将 deviceId 强制与当前 username 绑定
+      final String deviceId = await _getUniqueDeviceId(username);
       final int lastSyncTime = prefs.getInt('last_sync_time_$username') ?? 0;
 
-      // 1. 过滤出本地发生变化的数据 (脏数据)
-      statusNotifier.value = "打包增量数据...";
+      List<TodoItem> allLocalTodos = await getTodos(username);
+      List<CountdownItem> allLocalCountdowns = await getCountdowns(username);
 
-      List<TodoItem> allLocalTodos = [];
-      List<Map<String, dynamic>> dirtyTodos = [];
-      if (syncTodos) {
-        allLocalTodos = await getTodos(username);
-        dirtyTodos = allLocalTodos
-            .where((t) => t.updatedAt > lastSyncTime)
-            .map((t) => t.toJson())
-            .toList();
-      }
+      // 打包增量数据
+      List<Map<String, dynamic>> dirtyTodos = allLocalTodos
+          .where((t) =>
+      t.updatedAt > lastSyncTime ||
+          t.isDeleted == true
+      )
+          .map((t) => t.toJson()).toList();
 
-      List<CountdownItem> allLocalCountdowns = [];
-      List<Map<String, dynamic>> dirtyCountdowns = [];
-      if (syncCountdowns) {
-        allLocalCountdowns = await getCountdowns(username);
-        dirtyCountdowns = allLocalCountdowns
-            .where((c) => c.updatedAt > lastSyncTime)
-            .map((c) => c.toJson())
-            .toList();
-      }
+      List<Map<String, dynamic>> dirtyCountdowns = allLocalCountdowns
+          .where((t) =>
+      t.updatedAt > lastSyncTime ||
+          t.isDeleted == true
+      )
+          .map((c) => c.toJson()).toList();
 
-      statusNotifier.value = "与服务器对比变化...";
-
-      // 2. 发送增量请求
+      // 发送请求
       final response = await ApiService.postDeltaSync(
         userId: userId,
         lastSyncTime: lastSyncTime,
@@ -500,95 +496,80 @@ class StorageService {
         countdownsChanges: dirtyCountdowns,
       );
 
-      if (response['success'] != true) {
-        if (response['isLimitExceeded'] == true) throw Exception("LIMIT_EXCEEDED:${response['message']}");
-        throw Exception("${response['message'] ?? '发生未知错误'}");
-      }
+      if (response['success'] != true) throw Exception("${response['message'] ?? '未知错误'}");
 
-      statusNotifier.value = "合并远端数据...";
-
-      // ==========================================
-      // 3. 智能合并服务器拉取下来的变化 (LWW on Version)
-      // ==========================================
-      List<dynamic> serverTodos = response['server_todos'];
-      List<dynamic> serverCountdowns = response['server_countdowns'];
+      List<dynamic> serverTodos = response['server_todos'] ?? [];
+      List<dynamic> serverCountdowns = response['server_countdowns'] ?? [];
       int newSyncTime = response['new_sync_time'];
 
-      if (serverTodos.isNotEmpty && syncTodos) {
-        for (var raw in serverTodos) {
-          TodoItem serverItem = TodoItem.fromJson(raw);
-          int index = allLocalTodos.indexWhere((l) => l.id == serverItem.id);
-
-          if (index == -1) {
-            // 本地没有这条数据，且服务器没有删除它，则插入
-            if (!serverItem.isDeleted) allLocalTodos.add(serverItem);
+      // 合并服务器数据 (Todo)
+      for (var raw in serverTodos) {
+        TodoItem sItem = TodoItem.fromJson(raw);
+        int index = allLocalTodos.indexWhere((l) => l.id.toString() == sItem.id.toString());
+        if (index == -1) {
+          if (!sItem.isDeleted) {
+            allLocalTodos.add(sItem);
             hasChanges = true;
-          } else {
-            // 本地存在，比较版本号：服务器版本大于等于本地版本才覆盖
-            if (serverItem.version > allLocalTodos[index].version) {
-              allLocalTodos[index] = serverItem;
-              hasChanges = true;
-            }
+          }
+        } else {
+
+          if (sItem.isDeleted) {
+            allLocalTodos[index] = sItem; // tombstone
+            hasChanges = true;
+          } else if (
+          sItem.version > allLocalTodos[index].version ||
+              sItem.updatedAt > allLocalTodos[index].updatedAt) {
+
+            allLocalTodos[index] = sItem;
+            hasChanges = true;
           }
         }
       }
 
-      if (serverCountdowns.isNotEmpty && syncCountdowns) {
-        for (var raw in serverCountdowns) {
-          CountdownItem serverItem = CountdownItem.fromJson(raw);
-          int index = allLocalCountdowns.indexWhere((l) => l.id == serverItem.id);
-
-          if (index == -1) {
-            if (!serverItem.isDeleted) allLocalCountdowns.add(serverItem);
+      // 合并服务器数据 (Countdown)
+      for (var raw in serverCountdowns) {
+        CountdownItem sItem = CountdownItem.fromJson(raw);
+        int index = allLocalCountdowns.indexWhere((l) => l.id.toString() == sItem.id.toString());
+        if (index == -1) {
+          if (!sItem.isDeleted) { allLocalCountdowns.add(sItem); hasChanges = true; }
+        } else {
+          if (sItem.version > allLocalCountdowns[index].version || sItem.updatedAt > allLocalCountdowns[index].updatedAt) {
+            allLocalCountdowns[index] = sItem;
             hasChanges = true;
-          } else {
-            if (serverItem.version > allLocalCountdowns[index].version) {
-              allLocalCountdowns[index] = serverItem;
-              hasChanges = true;
-            }
           }
         }
       }
 
-      // 4. 持久化数据与最新同步时间
-      statusNotifier.value = "保存同步结果...";
-
-      // 注意此处强制静默保存，防止再次触发死循环同步
-      if (syncTodos && hasChanges) await saveTodos(username, allLocalTodos, sync: false);
-      if (syncCountdowns && hasChanges) await saveCountdowns(username, allLocalCountdowns, sync: false);
+      // 持久化保存
+      if (hasChanges) {
+        await saveTodos(username, allLocalTodos, sync: false);
+        await saveCountdowns(username, allLocalCountdowns, sync: false);
+      }
 
       await prefs.setInt('last_sync_time_$username', newSyncTime);
 
-      statusNotifier.value = "同步完成！";
-      if (context != null) await Future.delayed(const Duration(milliseconds: 400));
-
     } catch (e) {
       print("增量同步异常中断: $e");
-      if (context != null && context.mounted && !dialogClosed) {
-        Navigator.of(context, rootNavigator: true).pop();
-        dialogClosed = true;
+      if (context != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("同步异常: $e")));
       }
       rethrow;
     } finally {
       _isSyncing = false;
-      if (context != null && context.mounted && !dialogClosed) {
-        Navigator.of(context, rootNavigator: true).pop();
-        dialogClosed = true;
-      }
     }
 
     return hasChanges;
   }
 
   // ==========================================
-  // 通用配置系统 (基础环境、同步配置、学期进度)
+  // 配置系统保留不变
   // ==========================================
   static Future<void> saveAppSetting(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
     if (value is int) await prefs.setInt(key, value);
     if (value is String) await prefs.setString(key, value);
     if (value is bool) await prefs.setBool(key, value);
+    if (key == KEY_THEME_MODE) themeNotifier.value = value;
   }
 
   static Future<int> getSyncInterval() async {

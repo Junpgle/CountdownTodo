@@ -41,7 +41,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
       return d.isBefore(today);
     } else {
       // 🚀 修复：createdAt 现在是 int 毫秒时间戳，需要先转换为 DateTime
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdAt);
+      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
       DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
     }
@@ -67,11 +68,35 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
   }
 
   Future<void> _deleteItem(TodoItem item) async {
-    // 🚀 调用统一的全局逻辑删除，触发 Delta Sync 增量同步
-    await StorageService.deleteTodoGlobally(widget.username, item.id);
-    _loadData();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移至回收站')));
+    try {
+      // 1️⃣ 先调用服务器逻辑删除
+      await StorageService.deleteTodoGlobally(widget.username, item.id);
+
+      // 2️⃣ 本地标记删除
+      final allTodos = await StorageService.getTodos(widget.username);
+      final index = allTodos.indexWhere((t) => t.id == item.id);
+
+      if (index != -1) {
+        allTodos[index].isDeleted = true;
+        allTodos[index].markAsChanged(); // 更新 updatedAt
+
+        await StorageService.saveTodos(widget.username, allTodos, sync: true);
+      }
+
+      // 3️⃣ 更新 UI
+      await _loadData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已移至回收站')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('删除失败，请稍后再试')),
+        );
+      }
     }
   }
 

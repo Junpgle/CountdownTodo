@@ -69,7 +69,8 @@ class WidgetService {
 
     // 辅助函数：判断待办是否与今天相关 (创建在今天 或 截止在今天，甚至跨越今天)
     bool isTodayRelevant(TodoItem todo) {
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
+      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
       if (todo.dueDate != null) {
         DateTime dueDateStart = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
         // 🚀 修复：将 createdAt int 转为 DateTime 做比较

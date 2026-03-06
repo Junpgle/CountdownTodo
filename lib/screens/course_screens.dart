@@ -107,7 +107,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     DateTime currentWeekMondayStart = DateTime(currentWeekMonday.year, currentWeekMonday.month, currentWeekMonday.day);
 
     for (var todo in _allTodos) {
-      DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
+      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+      DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
       DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
       bool isAllDayFlag = todo.dueDate != null &&
@@ -203,7 +204,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                                 return ListTile(
                                   leading: Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, color: todo.isDone ? Colors.green : Colors.amber),
                                   title: Text(todo.title, style: TextStyle(decoration: todo.isDone ? TextDecoration.lineThrough : null)),
-                                  subtitle: Text("开始: ${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdAt))}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
+                                  // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+                                  subtitle: Text("开始: ${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt))}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
                                   onTap: () {
                                     Navigator.pop(ctx);
                                     Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)));
@@ -382,7 +384,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var todo in _intraDayTodosPerDay[weekday]!) {
-          DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
+          // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+          DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
           DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
           double top = _timeToY(start.hour, start.minute, minuteHeight);
@@ -700,7 +703,8 @@ class TodoDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
+    // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
     bool isAllDay = todo.dueDate != null &&
         createdAt.hour == 0 && createdAt.minute == 0 &&
         todo.dueDate!.hour == 23 && todo.dueDate!.minute == 59;

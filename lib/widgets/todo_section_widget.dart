@@ -58,7 +58,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
       return d.isBefore(today);
     } else {
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdAt);
+      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt);
       DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
     }
@@ -182,7 +183,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     customIntervalDays: customDays,
                     recurrenceEndDate: recurrenceEndDate,
                     dueDate: dueDate,
-                    createdAt: createdAt.millisecondsSinceEpoch,
+                    createdDate: createdAt.millisecondsSinceEpoch, // 🚀 修正：业务开始时间
                   );
                   List<TodoItem> updatedList = List.from(widget.todos)..insert(0, newTodo);
                   widget.onTodosChanged(updatedList);
@@ -199,7 +200,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
   void _editTodo(TodoItem todo) {
     TextEditingController titleCtrl = TextEditingController(text: todo.title);
-    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
+    // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
     DateTime? dueDate = todo.dueDate;
     RecurrenceType recurrence = todo.recurrence;
     int? customDays = todo.customIntervalDays;
@@ -311,7 +313,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               onPressed: () {
                 if (titleCtrl.text.isNotEmpty) {
                   todo.title = titleCtrl.text;
-                  todo.createdAt = createdAt.millisecondsSinceEpoch;
+                  todo.createdDate = createdAt.millisecondsSinceEpoch; // 🚀 修正：更新业务开始时间
                   todo.dueDate = dueDate;
                   todo.recurrence = recurrence;
                   todo.customIntervalDays = customDays;
@@ -351,7 +353,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     );
 
     String dateStr = "";
-    DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
+    // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+    DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
     if (todo.dueDate != null) {
       String dueDateStr = DateFormat('MM-dd HH:mm').format(todo.dueDate!);
       String createDateStr = DateFormat('MM-dd HH:mm').format(cDate);
@@ -440,27 +443,38 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         _todoKeys.remove('drag_${todo.id}');
         _todoKeys.remove('dismiss_${todo.id}');
 
-        String idToDelete = todo.id;
-        List<TodoItem> updatedList = List.from(widget.todos)..removeWhere((t) => t.id == todo.id);
-
         try {
+          // 1️⃣ 先调用全局删除（服务器 + 本地）
+          await StorageService.deleteTodoGlobally(widget.username, todo.id);
+
+          // 2️⃣ UI更新
+          List<TodoItem> updatedList =
+          List.from(widget.todos)..removeWhere((t) => t.id == todo.id);
+
+          widget.onTodosChanged(updatedList);
+
+          // 3️⃣ 写入回收站（仅用于UI恢复）
           final prefs = await SharedPreferences.getInstance();
           final String key = 'deleted_todos_${widget.username}';
+
           List<TodoItem> deleted = [];
           String? str = prefs.getString(key);
-          if (str != null) {
-            deleted = (jsonDecode(str) as Iterable).map((e) => TodoItem.fromJson(e)).toList();
-          }
-          todo.markAsChanged();
-          todo.isDeleted = true;
-          deleted.insert(0, todo);
-          await prefs.setString(key, jsonEncode(deleted.map((e) => e.toJson()).toList()));
-        } catch (e) {
-          debugPrint("保存至回收站失败: $e");
-        }
 
-        await StorageService.deleteTodoGlobally(widget.username, idToDelete);
-        widget.onTodosChanged(updatedList);
+          if (str != null) {
+            deleted = (jsonDecode(str) as Iterable)
+                .map((e) => TodoItem.fromJson(e))
+                .toList();
+          }
+
+          deleted.insert(0, todo);
+
+          await prefs.setString(
+            key,
+            jsonEncode(deleted.map((e) => e.toJson()).toList()),
+          );
+        } catch (e) {
+          debugPrint("删除失败: $e");
+        }
       },
       child: Card(
         elevation: 0,
@@ -488,7 +502,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   }
 
   Widget _buildTodoList() {
-    if (widget.todos.where((t) => !_isHistoricalTodo(t)).isEmpty) return EmptyState(text: "暂无待办", isLight: widget.isLight);
+    if (widget.todos.where((t) => !t.isDeleted && !_isHistoricalTodo(t)).isEmpty) return EmptyState(text: "暂无待办", isLight: widget.isLight);
 
     List<TodoItem> pastTodos = [];
     List<TodoItem> todayTodos = [];
@@ -499,6 +513,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
     for (var t in widget.todos) {
       if (_isHistoricalTodo(t)) continue;
+      if (t.isDeleted) continue;   // ← 关键
 
       if (t.dueDate != null) {
         DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
@@ -622,7 +637,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       double calculateProgress(TodoItem todo) {
         DateTime start;
         DateTime end;
-        DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdAt);
+        // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
+        DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt);
         if (todo.dueDate != null) {
           start = cDate;
           end = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day, todo.dueDate!.hour, todo.dueDate!.minute, 59);
