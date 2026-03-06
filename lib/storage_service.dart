@@ -430,7 +430,7 @@ class StorageService {
           'content': t.title,
           'is_completed': t.isDone,
           'is_deleted': false,
-          'client_updated_at': t.lastUpdated.millisecondsSinceEpoch,
+          'updated_at': t.lastUpdated.millisecondsSinceEpoch,
           'due_date': t.dueDate?.toIso8601String(),
           'created_date': t.createdAt.toIso8601String(),
         }).toList();
@@ -444,7 +444,7 @@ class StorageService {
         countdownPayload = localCountdowns.map((c) => {
           'title': c.title,
           'target_time': c.targetDate.toIso8601String(),
-          'client_updated_at': c.lastUpdated.millisecondsSinceEpoch,
+          'updated_at': c.lastUpdated.millisecondsSinceEpoch,
           'is_deleted': false,
         }).toList();
       }
@@ -499,7 +499,7 @@ class StorageService {
           try {
             if (cloudTodoMap.containsKey(local.title)) {
               var cloud = cloudTodoMap[local.title];
-              DateTime cloudTime = _parseCloudTime(cloud['updated_at'] ?? cloud['created_at']);
+              DateTime cloudTime = _parseCloudTime(cloud['updated_at']);
               bool isCloudDeleted = (cloud['is_deleted'] == 1 || cloud['is_deleted'] == true);
 
               if (cloudTime.isAfter(local.lastUpdated)) {

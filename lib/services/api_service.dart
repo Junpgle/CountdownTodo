@@ -135,7 +135,7 @@ class ApiService {
           'user_id': userId,
           'content': content,
           'is_completed': isCompleted,
-          'client_updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+          'updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
           'due_date': dueDate,
           'created_date': createdDate,
         }),
@@ -152,7 +152,7 @@ class ApiService {
         body: jsonEncode({
           'id': id,
           'is_completed': isCompleted,
-          'client_updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+          'updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
         }),
       );
       return response.statusCode == 200;
@@ -168,7 +168,7 @@ class ApiService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'id': id,
-          'client_updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+          'updated_at': timestamp ?? DateTime.now().millisecondsSinceEpoch,
         }),
       );
       return response.statusCode == 200;
@@ -198,7 +198,7 @@ class ApiService {
           'user_id': userId,
           'title': title,
           'target_time': targetTime.toIso8601String(),
-          'client_updated_at': lastUpdatedMs,
+          'updated_at': lastUpdatedMs,
         }),
       );
       return response.statusCode == 200;
@@ -212,7 +212,7 @@ class ApiService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'id': id,
-          'client_updated_at': DateTime.now().millisecondsSinceEpoch,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
         }),
       );
       return response.statusCode == 200;
@@ -300,21 +300,21 @@ class ApiService {
       // 🚀 核心修复：强制清洗来自本地存储的数据，确保发给后端的时间全部是规范的毫秒级 Int 格式
       final sanitizedTodos = todos.map((t) {
         final newT = Map<String, dynamic>.from(t);
-        if (newT['client_updated_at'] is String) {
+        if (newT['updated_at'] is String) {
           // 如果传入的是类似 "2026-03-05..." 的字符串，尝试解析转换
-          newT['client_updated_at'] = DateTime.tryParse(newT['client_updated_at'])?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
-        } else if (newT['client_updated_at'] == null) {
-          newT['client_updated_at'] = DateTime.now().millisecondsSinceEpoch;
+          newT['updated_at'] = DateTime.tryParse(newT['updated_at'])?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+        } else if (newT['updated_at'] == null) {
+          newT['updated_at'] = DateTime.now().millisecondsSinceEpoch;
         }
         return newT;
       }).toList();
 
       final sanitizedCountdowns = countdowns.map((c) {
         final newC = Map<String, dynamic>.from(c);
-        if (newC['client_updated_at'] is String) {
-          newC['client_updated_at'] = DateTime.tryParse(newC['client_updated_at'])?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
-        } else if (newC['client_updated_at'] == null) {
-          newC['client_updated_at'] = DateTime.now().millisecondsSinceEpoch;
+        if (newC['updated_at'] is String) {
+          newC['updated_at'] = DateTime.tryParse(newC['updated_at'])?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+        } else if (newC['updated_at'] == null) {
+          newC['updated_at'] = DateTime.now().millisecondsSinceEpoch;
         }
         return newC;
       }).toList();

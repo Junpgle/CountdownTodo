@@ -178,12 +178,12 @@ export default {
       }
 
       if (url.pathname === "/api/todos" && request.method === "POST") {
-        const { user_id, content, is_completed, client_updated_at, due_date, created_date } = await request.json();
+        const { user_id, content, is_completed, updated_at, due_date, created_date } = await request.json();
 
         const limitError = await enforceSyncLimit(user_id, DB);
         if (limitError) return errorResponse(limitError, 429);
 
-        const timestamp = client_updated_at || Date.now();
+        const timestamp = updated_at || Date.now();
         const completedVal = is_completed ? 1 : 0;
 
         const existing = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND content = ?").bind(user_id, content).first();
@@ -230,12 +230,12 @@ export default {
       }
 
       if (url.pathname === "/api/countdowns" && request.method === "POST") {
-        const { user_id, title, target_time, client_updated_at } = await request.json();
+        const { user_id, title, target_time, updated_at } = await request.json();
 
         const limitError = await enforceSyncLimit(user_id, DB);
         if (limitError) return errorResponse(limitError, 429);
 
-        const timestamp = client_updated_at || Date.now();
+        const timestamp = updated_at || Date.now();
 
         const existing = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ? AND title = ?").bind(user_id, title).first();
 
@@ -256,8 +256,8 @@ export default {
       }
 
       if (url.pathname === "/api/countdowns" && request.method === "DELETE") {
-        const { id, client_updated_at } = await request.json();
-        const timestamp = client_updated_at || Date.now();
+        const { id, updated_at } = await request.json();
+        const timestamp = updated_at || Date.now();
         await DB.prepare("UPDATE countdowns SET is_deleted = 1, updated_at = ? WHERE id = ?")
           .bind(timestamp, id).run();
         return jsonResponse({ success: true });
@@ -405,7 +405,7 @@ export default {
         // 1. 批量处理 Todos
         if (Array.isArray(todos)) {
           for (const t of todos) {
-            const timestamp = t.client_updated_at || Date.now();
+            const timestamp = t.updated_at || Date.now();
             const completedVal = t.is_completed ? 1 : 0;
             const deletedVal = t.is_deleted ? 1 : 0;
             const existing = await DB.prepare("SELECT * FROM todos WHERE user_id = ? AND content = ?").bind(user_id, t.content).first();
@@ -426,7 +426,7 @@ export default {
         // 2. 批量处理 Countdowns
         if (Array.isArray(countdowns)) {
           for (const c of countdowns) {
-            const timestamp = c.client_updated_at || Date.now();
+            const timestamp = c.updated_at || Date.now();
             const deletedVal = c.is_deleted ? 1 : 0;
             const existing = await DB.prepare("SELECT * FROM countdowns WHERE user_id = ? AND title = ?").bind(user_id, c.title).first();
 
