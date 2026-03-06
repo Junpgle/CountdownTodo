@@ -203,13 +203,14 @@ export default {
             let tDueDate = null;
             const dueDateRaw = t.due_date ?? t.dueDate;
             if (dueDateRaw) {
-              const asInt = parseInt(dueDateRaw, 10);
-              // 如果能解析为整数且位数 >= 13，则是毫秒时间戳
-              if (!isNaN(asInt) && dueDateRaw.toString().length >= 13) {
+              const dueDateStr = String(dueDateRaw);
+              const asInt = parseInt(dueDateStr, 10);
+              // 如果能解析为整数且原始字符串长度 >= 13，则是毫秒时间戳
+              if (!isNaN(asInt) && dueDateStr.length >= 13) {
                 tDueDate = asInt;
               } else {
                 // 否则当作 ISO 日期字符串解析
-                const dt = new Date(dueDateRaw);
+                const dt = new Date(dueDateStr);
                 if (!isNaN(dt.getTime())) {
                   tDueDate = dt.getTime();
                 }
@@ -256,13 +257,14 @@ export default {
             let cTargetTime = null;
             const targetTimeRaw = c.target_time ?? c.targetTime ?? c.targetDate;
             if (targetTimeRaw) {
-              const asInt = parseInt(targetTimeRaw, 10);
-              // 如果能解析为整数且位数 >= 13，则是毫秒时间戳
-              if (!isNaN(asInt) && targetTimeRaw.toString().length >= 13) {
+              const targetTimeStr = String(targetTimeRaw);
+              const asInt = parseInt(targetTimeStr, 10);
+              // 如果能解析为整数且原始字符串长度 >= 13，则是毫秒时间戳
+              if (!isNaN(asInt) && targetTimeStr.length >= 13) {
                 cTargetTime = asInt;
               } else {
                 // 否则当作 ISO 日期字符串解析
-                const dt = new Date(targetTimeRaw);
+                const dt = new Date(targetTimeStr);
                 if (!isNaN(dt.getTime())) {
                   cTargetTime = dt.getTime();
                 }

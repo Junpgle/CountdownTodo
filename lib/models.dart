@@ -149,8 +149,8 @@ class TodoItem {
     'created_date': createdDate,   // 🚀 业务开始时间（用户设定的任务开始时间）
     'recurrence': recurrence.index,
     'customIntervalDays': customIntervalDays,
-    'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
-    'due_date': dueDate?.toIso8601String(),
+    'recurrenceEndDate': recurrenceEndDate?.millisecondsSinceEpoch,  // 🚀 修复：发送毫秒时间戳
+    'due_date': dueDate?.millisecondsSinceEpoch,  // 🚀 修复：发送毫秒时间戳
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -214,7 +214,7 @@ class CountdownItem {
     'id': id,           // 兼容本地读取
     'uuid': id,         // 对齐后端数据库主键
     'title': title,
-    'target_time': targetDate.toIso8601String(),
+    'target_time': targetDate.millisecondsSinceEpoch,  // 🚀 修复：发送毫秒时间戳而不是 ISO 字符串
     'is_deleted': isDeleted ? 1 : 0,
     'version': version,
     'updated_at': updatedAt,
