@@ -149,8 +149,8 @@ class TodoItem {
     'created_date': createdDate,   // 🚀 业务开始时间（用户设定的任务开始时间）
     'recurrence': recurrence.index,
     'customIntervalDays': customIntervalDays,
-    'recurrenceEndDate': recurrenceEndDate?.millisecondsSinceEpoch,  // 🚀 修复：发送毫秒时间戳
-    'due_date': dueDate?.millisecondsSinceEpoch,  // 🚀 修复：发送毫秒时间戳
+    'recurrenceEndDate': recurrenceEndDate?.toLocal().millisecondsSinceEpoch,
+    'due_date': dueDate?.toLocal().millisecondsSinceEpoch,
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -214,7 +214,7 @@ class CountdownItem {
     'id': id,           // 兼容本地读取
     'uuid': id,         // 对齐后端数据库主键
     'title': title,
-    'target_time': targetDate.millisecondsSinceEpoch,  // 🚀 修复：发送毫秒时间戳而不是 ISO 字符串
+    'target_time': targetDate.toLocal().millisecondsSinceEpoch,  // 🚀 修复：始终用本地时间的 epoch
     'is_deleted': isDeleted ? 1 : 0,
     'version': version,
     'updated_at': updatedAt,
@@ -230,7 +230,9 @@ class CountdownItem {
       id: parsedId,
       title: json['title'] ?? '',
       // 🚀 修复：正确解析 targetDate（可能是毫秒时间戳或 ISO 字符串）
-      targetDate: _parseDateField(json['target_time'] ?? json['targetDate']) ?? DateTime.now(),
+      // null/0 均视为无效，fallback 到明天（避免把 target_time=0 的旧脏数据当成今日倒计时）
+      targetDate: _parseDateField(json['target_time'] ?? json['targetDate']) ??
+          DateTime.now().add(const Duration(days: 1)),
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true || json['isDeleted'] == true,
       version: json['version'] ?? 1,
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
@@ -254,33 +256,42 @@ int _parseTimestamp(dynamic val) {
 }
 
 // 🛡️ 日期字段安全解析器（处理毫秒时间戳和 ISO 字符串两种格式）
+// 始终返回本地时区的 DateTime，确保显示时不会出现时区偏差
 DateTime? _parseDateField(dynamic val) {
   if (val == null) return null;
 
-  // 如果是整数，当作毫秒时间戳处理
+  // 如果是整数，当作毫秒时间戳处理（0 视为无效）
   if (val is int) {
-    return DateTime.fromMillisecondsSinceEpoch(val);
+    if (val <= 0) return null;
+    // fromMillisecondsSinceEpoch 默认 isUtc=false，即本地时间，正确
+    return DateTime.fromMillisecondsSinceEpoch(val, isUtc: false);
   }
 
   // 如果是浮点数，转为整数后当作毫秒时间戳处理
   if (val is double) {
-    return DateTime.fromMillisecondsSinceEpoch(val.toInt());
+    final ms = val.toInt();
+    if (ms <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: false);
   }
 
   // 如果是字符串
   if (val is String) {
+    if (val.isEmpty || val == 'null') return null;
     // 首先尝试当作毫秒时间戳（纯数字字符串）
     int? asInt = int.tryParse(val);
-    if (asInt != null && asInt > 0) {
+    if (asInt != null) {
+      if (asInt <= 0) return null;
       // 如果是一个很大的数字（13 位以上），就是毫秒时间戳
       if (val.length >= 13) {
-        return DateTime.fromMillisecondsSinceEpoch(asInt);
+        return DateTime.fromMillisecondsSinceEpoch(asInt, isUtc: false);
       }
     }
 
-    // 尝试当作 ISO 8601 字符串解析
+    // 尝试当作 ISO 8601 字符串解析，强制转为本地时间
+    // DateTime.tryParse 对带 Z 或 +00:00 的字符串会返回 UTC DateTime
+    // 必须 .toLocal() 保证后续 DateFormat.format() 按本地时间显示
     DateTime? dt = DateTime.tryParse(val);
-    if (dt != null) return dt;
+    if (dt != null) return dt.toLocal();
   }
 
   return null;

@@ -39,11 +39,16 @@ function normalizeToMs(val) {
   if (val === null || val === undefined) return 0;
   if (typeof val === 'number') return val;
   if (typeof val === 'string') {
-    const asInt = parseInt(val, 10);
-    // 纯数字字符串且 >= 13 位 → 毫秒时间戳
-    if (!isNaN(asInt) && String(asInt) === val.trim() && val.trim().length >= 13) return asInt;
-    // 否则尝试当 ISO / SQLite TIMESTAMP 字符串解析
-    const dt = new Date(val);
+    const trimmed = val.trim();
+    const asInt = parseInt(trimmed, 10);
+    // 纯数字字符串且 >= 13 位 → 毫秒时间戳，直接返回
+    if (!isNaN(asInt) && String(asInt) === trimmed && trimmed.length >= 13) return asInt;
+    // ISO / SQLite TIMESTAMP 字符串：
+    // 如果不含时区标识（Z / +XX:XX / -XX:XX），说明是本地存储的时间（应按 UTC+8 解析）
+    // 否则 new Date() 会把它当 UTC，导致 +8h 偏差
+    const hasTimezone = trimmed.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(trimmed);
+    const parseStr = hasTimezone ? trimmed : trimmed.replace(' ', 'T') + '+08:00';
+    const dt = new Date(parseStr);
     if (!isNaN(dt.getTime())) return dt.getTime();
   }
   return 0;
@@ -222,19 +227,30 @@ export default {
             if (dueDateRaw) {
               const dueDateStr = String(dueDateRaw);
               const asInt = parseInt(dueDateStr, 10);
-              // 如果能解析为整数且原始字符串长度 >= 13，则是毫秒时间戳
               if (!isNaN(asInt) && dueDateStr.length >= 13) {
                 tDueDate = asInt;
               } else {
-                // 否则当作 ISO 日期字符串解析
-                const dt = new Date(dueDateStr);
-                if (!isNaN(dt.getTime())) {
-                  tDueDate = dt.getTime();
-                }
+                // 无时区标识的字符串视为 CST (UTC+8)
+                const hasTimezone = dueDateStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(dueDateStr);
+                const parseStr = hasTimezone ? dueDateStr : dueDateStr.replace(' ', 'T') + '+08:00';
+                const dt = new Date(parseStr);
+                if (!isNaN(dt.getTime())) tDueDate = dt.getTime();
               }
             }
 
-            const tCreatedDate = (t.created_date ?? t.createdDate) ? parseInt(t.created_date ?? t.createdDate, 10) : null;
+            // 🚀 修复：created_date 与 due_date 使用相同的健壮解析逻辑，防止 ISO 字符串被当 UTC 解析
+            let tCreatedDate = null;
+            const createdDateRaw = t.created_date ?? t.createdDate;
+            if (createdDateRaw !== null && createdDateRaw !== undefined) {
+              const createdDateStr = String(createdDateRaw);
+              const asInt = parseInt(createdDateStr, 10);
+              if (!isNaN(asInt) && createdDateStr.length >= 13) {
+                tCreatedDate = asInt;
+              } else {
+                const dt = new Date(createdDateStr);
+                if (!isNaN(dt.getTime())) tCreatedDate = dt.getTime();
+              }
+            }
 
             let existing = await DB.prepare("SELECT id, version, due_date, created_date, updated_at FROM todos WHERE uuid = ? AND user_id = ?").bind(tUuid, authUserId).first();
 
@@ -278,15 +294,14 @@ export default {
             if (targetTimeRaw) {
               const targetTimeStr = String(targetTimeRaw);
               const asInt = parseInt(targetTimeStr, 10);
-              // 如果能解析为整数且原始字符串长度 >= 13，则是毫秒时间戳
               if (!isNaN(asInt) && targetTimeStr.length >= 13) {
                 cTargetTime = asInt;
               } else {
-                // 否则当作 ISO 日期字符串解析
-                const dt = new Date(targetTimeStr);
-                if (!isNaN(dt.getTime())) {
-                  cTargetTime = dt.getTime();
-                }
+                // 无时区标识的字符串视为 CST (UTC+8)
+                const hasTimezone = targetTimeStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(targetTimeStr);
+                const parseStr = hasTimezone ? targetTimeStr : targetTimeStr.replace(' ', 'T') + '+08:00';
+                const dt = new Date(parseStr);
+                if (!isNaN(dt.getTime())) cTargetTime = dt.getTime();
               }
             }
 
@@ -359,6 +374,12 @@ export default {
 
         // 🔧 用全局 normalizeToMs 在 JS 层做 updated_at 过滤，彻底绕开字符串/数字混比问题
         const normalizeTimestamp = (val) => normalizeToMs(val);
+        // 🔧 可空时间字段：null/undefined/0 统一返回 null，避免 Flutter 端把 0 解析成 1970-01-01
+        const nullableTimestamp = (val) => {
+          if (val === null || val === undefined) return null;
+          const ms = normalizeToMs(val);
+          return ms > 0 ? ms : null;
+        };
 
         // 🔧 在 JS 层过滤：只下发 updated_at > last_sync_time 的增量记录
         const filteredTodos = serverTodosRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
@@ -367,15 +388,14 @@ export default {
         // 🚀 修复点 3：下发时不再删除 UUID。确保下发的记录中既有 id 也有 uuid，让 Flutter 端完美兼容无缝解析
         const mappedTodos = filteredTodos.map(row => {
             const idStr = row.uuid || String(row.id);
-            // 🚀 修复时区问题：智能转换所有时间戳字段（处理毫秒时间戳和 ISO 字符串两种格式）
             return {
               ...row,
               id: idStr,
               uuid: idStr,
-              created_at: normalizeTimestamp(row.created_at),     // 物理创建时间
-              updated_at: normalizeTimestamp(row.updated_at),     // 最后修改时间
-              created_date: normalizeTimestamp(row.created_date),  // 业务开始时间
-              due_date: normalizeTimestamp(row.due_date)          // 截止时间
+              created_at: normalizeTimestamp(row.created_at),      // 物理创建时间（必有值）
+              updated_at: normalizeTimestamp(row.updated_at),      // 最后修改时间（必有值）
+              created_date: nullableTimestamp(row.created_date),   // 业务开始时间（可为 null）
+              due_date: nullableTimestamp(row.due_date)            // 截止时间（可为 null）
             };
         });
 
@@ -385,10 +405,9 @@ export default {
                ...row,
                id: idStr,
                uuid: idStr,
-               // 🚀 修复：所有时间戳字段都要智能转换
                created_at: normalizeTimestamp(row.created_at),
                updated_at: normalizeTimestamp(row.updated_at),
-               target_time: normalizeTimestamp(row.target_time)
+               target_time: nullableTimestamp(row.target_time)     // target_time 异常时不能降级成 0/1970 年
              };
         });
 
