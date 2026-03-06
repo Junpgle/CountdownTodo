@@ -20,6 +20,7 @@ import '../update_service.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import 'login_screen.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 // 引入课程数据服务来处理导入和通知测试
 import '../services/course_service.dart';
@@ -66,12 +67,143 @@ class _SettingsPageState extends State<SettingsPage> {
   double _syncProgress = 0.0;
   bool _isLoadingStatus = true;
 
+  // 权限状态：key → PermissionStatus（null 表示还未检查）
+  final Map<String, PermissionStatus?> _permissionStatuses = {};
+  bool _isCheckingPermissions = false;
+
+  // 所有应用权限的元数据定义
+  static const List<Map<String, dynamic>> _permissionDefs = [
+    {
+      'key': 'notification',
+      'label': '通知',
+      'desc': '课程提醒、待办闹钟、下载进度推送',
+      'icon': Icons.notifications_outlined,
+      'color': Colors.blue,
+      'critical': true,
+    },
+    {
+      'key': 'storage',
+      'label': '存储读写',
+      'desc': '导入课表文件、下载版本更新安装包',
+      'icon': Icons.folder_outlined,
+      'color': Colors.orange,
+      'critical': false,
+    },
+    {
+      'key': 'usage_stats',
+      'label': '应用使用情况',
+      'desc': '屏幕时间统计功能（统计各 App 使用时长）',
+      'icon': Icons.bar_chart_outlined,
+      'color': Colors.purple,
+      'critical': false,
+    },
+    {
+      'key': 'request_install',
+      'label': '安装未知来源应用',
+      'desc': '允许应用内直接安装版本更新包',
+      'icon': Icons.install_mobile_outlined,
+      'color': Colors.teal,
+      'critical': false,
+    },
+  ];
+
+  Future<void> _checkAllPermissions() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    setState(() => _isCheckingPermissions = true);
+
+    final Map<String, PermissionStatus> results = {};
+
+    // 通知权限
+    results['notification'] = await Permission.notification.status;
+
+    // 存储权限（Android 13+ 用 photos/videos，低版本用 storage）
+    if (Platform.isAndroid) {
+      final storageStatus = await Permission.storage.status;
+      // manageExternalStorage 更准确地反映文件访问能力
+      final manageStatus = await Permission.manageExternalStorage.status;
+      results['storage'] = (storageStatus.isGranted || manageStatus.isGranted)
+          ? PermissionStatus.granted
+          : storageStatus;
+    } else {
+      results['storage'] = await Permission.storage.status;
+    }
+
+    // 应用使用情况（Android only，通过 MethodChannel 检查）
+    if (Platform.isAndroid) {
+      try {
+        final bool hasUsage = await platform.invokeMethod('checkUsageStatsPermission') ?? false;
+        results['usage_stats'] = hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
+      } catch (_) {
+        results['usage_stats'] = PermissionStatus.denied;
+      }
+    } else {
+      results['usage_stats'] = PermissionStatus.granted; // iOS 不需要
+    }
+
+    // 安装未知来源
+    if (Platform.isAndroid) {
+      results['request_install'] = await Permission.requestInstallPackages.status;
+    } else {
+      results['request_install'] = PermissionStatus.granted;
+    }
+
+    if (mounted) {
+      setState(() {
+        for (final entry in results.entries) {
+          _permissionStatuses[entry.key] = entry.value;
+        }
+        _isCheckingPermissions = false;
+      });
+    }
+  }
+
+  Future<void> _requestOrOpenPermission(String key) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+
+    switch (key) {
+      case 'notification':
+        final status = await Permission.notification.request();
+        if (status.isPermanentlyDenied) await openAppSettings();
+        break;
+      case 'storage':
+        if (Platform.isAndroid) {
+          final status = await Permission.manageExternalStorage.request();
+          if (status.isPermanentlyDenied || status.isDenied) {
+            await openAppSettings();
+          }
+        } else {
+          final status = await Permission.storage.request();
+          if (status.isPermanentlyDenied) await openAppSettings();
+        }
+        break;
+      case 'usage_stats':
+        // 应用使用情况权限必须去系统设置页开启
+        try {
+          final bool opened = await platform.invokeMethod('openUsageStatsSettings') ?? false;
+          if (!opened) await openAppSettings();
+        } catch (_) {
+          await openAppSettings();
+        }
+        break;
+      case 'request_install':
+        final status = await Permission.requestInstallPackages.request();
+        if (status.isPermanentlyDenied || status.isDenied) await openAppSettings();
+        break;
+    }
+
+    // 跳转回来后刷新状态
+    await Future.delayed(const Duration(milliseconds: 500));
+    await _checkAllPermissions();
+  }
+
   @override
   void initState() {
     super.initState();
     _loadSettings().then((_) => _fetchAccountStatus());
     _setupDownloadListener();
     _calculateCacheSize();
+    // 进入设置页时自动检查一次所有权限状态
+    _checkAllPermissions();
   }
 
   @override
@@ -1132,6 +1264,161 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  // ─── 权限检查板块 ──────────────────────────────────────────────
+  Widget _buildPermissionSection() {
+    if (!Platform.isAndroid && !Platform.isIOS) return const SizedBox.shrink();
+
+    final allGranted = _permissionDefs.every((def) {
+      final status = _permissionStatuses[def['key'] as String];
+      return status == PermissionStatus.granted || status == PermissionStatus.limited;
+    });
+    final undoneCount = _permissionDefs.where((d) {
+      final s = _permissionStatuses[d['key'] as String];
+      return s != null && s != PermissionStatus.granted && s != PermissionStatus.limited;
+    }).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
+          child: Row(
+            children: [
+              const Text('权限管理',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+              const SizedBox(width: 8),
+              if (_permissionStatuses.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: allGranted
+                        ? Colors.green.withOpacity(0.12)
+                        : Colors.orange.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    allGranted ? '全部已授权' : '$undoneCount 项未授权',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: allGranted ? Colors.green : Colors.orange,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _isCheckingPermissions ? null : _checkAllPermissions,
+                child: Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: _isCheckingPermissions
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.refresh, size: 18, color: Colors.grey),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            children: [
+              for (int i = 0; i < _permissionDefs.length; i++) ...[
+                if (i > 0) const Divider(height: 1, indent: 56),
+                _buildPermissionTile(_permissionDefs[i]),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPermissionTile(Map<String, dynamic> def) {
+    final String key    = def['key']    as String;
+    final String label  = def['label']  as String;
+    final String desc   = def['desc']   as String;
+    final IconData icon = def['icon']   as IconData;
+    final Color color   = def['color']  as Color;
+    final bool critical = def['critical'] as bool;
+
+    final PermissionStatus? status = _permissionStatuses[key];
+    final bool granted = status == PermissionStatus.granted || status == PermissionStatus.limited;
+    final bool denied  = status != null && !granted;
+
+    Widget statusIcon;
+    if (_isCheckingPermissions && status == null) {
+      statusIcon = const SizedBox(
+          width: 18, height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2));
+    } else if (status == null) {
+      statusIcon = const Icon(Icons.help_outline, size: 20, color: Colors.grey);
+    } else if (granted) {
+      statusIcon = const Icon(Icons.check_circle, size: 20, color: Colors.green);
+    } else {
+      statusIcon = Icon(
+        critical ? Icons.error : Icons.warning_amber_rounded,
+        size: 20,
+        color: critical ? Colors.redAccent : Colors.orange,
+      );
+    }
+
+    return ListTile(
+      leading: CircleAvatar(
+        radius: 18,
+        backgroundColor: color.withOpacity(0.12),
+        child: Icon(icon, size: 18, color: color),
+      ),
+      title: Row(
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: denied && critical ? Colors.redAccent : null)),
+          if (critical) ...[
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('必要',
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ],
+      ),
+      subtitle: Text(desc,
+          style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          statusIcon,
+          if (denied) ...[
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              onPressed: () => _requestOrOpenPermission(key),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(60, 32),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('去开启', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildSection(String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1325,6 +1612,9 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ]),
 
+          // --- 5. 权限管理 ---
+          _buildPermissionSection(),
+
           // 3. 高级设置
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
@@ -1440,3 +1730,4 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
