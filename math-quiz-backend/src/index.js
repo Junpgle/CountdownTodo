@@ -422,15 +422,31 @@ export default {
         // ==========================================
         // 4. 拉取最终的增量数据下发给客户端
         // ==========================================
-        const serverTodosRaw = await DB.prepare(`
-          SELECT * FROM todos
-          WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
-        `).bind(authUserId, device_id).all();
+        let serverTodosRaw;
+        let serverCountdownsRaw;
 
-        const serverCountdownsRaw = await DB.prepare(`
-          SELECT * FROM countdowns
-          WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
-        `).bind(authUserId, device_id).all();
+        if (last_sync_time === 0) {
+          // 🚀 核心修复：全量同步（本地被清除）时，必须无视 device_id 强制拉取云端所有数据！
+          // 否则本设备曾经创建的数据会因为 `device_id != ?` 过滤拦截，导致数据永远拉不回来。
+          serverTodosRaw = await DB.prepare(`
+            SELECT * FROM todos WHERE user_id = ?
+          `).bind(authUserId).all();
+
+          serverCountdownsRaw = await DB.prepare(`
+            SELECT * FROM countdowns WHERE user_id = ?
+          `).bind(authUserId).all();
+        } else {
+          // 增量同步：排除本设备刚刚自己提交的数据
+          serverTodosRaw = await DB.prepare(`
+            SELECT * FROM todos
+            WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
+          `).bind(authUserId, device_id).all();
+
+          serverCountdownsRaw = await DB.prepare(`
+            SELECT * FROM countdowns
+            WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
+          `).bind(authUserId, device_id).all();
+        }
 
         const normalizeTimestamp = (val) => normalizeToMs(val);
         const nullableTimestamp = (val) => {
@@ -685,9 +701,10 @@ async function enforceSyncLimit(rawUserId, DB, now) {
 
     if (!record) {
       try {
-        await DB.prepare("INSERT INTO sync_limits (user_id, sync_date, sync_count, last_sync_time) VALUES (?, ?, ?, ?)").bind(userId, today, 1, now).run();
+        // 🚀 核心修复：使用 INSERT OR REPLACE 解决 user_id 存在 UNIQUE 约束导致的跨日报错问题，并兼顾并发安全
+        await DB.prepare("INSERT OR REPLACE INTO sync_limits (user_id, sync_date, sync_count, last_sync_time) VALUES (?, ?, ?, ?)").bind(userId, today, 1, now).run();
       } catch (err) {
-        await DB.prepare("INSERT INTO sync_limits (user_id, sync_date, sync_count) VALUES (?, ?, ?)").bind(userId, today, 1).run();
+        await DB.prepare("INSERT OR REPLACE INTO sync_limits (user_id, sync_date, sync_count) VALUES (?, ?, ?)").bind(userId, today, 1).run();
       }
       return null;
     }
