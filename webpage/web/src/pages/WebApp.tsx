@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   CalendarDays, ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
@@ -10,8 +10,10 @@ import { ApiService } from '../services/api';
 import type { TodoItem, CountdownItem, User } from '../types';
 
 // --------------------------------------------------------
-// 工具函数
+// 常量与工具函数
 // --------------------------------------------------------
+const CURRENT_WEB_VERSION = "1.0.0"; // 当前网页版的硬编码版本号
+
 const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
 const formatDt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 const toDatetimeLocal = (ms: number) => {
@@ -46,7 +48,7 @@ const ScreenTimeView = ({ userId }: { userId: number }) => {
   const [stats, setStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pc' | 'mobile'>('all');
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate] = useState(new Date());
 
   useEffect(() => {
     fetchStats();
@@ -87,7 +89,12 @@ const ScreenTimeView = ({ userId }: { userId: number }) => {
   }, {} as Record<string, any>);
 
   const topApps = Object.entries(appGroups)
-    .map(([name, data]) => ({ name, ...data }))
+    .map(([name, data]: [string, any]) => ({
+      name,
+      total: data.total,
+      category: data.category,
+      devices: data.devices
+    }))
     .sort((a, b) => b.total - a.total);
 
   return (
@@ -146,7 +153,7 @@ const ScreenTimeView = ({ userId }: { userId: number }) => {
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-slate-800 truncate text-base">{app.name}</p>
                         <div className="flex gap-2 mt-1">
-                          {Object.entries(app.devices).map(([dev, dur]) => (
+                          {Object.entries(app.devices).map(([dev]) => (
                             <span key={dev} className="text-[11px] font-medium bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md flex items-center gap-1">{simplifyDeviceName(dev)}</span>
                           ))}
                         </div>
@@ -635,12 +642,34 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   const [nowMs, setNowMs] = useState(Date.now());
   const [mobileTab, setMobileTab] = useState<'home' | 'settings'>('home');
 
+  // --- 网页版版本更新检查状态 ---
+  const [updateInfo, setUpdateInfo] = useState<{ version: string, title: string, desc: string } | null>(null);
+
   useEffect(() => {
     loadLocalData();
     handleSync();
     fetchSyncStats();
 
     const timer = setInterval(() => setNowMs(Date.now()), 60000);
+
+    // 检查网页版更新
+    const checkWebUpdate = async () => {
+      try {
+        const res = await fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/webpage/web/update_manifest.json');
+        const data = await res.json();
+        if (data.version_name && data.version_name !== CURRENT_WEB_VERSION) {
+          setUpdateInfo({
+            version: data.version_name,
+            title: data.update_info?.title || '版本更新',
+            desc: data.update_info?.description || '发现新版本，请刷新页面。'
+          });
+        }
+      } catch (e) {
+        console.error("检查网页版更新失败", e);
+      }
+    };
+    checkWebUpdate();
+
     return () => clearInterval(timer);
   }, []);
 
@@ -679,6 +708,26 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       await fetchSyncStats();
     } catch (e) {
       console.error("同步失败", e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // --- 新增：强制拉取全量数据 ---
+  const handleForceSync = async () => {
+    if (isSyncing) return;
+    if (!window.confirm("强制全量同步将清除本地同步记录，并从云端重新拉取所有最新数据。\n\n这通常用于解决多设备数据不一致的问题。确定要继续吗？")) return;
+
+    setIsSyncing(true);
+    try {
+      SyncEngine.resetSync(); // 关键：重置水位线，强迫后端下发全量
+      await SyncEngine.syncData(user.id);
+      loadLocalData();
+      await fetchSyncStats();
+      alert("全量数据拉取成功！");
+    } catch (e) {
+      console.error("全量同步失败", e);
+      alert("拉取失败，请检查网络");
     } finally {
       setIsSyncing(false);
     }
@@ -1097,7 +1146,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-300 pt-8 px-4 w-full">
         <h2 className="text-3xl font-black text-slate-800 mb-8">账号与设置</h2>
 
-        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 mb-6">
            <div className="flex justify-between items-start mb-6">
              <div>
                <p className="text-sm font-bold text-slate-400 mb-1 tracking-widest uppercase">当前账号</p>
@@ -1133,7 +1182,17 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
            </div>
         </div>
 
-        <button onClick={onLogout} className="w-full flex justify-center items-center gap-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold py-5 rounded-2xl transition">
+        {/* 🚀 新增的：强制全量拉取按钮 */}
+        <button
+          onClick={handleForceSync}
+          disabled={isSyncing}
+          className="w-full flex justify-center items-center gap-2 bg-amber-50 text-amber-600 hover:bg-amber-100 font-bold py-5 rounded-2xl transition disabled:opacity-50 active:scale-[0.98]"
+        >
+          <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
+          {isSyncing ? '正在拉取云端全量数据...' : '强制拉取全量数据 (修复不一致)'}
+        </button>
+
+        <button onClick={onLogout} className="w-full flex justify-center items-center gap-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold py-5 rounded-2xl transition active:scale-[0.98]">
           <LogOut className="w-5 h-5" /> 退出当前账号
         </button>
       </div>
@@ -1153,7 +1212,6 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
               <div className="bg-indigo-600 p-1.5 rounded-lg">
                 <CheckCircle2 className="text-white w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              {/* 修复：移除 hidden，让移动端也能显示标题 */}
               <span className="font-black text-lg sm:text-xl text-slate-900">CDT Web</span>
             </div>
 
@@ -1301,6 +1359,36 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
               className="w-full bg-indigo-600 text-white font-black text-lg py-4 rounded-2xl hover:bg-indigo-700 transition shadow-xl shadow-indigo-500/30 active:scale-[0.98]"
             >
               保存并同步
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 版本更新弹窗 (置于最高层级 z-[70]) */}
+      {updateInfo && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6">
+              <RefreshCw className="w-8 h-8" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-800 mb-2">{updateInfo.title}</h3>
+            <p className="text-sm font-bold text-slate-400 mb-6 bg-slate-50 px-4 py-1 rounded-full border border-slate-100">
+              v{CURRENT_WEB_VERSION} ➔ v{updateInfo.version}
+            </p>
+            <p className="text-slate-600 leading-relaxed mb-8 whitespace-pre-line font-medium">
+              {updateInfo.desc}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full bg-blue-600 text-white font-black text-lg py-4 rounded-2xl hover:bg-blue-700 transition shadow-xl shadow-blue-600/30 active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-5 h-5" /> 立即刷新更新
+            </button>
+            <button
+              onClick={() => setUpdateInfo(null)}
+              className="mt-4 text-sm font-bold text-slate-400 hover:text-slate-600 transition"
+            >
+              稍后提醒我
             </button>
           </div>
         </div>

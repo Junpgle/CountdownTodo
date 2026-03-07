@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Layers, Monitor, Smartphone, CloudLightning, Download, Github,
   CheckCircle2, Menu, X, ChevronRight, Database, Cpu, PieChart,
-  Activity, Tablet as TabletIcon, BellRing, CalendarDays
+  Tablet as TabletIcon, BellRing, CalendarDays, MonitorSmartphone,
+  Globe, LayoutDashboard, Sparkles, ArrowRight
 } from 'lucide-react';
 import { MobileFrame, TabletFrame, MonitorFrame } from '../components/Frames';
 import type { AppInfo } from '../types';
 
+/* =========================
+   子组件：导航栏
+========================= */
 const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -21,9 +25,8 @@ const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
     { name: '核心特性', href: '#features' },
     { name: '桌面端', href: '#desktop' },
     { name: '移动端', href: '#mobile' },
-    { name: '日历课表', href: '#timetable' },
-    { name: '灵动通知', href: '#liveupdates' },
-    { name: '屏幕时间', href: '#screentime' },
+    { name: '网页版', href: '#web' },
+    { name: '获取软件', href: '#download' },
   ];
 
   return (
@@ -31,7 +34,7 @@ const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16 sm:h-20">
           <div className="flex items-center gap-2 group cursor-pointer">
-            <div className="bg-indigo-600 p-1.5 sm:p-2 rounded-lg group-hover:rotate-12 transition-transform duration-300">
+            <div className="bg-indigo-600 p-1.5 sm:p-2 rounded-lg group-hover:rotate-12 transition-transform duration-300 shadow-lg shadow-indigo-500/30">
               <Layers className="text-white w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <span className="font-bold text-xl sm:text-2xl tracking-tight text-slate-900">CountDownTodo</span>
@@ -41,8 +44,9 @@ const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
             {navLinks.map((link) => (
               <a key={link.name} href={link.href} className="text-slate-600 hover:text-indigo-600 font-semibold transition-colors duration-300 text-sm xl:text-base">{link.name}</a>
             ))}
-            <button onClick={onOpenWeb} className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors duration-300 text-sm xl:text-base">网页版</button>
-            <a href="#download" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 lg:px-6 py-2 sm:py-2.5 rounded-full font-bold transition-all shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5 active:scale-95">获取软件</a>
+            <div className="h-6 w-px bg-slate-200 mx-2"></div>
+            <button onClick={onOpenWeb} className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors duration-300 text-sm xl:text-base">网页版入口</button>
+            <a href="#download" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 lg:px-6 py-2 sm:py-2.5 rounded-full font-bold transition-all shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5 active:scale-95">免费获取</a>
           </div>
 
           <div className="lg:hidden flex items-center gap-4">
@@ -70,28 +74,31 @@ const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
   );
 };
 
+/* =========================
+   子组件：Hero
+========================= */
 const Hero = ({ onOpenWeb }: { onOpenWeb: () => void }) => (
   <section className="relative pt-28 pb-16 sm:pt-36 sm:pb-20 lg:pt-52 lg:pb-40 overflow-hidden px-4">
     <div className="max-w-7xl mx-auto relative z-10 text-center">
       <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs sm:text-sm font-bold mb-6 sm:mb-8 animate-bounce-subtle">
-        <CloudLightning className="w-4 h-4 text-indigo-500" />
-        Cloudflare D1 边缘数据库与 Batch 极速同步支持
+        <Sparkles className="w-4 h-4 text-indigo-500" />
+        真正实现跨设备、全平台的极致协同
       </div>
       <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter mb-6 sm:mb-8 leading-[1.15] text-slate-900">
-        多端协同，<br className="sm:hidden" />
-        <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500">极致效率</span>
+        多端联动，<br className="sm:hidden" />
+        <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500">效率觉醒</span>
       </h1>
-      <p className="text-lg sm:text-xl md:text-2xl text-slate-500 max-w-3xl mx-auto mb-10 sm:mb-12 leading-relaxed px-2">
-        原生 C++ 桌面组件与 Flutter 移动端深度联动。KB 级极简运行，基于 Delta Sync 的毫秒级增量同步架构。
+      <p className="text-lg sm:text-xl md:text-2xl text-slate-500 max-w-3xl mx-auto mb-10 sm:mb-12 leading-relaxed px-2 font-medium">
+        原生 C++ 桌面工作站、Material 3 沉浸式移动端、以及全新的 Web Pro 网页控制中心。一处编辑，毫秒全端同步。
       </p>
-      <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6 w-full max-w-2xl mx-auto">
-        <a href="#download" className="group flex items-center justify-center gap-3 bg-slate-900 text-white px-8 py-4 sm:px-8 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-slate-800 transition-all shadow-xl hover:-translate-y-1 w-full sm:w-auto">
-          <Download className="w-5 h-5 group-hover:animate-pulse" /> 下载客户端
+      <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6 w-full max-w-3xl mx-auto">
+        <a href="#download" className="group flex items-center justify-center gap-3 bg-slate-900 text-white px-8 py-4 sm:px-10 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-slate-800 transition-all shadow-xl hover:-translate-y-1 w-full sm:w-auto">
+          <Download className="w-5 h-5 group-hover:animate-pulse" /> 获取客户端
         </a>
-        <button onClick={onOpenWeb} className="flex items-center justify-center gap-3 bg-indigo-50 text-indigo-600 border border-indigo-100 px-8 py-4 sm:px-8 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-indigo-100 transition-all hover:-translate-y-1 shadow-sm w-full sm:w-auto">
-          <Smartphone className="w-5 h-5" /> 体验网页版
+        <button onClick={onOpenWeb} className="flex items-center justify-center gap-3 bg-white text-indigo-600 border border-indigo-100 px-8 py-4 sm:px-10 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-indigo-50 transition-all hover:-translate-y-1 shadow-md w-full sm:w-auto">
+          <Globe className="w-5 h-5" /> 进入网页站
         </button>
-        <a href="https://github.com/Junpgle/CountdownTodo" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-3 bg-white text-slate-700 border border-slate-200 px-8 py-4 sm:px-8 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-slate-50 transition-all hover:-translate-y-1 shadow-sm w-full sm:w-auto">
+        <a href="https://github.com/Junpgle/CountdownTodo" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-3 bg-white text-slate-700 border border-slate-200 px-8 py-4 sm:px-10 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-slate-50 transition-all hover:-translate-y-1 shadow-sm w-full sm:w-auto">
           <Github className="w-5 h-5" /> 开源仓库
         </a>
       </div>
@@ -100,6 +107,71 @@ const Hero = ({ onOpenWeb }: { onOpenWeb: () => void }) => (
   </section>
 );
 
+/* =========================
+   子组件：网页版功能展示
+========================= */
+const WebShowcase = ({ onOpenWeb }: { onOpenWeb: () => void }) => (
+  <section id="web" className="py-24 sm:py-40 bg-slate-900 overflow-hidden relative">
+    <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-indigo-900/20 to-slate-900 pointer-events-none"></div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="text-center mb-20">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-500/20 text-indigo-400 rounded-lg text-sm font-bold uppercase tracking-widest mb-6">
+          <MonitorSmartphone className="w-5 h-5" /> Cloud Desktop Station
+        </div>
+        <h2 className="text-4xl sm:text-6xl font-black mb-6 tracking-tight text-white">Web Pro 全球网页工作站</h2>
+        <p className="text-slate-400 text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium">
+          无需下载，任何设备打开浏览器即刻进入。专为桌面大屏重构的 Dashboard 布局，深度整合智能课表、待办分栏与数据仪表盘。
+        </p>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+        <div className="space-y-10 order-2 lg:order-1">
+          <div className="group bg-slate-800/50 p-3 rounded-[2.5rem] shadow-2xl border border-white/5 transform hover:-translate-y-2 transition-all duration-700">
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-white/5 bg-white/5 rounded-t-[2.2rem]">
+               <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-red-500/50"></div>
+                  <div className="w-3 h-3 rounded-full bg-amber-500/50"></div>
+                  <div className="w-3 h-3 rounded-full bg-green-500/50"></div>
+               </div>
+               <span className="text-xs font-mono text-slate-500 ml-4 font-bold tracking-tight">app.countdowntodo.com</span>
+            </div>
+            <img src="./11.jpg" alt="网页版主界面" className="w-full rounded-b-[2rem] shadow-inner" />
+            <div className="p-8">
+              <h3 className="text-2xl font-bold text-white mb-3 flex items-center gap-2">
+                <LayoutDashboard className="w-6 h-6 text-indigo-400" />
+                全能工作仪表盘
+              </h3>
+              <p className="text-slate-400 leading-relaxed">左侧 50% 嵌入自适应周视图课表，右侧 1/5 聚焦倒计时，4/5 管理待办清单。完美利用屏幕宽度，效率一眼全收。</p>
+            </div>
+          </div>
+          <button onClick={onOpenWeb} className="w-full flex items-center justify-center gap-3 bg-indigo-600 text-white px-10 py-5 rounded-2xl font-black text-xl hover:bg-indigo-700 transition shadow-2xl shadow-indigo-500/40 hover:-translate-y-1 active:scale-95">
+            立即开启网页站 <ChevronRight className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="order-1 lg:order-2 lg:pt-32">
+          <div className="group bg-slate-800/50 p-3 rounded-[2.5rem] shadow-2xl border border-white/5 transform hover:-translate-y-2 transition-all duration-700">
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-white/5 bg-white/5 rounded-t-[2.2rem]">
+               <span className="text-xs font-mono text-slate-500 font-bold tracking-widest uppercase">Insight analytics</span>
+            </div>
+            <img src="./12.jpg" alt="网页版屏幕使用时间" className="w-full rounded-b-[2rem] shadow-inner" />
+            <div className="p-8">
+              <h3 className="text-2xl font-bold text-white mb-3 flex items-center gap-2">
+                <PieChart className="w-6 h-6 text-emerald-400" />
+                深度时耗看板
+              </h3>
+              <p className="text-slate-400 leading-relaxed">全屏精美统计图表，多维度分析手机、平板与电脑的使用时长分布，还原最真实的时间流向，让掌控力跃然屏上。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+/* =========================
+   子组件：功能特性列表
+========================= */
 const Features = () => {
   const features = [
     { title: "桌面端 (Win32)", desc: "C++17 原生开发。Layered Window 透明渲染，极低内存占用 (<30MB)，常驻桌面不打扰。", icon: <Monitor className="w-6 h-6" />, color: "bg-blue-50 text-blue-600" },
@@ -123,6 +195,9 @@ const Features = () => {
   );
 };
 
+/* =========================
+   子组件：Windows 展示
+========================= */
 const WindowsShowcase = () => (
   <section id="desktop" className="py-24 sm:py-40 bg-slate-900 text-white relative overflow-hidden">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
@@ -163,6 +238,9 @@ const WindowsShowcase = () => (
   </section>
 );
 
+/* =========================
+   子组件：Android 展示
+========================= */
 const AndroidShowcase = () => (
   <section id="mobile" className="py-24 sm:py-40 bg-white overflow-hidden text-center">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -216,6 +294,9 @@ const AndroidShowcase = () => (
   </section>
 );
 
+/* =========================
+   子组件：智能课表展示
+========================= */
 const TimetableShowcase = () => {
     const videoRef = useRef<HTMLVideoElement>(null);
     useEffect(() => {
@@ -276,6 +357,9 @@ const TimetableShowcase = () => {
     );
   };
 
+/* =========================
+   子组件：灵动同步展示
+========================= */
 const LiveUpdatesShowcase = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
@@ -338,51 +422,9 @@ const LiveUpdatesShowcase = () => {
   );
 };
 
-const ScreenTimeShowcase = () => (
-  <section id="screentime" className="py-24 sm:py-40 bg-white overflow-hidden">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      <div className="mb-20 sm:mb-32">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold uppercase mb-6">
-            <PieChart className="w-4 h-4" /> Insight Analytics
-        </div>
-        <h2 className="text-4xl sm:text-6xl lg:text-7xl font-black text-slate-900 mb-6 sm:mb-8 tracking-tighter">全方位屏幕时间分析</h2>
-        <p className="text-slate-500 text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium px-4">
-          整合手机、平板、电脑三端时长数据。不再猜测你的时间去哪了，让数据说话，在任何设备上都能精准掌控每一分钟的产出。
-        </p>
-      </div>
-      <div className="relative flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto">
-        <div className="absolute inset-0 bg-indigo-500/5 blur-[200px] rounded-full pointer-events-none"></div>
-        <div className="flex justify-center gap-4 sm:gap-8 z-20 w-full lg:w-5/12 mb-16 lg:mb-0">
-          <div className="w-[42%] sm:w-[35%] lg:w-[45%] max-w-[220px] transform translate-y-6 md:translate-y-12 group">
-            <MobileFrame src="./3.jpg" className="group-hover:scale-[1.03] transition duration-500" />
-            <p className="text-center mt-6 text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-[0.2em] whitespace-nowrap">Usage Details</p>
-          </div>
-          <div className="w-[42%] sm:w-[35%] lg:w-[45%] max-w-[220px] transform -translate-y-6 md:-translate-y-12 group">
-            <MobileFrame src="./4.jpg" className="group-hover:scale-[1.03] transition duration-500" />
-            <p className="text-center mt-6 text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-[0.2em] whitespace-nowrap">Time Summary</p>
-          </div>
-        </div>
-        <div className="z-10 w-[90%] sm:w-[75%] lg:w-7/12 max-w-[650px] group relative lg:-ml-8">
-          <div className="bg-white p-2 sm:p-4 rounded-[1.5rem] sm:rounded-[3rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.15)] border border-slate-200 transform group-hover:scale-[1.02] transition-all duration-700">
-            <TabletFrame src="./5.jpg" />
-          </div>
-          <div className="absolute -bottom-6 md:-bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 md:gap-8 px-5 md:px-8 py-3 md:py-4 bg-slate-900 rounded-[1.5rem] md:rounded-[2rem] shadow-2xl border border-white/5 whitespace-nowrap">
-             <div className="flex flex-col items-center">
-                <span className="text-emerald-400 font-black text-sm md:text-lg leading-none">LIVE SYNC</span>
-                <span className="text-slate-500 text-[8px] md:text-[10px] font-black mt-1 uppercase tracking-widest">Cloudflare D1</span>
-             </div>
-             <div className="w-px h-6 md:h-8 bg-slate-800"></div>
-             <div className="flex items-center gap-2 md:gap-3">
-                <Activity className="w-4 md:w-5 h-4 md:h-5 text-emerald-500" />
-                <span className="text-white font-black text-xs md:text-sm tracking-tight italic">Global Dashboard</span>
-             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-);
-
+/* =========================
+   子组件：数据分析预览
+========================= */
 const AnalyticsPreview = () => (
   <section id="analytics" className="py-24 bg-white text-center">
     <div className="max-w-6xl mx-auto px-4">
@@ -423,59 +465,80 @@ const AnalyticsPreview = () => (
   </section>
 );
 
-const DownloadSection = ({ androidInfo, windowsInfo }: { androidInfo: AppInfo, windowsInfo: AppInfo }) => (
+/* =========================
+   子组件：获取软件 (三列矩阵版)
+========================= */
+const DownloadSection = ({ androidInfo, windowsInfo, webInfo, onOpenWeb }: { androidInfo: AppInfo, windowsInfo: AppInfo, webInfo: AppInfo, onOpenWeb: () => void }) => (
   <section id="download" className="py-24 sm:py-48 bg-slate-50 text-center relative overflow-hidden">
     <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
-    <div className="max-w-6xl mx-auto px-4">
-      <h2 className="text-4xl sm:text-7xl font-black mb-8 text-slate-900 tracking-tighter">准备好提升效率了吗？</h2>
-      <p className="text-slate-500 mb-20 text-xl font-medium">立刻选择您的设备平台，开启跨设备协同新纪元。</p>
+    <div className="max-w-7xl mx-auto px-4">
+      <h2 className="text-4xl sm:text-7xl font-black mb-8 text-slate-900 tracking-tighter">准备好开启高效生活了吗？</h2>
+      <p className="text-slate-500 mb-20 text-xl font-medium">全平台支持，数据实时流转，选择适合您的工作方式。</p>
 
-      <div className="grid md:grid-cols-2 gap-10 text-left items-stretch">
-        <div className="p-10 sm:p-14 bg-white rounded-[4rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-blue-500 transition-all group flex flex-col relative overflow-hidden">
+      <div className="grid lg:grid-cols-3 gap-8 text-left items-stretch">
+        {/* Windows */}
+        <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-blue-500 transition-all group flex flex-col relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl group-hover:bg-blue-500/10 transition"></div>
-          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-[1.5rem] flex items-center justify-center mb-8 group-hover:scale-110 group-hover:rotate-3 transition duration-500 shadow-sm"><Monitor className="w-8 h-8" /></div>
-          <h3 className="text-3xl font-black mb-4 text-slate-900 tracking-tight">Windows Lite</h3>
-          <p className="text-slate-500 text-lg mb-10 flex-1 leading-relaxed whitespace-pre-line">
+          <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition duration-500 shadow-sm"><Monitor className="w-7 h-7" /></div>
+          <h3 className="text-2xl font-black mb-3 text-slate-900 tracking-tight">Windows Lite</h3>
+          <p className="text-slate-500 text-base mb-8 flex-1 leading-relaxed whitespace-pre-line">
              v{windowsInfo.version || '1.0.0'} <br/>
-             {windowsInfo.desc || '原生 C++ 高性能架构，内存占用 < 30MB，零感常驻桌面，给您最纯净的待办体验。'}
+             {windowsInfo.desc || '原生 C++ 极致轻量，常驻桌面微件，给您最纯净的办公体验。'}
           </p>
           <div className="space-y-4">
-             <a href={windowsInfo.url || "#"} className="flex items-center justify-center gap-3 bg-blue-600 text-white w-full py-5 rounded-2xl font-black text-lg hover:bg-blue-700 transition shadow-xl shadow-blue-500/30">获取下载 <ChevronRight className="w-6 h-6" /></a>
-             <div className="flex items-center justify-between px-6 py-3 bg-blue-50 rounded-2xl text-xs text-blue-700 font-black border border-blue-100">
+             <a href={windowsInfo.url || "#"} className="flex items-center justify-center gap-3 bg-blue-600 text-white w-full py-4 rounded-xl font-black text-lg hover:bg-blue-700 transition shadow-xl shadow-blue-500/30">立即下载 <ChevronRight className="w-6 h-6" /></a>
+             <div className="flex items-center justify-between px-5 py-3 bg-blue-50 rounded-xl text-xs text-blue-700 font-bold border border-blue-100">
                 <span>依赖 Tai 核心服务</span>
                 <a href="https://github.com/Planshit/Tai/releases/download/1.5.0.6/Tai1.5.0.6.zip" target="_blank" rel="noreferrer" className="underline hover:text-blue-900">立即前往</a>
              </div>
           </div>
         </div>
 
-        <div className="p-10 sm:p-14 bg-white rounded-[4rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-indigo-500 transition-all group flex flex-col relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl group-hover:bg-indigo-500/10 transition"></div>
-          <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-[1.5rem] flex items-center justify-center mb-8 group-hover:scale-110 group-hover:-rotate-3 transition duration-500 shadow-sm"><Smartphone className="w-8 h-8" /></div>
-          <h3 className="text-3xl font-black mb-4 text-slate-900 tracking-tight">Android Pro</h3>
-          <p className="text-slate-500 text-lg mb-10 flex-1 leading-relaxed whitespace-pre-line">
+        {/* Android */}
+        <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-purple-500 transition-all group flex flex-col relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl group-hover:bg-purple-500/10 transition"></div>
+          <div className="w-14 h-14 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:-rotate-3 transition duration-500 shadow-sm"><Smartphone className="w-7 h-7" /></div>
+          <h3 className="text-2xl font-black mb-3 text-slate-900 tracking-tight">Android Pro</h3>
+          <p className="text-slate-500 text-base mb-8 flex-1 leading-relaxed whitespace-pre-line">
              v{androidInfo.version || '1.0.0'} <br/>
-             {androidInfo.desc || '沉浸式 Flutter 交互，Material 3 视觉盛宴，深度全平台屏幕时间分析。'}
+             {androidInfo.desc || '沉浸式 Flutter 交互，Material 3 视觉盛宴，深度屏幕时间分析。'}
           </p>
-          <a href={androidInfo.url || "#"} className="flex items-center justify-center gap-3 bg-indigo-600 text-white w-full py-5 rounded-2xl font-black text-lg hover:bg-indigo-700 transition shadow-xl shadow-indigo-500/30">立即安装 <ChevronRight className="w-6 h-6" /></a>
+          <a href={androidInfo.url || "#"} className="flex items-center justify-center gap-3 bg-purple-600 text-white w-full py-4 rounded-xl font-black text-lg hover:bg-purple-700 transition shadow-xl shadow-purple-500/30">获取安装包 <ChevronRight className="w-6 h-6" /></a>
+        </div>
+
+        {/* Web (Entry Updated with Fetch Data) */}
+        <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-indigo-500 transition-all group flex flex-col relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl group-hover:bg-indigo-500/10 transition"></div>
+          <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-6 transition duration-500 shadow-sm"><Globe className="w-7 h-7" /></div>
+          <h3 className="text-2xl font-black mb-3 text-slate-900 tracking-tight">Web Station</h3>
+          <p className="text-slate-500 text-base mb-8 flex-1 leading-relaxed whitespace-pre-line">
+             v{webInfo.version || '1.0.0'} <br/>
+             {webInfo.desc || '云端仪表盘，免安装即开即用。深度同步课表与待办，您的跨平台数据中枢。'}
+          </p>
+          <button onClick={onOpenWeb} className="flex items-center justify-center gap-3 bg-indigo-600 text-white w-full py-4 rounded-xl font-black text-lg hover:bg-indigo-700 transition shadow-xl shadow-indigo-500/30">立即开启网页版 <ArrowRight className="w-6 h-6" /></button>
         </div>
       </div>
     </div>
   </section>
 );
 
-// --- 暴露给外部使用的主页面组件 ---
+/* =========================
+   主页面容器：LandingPage
+========================= */
 export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
   const [androidInfo, setAndroidInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
   const [windowsInfo, setWindowsInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
+  const [webInfo, setWebInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
 
   useEffect(() => {
     const fetchManifests = async () => {
       try {
-        const [aRes, wRes] = await Promise.all([
+        const [aRes, wRes, webRes] = await Promise.all([
           fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json'),
-          fetch('https://raw.githubusercontent.com/Junpgle/CountDownTodoLite/refs/heads/master/update_manifest.json')
+          fetch('https://raw.githubusercontent.com/Junpgle/CountDownTodoLite/refs/heads/master/update_manifest.json'),
+          fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/webpage/web/update_manifest.json')
         ]);
-        const [aData, wData] = await Promise.all([aRes.json(), wRes.json()]);
+        const [aData, wData, webData] = await Promise.all([aRes.json(), wRes.json(), webRes.json()]);
 
         setAndroidInfo({
           version: aData.version_name,
@@ -488,6 +551,13 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           url: wData.update_info.full_package_url,
           desc: wData.update_info.description
         });
+
+        setWebInfo({
+          version: webData.version_name,
+          url: '', // 网页版不需要下载URL
+          desc: webData.update_info.description
+        });
+
       } catch (e) {
         console.error("Manifest JSON 解析拉取错误:", e);
       }
@@ -496,17 +566,18 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
   }, []);
 
   return (
-    <>
+    <div className="bg-white min-h-screen">
       <Navbar onOpenWeb={onOpenWeb} />
       <Hero onOpenWeb={onOpenWeb} />
       <Features />
       <WindowsShowcase />
       <AndroidShowcase />
+      <WebShowcase onOpenWeb={onOpenWeb} />
       <TimetableShowcase />
       <LiveUpdatesShowcase />
-      <ScreenTimeShowcase />
       <AnalyticsPreview />
-      <DownloadSection androidInfo={androidInfo} windowsInfo={windowsInfo} />
+      <DownloadSection androidInfo={androidInfo} windowsInfo={windowsInfo} webInfo={webInfo} onOpenWeb={onOpenWeb} />
+
       <footer className="bg-white py-20 border-t border-slate-100 text-center">
         <div className="flex flex-col items-center">
           <div className="flex items-center justify-center gap-2 mb-8">
@@ -525,6 +596,6 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           <p className="text-slate-400 text-xs font-bold">© 2026 JUNPGLE. ALL RIGHTS RESERVED.</p>
         </div>
       </footer>
-    </>
+    </div>
   );
 };

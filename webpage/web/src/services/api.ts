@@ -1,7 +1,7 @@
 const BASE_URL = 'https://mathquiz.junpgle.me';
 
 export const ApiService = {
-  getToken: () => localStorage.getItem('cdt_token'),
+getToken: () => localStorage.getItem('cdt_token'),
   setToken: (token: string) => localStorage.setItem('cdt_token', token),
   clearToken: () => localStorage.removeItem('cdt_token'),
 
@@ -16,10 +16,13 @@ export const ApiService = {
 
   async request(endpoint: string, options: RequestInit = {}) {
     const token = this.getToken();
-    const headers: HeadersInit = {
+
+    // 修复 TypeScript 字典类型报错
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string> || {}),
     };
+
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }

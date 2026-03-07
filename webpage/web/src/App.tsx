@@ -1,18 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { LandingPage } from './pages/LandingPage';
 import { AuthScreen } from './pages/AuthScreen';
 import { WebApp } from './pages/WebApp';
 import { ApiService } from './services/api';
-import type { AppInfo, User } from './types';
+import type { User } from './types';
 import './index.css';
 
 const App = () => {
-  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp'>('landing');
-  const [user, setUser] = useState<User | null>(null);
+  // 1. 核心修改：检测网址后缀，如果是直达链接，跳过 landing
+  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp'>(() => {
+    if (window.location.hash.includes('app') || window.location.search.includes('app')) {
+      return 'auth';
+    }
+    return 'landing';
+  });
 
-  // 官网数据
-  const [androidInfo, setAndroidInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
-  const [windowsInfo, setWindowsInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     // 检查本地登录态
@@ -20,21 +23,12 @@ const App = () => {
     const savedUser = localStorage.getItem('cdt_user');
     if (token && savedUser) {
       setUser(JSON.parse(savedUser));
-    }
 
-    // 加载清单
-    const fetchManifests = async () => {
-      try {
-        const [aRes, wRes] = await Promise.all([
-          fetch('[https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json](https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json)'),
-          fetch('[https://raw.githubusercontent.com/Junpgle/CountDownTodoLite/refs/heads/master/update_manifest.json](https://raw.githubusercontent.com/Junpgle/CountDownTodoLite/refs/heads/master/update_manifest.json)')
-        ]);
-        const [aData, wData] = await Promise.all([aRes.json(), wRes.json()]);
-        setAndroidInfo({ version: aData.version_name, url: aData.update_info.full_package_url, desc: aData.update_info.description });
-        setWindowsInfo({ version: wData.version_name, url: wData.update_info.full_package_url, desc: wData.update_info.description });
-      } catch (e) { console.error(e); }
-    };
-    fetchManifests();
+      // 2. 核心修改：如果是直达链接且已经登录过，直接进入网页版主界面
+      if (window.location.hash.includes('app') || window.location.search.includes('app')) {
+        setCurrentView('webapp');
+      }
+    }
   }, []);
 
   const handleOpenWeb = () => {
@@ -62,11 +56,7 @@ const App = () => {
 
   return (
     <div className="bg-white min-h-screen font-sans selection:bg-indigo-600 selection:text-white antialiased">
-      <LandingPage
-        onOpenWeb={handleOpenWeb}
-        androidInfo={androidInfo}
-        windowsInfo={windowsInfo}
-      />
+      <LandingPage onOpenWeb={handleOpenWeb} />
     </div>
   );
 };

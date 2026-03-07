@@ -1,5 +1,3 @@
-import React from 'react';
-
 // 手机外框
 export const MobileFrame = ({ src, className = "" }: { src: string; className?: string }) => (
   <div className={`relative w-full aspect-[9/19.5] bg-slate-900 rounded-[2rem] md:rounded-[2.5rem] border-[6px] md:border-[10px] border-slate-900 shadow-2xl overflow-hidden ${className}`}>
