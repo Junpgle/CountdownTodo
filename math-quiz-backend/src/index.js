@@ -54,6 +54,13 @@ function normalizeToMs(val) {
   return 0;
 }
 
+// 🌍 时区工具：获取东八区（北京时间）的当前日期 YYYY-MM-DD
+function getChinaDateStr(nowMs) {
+  // 加上 8 小时的毫秒数 (8 * 60 * 60 * 1000 = 28800000)
+  const d = new Date(nowMs + 28800000);
+  return d.toISOString().split('T')[0];
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -170,18 +177,19 @@ export default {
       // 模块 A-2: 账户状态查询 (User Status)
       // --------------------------
       if (url.pathname === "/api/user/status" && request.method === "GET") {
-        const userId = url.searchParams.get("user_id");
-        if (!userId) return errorResponse("缺少 user_id 参数", 400);
+        const userIdStr = url.searchParams.get("user_id");
+        if (!userIdStr) return errorResponse("缺少 user_id 参数", 400);
 
-        // 为了兼容 Flutter 端 SettingsPage 直接调用的 http.get (未通过 ApiService 携带 token)
-        // 此处仅返回非敏感的额度统计数据，不强校验 authUserId
+        // 🚀 核心修复：必须强制转换为 Int，因为 url 取出来的是 String，D1 会直接拒绝匹配 INTEGER 字段，导致返回 null
+        const userId = parseInt(userIdStr, 10);
+
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
         if (!userRow) return errorResponse("用户不存在", 404);
 
         const tier = userRow.tier || 'free';
         const syncLimit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getChinaDateStr(Date.now());
         const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, todayStr).first();
 
         return jsonResponse({
@@ -252,7 +260,6 @@ export default {
             const tVersion = parseInt(t.version || 1, 10);
             const tCreatedAt = normalizeToMs(t.created_at ?? t.createdAt) || now;
 
-            // ⚠️ 严格判断客户端是否传了该 key（支持清除为 null）
             const hasDueDate = 'due_date' in t || 'dueDate' in t;
             let tDueDate = null;
             if (hasDueDate) {
@@ -267,7 +274,6 @@ export default {
               tCreatedDate = raw != null ? (normalizeToMs(raw) || null) : null;
             }
 
-            // 循环字段
             const isRecurrenceProvided = hasRecurrence && ('recurrence' in t);
             const tRecurrence = isRecurrenceProvided ? parseInt(t.recurrence ?? 0, 10) : 0;
 
@@ -303,7 +309,6 @@ export default {
             }
 
             if (!existing) {
-              // ── INSERT ──
               let insertCols = `uuid, user_id, content, is_completed, is_deleted, created_at, updated_at, version, device_id, due_date, created_date`;
               let insertPlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`;
               let insertValues = [tUuid, authUserId, tContent, tIsCompleted, tIsDeleted, tCreatedAt, now, tVersion, device_id, tDueDate, tCreatedDate];
@@ -316,7 +321,6 @@ export default {
               batchStatements.push(stmt.bind(...insertValues));
 
             } else {
-              // ── UPDATE ──
               const finalDueDate     = hasDueDate       ? tDueDate           : (existing.due_date ?? null);
               const finalCreatedDate = hasCreatedDate   ? tCreatedDate       : (existing.created_date ?? null);
 
@@ -476,7 +480,7 @@ export default {
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(authUserId).first();
         const tier = userRow ? userRow.tier : 'free';
         const syncLimit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getChinaDateStr(now);
         const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(authUserId, todayStr).first();
 
         return jsonResponse({
@@ -512,9 +516,10 @@ export default {
 
       if (url.pathname === "/api/screen_time" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const userId = url.searchParams.get("user_id");
+        const userIdStr = url.searchParams.get("user_id");
+        const userId = parseInt(userIdStr, 10); // 🚀 统一修复 Get 请求
         const date = url.searchParams.get("date");
-        if (authUserId !== parseInt(userId, 10)) return errorResponse("越权访问被拒绝", 403);
+        if (authUserId !== userId) return errorResponse("越权访问被拒绝", 403);
 
         const { results } = await DB.prepare(`
           SELECT COALESCE(m.mapped_name, s.app_name) AS app_name, COALESCE(m.category, '未分类') AS category, s.device_name, SUM(s.duration) AS duration
@@ -531,9 +536,10 @@ export default {
       // --------------------------
       if (url.pathname === "/api/courses" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const userId = url.searchParams.get("user_id");
+        const userIdStr = url.searchParams.get("user_id");
+        const userId = parseInt(userIdStr, 10); // 🚀 统一修复 Get 请求
         const semester = url.searchParams.get("semester") || "default";
-        if (authUserId !== parseInt(userId, 10)) return errorResponse("越权访问被拒绝", 403);
+        if (authUserId !== userId) return errorResponse("越权访问被拒绝", 403);
 
         const { results } = await DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND semester = ? AND is_deleted = 0 ORDER BY week_index, weekday, start_time`).bind(userId, semester).all();
         return jsonResponse(results);
@@ -568,6 +574,7 @@ export default {
           `ALTER TABLE todos ADD COLUMN recurrence INTEGER DEFAULT 0`,
           `ALTER TABLE todos ADD COLUMN custom_interval_days INTEGER`,
           `ALTER TABLE todos ADD COLUMN recurrence_end_date INTEGER`,
+          `ALTER TABLE sync_limits ADD COLUMN last_sync_time INTEGER DEFAULT 0`
         ];
 
         const results = [];
@@ -587,6 +594,7 @@ export default {
       // 模块 G: 历史数据修复
       // --------------------------
       if (url.pathname === "/api/admin/fix_timestamps" && request.method === "POST") {
+        // ...(保持不变)
         if (!authUserId) return errorResponse("未授权", 401);
         if (authUserId !== 1) return errorResponse("仅管理员可执行修复", 403);
 
@@ -661,10 +669,13 @@ export default {
 };
 
 /**
- * 🚀 同步频率检查逻辑
+ * 🚀 同步频率检查与防抖核心逻辑 (引入防崩降级策略)
  */
-async function enforceSyncLimit(userId, DB, now) {
-  const today = new Date(now).toISOString().split('T')[0];
+async function enforceSyncLimit(rawUserId, DB, now) {
+  // 🚀 防御性编程：无论是谁调用，只要丢进来的 user_id，一律强转为整型！
+  const userId = parseInt(rawUserId, 10);
+  const today = getChinaDateStr(now);
+
   try {
     const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
     const tier = userRow ? userRow.tier : 'free';
@@ -673,16 +684,28 @@ async function enforceSyncLimit(userId, DB, now) {
     const record = await DB.prepare("SELECT * FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, today).first();
 
     if (!record) {
-      await DB.prepare("INSERT INTO sync_limits (user_id, sync_date, sync_count, last_sync_time) VALUES (?, ?, ?, ?)").bind(userId, today, 1, now).run();
+      try {
+        await DB.prepare("INSERT INTO sync_limits (user_id, sync_date, sync_count, last_sync_time) VALUES (?, ?, ?, ?)").bind(userId, today, 1, now).run();
+      } catch (err) {
+        await DB.prepare("INSERT INTO sync_limits (user_id, sync_date, sync_count) VALUES (?, ?, ?)").bind(userId, today, 1).run();
+      }
       return null;
     }
 
-    if (now - parseInt(record.last_sync_time) < 3000) return 'IGNORE';
+    if (record.last_sync_time && (now - parseInt(record.last_sync_time) < 3000)) return 'IGNORE';
     if (record.sync_count >= limit) return `今日同步次数已达上限 (${limit}次)`;
 
-    await DB.prepare("UPDATE sync_limits SET sync_count = sync_count + 1, last_sync_time = ? WHERE user_id = ? AND sync_date = ?").bind(now, userId, today).run();
+    try {
+      await DB.prepare("UPDATE sync_limits SET sync_count = sync_count + 1, last_sync_time = ? WHERE user_id = ? AND sync_date = ?").bind(now, userId, today).run();
+    } catch (err) {
+      await DB.prepare("UPDATE sync_limits SET sync_count = sync_count + 1 WHERE user_id = ? AND sync_date = ?").bind(userId, today).run();
+    }
+
     return null;
-  } catch (e) { return null; }
+  } catch (e) {
+    console.error("Sync Limit Error: ", e.message);
+    return null;
+  }
 }
 
 async function hashPassword(password) {

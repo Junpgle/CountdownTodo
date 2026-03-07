@@ -4,14 +4,15 @@ import '../storage_service.dart';
 import 'login_screen.dart';
 
 /// 重大版本升级引导页
-/// 当检测到 v1.7.6 首次启动时强制展示，引导用户完成迁移步骤
+/// 当检测到新版本首次启动时强制展示，引导用户完成迁移步骤
 class UpgradeGuideScreen extends StatefulWidget {
   final String? loggedInUser; // 当前登录用户（可能为 null）
 
   const UpgradeGuideScreen({super.key, this.loggedInUser});
 
   // ── 公有静态成员，供 main.dart 调用 ──
-  static const String targetVersion = '1.7.6';
+  // 🚀 升级到 1.7.7，确保之前看过 1.7.6 的用户能再次看到并执行数据清洗
+  static const String targetVersion = '1.7.7';
   static const String _guideKey = 'upgrade_guide_shown_version';
 
   static Future<bool> shouldShow() async {
@@ -34,7 +35,6 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
   int _currentPage = 0;
   bool _step1Done = false; // 清除本地数据
   bool _isClearing = false;
-
 
   void _nextPage() {
     if (_currentPage < 2) {
@@ -86,7 +86,7 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (_) => false,
+            (_) => false,
       );
     }
   }
@@ -133,58 +133,34 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
           const SizedBox(height: 24),
 
           _changelogSection(
-            icon: Icons.warning_amber_rounded,
-            iconColor: Colors.orange,
-            title: '⚠️ 重要提示',
-            items: const [
-              '本次版本对用户账号系统和数据库进行了大幅重构',
-              '为保证数据一致性，需要完成以下迁移步骤',
-              '你的云端数据完整保留，本地重建后可以同步回来',
-            ],
-          ),
-
-          _changelogSection(
-            icon: Icons.sync_rounded,
+            icon: Icons.sync_problem_rounded,
             iconColor: Colors.blue,
-            title: '🔄 同步引擎重构',
+            title: '🔄 云端同步引擎彻底修复',
             items: const [
-              '修复客户端时钟偏差导致的跨设备漏同步问题',
-              '数据库 updated_at 改为服务端时间戳，确保同步可靠',
-              '修复重要日（倒计时）无法同步到另一端的问题',
-              '优化防抖逻辑，IGNORE 时不再推进水位线',
+              '修复清除任务日期后，被云端旧数据强制覆盖的 Bug',
+              '修复新设备拉取旧数据时，浮点时间戳解析失败导致日期丢失的问题',
+              '引入绝对信任客户端日期的全量同步策略',
             ],
           ),
 
           _changelogSection(
-            icon: Icons.sort_rounded,
-            iconColor: Colors.purple,
-            title: '📋 待办清单优化',
+            icon: Icons.security_rounded,
+            iconColor: Colors.green,
+            title: '🛡️ 账户与额度系统升级',
             items: const [
-              '今日待办按进度条排序，更满更短的优先展示',
-              '今日全部完成后自动折叠，仍可手动展开',
-              '顶部三角折叠整个清单，显示未完成数量',
-              '未来待办支持折叠，显示未完成数量',
+              '修复同步次数永远为 0（不走字）的数据库类型匹配异常',
+              '修复每日同步额度在早上 8 点才刷新的时区偏差，现已回归零点准时刷新',
+              '设置页现已支持精准显示账户等级与今日真实同步次数',
             ],
           ),
 
           _changelogSection(
-            icon: Icons.timer_rounded,
-            iconColor: Colors.teal,
-            title: '⏰ 重要日优化',
+            icon: Icons.data_usage_rounded,
+            iconColor: Colors.orange,
+            title: '⚠️ 为什么需要清洗数据？',
             items: const [
-              '按目标日期从近到远自动排序',
-              '修复云端删除后本地未同步删除的问题',
-            ],
-          ),
-
-          _changelogSection(
-            icon: Icons.build_rounded,
-            iconColor: Colors.grey,
-            title: '🔧 其他修复',
-            items: const [
-              '修复 target_time 时区偏移 8 小时的问题',
-              '修复时间戳类型混淆（int/String）导致的崩溃',
-              '修复重要日删除按钮在首页无效的问题',
+              '由于之前云端下发了部分丢失日期的脏数据，本次升级需强制清洗本地缓存。',
+              '清除后，应用将重新拉取你云端最完整、正确的最新数据。',
             ],
           ),
 
@@ -218,7 +194,7 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
           ),
           const SizedBox(height: 8),
           ...items.map(
-            (item) => Padding(
+                (item) => Padding(
               padding: const EdgeInsets.only(left: 26, bottom: 5),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,7 +207,8 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
                             color: Theme.of(context)
                                 .colorScheme
                                 .onSurface
-                                .withOpacity(0.75))),
+                                .withOpacity(0.75),
+                            height: 1.4)),
                   ),
                 ],
               ),
@@ -254,7 +231,7 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
             icon: Icons.delete_sweep_rounded,
             iconColor: Colors.orange,
             title: '清除本地旧数据',
-            subtitle: '由于数据库结构变更，本地缓存的旧数据格式已不兼容。\n点击下方按钮清除本地数据，云端数据完整保留，重新登录后将自动同步回来。',
+            subtitle: '为彻底解决日期丢失的顽疾，必须丢弃本地受污染的缓存。\n点击下方按钮清除，重新登录后应用将自动从云端拉取全新、正确的数据。',
           ),
           const SizedBox(height: 32),
 
@@ -284,11 +261,11 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
                 onPressed: _isClearing ? null : _clearLocalData,
                 icon: _isClearing
                     ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                )
                     : const Icon(Icons.delete_sweep_rounded),
                 label: Text(_isClearing ? '正在清除…' : '清除本地数据'),
                 style: FilledButton.styleFrom(
@@ -325,7 +302,7 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
             icon: Icons.login_rounded,
             iconColor: Colors.green,
             title: '退出账号并重新登录',
-            subtitle: '账号认证体系已升级。需要退出当前账号并重新登录，以获取新的身份令牌（Token）。',
+            subtitle: '为激活最新的账户统计接口，你需要重新登录来获取最新的安全令牌。',
           ),
           const SizedBox(height: 32),
 
@@ -333,14 +310,14 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
             icon: Icons.sync_rounded,
             color: Colors.blue,
             title: '重新登录后',
-            content: '登录成功后，点击首页的同步按钮即可将云端数据完整同步回本设备。',
+            content: '登录成功后，应用会立刻开始全量同步，把云端数据完好无损地拉取回设备。',
           ),
           const SizedBox(height: 12),
           _infoCard(
             icon: Icons.lock_reset_rounded,
             color: Colors.green,
             title: '密码不需要修改',
-            content: '你的账号密码没有变化，直接使用原来的邮箱和密码登录即可。',
+            content: '你的账号密码没有任何变化，直接使用原来的邮箱和密码登录即可。',
           ),
 
           const Spacer(),
@@ -370,7 +347,7 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
           TextButton(
             onPressed: _skipGuide,
             child: Text(
-              '跳过（不推荐）',
+              '跳过（极其不推荐）',
               style: TextStyle(
                   color: Theme.of(context)
                       .colorScheme
@@ -585,21 +562,18 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
       // 更新日志页底部的"开始迁移"按钮
       bottomNavigationBar: _currentPage == 0
           ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-                child: FilledButton.icon(
-                  onPressed: _nextPage,
-                  icon: const Icon(Icons.arrow_forward_rounded),
-                  label: const Text('开始迁移'),
-                  style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14)),
-                ),
-              ),
-            )
-          : _currentPage == 1
-              ? null // 步骤 1 的按钮在页面内部
-              : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          child: FilledButton.icon(
+            onPressed: _nextPage,
+            icon: const Icon(Icons.arrow_forward_rounded),
+            label: const Text('开始迁移并清洗'),
+            style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14)),
+          ),
+        ),
+      )
+          : null,
     );
   }
 }
-
