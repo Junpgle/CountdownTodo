@@ -1,2 +1,29 @@
-/* src/index.css */
 @import "tailwindcss";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .pb-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+  }
+}
+
+@keyframes bounce-subtle { 
+  0%, 100% { transform: translateY(0); } 
+  50% { transform: translateY(-15px); } 
+}
+
+.animate-bounce-subtle { 
+  animation: bounce-subtle 4s ease-in-out infinite; 
+}
+
+html { 
+  scroll-behavior: smooth; 
+}
+
+body { 
+  text-rendering: optimizeLegibility; 
+  -webkit-font-smoothing: antialiased; 
+}
