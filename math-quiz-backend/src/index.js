@@ -742,6 +742,27 @@ export default {
       // 模块 I: 番茄钟记录 (pomodoro_records)
       // --------------------------
 
+      // 查询当前是否有其他设备正在专注（5分钟内有未结束的记录）
+      if (url.pathname === "/api/pomodoro/active" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const deviceId = url.searchParams.get("device_id") || "";
+        const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+        // 查询 5 分钟内开始、尚未结束（end_time IS NULL）、非本设备的记录
+        const row = await DB.prepare(`
+          SELECT uuid, todo_uuid, start_time, planned_duration, device_id
+          FROM pomodoro_records
+          WHERE user_id = ?
+            AND is_deleted = 0
+            AND end_time IS NULL
+            AND start_time >= ?
+            AND (device_id IS NULL OR device_id != ?)
+          ORDER BY start_time DESC
+          LIMIT 1
+        `).bind(authUserId, fiveMinAgo, deviceId).first();
+        if (!row) return jsonResponse({ active: false });
+        return jsonResponse({ active: true, record: row });
+      }
+
       // 上传专注记录
       if (url.pathname === "/api/pomodoro/records" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);

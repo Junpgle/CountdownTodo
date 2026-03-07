@@ -394,16 +394,10 @@ class PomodoroService {
 
   // ── 专注记录（本地缓存 + 云端上传）─────────────────────
 
+  /// 读取有效记录（不含已删除）
   static Future<List<PomodoroRecord>> getRecords() async {
-    final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keyRecords);
-    if (s == null) return [];
-    try {
-      return (jsonDecode(s) as List)
-          .map((e) => PomodoroRecord.fromJson(e))
-          .where((r) => !r.isDeleted)
-          .toList();
-    } catch (_) { return []; }
+    final all = await _getAllRecordsRaw();
+    return all.where((r) => !r.isDeleted).toList();
   }
 
   static Future<void> _saveRecords(List<PomodoroRecord> records) async {
@@ -413,14 +407,15 @@ class PomodoroService {
 
   /// 添加一条专注记录并立即上传云端
   static Future<void> addRecord(PomodoroRecord record) async {
-    final all = await getRecords();
+    final all = await _getAllRecordsRaw();   // ← 含 tombstone，防止覆盖
+    // 去重：同 uuid 已存在则跳过
+    if (all.any((r) => r.uuid == record.uuid)) return;
     all.insert(0, record);
     await _saveRecords(all);
-    // 后台上传（不阻塞 UI）
     ApiService.uploadPomodoroRecord(record.toJson()).catchError((_) => false);
   }
 
-  /// 按时间范围查询
+  /// 按时间范围查询（仅有效）
   static Future<List<PomodoroRecord>> getRecordsInRange(DateTime from, DateTime to) async {
     final all = await getRecords();
     final fromMs = from.millisecondsSinceEpoch;
@@ -458,7 +453,79 @@ class PomodoroService {
     return '$m分钟';
   }
 
-  // ── 兼容旧接口（Session → Record 别名）──────────────────
+  // ── 增量同步：从云端拉取并合并到本地 ────────────────────────
+
+  /// 从云端增量拉取专注记录（LWW 合并），返回是否有新增/变更
+  static Future<bool> syncRecordsFromCloud({int? fromMs}) async {
+    try {
+      // 默认拉取最近 30 天
+      final from = fromMs ?? (DateTime.now().subtract(const Duration(days: 30)).millisecondsSinceEpoch);
+      final remoteList = await ApiService.fetchPomodoroRecords(fromMs: from);
+      if (remoteList.isEmpty) return false;
+
+      final remoteRecords = remoteList
+          .map((e) => PomodoroRecord.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      // 读取本地全量（含已删除 tombstone）
+      final prefs = await SharedPreferences.getInstance();
+      final s = prefs.getString(_keyRecords);
+      final localAll = s == null
+          ? <PomodoroRecord>[]
+          : (jsonDecode(s) as List).map((e) => PomodoroRecord.fromJson(e)).toList();
+
+      final Map<String, PomodoroRecord> merged = {for (var r in localAll) r.uuid: r};
+      bool hasChange = false;
+
+      for (final rr in remoteRecords) {
+        final ex = merged[rr.uuid];
+        if (ex == null) {
+          merged[rr.uuid] = rr;
+          hasChange = true;
+        } else if (rr.updatedAt > ex.updatedAt) {
+          merged[rr.uuid] = rr;
+          hasChange = true;
+        }
+      }
+
+      if (hasChange) {
+        await prefs.setString(
+          _keyRecords,
+          jsonEncode(merged.values.map((r) => r.toJson()).toList()),
+        );
+      }
+      return hasChange;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 将本地未同步的记录批量推送到云端
+  static Future<void> syncRecordsToCloud() async {
+    try {
+      final all = await _getAllRecordsRaw(); // 含已删除
+      if (all.isEmpty) return;
+      await ApiService.uploadPomodoroRecords(all.map((r) => r.toJson()).toList());
+    } catch (_) {}
+  }
+
+  /// 读取全量（含已删除）内部方法
+  static Future<List<PomodoroRecord>> _getAllRecordsRaw() async {
+    final prefs = await SharedPreferences.getInstance();
+    final s = prefs.getString(_keyRecords);
+    if (s == null) return [];
+    try {
+      return (jsonDecode(s) as List).map((e) => PomodoroRecord.fromJson(e)).toList();
+    } catch (_) { return []; }
+  }
+
+  /// 今日专注记录（本地，不含已删除）
+  static Future<List<PomodoroRecord>> getTodayRecords() async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+    return getRecordsInRange(start, end);
+  }
 
   static Future<List<PomodoroRecord>> getSessions() => getRecords();
   static Future<void> addSession(PomodoroRecord session) => addRecord(session);
@@ -468,7 +535,7 @@ class PomodoroService {
 
   /// 更新一条记录（修改标签 / 绑定任务等）
   static Future<void> updateRecord(PomodoroRecord updated) async {
-    final all = await getRecords();
+    final all = await _getAllRecordsRaw();
     final idx = all.indexWhere((r) => r.uuid == updated.uuid);
     if (idx != -1) {
       all[idx] = updated;
@@ -479,28 +546,28 @@ class PomodoroService {
 
   /// 软删除一条记录
   static Future<void> deleteRecord(String uuid) async {
-    final all = await getRecords();
+    final all = await _getAllRecordsRaw();
     final idx = all.indexWhere((r) => r.uuid == uuid);
     if (idx != -1) {
-      final deleted = PomodoroRecord(
-        uuid: all[idx].uuid,
-        todoUuid: all[idx].todoUuid,
-        todoTitle: all[idx].todoTitle,
-        tagUuids: all[idx].tagUuids,
-        startTime: all[idx].startTime,
-        endTime: all[idx].endTime,
-        plannedDuration: all[idx].plannedDuration,
-        actualDuration: all[idx].actualDuration,
-        status: all[idx].status,
-        deviceId: all[idx].deviceId,
+      final old = all[idx];
+      all[idx] = PomodoroRecord(
+        uuid: old.uuid,
+        todoUuid: old.todoUuid,
+        todoTitle: old.todoTitle,
+        tagUuids: old.tagUuids,
+        startTime: old.startTime,
+        endTime: old.endTime,
+        plannedDuration: old.plannedDuration,
+        actualDuration: old.actualDuration,
+        status: old.status,
+        deviceId: old.deviceId,
         isDeleted: true,
-        version: all[idx].version + 1,
-        createdAt: all[idx].createdAt,
+        version: old.version + 1,
+        createdAt: old.createdAt,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       );
-      all[idx] = deleted;
       await _saveRecords(all);
-      ApiService.uploadPomodoroRecord(deleted.toJson()).catchError((_) => false);
+      ApiService.uploadPomodoroRecord(all[idx].toJson()).catchError((_) => false);
     }
   }
 

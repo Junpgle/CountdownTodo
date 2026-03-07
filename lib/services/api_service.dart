@@ -402,6 +402,20 @@ class ApiService {
     } catch (e) { return null; }
   }
 
+  /// 查询其他设备是否有正在进行的专注（跨端感知）
+  static Future<Map<String, dynamic>?> fetchActivePomodoroFromOtherDevice(String currentDeviceId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/pomodoro/active')
+          .replace(queryParameters: {'device_id': currentDeviceId});
+      final response = await http.get(uri, headers: _getHeaders());
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        if (data['active'] == true) return data['record'] as Map<String, dynamic>?;
+      }
+      return null;
+    } catch (_) { return null; }
+  }
+
   // 向后兼容旧方法名
   static Future<bool> uploadPomodoroSessions(List<Map<String, dynamic>> sessions) =>
       uploadPomodoroRecords(sessions);

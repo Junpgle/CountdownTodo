@@ -48,7 +48,6 @@ class StorageService {
   // ==========================================
   static Future<String> _getUniqueDeviceId(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    // 将设备 UUID 与具体账号绑定，确保同一个账号在该设备上 UUID 恒定不变
     String accountDeviceKey = "${KEY_DEVICE_ID}_$username";
     String? deviceId = prefs.getString(accountDeviceKey);
     if (deviceId == null) {
@@ -56,6 +55,13 @@ class StorageService {
       await prefs.setString(accountDeviceKey, deviceId);
     }
     return deviceId;
+  }
+
+  /// 公开接口：不需要 username，直接读当前登录用户的设备 ID
+  static Future<String> getDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString(KEY_CURRENT_USER) ?? 'default';
+    return _getUniqueDeviceId(username);
   }
 
   // ==========================================

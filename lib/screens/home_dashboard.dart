@@ -20,6 +20,7 @@ import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
 import '../services/course_service.dart';
 import '../services/external_share_handler.dart';
+import '../services/pomodoro_service.dart';
 
 // 引入其他页面
 import 'screen_time_detail_screen.dart';
@@ -36,6 +37,7 @@ import '../widgets/home_app_bar.dart';
 import '../widgets/countdown_section_widget.dart';
 import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
+import '../widgets/pomodoro_today_section.dart';
 import 'pomodoro_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
@@ -71,10 +73,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   DateTime? _semesterEnd;
 
   List<String> _leftSections = ['courses', 'todos', 'math'];
-  List<String> _rightSections = ['countdowns', 'screenTime'];
+  List<String> _rightSections = ['countdowns', 'screenTime', 'pomodoro'];
 
   Map<String, bool> _sectionVisibility = {
-    'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true,
+    'courses': true, 'countdowns': true, 'todos': true,
+    'screenTime': true, 'math': true, 'pomodoro': true,
   };
   Timer? _courseTimer;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
@@ -218,7 +221,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
     List<String>? leftOrder = prefs.getStringList('home_section_order_left');
     List<String>? rightOrder = prefs.getStringList('home_section_order_right');
-    final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
+    final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math', 'pomodoro'];
 
     if (leftOrder == null || rightOrder == null) {
       List<String> oldOrder = prefs.getStringList('home_section_order') ?? defaultOrder;
@@ -247,6 +250,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           savedMap.putIfAbsent('todos', () => true);
           savedMap.putIfAbsent('screenTime', () => true);
           savedMap.putIfAbsent('math', () => true);
+          savedMap.putIfAbsent('pomodoro', () => true);
           _sectionVisibility = savedMap;
         });
       }
@@ -444,6 +448,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     bool syncTodos = true,
     bool syncCountdowns = true,
     bool syncScreenTime = true,
+    bool syncPomodoro = true,
   }) async {
     if (_isSyncing) return;
     setState(() {
@@ -465,6 +470,13 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           syncCountdowns: syncCountdowns,
           context: context,
         );
+      }
+
+      if (syncPomodoro) {
+        await PomodoroService.syncRecordsToCloud();
+        await PomodoroService.syncRecordsFromCloud();
+        await PomodoroService.syncTagsToCloud();
+        await PomodoroService.syncTagsFromCloud();
       }
 
       if (syncScreenTime) {
@@ -509,6 +521,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     bool syncTodos = true;
     bool syncCountdowns = true;
     bool syncScreenTime = true;
+    bool syncPomodoro = true;
 
     showDialog(
       context: context,
@@ -537,18 +550,24 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                     value: syncScreenTime,
                     onChanged: (val) => setDialogState(() => syncScreenTime = val ?? false),
                   ),
+                  CheckboxListTile(
+                    title: const Text("番茄钟记录"),
+                    value: syncPomodoro,
+                    onChanged: (val) => setDialogState(() => syncPomodoro = val ?? false),
+                  ),
                 ],
               ),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
                 FilledButton(
-                  onPressed: (syncTodos || syncCountdowns || syncScreenTime) ? () {
+                  onPressed: (syncTodos || syncCountdowns || syncScreenTime || syncPomodoro) ? () {
                     Navigator.pop(ctx);
                     _handleManualSync(
                       silent: false,
                       syncTodos: syncTodos,
                       syncCountdowns: syncCountdowns,
                       syncScreenTime: syncScreenTime,
+                      syncPomodoro: syncPomodoro,
                     );
                   } : null,
                   child: const Text("开始同步"),
@@ -677,9 +696,15 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                           MathStatsCard(stats: _mathStats, onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username))); _loadAllData(); }),
                         ],
                       );
+                      Widget pomodoroSection = PomodoroTodaySection(
+                        username: widget.username,
+                        isLight: isLight,
+                      );
 
                       Map<String, Widget> sectionsMap = {
-                        'courses': courseSection, 'countdowns': countdownSection, 'todos': todoSection, 'screenTime': screenTimeSection, 'math': mathSection,
+                        'courses': courseSection, 'countdowns': countdownSection,
+                        'todos': todoSection, 'screenTime': screenTimeSection,
+                        'math': mathSection, 'pomodoro': pomodoroSection,
                       };
 
                       bool hasNoCourse = (_dashboardCourseData['courses'] == null || (_dashboardCourseData['courses'] as List).isEmpty);

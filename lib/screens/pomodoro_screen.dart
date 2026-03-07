@@ -941,28 +941,19 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
               ),
             ),
 
-            // 专注中：Expanded 垂直居中
-            if (!isIdle)
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildImmersiveTimer(),
-                    const SizedBox(height: 40),
-                    _buildTaskArea(isIdle, isFocusing, contentColor),
-                    const SizedBox(height: 48),
-                    _buildActionButtons(isIdle, isFocusing, contentColor),
-                  ],
-                ),
-              )
-            else ...[
-              const SizedBox(height: 16),
-              _buildImmersiveTimer(),
-              const SizedBox(height: 32),
-              _buildTaskArea(isIdle, isFocusing, contentColor),
-              const SizedBox(height: 40),
-              _buildActionButtons(isIdle, isFocusing, contentColor),
-            ],
+            // 主内容区：Expanded 撑满剩余空间，Column 居中，不可滚动
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildImmersiveTimer(),
+                  const SizedBox(height: 32),
+                  _buildTaskArea(isIdle, isFocusing, contentColor),
+                  const SizedBox(height: 40),
+                  _buildActionButtons(isIdle, isFocusing, contentColor),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1075,41 +1066,52 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       );
     }
 
-    // 专注/休息中：小胶囊显示当前任务，可点击切换
-    if (_boundTodo != null) {
-      return GestureDetector(
-        onTap: isFocusing ? () => _showBindTodoDialog(isSwitching: true) : null,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.track_changes_outlined, size: 16, color: contentColor),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  _boundTodo!.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.w500, color: contentColor),
+    // 专注/休息中：始终显示任务胶囊，无论是否已绑定
+    return GestureDetector(
+      onTap: isFocusing ? () => _showBindTodoDialog(isSwitching: _boundTodo != null) : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _boundTodo != null ? Icons.track_changes_outlined : Icons.add_task,
+              size: 16,
+              color: _boundTodo != null
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                _boundTodo?.title ?? '点击绑定任务',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: _boundTodo != null ? FontWeight.w500 : FontWeight.normal,
+                  color: _boundTodo != null
+                      ? contentColor
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-              if (isFocusing) ...[
-                const SizedBox(width: 8),
-                Icon(Icons.swap_horiz, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ],
+            ),
+            if (isFocusing) ...[
+              const SizedBox(width: 8),
+              Icon(
+                _boundTodo != null ? Icons.swap_horiz : Icons.chevron_right,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ],
-          ),
+          ],
         ),
-      );
-    }
-
-    return const SizedBox.shrink();
+      ),
+    );
   }
 
   // ── 底部操作按钮 ──────────────────────────────────────────────
@@ -1394,10 +1396,14 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    // 先从云端增量同步标签和记录，再读本地
+    await PomodoroService.syncTagsFromCloud();
+    await PomodoroService.syncRecordsFromCloud();
     final tags = await PomodoroService.getTags();
     final todos = await StorageService.getTodos(widget.username);
     final DateTimeRange range = _getRange();
     final sessions = await PomodoroService.getSessionsInRange(range.start, range.end);
+    if (!mounted) return;
     setState(() {
       _tags = tags;
       _todos = todos.where((t) => !t.isDeleted).toList();
@@ -1658,7 +1664,14 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
     final completedCount = _sessions.where((s) => s.isCompleted).length;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        MediaQuery.of(context).padding.top +
+            kToolbarHeight +           // AppBar 高度
+            24,                        // 额外间距
+        20,
+        24,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
