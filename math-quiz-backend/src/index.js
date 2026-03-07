@@ -167,6 +167,32 @@ export default {
       }
 
       // --------------------------
+      // 模块 A-2: 账户状态查询 (User Status)
+      // --------------------------
+      if (url.pathname === "/api/user/status" && request.method === "GET") {
+        const userId = url.searchParams.get("user_id");
+        if (!userId) return errorResponse("缺少 user_id 参数", 400);
+
+        // 为了兼容 Flutter 端 SettingsPage 直接调用的 http.get (未通过 ApiService 携带 token)
+        // 此处仅返回非敏感的额度统计数据，不强校验 authUserId
+        const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
+        if (!userRow) return errorResponse("用户不存在", 404);
+
+        const tier = userRow.tier || 'free';
+        const syncLimit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        const record = await DB.prepare("SELECT sync_count FROM sync_limits WHERE user_id = ? AND sync_date = ?").bind(userId, todayStr).first();
+
+        return jsonResponse({
+          success: true,
+          tier: tier,
+          sync_count: record ? record.sync_count : 0,
+          sync_limit: syncLimit
+        });
+      }
+
+      // --------------------------
       // 模块 B: 排行榜 (Leaderboard)
       // --------------------------
       if (url.pathname === "/api/leaderboard" && request.method === "GET") {
