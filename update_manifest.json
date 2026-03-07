@@ -1,15 +1,15 @@
 {
   "version_code": 1,
-  "version_name": "1.7.1",
-  "force_update": false,
+  "version_name": "1.7.7",
+  "force_update": true,
   "update_info": {
-    "title": "版本更新 1.7.1",
-    "description": "- 适配厦大课表[我的课表App]-mhtml\n- 适配西电课表[标准日历格式]-ics\n- 新增 课表导入弹窗进度\n- 新增 将支持的课表文件直接分享到本软件可以智能识别并导入\n- 修复 首页课程提醒消失的问题【设置内重新排列首页顺序即可解决】\n- 修复 日历视图内排列问题 - 修复更新逻辑",
+    "title": "版本更新 1.7.7",
+    "description": "- 修复了一个导致应用崩溃的严重bug\n- 优化了云端同步功能的稳定性\n- 提升了整体性能和用户体验",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "patch_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk"
   },
   "announcement": {
-    "show": true,
+    "show": false,
     "title": "系统公告",
     "content": "正在进行服务器升级,期间云端同步服务暂时无法使用"
   },
