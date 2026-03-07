@@ -1,6 +1,6 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
- * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题 + 移除危险的同名合并逻辑
+ * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题 + 修复清空日期的 null 覆盖 Bug
  */
 
 const SYNC_LIMITS = {
@@ -36,17 +36,18 @@ async function requireAuth(request, env) {
 
 // 🕐 统一时间规范（v2 - 简洁版）
 // 规范：所有时间字段存储和传输均使用 UTC 毫秒时间戳 (number)。
-// Date.now() 本身就是 UTC epoch，无需任何时区偏移。
-// 新数据统一使用 UTC 毫秒整数；历史数据库中可能存有 ISO 字符串，兼容解析但不再写入。
 function normalizeToMs(val) {
   if (val === null || val === undefined) return 0;
   if (typeof val === 'number') return Math.floor(val);
   if (typeof val === 'string') {
     const trimmed = val.trim();
-    // 先尝试纯数字（新格式）
-    const n = parseInt(trimmed, 10);
-    if (!isNaN(n) && String(n) === trimmed) return n;
-    // 再尝试 ISO 8601 字符串（兼容历史数据库中触发器写入的旧格式）
+    if (!trimmed) return 0;
+
+    // 🚀 修复：使用 Number() 直接转换，完美兼容 "1741276800000.0" 等 D1 数据库格式化现象
+    const n = Number(trimmed);
+    if (!isNaN(n)) return Math.floor(n);
+
+    // 再尝试 ISO 8601 字符串
     const d = new Date(trimmed);
     if (!isNaN(d.getTime())) return d.getTime();
   }
@@ -200,7 +201,6 @@ export default {
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError === 'IGNORE') {
-            // 返回原来的 last_sync_time，不推进水位线，防止漏同步
             return jsonResponse({ success: true, server_todos: [], server_countdowns: [], new_sync_time: last_sync_time });
         } else if (limitError) {
             return errorResponse(limitError, 429);
@@ -208,8 +208,7 @@ export default {
 
         const batchStatements = [];
 
-        // ── 检查 todos 表是否已有扩展列（迁移后才有）──
-        // 用一次 PRAGMA 查询缓存列信息，避免每行都查
+        // ── 检查 todos 表是否已有扩展列 ──
         const todoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
         const todoColNames = new Set(todoColumns.results.map(r => r.name));
         const hasRecurrence       = todoColNames.has('recurrence');
@@ -225,44 +224,41 @@ export default {
             const tIsDeleted   = (t.is_deleted ?? t.isDeleted) ? 1 : 0;
             const tUpdatedAtClient = normalizeToMs(t.updated_at ?? t.updatedAt ?? now);
             const tVersion = parseInt(t.version || 1, 10);
-
-            // created_at：物理创建时间，透传客户端原值（UTC ms），不使用 now
             const tCreatedAt = normalizeToMs(t.created_at ?? t.createdAt) || now;
 
-            // due_date / created_date：存为 UTC ms 整数（覆盖 TEXT/TIMESTAMP 列的 ISO 默认值）
+            // ⚠️ 严格判断客户端是否传了该 key（支持清除为 null）
+            const hasDueDate = 'due_date' in t || 'dueDate' in t;
             let tDueDate = null;
-            const dueDateRaw = t.due_date ?? t.dueDate;
-            if (dueDateRaw != null) {
-              const ms = normalizeToMs(dueDateRaw);
-              if (ms > 0) tDueDate = ms;
+            if (hasDueDate) {
+              const raw = t.due_date ?? t.dueDate;
+              tDueDate = raw != null ? (normalizeToMs(raw) || null) : null;
             }
 
+            const hasCreatedDate = 'created_date' in t || 'createdDate' in t;
             let tCreatedDate = null;
-            const createdDateRaw = t.created_date ?? t.createdDate;
-            if (createdDateRaw != null) {
-              const ms = normalizeToMs(createdDateRaw);
-              if (ms > 0) tCreatedDate = ms;
+            if (hasCreatedDate) {
+              const raw = t.created_date ?? t.createdDate;
+              tCreatedDate = raw != null ? (normalizeToMs(raw) || null) : null;
             }
 
-            // 循环字段（仅在列已存在时才处理）
-            const tRecurrence = hasRecurrence ? parseInt(t.recurrence ?? 0, 10) : undefined;
-            const tCustomIntervalDays = hasCustomInterval
-              ? ((t.customIntervalDays != null || t.custom_interval_days != null)
-                  ? parseInt(t.customIntervalDays ?? t.custom_interval_days, 10)
-                  : null)
-              : undefined;
-            let tRecurrenceEndDate = undefined;
-            if (hasRecurrenceEnd) {
-              const recEndRaw = t.recurrenceEndDate ?? t.recurrence_end_date;
-              if (recEndRaw != null) {
-                const ms = normalizeToMs(recEndRaw);
-                tRecurrenceEndDate = ms > 0 ? ms : null;
-              } else {
-                tRecurrenceEndDate = null;
-              }
+            // 循环字段
+            const isRecurrenceProvided = hasRecurrence && ('recurrence' in t);
+            const tRecurrence = isRecurrenceProvided ? parseInt(t.recurrence ?? 0, 10) : 0;
+
+            const isCustomIntervalProvided = hasCustomInterval && ('custom_interval_days' in t || 'customIntervalDays' in t);
+            let tCustomIntervalDays = null;
+            if (isCustomIntervalProvided) {
+              const raw = t.customIntervalDays ?? t.custom_interval_days;
+              tCustomIntervalDays = raw != null ? parseInt(raw, 10) : null;
             }
 
-            // SELECT 只查实际存在的列
+            const isRecurrenceEndProvided = hasRecurrenceEnd && ('recurrence_end_date' in t || 'recurrenceEndDate' in t);
+            let tRecurrenceEndDate = null;
+            if (isRecurrenceEndProvided) {
+              const raw = t.recurrenceEndDate ?? t.recurrence_end_date;
+              tRecurrenceEndDate = raw != null ? (normalizeToMs(raw) || null) : null;
+            }
+
             const extraCols = [
               hasRecurrence     ? 'recurrence'            : null,
               hasCustomInterval ? 'custom_interval_days'  : null,
@@ -282,7 +278,6 @@ export default {
 
             if (!existing) {
               // ── INSERT ──
-              // 基础列（表中已有）
               let insertCols = `uuid, user_id, content, is_completed, is_deleted, created_at, updated_at, version, device_id, due_date, created_date`;
               let insertPlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`;
               let insertValues = [tUuid, authUserId, tContent, tIsCompleted, tIsDeleted, tCreatedAt, now, tVersion, device_id, tDueDate, tCreatedDate];
@@ -296,10 +291,9 @@ export default {
 
             } else {
               // ── UPDATE ──
-              // ⚠️ 保护：已有值的字段不能被 null 覆盖
-              const finalDueDate     = tDueDate     ?? existing.due_date     ?? null;
-              const finalCreatedDate = tCreatedDate ?? existing.created_date ?? null;
-              // created_at 取最小值（保留最早的物理创建时间）
+              const finalDueDate     = hasDueDate       ? tDueDate           : (existing.due_date ?? null);
+              const finalCreatedDate = hasCreatedDate   ? tCreatedDate       : (existing.created_date ?? null);
+
               const existingCreatedAt = normalizeToMs(existing.created_at) || tCreatedAt;
               const finalCreatedAt    = Math.min(tCreatedAt, existingCreatedAt) || existingCreatedAt;
 
@@ -314,17 +308,15 @@ export default {
 
                 if (hasRecurrence) {
                   setClauses.push('recurrence = ?');
-                  setValues.push(tRecurrence);
+                  setValues.push(isRecurrenceProvided ? tRecurrence : (existing.recurrence ?? 0));
                 }
                 if (hasCustomInterval) {
-                  const finalCI = tCustomIntervalDays != null ? tCustomIntervalDays : (existing.custom_interval_days ?? null);
                   setClauses.push('custom_interval_days = ?');
-                  setValues.push(finalCI);
+                  setValues.push(isCustomIntervalProvided ? tCustomIntervalDays : (existing.custom_interval_days ?? null));
                 }
                 if (hasRecurrenceEnd) {
-                  const finalRE = tRecurrenceEndDate ?? existing.recurrence_end_date ?? null;
                   setClauses.push('recurrence_end_date = ?');
-                  setValues.push(finalRE);
+                  setValues.push(isRecurrenceEndProvided ? tRecurrenceEndDate : (existing.recurrence_end_date ?? null));
                 }
 
                 setValues.push(existing.id);
@@ -336,24 +328,21 @@ export default {
         }
 
         // 2. 处理 Countdowns
-        // countdowns 表结构已确认：id, user_id, title, target_time, created_at, updated_at, is_deleted, device_id, version, uuid
         if (Array.isArray(countdowns)) {
           for (const c of countdowns) {
             const cUuid = String(c.uuid ?? c.id ?? c._id);
             const cTitle = String(c.title ?? "");
 
-            // target_time：UTC ms 整数
+            const hasTargetTime = 'target_time' in c || 'targetTime' in c || 'targetDate' in c;
             let cTargetTime = null;
-            const targetTimeRaw = c.target_time ?? c.targetTime ?? c.targetDate;
-            if (targetTimeRaw != null) {
-              const ms = normalizeToMs(targetTimeRaw);
-              if (ms > 0) cTargetTime = ms;
+            if (hasTargetTime) {
+              const raw = c.target_time ?? c.targetTime ?? c.targetDate;
+              cTargetTime = raw != null ? (normalizeToMs(raw) || null) : null;
             }
 
             const cIsDeleted = (c.is_deleted ?? c.isDeleted) ? 1 : 0;
             const cUpdatedAtClient = normalizeToMs(c.updated_at ?? c.updatedAt ?? now);
             const cVersion = parseInt(c.version || 1, 10);
-            // created_at：透传客户端原值
             const cCreatedAt = normalizeToMs(c.created_at ?? c.createdAt) || now;
 
             let existing = await DB.prepare(
@@ -372,8 +361,7 @@ export default {
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
               ).bind(cUuid, authUserId, cTitle, cTargetTime, cIsDeleted, cCreatedAt, now, cVersion, device_id));
             } else {
-              // ⚠️ 保护：target_time 有新值才覆盖
-              const finalTargetTime   = cTargetTime ?? existing.target_time ?? null;
+              const finalTargetTime   = hasTargetTime ? cTargetTime : (existing.target_time ?? null);
               const existingCreatedAt = normalizeToMs(existing.created_at) || cCreatedAt;
               const finalCreatedAt    = Math.min(cCreatedAt, existingCreatedAt) || existingCreatedAt;
               const existingUpdatedAtMs = normalizeToMs(existing.updated_at);
@@ -399,16 +387,11 @@ export default {
           });
         }
 
-        // 提交所有客户端传来的批处理操作
         if (batchStatements.length > 0) await DB.batch(batchStatements);
-
-        // ⚠️ 删除了之前那个非常危险的服务端按名字合并(deduplicateItems)的逻辑！
 
         // ==========================================
         // 4. 拉取最终的增量数据下发给客户端
         // ==========================================
-
-        // 所有 updated_at 均为 UTC 毫秒整数，用 normalizeToMs 统一转换后与 last_sync_time 比较。
         const serverTodosRaw = await DB.prepare(`
           SELECT * FROM todos
           WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
@@ -419,22 +402,18 @@ export default {
           WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
         `).bind(authUserId, device_id).all();
 
-        // 所有时间字段均为 UTC 毫秒时间戳，直接转数字
         const normalizeTimestamp = (val) => normalizeToMs(val);
-        // 可空时间字段：0 / null 统一返回 null，避免 Flutter 把 0 解析为 1970-01-01
         const nullableTimestamp = (val) => {
           const ms = normalizeToMs(val);
           return ms > 0 ? ms : null;
         };
 
-        // 只下发 updated_at > last_sync_time 的增量记录
         const filteredTodos = serverTodosRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
         const filteredCountdowns = serverCountdownsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
 
-        // 下发时明确映射每个字段，时间字段全部规范化为 UTC ms int
         const mappedTodos = filteredTodos.map(row => {
             const idStr = row.uuid || String(row.id);
-            const mapped = {
+            return {
               id: idStr,
               uuid: idStr,
               content: row.content,
@@ -442,17 +421,15 @@ export default {
               is_deleted: row.is_deleted,
               version: row.version,
               device_id: row.device_id,
-              created_at:   normalizeTimestamp(row.created_at),  // 物理创建时间
-              updated_at:   normalizeTimestamp(row.updated_at),  // 最后修改时间
-              created_date: nullableTimestamp(row.created_date), // 任务开始时间（可为 null）
-              due_date:     nullableTimestamp(row.due_date),     // 任务截止时间（可为 null）
-              // 循环字段：若列不存在则返回默认值，Flutter 端可正常解析
+              created_at:   normalizeTimestamp(row.created_at),
+              updated_at:   normalizeTimestamp(row.updated_at),
+              created_date: nullableTimestamp(row.created_date),
+              due_date:     nullableTimestamp(row.due_date),
               recurrence:         row.recurrence         ?? 0,
               customIntervalDays: row.custom_interval_days ?? null,
               recurrenceEndDate:  nullableTimestamp(row.recurrence_end_date),
               recurrence_end_date:nullableTimestamp(row.recurrence_end_date),
             };
-            return mapped;
         });
 
         const mappedCountdowns = filteredCountdowns.map(row => {
@@ -466,11 +443,10 @@ export default {
                device_id: row.device_id,
                created_at:  normalizeTimestamp(row.created_at),
                updated_at:  normalizeTimestamp(row.updated_at),
-               target_time: nullableTimestamp(row.target_time), // 不能降级成 0/1970
+               target_time: nullableTimestamp(row.target_time),
              };
         });
 
-        // 提取账号状态
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(authUserId).first();
         const tier = userRow ? userRow.tier : 'free';
         const syncLimit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
@@ -556,13 +532,12 @@ export default {
       }
 
       // --------------------------
-      // 模块 F: 数据库迁移 — 幂等，可重复调用
+      // 模块 F: 数据库迁移
       // --------------------------
       if (url.pathname === "/api/admin/migrate" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
         if (authUserId !== 1) return errorResponse("仅管理员可执行迁移", 403);
 
-        // todos 表缺少 3 列（countdowns 表结构已完整，无需迁移）
         const migrations = [
           `ALTER TABLE todos ADD COLUMN recurrence INTEGER DEFAULT 0`,
           `ALTER TABLE todos ADD COLUMN custom_interval_days INTEGER`,
@@ -583,14 +558,12 @@ export default {
       }
 
       // --------------------------
-      // 模块 G: 历史数据修复 — 把所有 ISO 字符串时间字段转为 UTC ms 整数
-      // 幂等：已经是整数的行不会被修改（normalizeToMs 对整数原样返回）
+      // 模块 G: 历史数据修复
       // --------------------------
       if (url.pathname === "/api/admin/fix_timestamps" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
         if (authUserId !== 1) return errorResponse("仅管理员可执行修复", 403);
 
-        // ── 修复 todos ──
         const allTodos = await DB.prepare("SELECT id, created_at, updated_at, due_date, created_date FROM todos").all();
         let todoFixed = 0;
         const todoBatch = [];
@@ -600,7 +573,6 @@ export default {
           const newDueDate    = normalizeToMs(row.due_date)    || null;
           const newCreatedDate= normalizeToMs(row.created_date)|| null;
 
-          // 只有当至少一个字段值发生变化时才更新
           const changed =
             String(newCreatedAt)   !== String(row.created_at)  ||
             String(newUpdatedAt)   !== String(row.updated_at)  ||
@@ -617,7 +589,6 @@ export default {
           }
         }
 
-        // ── 修复 countdowns ──
         const allCds = await DB.prepare("SELECT id, created_at, updated_at, target_time FROM countdowns").all();
         let cdFixed = 0;
         const cdBatch = [];
@@ -641,7 +612,6 @@ export default {
           }
         }
 
-        // 分批提交（D1 每次 batch 上限 100 条）
         const allBatch = [...todoBatch, ...cdBatch];
         for (let i = 0; i < allBatch.length; i += 100) {
           await DB.batch(allBatch.slice(i, i + 100));

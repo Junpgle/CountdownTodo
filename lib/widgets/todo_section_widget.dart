@@ -207,14 +207,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   void _editTodo(TodoItem todo) {
     TextEditingController titleCtrl = TextEditingController(text: todo.title);
     // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
+    DateTime createdDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
     DateTime? dueDate = todo.dueDate;
     RecurrenceType recurrence = todo.recurrence;
     int? customDays = todo.customIntervalDays;
     TextEditingController customDaysCtrl = TextEditingController(text: customDays?.toString() ?? "");
     DateTime? recurrenceEndDate = todo.recurrenceEndDate;
 
-    bool isAllDay = dueDate != null && createdAt.hour == 0 && createdAt.minute == 0 && dueDate!.hour == 23 && dueDate!.minute == 59;
+    bool isAllDay = dueDate != null && createdDate.hour == 0 && createdDate.minute == 0 && dueDate!.hour == 23 && dueDate!.minute == 59;
 
     showDialog(
       context: context,
@@ -236,11 +236,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     setDialogState(() {
                       isAllDay = val;
                       if (isAllDay) {
-                        createdAt = DateTime(createdAt.year, createdAt.month, createdAt.day, 0, 0);
+                        createdDate = DateTime(createdDate.year, createdDate.month, createdDate.day, 0, 0);
                         if (dueDate != null) {
                           dueDate = DateTime(dueDate!.year, dueDate!.month, dueDate!.day, 23, 59);
                         } else {
-                          dueDate = DateTime(createdAt.year, createdAt.month, createdAt.day, 23, 59);
+                          dueDate = DateTime(createdDate.year, createdDate.month, createdDate.day, 23, 59);
                         }
                       }
                     });
@@ -249,19 +249,19 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text("开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdAt)}"),
+                  title: Text("开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdDate)}"),
                   trailing: const Icon(Icons.edit_calendar, size: 20),
                   onTap: () async {
                     final pickedDate = await showDatePicker(
-                        context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: createdAt);
+                        context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: createdDate);
                     if (pickedDate != null) {
                       if (isAllDay) {
-                        setDialogState(() => createdAt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
+                        setDialogState(() => createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
                       } else {
                         if (!context.mounted) return;
-                        final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(createdAt));
+                        final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(createdDate));
                         if (pickedTime != null) {
-                          setDialogState(() => createdAt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+                          setDialogState(() => createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
                         }
                       }
                     }
@@ -273,7 +273,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   trailing: const Icon(Icons.event, size: 20),
                   onTap: () async {
                     final pickedDate = await showDatePicker(
-                        context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: dueDate ?? createdAt);
+                        context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: dueDate ?? createdDate);
                     if (pickedDate != null) {
                       if (isAllDay) {
                         setDialogState(() => dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
@@ -319,7 +319,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               onPressed: () {
                 if (titleCtrl.text.isNotEmpty) {
                   todo.title = titleCtrl.text;
-                  todo.createdDate = createdAt.millisecondsSinceEpoch; // 🚀 修正：更新业务开始时间
+                  todo.createdDate = createdDate.millisecondsSinceEpoch; // 🚀 修正：更新业务开始时间
                   todo.dueDate = dueDate;
                   todo.recurrence = recurrence;
                   todo.customIntervalDays = customDays;
