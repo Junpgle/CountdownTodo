@@ -6,7 +6,8 @@ export interface User {
   id: number;
   username: string;
   email: string;
-  [key: string]: any;
+  tier?: string;
+  avatar_url?: string;
 }
 
 interface AuthScreenProps {
@@ -31,7 +32,7 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
           method: 'POST',
           body: JSON.stringify({ email, password })
         });
-        ApiService.setToken(res.token);
+        ApiService.setToken(res.token as string);
         localStorage.setItem('cdt_user', JSON.stringify(res.user));
 
         // 2. 这里的封装逻辑非常关键：
@@ -75,7 +76,11 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    isLogin ? await handleLogin() : await handleRegister();
+    if (isLogin) {
+      await handleLogin();
+    } else {
+      await handleRegister();
+    }
     setLoading(false);
   };
 

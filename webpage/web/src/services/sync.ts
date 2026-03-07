@@ -39,7 +39,7 @@ export const SyncEngine = {
 
       if (response.success) {
         // --- 合并 Todos ---
-        const serverTodos: TodoItem[] = response.server_todos || [];
+        const serverTodos = (Array.isArray(response.server_todos) ? response.server_todos : []) as TodoItem[];
         const todoMap = new Map(allLocalTodos.map(t => [t.uuid, t]));
 
         for (const sTodo of serverTodos) {
@@ -56,7 +56,7 @@ export const SyncEngine = {
         this.setLocalTodos(userId, Array.from(todoMap.values()));
 
         // --- 合并 Countdowns ---
-        const serverCds: CountdownItem[] = response.server_countdowns || [];
+        const serverCds = (Array.isArray(response.server_countdowns) ? response.server_countdowns : []) as CountdownItem[];
         const cdMap = new Map(allLocalCds.map(c => [c.uuid, c]));
 
         for (const sCd of serverCds) {
@@ -71,7 +71,7 @@ export const SyncEngine = {
         }
         this.setLocalCountdowns(userId, Array.from(cdMap.values()));
 
-        this.setLastSyncTime(userId, response.new_sync_time);
+        this.setLastSyncTime(userId, Number(response.new_sync_time));
         return true;
       }
       return false;

@@ -1,5 +1,12 @@
 const BASE_URL = 'https://mathquiz.junpgle.me';
 
+interface RegisterPayload {
+  username?: string;
+  email: string;
+  password?: string;
+  code?: string | null;
+}
+
 /**
 * ApiService 处理所有与后端的通信
 * 包含 Token 管理、设备 ID 生成以及基于用户 ID 的本地数据隔离逻辑
@@ -31,7 +38,7 @@ getToken: (): string | null => localStorage.getItem('cdt_token'),
     return did;
   },
 
-  async request(endpoint: string, options: RequestInit = {}) {
+  async request(endpoint: string, options: RequestInit = {}): Promise<Record<string, unknown>> {
     const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -47,9 +54,10 @@ getToken: (): string | null => localStorage.getItem('cdt_token'),
       headers,
     });
 
-    const data = await res.json();
+    const data = await res.json() as Record<string, unknown>;
     if (!res.ok) {
-      throw new Error(data.error || data.message || '请求失败');
+      const errMsg = (data.error ?? data.message ?? '请求失败') as string;
+      throw new Error(errMsg);
     }
     return data;
   },
@@ -61,7 +69,7 @@ getToken: (): string | null => localStorage.getItem('cdt_token'),
     });
   },
 
-  async register(payload: any) {
+  async register(payload: RegisterPayload) {
     return this.request('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify(payload)
