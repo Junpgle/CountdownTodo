@@ -26,6 +26,7 @@ export interface TodoItem {
   recurrence?: number;
   custom_interval_days?: number | null;
   recurrence_end_date?: number | null;
+  remark?: string | null;
 }
 
 export interface CountdownItem {

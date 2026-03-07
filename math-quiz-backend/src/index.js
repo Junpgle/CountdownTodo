@@ -248,6 +248,7 @@ export default {
         const hasRecurrence       = todoColNames.has('recurrence');
         const hasCustomInterval   = todoColNames.has('custom_interval_days');
         const hasRecurrenceEnd    = todoColNames.has('recurrence_end_date');
+        const hasRemark           = todoColNames.has('remark');
 
         // 1. 处理 Todos
         if (Array.isArray(todos)) {
@@ -291,10 +292,14 @@ export default {
               tRecurrenceEndDate = raw != null ? (normalizeToMs(raw) || null) : null;
             }
 
+            const isRemarkProvided = hasRemark && ('remark' in t);
+            const tRemark = isRemarkProvided ? (t.remark != null ? String(t.remark) : null) : null;
+
             const extraCols = [
               hasRecurrence     ? 'recurrence'            : null,
               hasCustomInterval ? 'custom_interval_days'  : null,
               hasRecurrenceEnd  ? 'recurrence_end_date'   : null,
+              hasRemark         ? 'remark'                : null,
             ].filter(Boolean);
             const extraColStr = extraCols.length > 0 ? ', ' + extraCols.join(', ') : '';
 
@@ -316,6 +321,7 @@ export default {
               if (hasRecurrence)     { insertCols += ', recurrence';            insertPlaceholders += ', ?'; insertValues.push(tRecurrence); }
               if (hasCustomInterval) { insertCols += ', custom_interval_days';  insertPlaceholders += ', ?'; insertValues.push(tCustomIntervalDays); }
               if (hasRecurrenceEnd)  { insertCols += ', recurrence_end_date';   insertPlaceholders += ', ?'; insertValues.push(tRecurrenceEndDate); }
+              if (hasRemark)         { insertCols += ', remark';                insertPlaceholders += ', ?'; insertValues.push(tRemark); }
 
               let stmt = DB.prepare(`INSERT INTO todos (${insertCols}) VALUES (${insertPlaceholders})`);
               batchStatements.push(stmt.bind(...insertValues));
@@ -347,6 +353,10 @@ export default {
                 if (hasRecurrenceEnd) {
                   setClauses.push('recurrence_end_date = ?');
                   setValues.push(isRecurrenceEndProvided ? tRecurrenceEndDate : (existing.recurrence_end_date ?? null));
+                }
+                if (hasRemark) {
+                  setClauses.push('remark = ?');
+                  setValues.push(isRemarkProvided ? tRemark : (existing.remark ?? null));
                 }
 
                 setValues.push(existing.id);
@@ -475,6 +485,7 @@ export default {
               customIntervalDays: row.custom_interval_days ?? null,
               recurrenceEndDate:  nullableTimestamp(row.recurrence_end_date),
               recurrence_end_date:nullableTimestamp(row.recurrence_end_date),
+              remark: row.remark ?? null,
             };
         });
 

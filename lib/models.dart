@@ -112,6 +112,7 @@ class TodoItem {
   int? customIntervalDays;
   DateTime? recurrenceEndDate;
   DateTime? dueDate;
+  String? remark; // 📝 备注
 
   TodoItem({
     String? id,
@@ -126,6 +127,7 @@ class TodoItem {
     this.customIntervalDays,
     this.recurrenceEndDate,
     this.dueDate,
+    this.remark,
   }) :
         this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
@@ -155,6 +157,7 @@ class TodoItem {
     // 循环结束日：同时输出两种键名
     'recurrenceEndDate': recurrenceEndDate?.millisecondsSinceEpoch,
     'recurrence_end_date': recurrenceEndDate?.millisecondsSinceEpoch,
+    'remark': remark,                 // 📝 备注（可为 null）
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -185,6 +188,8 @@ class TodoItem {
           json['recurrenceEndDate'] ?? json['recurrence_end_date']),
       // due_date = 任务截止时间
       dueDate: _parseDateField(json['due_date']),
+      // 📝 备注
+      remark: json['remark'] as String?,
     );
   }
 }

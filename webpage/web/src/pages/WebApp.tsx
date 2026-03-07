@@ -12,7 +12,7 @@ import type { TodoItem, CountdownItem, User } from '../types';
 // --------------------------------------------------------
 // 常量与工具函数
 // --------------------------------------------------------
-const CURRENT_WEB_VERSION = "1.0.0"; // 当前网页版的硬编码版本号
+const CURRENT_WEB_VERSION = "1.0.3"; // 当前网页版的硬编码版本号
 
 const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
 const formatDt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -472,6 +472,12 @@ const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: Todo
                       <RefreshCw className="w-5 h-5 text-emerald-500" />
                       <span className="font-bold text-sm">最近同步: {formatDt(new Date(todo.updated_at))}</span>
                     </div>
+                    {todo.remark && (
+                      <div className="flex items-start gap-3 text-slate-600 pt-1 border-t border-slate-200 mt-1">
+                        <BookOpen className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                        <span className="text-sm font-medium text-slate-500 italic leading-relaxed">{todo.remark}</span>
+                      </div>
+                    )}
                   </div>
                 </>
               );
@@ -746,7 +752,15 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   const [countdowns, setCountdowns] = useState<CountdownItem[]>([]);
   const [showAddModal, setShowAddModal] = useState<'todo' | 'countdown' | null>(null);
 
+  // 编辑待办
+  const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editRemark, setEditRemark] = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+
   const [newItemTitle, setNewItemTitle] = useState('');
+  const [newRemark, setNewRemark] = useState('');
   const [newStartDate, setNewStartDate] = useState(toDatetimeLocal(Date.now()));
   const [newDueDate, setNewDueDate] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -961,7 +975,8 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       created_at: now,
       created_date: new Date(newStartDate).getTime(),
       due_date: newDueDate ? new Date(newDueDate).getTime() : null,
-      device_id: ApiService.getDeviceId()
+      device_id: ApiService.getDeviceId(),
+      remark: newRemark.trim() || null,
     };
 
     const all = SyncEngine.getLocalTodos(user.id);
@@ -998,8 +1013,35 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
   const resetForm = () => {
     setNewItemTitle('');
+    setNewRemark('');
     setNewStartDate(toDatetimeLocal(Date.now()));
     setNewDueDate('');
+  };
+
+  const openEditModal = (todo: TodoItem) => {
+    setEditingTodo(todo);
+    setEditTitle(todo.content);
+    setEditRemark(todo.remark ?? '');
+    setEditStartDate(toDatetimeLocal(todo.created_date ?? todo.created_at));
+    setEditDueDate(todo.due_date ? toDatetimeLocal(todo.due_date) : '');
+  };
+
+  const handleSaveTodoEdit = () => {
+    if (!editingTodo || !editTitle.trim()) return;
+    const all = SyncEngine.getLocalTodos(user.id);
+    const target = all.find(t => t.uuid === editingTodo.uuid);
+    if (target) {
+      target.content = editTitle.trim();
+      target.remark = editRemark.trim() || null;
+      target.created_date = new Date(editStartDate).getTime();
+      target.due_date = editDueDate ? new Date(editDueDate).getTime() : null;
+      target.version++;
+      target.updated_at = Date.now();
+      SyncEngine.setLocalTodos(user.id, all);
+      loadLocalData();
+      handleSync();
+    }
+    setEditingTodo(null);
   };
 
   const toggleTodo = (uuid: string) => {
@@ -1092,25 +1134,45 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
               {dateStr}
             </p>
             <div className="flex items-center gap-2 sm:gap-3">
-              <div className="flex-1 h-1 sm:h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${todo.is_completed ? 'bg-slate-300' : 'bg-indigo-600'}`}
-                  style={{ width: `${progress * 100}%` }}
-                />
+                <div className="flex-1 h-1 sm:h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${todo.is_completed ? 'bg-slate-300' : 'bg-indigo-600'}`}
+                    style={{ width: `${progress * 100}%` }}
+                  />
+                </div>
+                <span className={`text-[10px] sm:text-[11px] font-bold ${todo.is_completed ? 'text-slate-400' : (isPast ? 'text-red-500' : 'text-slate-500')}`}>
+                  {Math.floor(progress * 100)}%
+                </span>
               </div>
-              <span className={`text-[10px] sm:text-[11px] font-bold ${todo.is_completed ? 'text-slate-400' : (isPast ? 'text-red-500' : 'text-slate-500')}`}>
-                {Math.floor(progress * 100)}%
-              </span>
-            </div>
+              {todo.remark && (
+                <div className="flex items-start gap-1.5 mt-1">
+                  <span className="text-slate-300 mt-0.5 shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9"/><path d="M14.5 2.5a2.121 2.121 0 0 1 3 3L12 11l-4 1 1-4 5.5-5.5z"/></svg>
+                  </span>
+                  <p className={`text-[10px] sm:text-xs italic leading-snug line-clamp-2 ${todo.is_completed ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {todo.remark}
+                  </p>
+                </div>
+              )}
           </div>
         </div>
 
-        <button
-          onClick={() => deleteTodo(todo.uuid)}
-          className="opacity-0 group-hover:opacity-100 p-1.5 sm:p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg sm:rounded-xl transition"
-        >
-          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
+        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition">
+          <button
+            onClick={() => openEditModal(todo)}
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg sm:rounded-xl transition"
+            title="编辑"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button
+            onClick={() => deleteTodo(todo.uuid)}
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg sm:rounded-xl transition"
+            title="删除"
+          >
+            <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+        </div>
       </div>
     );
   };
@@ -1457,6 +1519,19 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                 </div>
               )}
 
+              {showAddModal === 'todo' && (
+                <div>
+                  <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">备注 (可选)</label>
+                  <textarea
+                    value={newRemark}
+                    onChange={e => setNewRemark(e.target.value)}
+                    rows={2}
+                    className="w-full bg-slate-50 border border-slate-200 px-5 py-3 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium resize-none text-sm placeholder:text-slate-400"
+                    placeholder="添加备注信息..."
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">
                   {showAddModal === 'todo' ? '截止时间 (可选)' : '目标日期 (必填)'}
@@ -1475,6 +1550,81 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
               className="w-full bg-indigo-600 text-white font-black text-lg py-4 rounded-2xl hover:bg-indigo-700 transition shadow-xl shadow-indigo-500/30 active:scale-[0.98]"
             >
               保存并同步
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 编辑待办弹窗 */}
+      {editingTodo && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-8">
+              <h4 className="font-black text-2xl text-slate-800">编辑待办事项</h4>
+              <button onClick={() => setEditingTodo(null)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5 mb-8">
+              <div>
+                <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">待办内容</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition text-lg font-medium"
+                  placeholder="输入内容..."
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">备注 (可选)</label>
+                <textarea
+                  value={editRemark}
+                  onChange={e => setEditRemark(e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-50 border border-slate-200 px-5 py-3 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium resize-none text-sm placeholder:text-slate-400"
+                  placeholder="添加备注信息..."
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">开始时间</label>
+                <input
+                  type="datetime-local"
+                  value={editStartDate}
+                  onChange={e => setEditStartDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">截止时间 (可选)</label>
+                <input
+                  type="datetime-local"
+                  value={editDueDate}
+                  onChange={e => setEditDueDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
+                />
+                {editDueDate && (
+                  <button
+                    onClick={() => setEditDueDate('')}
+                    className="mt-2 ml-1 text-xs text-slate-400 hover:text-red-400 transition font-medium"
+                  >
+                    × 清除截止时间
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveTodoEdit}
+              disabled={!editTitle.trim()}
+              className="w-full bg-indigo-600 text-white font-black text-lg py-4 rounded-2xl hover:bg-indigo-700 transition shadow-xl shadow-indigo-500/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              保存修改
             </button>
           </div>
         </div>

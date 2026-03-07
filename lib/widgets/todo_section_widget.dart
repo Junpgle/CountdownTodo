@@ -73,6 +73,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
   void showAddTodoDialog() {
     TextEditingController titleCtrl = TextEditingController();
+    TextEditingController remarkCtrl = TextEditingController();
     DateTime createdAt = DateTime.now();
     DateTime? dueDate;
     RecurrenceType recurrence = RecurrenceType.none;
@@ -91,6 +92,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "待办内容")),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: remarkCtrl,
+                  decoration: const InputDecoration(labelText: "备注 (可选)", hintText: "添加备注..."),
+                  maxLines: 3,
+                  minLines: 1,
+                ),
                 const SizedBox(height: 10),
 
                 SwitchListTile(
@@ -190,6 +198,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     recurrenceEndDate: recurrenceEndDate,
                     dueDate: dueDate,
                     createdDate: createdAt.millisecondsSinceEpoch, // 🚀 修正：业务开始时间
+                    remark: remarkCtrl.text.trim().isEmpty ? null : remarkCtrl.text.trim(),
                   );
                   List<TodoItem> updatedList = List.from(widget.todos)..insert(0, newTodo);
                   widget.onTodosChanged(updatedList);
@@ -206,6 +215,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
   void _editTodo(TodoItem todo) {
     TextEditingController titleCtrl = TextEditingController(text: todo.title);
+    TextEditingController remarkCtrl = TextEditingController(text: todo.remark ?? '');
     // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
     DateTime createdDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
     DateTime? dueDate = todo.dueDate;
@@ -226,6 +236,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "待办内容")),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: remarkCtrl,
+                  decoration: const InputDecoration(labelText: "备注 (可选)", hintText: "添加备注..."),
+                  maxLines: 3,
+                  minLines: 1,
+                ),
                 const SizedBox(height: 10),
 
                 SwitchListTile(
@@ -324,6 +341,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   todo.recurrence = recurrence;
                   todo.customIntervalDays = customDays;
                   todo.recurrenceEndDate = recurrenceEndDate;
+                  todo.remark = remarkCtrl.text.trim().isEmpty ? null : remarkCtrl.text.trim();
                   todo.markAsChanged();
 
                   List<TodoItem> updatedList = List.from(widget.todos);
@@ -439,6 +457,30 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             Text("${(progress * 100).toInt()}%", style: TextStyle(fontSize: 11, color: subColor, fontWeight: FontWeight.bold)),
           ],
         ),
+        if (todo.remark != null && todo.remark!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.notes, size: 12,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  todo.remark!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(
+                        todo.isDone ? 0.3 : 0.55),
+                    fontStyle: FontStyle.italic,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
 
