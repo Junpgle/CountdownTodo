@@ -8,10 +8,11 @@ import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
 import 'screens/upgrade_guide_screen.dart';
+import 'screens/pomodoro_screen.dart';
+import 'services/pomodoro_service.dart';
 import 'storage_service.dart';
 
 void main() {
-  // 极速启动核心：绝对不要在 runApp 之前使用任何 await！
   WidgetsFlutterBinding.ensureInitialized();
 
   // 立刻运行 App，让引擎画出第一帧，彻底消除黑屏
@@ -29,6 +30,7 @@ class _MyAppState extends State<MyApp> {
   String? _loggedInUser;
   bool _isChecking = true;
   bool _showUpgradeGuide = false;
+  bool _hasActivePomodoro = false; // 是否有正在进行或刚完成的番茄钟
 
   @override
   void initState() {
@@ -38,19 +40,29 @@ class _MyAppState extends State<MyApp> {
 
   // 将所有耗时的初始化工作放到异步方法中
   Future<void> _initializeApp() async {
-    // 0. 读取主题偏好 (不阻塞 UI 第一帧，读取完毕后触发重绘)
+    // 0. 读取主题偏好
     await StorageService.initTheme();
 
-    // 1. 读取硬盘获取登录状态
+    // 1. 读取登录状态
     final user = await StorageService.getLoginSession();
 
-    // 2. 检查是否需要显示升级引导
+    // 2. 检查升级引导
     final needGuide = await UpgradeGuideScreen.shouldShow();
+
+    // 3. 检查是否有正在进行或刚完成的番茄钟（仅登录用户）
+    bool hasPomodoro = false;
+    if (user != null && user.isNotEmpty && !needGuide) {
+      final runState = await PomodoroService.loadRunState();
+      if (runState != null && runState.phase != PomodoroPhase.idle) {
+        hasPomodoro = true;
+      }
+    }
 
     if (mounted) {
       setState(() {
         _loggedInUser = user;
         _showUpgradeGuide = needGuide;
+        _hasActivePomodoro = hasPomodoro;
         _isChecking = false;
       });
     }
@@ -140,6 +152,7 @@ class _MyAppState extends State<MyApp> {
           ],
 
           // 路由控制：加载中 → 升级引导 → 主页/登录
+          // 若有进行中的番茄钟，先进主页，再由主页自动 push 番茄钟（保留返回栈）
           home: _isChecking
               ? Scaffold(
                   backgroundColor: currentThemeMode == ThemeMode.dark
@@ -151,9 +164,12 @@ class _MyAppState extends State<MyApp> {
                 )
               : _showUpgradeGuide
                   ? UpgradeGuideScreen(loggedInUser: _loggedInUser)
-                  : (_loggedInUser != null && _loggedInUser!.isNotEmpty
-                      ? HomeDashboard(username: _loggedInUser!)
-                      : const LoginScreen()),
+                  : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
+                      ? HomeDashboard(
+                          username: _loggedInUser!,
+                          autoOpenPomodoro: _hasActivePomodoro,
+                        )
+                      : const LoginScreen(),
         );
       },
     );

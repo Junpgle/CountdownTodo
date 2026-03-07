@@ -40,7 +40,12 @@ import 'pomodoro_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
-  const HomeDashboard({super.key, required this.username});
+  final bool autoOpenPomodoro;
+  const HomeDashboard({
+    super.key,
+    required this.username,
+    this.autoOpenPomodoro = false,
+  });
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -85,6 +90,20 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     _loadAllData();
     _fetchRandomWallpaper();
     WidgetService.init();
+
+    // 如果有正在进行的番茄钟，在第一帧渲染完后自动跳转（保留返回栈）
+    if (widget.autoOpenPomodoro) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PomodoroScreen(username: widget.username),
+            ),
+          );
+        }
+      });
+    }
 
     const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
     platform.setMethodCallHandler((call) async {

@@ -465,5 +465,47 @@ class PomodoroService {
   static Future<List<PomodoroRecord>> getSessionsInRange(DateTime from, DateTime to) =>
       getRecordsInRange(from, to);
   static int totalFocusSecondsFromSessions(List<PomodoroRecord> s) => totalFocusSeconds(s);
+
+  /// 更新一条记录（修改标签 / 绑定任务等）
+  static Future<void> updateRecord(PomodoroRecord updated) async {
+    final all = await getRecords();
+    final idx = all.indexWhere((r) => r.uuid == updated.uuid);
+    if (idx != -1) {
+      all[idx] = updated;
+      await _saveRecords(all);
+      ApiService.uploadPomodoroRecord(updated.toJson()).catchError((_) => false);
+    }
+  }
+
+  /// 软删除一条记录
+  static Future<void> deleteRecord(String uuid) async {
+    final all = await getRecords();
+    final idx = all.indexWhere((r) => r.uuid == uuid);
+    if (idx != -1) {
+      final deleted = PomodoroRecord(
+        uuid: all[idx].uuid,
+        todoUuid: all[idx].todoUuid,
+        todoTitle: all[idx].todoTitle,
+        tagUuids: all[idx].tagUuids,
+        startTime: all[idx].startTime,
+        endTime: all[idx].endTime,
+        plannedDuration: all[idx].plannedDuration,
+        actualDuration: all[idx].actualDuration,
+        status: all[idx].status,
+        deviceId: all[idx].deviceId,
+        isDeleted: true,
+        version: all[idx].version + 1,
+        createdAt: all[idx].createdAt,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+      all[idx] = deleted;
+      await _saveRecords(all);
+      ApiService.uploadPomodoroRecord(deleted.toJson()).catchError((_) => false);
+    }
+  }
+
+  // 统计页面兼容别名
+  static Future<void> updateSession(PomodoroRecord s) => updateRecord(s);
+  static Future<void> deleteSession(String uuid) => deleteRecord(uuid);
 }
 
