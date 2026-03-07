@@ -383,11 +383,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private fun updateUpcomingTodoNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val todoTitle = args["todoTitle"] as? String ?: "待办事项"
+        val todoRemark = (args["todoRemark"] as? String)?.trim() ?: ""
         val timeStr = args["timeStr"] as? String ?: ""
 
+        // 主标题 = 待办内容；正文 = 备注（有则显示）否则显示时间段；subText = 🕒即将开始 + 时间
         val title = todoTitle
-        val text = "时间: $timeStr"
-        val subText = "🕒即将开始"
+        val text = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
+        val subText = "🕒即将开始 · $timeStr"
         val color = 0xFFFF9800.toInt() // 橙色警示
 
         buildAndNotify(
@@ -400,18 +402,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             currentStep = 0,
             totalSteps = 0,
             isTodo = true,
-            shortText = title, // 胶囊短文本显示时间
+            shortText = timeStr, // 胶囊短文本显示时间段
             iconResId = R.drawable.calendar_clock
         )
     }
 
-    // 负责“全天”待办的汇总显示
+    // 负责"全天"待办的汇总显示
     private fun updateTodoNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val totalCount = (args["totalCount"] as? Number)?.toInt() ?: 0
         val completedCount = (args["completedCount"] as? Number)?.toInt() ?: 0
         val pendingTitlesRaw = args["pendingTitles"] as? List<*>
         val pendingTitles = pendingTitlesRaw?.filterIsInstance<String>() ?: emptyList()
+        val pendingRemarksRaw = args["pendingRemarks"] as? List<*>
+        val pendingRemarks = pendingRemarksRaw?.filterIsInstance<String>() ?: emptyList()
 
         // 如果连待办都没有了，直接取消（这和 Flutter 端的逻辑对应）
         if (totalCount == 0) {
@@ -434,7 +438,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             color = 0xFF0F9D58.toInt()
         } else {
             title = if (pendingTitles.isNotEmpty()) "全天: ${pendingTitles[0]}" else "Keep Going!"
-            text = if (pendingTitles.size > 1) "Next: ${pendingTitles.drop(1).joinToString(", ")}" else "Almost there!"
+            // 第一条未完成待办有备注时，用备注作为副标题；否则显示后续待办或 "Almost there!"
+            val firstRemark = pendingRemarks.getOrNull(0)?.trim() ?: ""
+            text = when {
+                firstRemark.isNotEmpty() -> firstRemark
+                pendingTitles.size > 1   -> "Next: ${pendingTitles.drop(1).joinToString(", ")}"
+                else                     -> "Almost there!"
+            }
             color = 0xFF4285F4.toInt()
         }
 

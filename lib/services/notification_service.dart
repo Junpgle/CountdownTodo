@@ -76,7 +76,7 @@ class NotificationService {
     }
   }
 
-  // --- 待办事项 (Todo) 通知逻辑 ---
+  // --- 待办事项 ---
 
   // 1. 更新今日待办概览通知
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
@@ -124,11 +124,14 @@ class NotificationService {
     final int completedCount = todayAllDayTodos.where((t) => t.isDone).length;
     final int pendingCount = totalCount - completedCount;
 
-    // 获取前5个未完成的任务标题展示
-    final List<String> pendingTitles = todayAllDayTodos
+    // 获取前5个未完成的任务（标题 + 备注）
+    final List<TodoItem> pendingItems = todayAllDayTodos
         .where((t) => !t.isDone)
         .take(5)
-        .map((t) => t.title)
+        .toList();
+    final List<String> pendingTitles = pendingItems.map((t) => t.title).toList();
+    final List<String> pendingRemarks = pendingItems
+        .map((t) => t.remark?.trim() ?? '')
         .toList();
 
     try {
@@ -138,6 +141,7 @@ class NotificationService {
         'completedCount': completedCount,
         'pendingCount': pendingCount,
         'pendingTitles': pendingTitles,
+        'pendingRemarks': pendingRemarks,
       });
     } catch (e) {
       print("更新今日待办通知失败: $e");
@@ -165,6 +169,7 @@ class NotificationService {
       await _channel.invokeMethod('showOngoingNotification', {
         'type': 'upcoming_todo',
         'todoTitle': todo.title,
+        'todoRemark': todo.remark ?? '',   // 📝 备注作为副标题
         'timeStr': timeStr,
       });
     } catch (e) {
