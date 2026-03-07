@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "1.7.7",
-  "force_update": true,
+  "version_name": "1.7.8",
+  "force_update": false,
   "update_info": {
-    "title": "版本更新 1.7.7",
-    "description": "- 修复了一个导致应用崩溃的严重bug\n- 优化了云端同步功能的稳定性\n- 提升了整体性能和用户体验",
+    "title": "版本更新 1.7.8",
+    "description": "新增待办备注功能,同步备注通知,修复了提醒时间不正确的bug",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "patch_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk"
   },
