@@ -17,8 +17,16 @@ class NotificationService {
     const InitializationSettings initializationSettings =
     InitializationSettings(android: initializationSettingsAndroid);
 
-    // 适配 flutter_local_notifications 20.0.0+
+    // 修复：在 flutter_local_notifications 17.0.0 及更高版本中，
+    // initialize 方法的首个参数是名为 'settings' 的命名参数。
     await flutterLocalNotificationsPlugin.initialize(settings: initializationSettings);
+  }
+
+  // --- 辅助方法：判断是否为同一天 ---
+  static bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
   }
 
   // --- 课程 (Course) 实时通知逻辑 ---
@@ -42,7 +50,6 @@ class NotificationService {
   }
 
   // --- 测验 (Quiz) 通知逻辑 ---
-
   static Future<void> updateQuizNotification({
     required int currentIndex,
     required int totalCount,
@@ -71,30 +78,40 @@ class NotificationService {
 
   // --- 待办事项 (Todo) 通知逻辑 ---
 
-  // 1. 平常只展示未完成的”全天”待办
+  // 1. 更新今日待办概览通知
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
     final DateTime now = DateTime.now();
 
-    final List<TodoItem> allDayTodos = todos.where((t) {
+    // 过滤出：1. 今天的任务 2. 全天任务
+    final List<TodoItem> todayAllDayTodos = todos.where((t) {
       if (t.dueDate == null) return false;
 
-      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
-      bool isAllDayAttr = cDate.hour == 0 && cDate.minute == 0 &&
-          t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
+      // 转换为本地时间进行日期比较
+      DateTime localDueDate = t.dueDate!.toLocal();
 
-      bool isDueToday = t.dueDate!.year == now.year &&
-          t.dueDate!.month == now.month &&
-          t.dueDate!.day == now.day;
+      // 检查是否是今天
+      bool isDueToday = _isSameDay(localDueDate, now);
+      if (!isDueToday) return false;
 
-      return isAllDayAttr && isDueToday;
+      // 检查是否为全天属性 (00:00 - 23:59)
+      DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
+          t.createdDate ?? t.createdAt,
+          isUtc: true
+      ).toLocal();
+
+      bool isAllDayAttr = startDate.hour == 0 && startDate.minute == 0 &&
+          localDueDate.hour == 23 && localDueDate.minute == 59;
+
+      return isAllDayAttr;
     }).toList();
 
-    final int totalCount = allDayTodos.length;
+    final int totalCount = todayAllDayTodos.length;
 
-    if (totalCount == 0 || allDayTodos.every((t) => t.isDone)) {
+    // 如果今天没有全天待办，或者全部已完成，则尝试清除/隐藏通知
+    if (totalCount == 0 || todayAllDayTodos.every((t) => t.isDone)) {
       try {
         await _channel.invokeMethod('showOngoingNotification', {
+          'type': 'todo_summary',
           'totalCount': 0,
           'completedCount': 0,
           'pendingCount': 0,
@@ -104,10 +121,11 @@ class NotificationService {
       return;
     }
 
-    final int completedCount = allDayTodos.where((t) => t.isDone).length;
+    final int completedCount = todayAllDayTodos.where((t) => t.isDone).length;
     final int pendingCount = totalCount - completedCount;
 
-    final List<String> pendingTitles = allDayTodos
+    // 获取前5个未完成的任务标题展示
+    final List<String> pendingTitles = todayAllDayTodos
         .where((t) => !t.isDone)
         .take(5)
         .map((t) => t.title)
@@ -115,24 +133,34 @@ class NotificationService {
 
     try {
       await _channel.invokeMethod('showOngoingNotification', {
+        'type': 'todo_summary',
         'totalCount': totalCount,
         'completedCount': completedCount,
         'pendingCount': pendingCount,
         'pendingTitles': pendingTitles,
       });
     } catch (e) {
-      print("更新全天待办通知失败: $e");
+      print("更新今日待办通知失败: $e");
     }
   }
 
-  // 2. 即将开始的特定时间待办通知 (类似课程提醒)
+  // 2. 即将开始的特定时间待办通知 (单条提醒)
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
+    if (todo.dueDate == null) return;
+
+    // 检查是否为今天的任务，非今天的任务不触发实时提醒
+    if (!_isSameDay(todo.dueDate!.toLocal(), DateTime.now())) {
+      return;
+    }
+
     try {
-      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      String timeStr = DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal());
-      if (todo.dueDate != null) {
-        timeStr += " - ${DateFormat('HH:mm').format(todo.dueDate!)}";
-      }
+      DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
+          todo.createdDate ?? todo.createdAt,
+          isUtc: true
+      ).toLocal();
+
+      String timeStr = DateFormat('HH:mm').format(startDate);
+      timeStr += " - ${DateFormat('HH:mm').format(todo.dueDate!.toLocal())}";
 
       await _channel.invokeMethod('showOngoingNotification', {
         'type': 'upcoming_todo',
