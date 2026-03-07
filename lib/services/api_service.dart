@@ -309,4 +309,102 @@ class ApiService {
       return {'success': false, 'message': '网络异常: $e'};
     }
   }
+
+  // ==========================================
+  // 8. 番茄钟 (Pomodoro)
+  // ==========================================
+
+  /// 拉取用户标签（含已删除，供 LWW 合并）
+  static Future<List<dynamic>> fetchPomodoroTags() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/pomodoro/tags'),
+        headers: _getHeaders(),
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      return [];
+    } catch (e) { return []; }
+  }
+
+  /// 上传/同步标签到云端（Delta Sync）
+  static Future<bool> syncPomodoroTags(List<Map<String, dynamic>> tags) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/pomodoro/tags'),
+        headers: _getHeaders(),
+        body: jsonEncode({'tags': tags}),
+      );
+      return response.statusCode == 200;
+    } catch (e) { return false; }
+  }
+
+  /// 上传单条专注记录（对齐 pomodoro_records 表）
+  static Future<bool> uploadPomodoroRecord(Map<String, dynamic> record) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/pomodoro/records'),
+        headers: _getHeaders(),
+        body: jsonEncode({'record': record}),
+      );
+      return response.statusCode == 200;
+    } catch (e) { return false; }
+  }
+
+  /// 批量上传专注记录
+  static Future<bool> uploadPomodoroRecords(List<Map<String, dynamic>> records) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/pomodoro/records'),
+        headers: _getHeaders(),
+        body: jsonEncode({'records': records}),
+      );
+      return response.statusCode == 200;
+    } catch (e) { return false; }
+  }
+
+  /// 拉取专注记录（按时间范围）
+  static Future<List<dynamic>> fetchPomodoroRecords({int? fromMs, int? toMs}) async {
+    try {
+      final params = <String, String>{};
+      if (fromMs != null) params['from'] = fromMs.toString();
+      if (toMs != null)   params['to']   = toMs.toString();
+      final uri = Uri.parse('$baseUrl/api/pomodoro/records')
+          .replace(queryParameters: params.isEmpty ? null : params);
+      final response = await http.get(uri, headers: _getHeaders());
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      return [];
+    } catch (e) { return []; }
+  }
+
+  /// 同步番茄钟设置到云端
+  static Future<bool> syncPomodoroSettings(Map<String, dynamic> settings) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/pomodoro/settings'),
+        headers: _getHeaders(),
+        body: jsonEncode(settings),
+      );
+      return response.statusCode == 200;
+    } catch (e) { return false; }
+  }
+
+  /// 拉取番茄钟设置
+  static Future<Map<String, dynamic>?> fetchPomodoroSettings() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/pomodoro/settings'),
+        headers: _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) { return null; }
+  }
+
+  // 向后兼容旧方法名
+  static Future<bool> uploadPomodoroSessions(List<Map<String, dynamic>> sessions) =>
+      uploadPomodoroRecords(sessions);
+  static Future<List<dynamic>> fetchPomodoroSessions({int? fromMs, int? toMs}) =>
+      fetchPomodoroRecords(fromMs: fromMs, toMs: toMs);
 }

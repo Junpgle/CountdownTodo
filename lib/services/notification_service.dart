@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
@@ -45,7 +46,7 @@ class NotificationService {
         'teacher': teacher,
       });
     } catch (e) {
-      print("更新课程通知失败: $e");
+      debugPrint("更新课程通知失败: $e");
     }
   }
 
@@ -72,7 +73,7 @@ class NotificationService {
         'score': score,
       });
     } catch (e) {
-      print("更新测验通知失败: $e");
+      debugPrint("更新测验通知失败: $e");
     }
   }
 
@@ -117,7 +118,9 @@ class NotificationService {
           'pendingCount': 0,
           'pendingTitles': [],
         });
-      } catch(e) {}
+      } catch (e) {
+        debugPrint("清除待办通知失败: $e");
+      }
       return;
     }
 
@@ -144,7 +147,7 @@ class NotificationService {
         'pendingRemarks': pendingRemarks,
       });
     } catch (e) {
-      print("更新今日待办通知失败: $e");
+      debugPrint("更新今日待办通知失败: $e");
     }
   }
 
@@ -173,7 +176,42 @@ class NotificationService {
         'timeStr': timeStr,
       });
     } catch (e) {
-      print("更新即将开始的待办通知失败: $e");
+      debugPrint("更新即将开始的待办通知失败: $e");
+    }
+  }
+
+  // 3. 番茄钟实时通知
+  /// [remainingSeconds] 剩余秒数
+  /// [phase] 'focusing' | 'breaking'
+  /// [todoTitle] 当前绑定的任务标题（可选）
+  /// [currentCycle] 当前第几轮
+  /// [totalCycles] 总轮数
+  /// [tagNames] 已选标签名称列表
+  static Future<void> updatePomodoroNotification({
+    required int remainingSeconds,
+    required String phase,
+    String? todoTitle,
+    int currentCycle = 1,
+    int totalCycles = 4,
+    List<String> tagNames = const [],
+  }) async {
+    final mins = remainingSeconds ~/ 60;
+    final secs = remainingSeconds % 60;
+    final countdownStr =
+        '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+
+    try {
+      await _channel.invokeMethod('showOngoingNotification', {
+        'type': 'pomodoro',
+        'phase': phase,
+        'countdown': countdownStr,
+        'todoTitle': todoTitle ?? '',
+        'currentCycle': currentCycle,
+        'totalCycles': totalCycles,
+        'tagNames': tagNames,
+      });
+    } catch (e) {
+      debugPrint('更新番茄钟通知失败: $e');
     }
   }
 
@@ -183,7 +221,7 @@ class NotificationService {
     try {
       await _channel.invokeMethod('cancelNotification');
     } catch (e) {
-      print("取消通知失败: $e");
+      debugPrint("取消通知失败: $e");
     }
   }
 }

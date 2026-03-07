@@ -36,6 +36,7 @@ import '../widgets/home_app_bar.dart';
 import '../widgets/countdown_section_widget.dart';
 import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
+import 'pomodoro_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -719,10 +720,31 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _todoSectionKey.currentState?.showAddTodoDialog(),
-          icon: const Icon(Icons.add_task),
-          label: const Text("记待办")
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'fab_pomodoro',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PomodoroScreen(username: widget.username),
+                ),
+              );
+            },
+            tooltip: '番茄钟',
+            child: const Text('🍅', style: TextStyle(fontSize: 18)),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton.extended(
+            heroTag: 'fab_todo',
+            onPressed: () => _todoSectionKey.currentState?.showAddTodoDialog(),
+            icon: const Icon(Icons.add_task),
+            label: const Text("记待办"),
+          ),
+        ],
       ),
     );
   }

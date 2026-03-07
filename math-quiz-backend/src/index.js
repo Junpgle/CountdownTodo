@@ -621,7 +621,6 @@ export default {
       // 模块 G: 历史数据修复
       // --------------------------
       if (url.pathname === "/api/admin/fix_timestamps" && request.method === "POST") {
-        // ...(保持不变)
         if (!authUserId) return errorResponse("未授权", 401);
         if (authUserId !== 1) return errorResponse("仅管理员可执行修复", 403);
 
@@ -684,6 +683,168 @@ export default {
           countdowns_fixed: cdFixed,
           total_todos: allTodos.results.length,
           total_countdowns: allCds.results.length,
+        });
+      }
+
+      // --------------------------
+      // 模块 H: 番茄钟标签 (pomodoro_tags)
+      // --------------------------
+
+      // 拉取用户标签
+      if (url.pathname === "/api/pomodoro/tags" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { results } = await DB.prepare(
+          "SELECT uuid, name, color, is_deleted, version, created_at, updated_at FROM pomodoro_tags WHERE user_id = ? ORDER BY created_at ASC"
+        ).bind(authUserId).all();
+        return jsonResponse(results);
+      }
+
+      // Delta Sync 上传标签
+      if (url.pathname === "/api/pomodoro/tags" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { tags } = await request.json();
+        if (!Array.isArray(tags)) return errorResponse("tags 格式错误");
+        const now = Date.now();
+        const batch = [];
+        for (const tag of tags) {
+          const uuid = String(tag.uuid ?? '');
+          if (!uuid) continue;
+          const name      = String(tag.name ?? '');
+          const color     = String(tag.color ?? '#607D8B');
+          const isDeleted = (tag.is_deleted ?? tag.isDeleted) ? 1 : 0;
+          const version   = parseInt(tag.version ?? 1, 10);
+          const createdAt = normalizeToMs(tag.created_at ?? tag.createdAt) || now;
+          const updatedAt = normalizeToMs(tag.updated_at ?? tag.updatedAt) || now;
+
+          const existing = await DB.prepare(
+            "SELECT version, updated_at FROM pomodoro_tags WHERE uuid = ? AND user_id = ?"
+          ).bind(uuid, authUserId).first();
+
+          if (!existing) {
+            batch.push(DB.prepare(
+              "INSERT INTO pomodoro_tags (uuid, user_id, name, color, is_deleted, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)"
+            ).bind(uuid, authUserId, name, color, isDeleted, version, createdAt, updatedAt));
+          } else if (version > (existing.version || 0) || updatedAt > normalizeToMs(existing.updated_at)) {
+            batch.push(DB.prepare(
+              "UPDATE pomodoro_tags SET name=?, color=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?"
+            ).bind(name, color, isDeleted, version, updatedAt, uuid, authUserId));
+          }
+        }
+        if (batch.length > 0) await DB.batch(batch);
+        // 返回最新标签（含已删除，供客户端 LWW 合并）
+        const { results } = await DB.prepare(
+          "SELECT uuid, name, color, is_deleted, version, created_at, updated_at FROM pomodoro_tags WHERE user_id = ? ORDER BY created_at ASC"
+        ).bind(authUserId).all();
+        return jsonResponse({ success: true, tags: results });
+      }
+
+      // --------------------------
+      // 模块 I: 番茄钟记录 (pomodoro_records)
+      // --------------------------
+
+      // 上传专注记录
+      if (url.pathname === "/api/pomodoro/records" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const body = await request.json();
+        // 支持单条 { record: {...} } 或批量 { records: [...] }
+        const records = Array.isArray(body.records) ? body.records
+                      : (body.record ? [body.record] : []);
+        if (records.length === 0) return errorResponse("records 为空");
+        const now = Date.now();
+        const batch = [];
+
+        for (const r of records) {
+          const uuid             = String(r.uuid ?? '');
+          if (!uuid) continue;
+          const todoUuid         = r.todo_uuid   ? String(r.todo_uuid)   : null;
+          const startTime        = normalizeToMs(r.start_time)  || now;
+          const endTime          = r.end_time != null ? (normalizeToMs(r.end_time) || null) : null;
+          const plannedDuration  = typeof r.planned_duration === 'number' ? r.planned_duration : parseInt(r.planned_duration || 25*60, 10);
+          const actualDuration   = r.actual_duration != null ? parseInt(r.actual_duration, 10) : null;
+          const status           = ['completed','interrupted','switched'].includes(r.status) ? r.status : 'completed';
+          const deviceId         = r.device_id   ? String(r.device_id)   : null;
+          const isDeleted        = (r.is_deleted ?? r.isDeleted) ? 1 : 0;
+          const version          = parseInt(r.version ?? 1, 10);
+          const createdAt        = normalizeToMs(r.created_at ?? r.createdAt) || now;
+          const updatedAt        = normalizeToMs(r.updated_at ?? r.updatedAt) || now;
+
+          const existing = await DB.prepare(
+            "SELECT version, updated_at FROM pomodoro_records WHERE uuid = ? AND user_id = ?"
+          ).bind(uuid, authUserId).first();
+
+          if (!existing) {
+            batch.push(DB.prepare(`
+              INSERT INTO pomodoro_records
+                (uuid, user_id, todo_uuid, start_time, end_time, planned_duration, actual_duration, status, device_id, is_deleted, version, created_at, updated_at)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            `).bind(uuid, authUserId, todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, createdAt, updatedAt));
+          } else if (version > (existing.version || 0) || updatedAt > normalizeToMs(existing.updated_at)) {
+            batch.push(DB.prepare(`
+              UPDATE pomodoro_records SET
+                todo_uuid=?, start_time=?, end_time=?, planned_duration=?, actual_duration=?,
+                status=?, device_id=?, is_deleted=?, version=?, updated_at=?
+              WHERE uuid=? AND user_id=?
+            `).bind(todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, updatedAt, uuid, authUserId));
+          }
+
+          // 同步 todo_tags 关联
+          if (Array.isArray(r.tag_uuids) && r.tag_uuids.length > 0 && todoUuid) {
+            for (const tagUuid of r.tag_uuids) {
+              batch.push(DB.prepare(
+                "INSERT OR REPLACE INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at) VALUES (?,?,0,?)"
+              ).bind(todoUuid, String(tagUuid), now));
+            }
+          }
+        }
+
+        if (batch.length > 0) await DB.batch(batch);
+        return jsonResponse({ success: true });
+      }
+
+      // 拉取专注记录（按时间范围）
+      if (url.pathname === "/api/pomodoro/records" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const fromMs = parseInt(url.searchParams.get("from") || "0", 10);
+        const toMs   = parseInt(url.searchParams.get("to")   || String(Date.now()), 10);
+        const { results } = await DB.prepare(`
+          SELECT * FROM pomodoro_records
+          WHERE user_id = ? AND is_deleted = 0
+            AND start_time >= ? AND start_time <= ?
+          ORDER BY start_time DESC
+        `).bind(authUserId, fromMs, toMs).all();
+        return jsonResponse(results);
+      }
+
+      // --------------------------
+      // 模块 J: 番茄钟设置同步 (pomodoro_settings)
+      // --------------------------
+
+      if (url.pathname === "/api/pomodoro/settings" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { default_focus_duration, default_rest_duration, default_loop_count } = await request.json();
+        const now = Date.now();
+        await DB.prepare(`
+          INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, updated_at)
+          VALUES (?,?,?,?,?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            default_focus_duration = excluded.default_focus_duration,
+            default_rest_duration  = excluded.default_rest_duration,
+            default_loop_count     = excluded.default_loop_count,
+            updated_at             = excluded.updated_at
+        `).bind(authUserId, default_focus_duration ?? 1500, default_rest_duration ?? 300, default_loop_count ?? 4, now).run();
+        return jsonResponse({ success: true });
+      }
+
+      if (url.pathname === "/api/pomodoro/settings" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const row = await DB.prepare(
+          "SELECT * FROM pomodoro_settings WHERE user_id = ?"
+        ).bind(authUserId).first();
+        return jsonResponse(row ?? {
+          user_id: authUserId,
+          default_focus_duration: 1500,
+          default_rest_duration: 300,
+          default_loop_count: 4,
         });
       }
 

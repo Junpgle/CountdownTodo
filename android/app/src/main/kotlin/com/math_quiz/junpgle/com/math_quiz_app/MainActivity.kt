@@ -122,8 +122,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         when (type) {
                             "quiz" -> updateQuizNotification(args)
                             "course" -> updateCourseNotification(args)
-                            "upcoming_todo" -> updateUpcomingTodoNotification(args) // 🚀 新增：处理即将开始的具体时间待办
-                            else -> updateTodoNotification(args) // 这里现在只负责“全天”待办汇总
+                            "upcoming_todo" -> updateUpcomingTodoNotification(args)
+                            "pomodoro" -> updatePomodoroNotification(args)
+                            else -> updateTodoNotification(args)
                         }
                         result.success(null)
                     } else result.error("INVALID_ARGS", "Arguments were null", null)
@@ -376,6 +377,56 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             currentStep = if (isOver) totalCount else currentIndex + 1,
             totalSteps = totalCount,
             isTodo = false
+        )
+    }
+
+    // 🍅 番茄钟实时通知
+    private fun updatePomodoroNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val phase        = args["phase"]         as? String ?: "focusing"
+        val countdown    = args["countdown"]     as? String ?: "25:00"
+        val todoTitle    = (args["todoTitle"]    as? String)?.trim() ?: ""
+        val currentCycle = (args["currentCycle"] as? Number)?.toInt() ?: 1
+        val totalCycles  = (args["totalCycles"]  as? Number)?.toInt() ?: 4
+        @Suppress("UNCHECKED_CAST")
+        val tagNames     = (args["tagNames"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+
+        val isFocusing = phase == "focusing"
+
+        // 标题：🍅 专注中  04:33（倒计时在标题）
+        val phaseLabel = if (isFocusing) "🍅 专注中" else "☕ 休息中"
+        val title = "$phaseLabel  $countdown"
+
+        // 正文：任务名（第一行）+ 标签（第二行，若有）
+        val taskLine = when {
+            todoTitle.isNotEmpty() -> todoTitle
+            isFocusing             -> "自由专注"
+            else                   -> "稍作休息，准备下一轮"
+        }
+        val tagsLine = if (tagNames.isNotEmpty()) tagNames.joinToString("  ") { "🏷 $it" } else ""
+        val text = if (tagsLine.isNotEmpty()) "$taskLine\n$tagsLine" else taskLine
+
+        // ⭐ subText（顶部小字）= 第 X/Y 轮
+        val subText = "第 $currentCycle/$totalCycles 轮"
+
+        // 颜色
+        val color = if (isFocusing) 0xFFF44336.toInt() else 0xFF4CAF50.toInt()
+
+        // shortText（灵动岛胶囊）= "🍅·24:33"
+        val shortText = if (isFocusing) "🍅·$countdown" else "☕·$countdown"
+
+        buildAndNotify(
+            title      = title,
+            text       = text,
+            subText    = subText,
+            progress   = 0,
+            isOngoing  = true,
+            color      = color,
+            currentStep = 0,
+            totalSteps  = 0,
+            isTodo      = false,
+            shortText   = shortText,
+            iconResId   = R.drawable.ic_notification
         )
     }
 
