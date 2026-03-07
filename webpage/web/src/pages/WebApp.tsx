@@ -1340,7 +1340,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                 <LayoutDashboard className="w-4 h-4" /> 首页仪表盘
               </button>
               <button
-                onClick={() => setCurrentTab('screentime')}
+                onClick={() => {setCurrentTab('screentime'); setMobileTab('home');}}
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${currentTab === 'screentime' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}
               >
                 <PieChartIcon className="w-4 h-4" /> 屏幕时间
@@ -1402,7 +1402,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
           <LayoutDashboard className="w-5 h-5" />
           <span className="text-[10px] font-bold">首页</span>
         </button>
-        <button onClick={() => setCurrentTab('screentime')} className={`flex flex-col items-center gap-1 p-2 ${currentTab === 'screentime' ? 'text-indigo-600' : 'text-slate-400'}`}>
+        <button onClick={() => {setCurrentTab('screentime'); setMobileTab('home');}} className={`flex flex-col items-center gap-1 p-2 ${currentTab === 'screentime' ? 'text-indigo-600' : 'text-slate-400'}`}>
           <PieChartIcon className="w-5 h-5" />
           <span className="text-[10px] font-bold">屏幕时间</span>
         </button>

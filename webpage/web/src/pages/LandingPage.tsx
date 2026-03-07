@@ -3,15 +3,16 @@ import {
   Layers, Monitor, Smartphone, CloudLightning, Download, Github,
   CheckCircle2, Menu, X, ChevronRight, Database, Cpu, PieChart,
   Tablet as TabletIcon, BellRing, CalendarDays, MonitorSmartphone,
-  Globe, LayoutDashboard, Sparkles, ArrowRight
+  Globe, LayoutDashboard, Sparkles, ArrowRight, HelpCircle
 } from 'lucide-react';
 import { MobileFrame, TabletFrame, MonitorFrame } from '../components/Frames';
+import { WebInstallGuide } from './WebInstallGuide';
 import type { AppInfo } from '../types';
 
 /* =========================
    子组件：导航栏
 ========================= */
-const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
+const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -45,12 +46,12 @@ const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
               <a key={link.name} href={link.href} className="text-slate-600 hover:text-indigo-600 font-semibold transition-colors duration-300 text-sm xl:text-base">{link.name}</a>
             ))}
             <div className="h-6 w-px bg-slate-200 mx-2"></div>
-            <button onClick={onOpenWeb} className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors duration-300 text-sm xl:text-base">网页版入口</button>
+            <a href="#download" className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors duration-300 text-sm xl:text-base">网页版入口</a>
             <a href="#download" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 lg:px-6 py-2 sm:py-2.5 rounded-full font-bold transition-all shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5 active:scale-95">免费获取</a>
           </div>
 
           <div className="lg:hidden flex items-center gap-4">
-            <button onClick={onOpenWeb} className="text-indigo-600 font-bold text-sm">网页版</button>
+            <a href="#download" className="text-indigo-600 font-bold text-sm">网页版</a>
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition">
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -64,7 +65,7 @@ const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
               <a key={link.name} href={link.href} onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-base font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition">{link.name}</a>
             ))}
             <div className="pt-4 pb-2 px-2 flex flex-col gap-3">
-              <button onClick={() => { onOpenWeb(); setMobileMenuOpen(false); }} className="w-full text-center bg-indigo-50 text-indigo-700 border border-indigo-100 py-3.5 rounded-xl font-bold">在线体验网页版</button>
+              <a href="#download" onClick={() => setMobileMenuOpen(false)} className="w-full text-center bg-indigo-50 text-indigo-700 border border-indigo-100 py-3.5 rounded-xl font-bold">在线体验网页版</a>
               <a href="#download" onClick={() => setMobileMenuOpen(false)} className="block w-full text-center bg-indigo-600 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20">立即下载</a>
             </div>
           </div>
@@ -77,7 +78,7 @@ const Navbar = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
 /* =========================
    子组件：Hero
 ========================= */
-const Hero = ({ onOpenWeb }: { onOpenWeb: () => void }) => (
+const Hero = () => (
   <section className="relative pt-28 pb-16 sm:pt-36 sm:pb-20 lg:pt-52 lg:pb-40 overflow-hidden px-4">
     <div className="max-w-7xl mx-auto relative z-10 text-center">
       <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs sm:text-sm font-bold mb-6 sm:mb-8 animate-bounce-subtle">
@@ -95,9 +96,9 @@ const Hero = ({ onOpenWeb }: { onOpenWeb: () => void }) => (
         <a href="#download" className="group flex items-center justify-center gap-3 bg-slate-900 text-white px-8 py-4 sm:px-10 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-slate-800 transition-all shadow-xl hover:-translate-y-1 w-full sm:w-auto">
           <Download className="w-5 h-5 group-hover:animate-pulse" /> 获取客户端
         </a>
-        <button onClick={onOpenWeb} className="flex items-center justify-center gap-3 bg-white text-indigo-600 border border-indigo-100 px-8 py-4 sm:px-10 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-indigo-50 transition-all hover:-translate-y-1 shadow-md w-full sm:w-auto">
+        <a href="#download" className="flex items-center justify-center gap-3 bg-white text-indigo-600 border border-indigo-100 px-8 py-4 sm:px-10 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-indigo-50 transition-all hover:-translate-y-1 shadow-md w-full sm:w-auto">
           <Globe className="w-5 h-5" /> 进入网页站
-        </button>
+        </a>
         <a href="https://github.com/Junpgle/CountdownTodo" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-3 bg-white text-slate-700 border border-slate-200 px-8 py-4 sm:px-10 sm:py-4 rounded-2xl text-base sm:text-lg font-bold hover:bg-slate-50 transition-all hover:-translate-y-1 shadow-sm w-full sm:w-auto">
           <Github className="w-5 h-5" /> 开源仓库
         </a>
@@ -468,7 +469,7 @@ const AnalyticsPreview = () => (
 /* =========================
    子组件：获取软件 (三列矩阵版)
 ========================= */
-const DownloadSection = ({ androidInfo, windowsInfo, webInfo, onOpenWeb }: { androidInfo: AppInfo, windowsInfo: AppInfo, webInfo: AppInfo, onOpenWeb: () => void }) => (
+const DownloadSection = ({ androidInfo, windowsInfo, webInfo, onOpenWeb, onShowInstallGuide }: { androidInfo: AppInfo, windowsInfo: AppInfo, webInfo: AppInfo, onOpenWeb: () => void, onShowInstallGuide: () => void }) => (
   <section id="download" className="py-24 sm:py-48 bg-slate-50 text-center relative overflow-hidden">
     <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
     <div className="max-w-7xl mx-auto px-4">
@@ -516,6 +517,9 @@ const DownloadSection = ({ androidInfo, windowsInfo, webInfo, onOpenWeb }: { and
              {webInfo.desc || '云端仪表盘，免安装即开即用。深度同步课表与待办，您的跨平台数据中枢。'}
           </p>
           <button onClick={onOpenWeb} className="flex items-center justify-center gap-3 bg-indigo-600 text-white w-full py-4 rounded-xl font-black text-lg hover:bg-indigo-700 transition shadow-xl shadow-indigo-500/30">立即开启网页版 <ArrowRight className="w-6 h-6" /></button>
+          <button onClick={onShowInstallGuide} className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition">
+            <HelpCircle className="w-4 h-4" /> 如何把网页作为 App 安装？
+          </button>
         </div>
       </div>
     </div>
@@ -529,6 +533,7 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
   const [androidInfo, setAndroidInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
   const [windowsInfo, setWindowsInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
   const [webInfo, setWebInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   useEffect(() => {
     const fetchManifests = async () => {
@@ -567,35 +572,40 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
 
   return (
     <div className="bg-white min-h-screen">
-      <Navbar onOpenWeb={onOpenWeb} />
-      <Hero onOpenWeb={onOpenWeb} />
-      <Features />
-      <WindowsShowcase />
-      <AndroidShowcase />
-      <WebShowcase onOpenWeb={onOpenWeb} />
-      <TimetableShowcase />
-      <LiveUpdatesShowcase />
-      <AnalyticsPreview />
-      <DownloadSection androidInfo={androidInfo} windowsInfo={windowsInfo} webInfo={webInfo} onOpenWeb={onOpenWeb} />
+      {showInstallGuide && <WebInstallGuide onBack={() => setShowInstallGuide(false)} />}
+      {!showInstallGuide && (
+        <>
+          <Navbar />
+          <Hero />
+          <Features />
+          <WindowsShowcase />
+          <AndroidShowcase />
+          <WebShowcase onOpenWeb={onOpenWeb} />
+          <TimetableShowcase />
+          <LiveUpdatesShowcase />
+          <AnalyticsPreview />
+          <DownloadSection androidInfo={androidInfo} windowsInfo={windowsInfo} webInfo={webInfo} onOpenWeb={onOpenWeb} onShowInstallGuide={() => setShowInstallGuide(true)} />
 
-      <footer className="bg-white py-20 border-t border-slate-100 text-center">
-        <div className="flex flex-col items-center">
-          <div className="flex items-center justify-center gap-2 mb-8">
-            <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
-               <Layers className="text-white w-5 h-5" />
+          <footer className="bg-white py-20 border-t border-slate-100 text-center">
+            <div className="flex flex-col items-center">
+              <div className="flex items-center justify-center gap-2 mb-8">
+                <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
+                   <Layers className="text-white w-5 h-5" />
+                </div>
+                <span className="font-black text-2xl text-slate-900 tracking-tighter">CountDownTodo</span>
+              </div>
+              <div className="flex gap-10 mb-10">
+                 <a href="#features" className="text-slate-400 hover:text-indigo-600 font-bold transition">核心特性</a>
+                 <a href="#download" className="text-slate-400 hover:text-indigo-600 font-bold transition">获取下载</a>
+                 <button onClick={onOpenWeb} className="text-slate-400 hover:text-indigo-600 font-bold transition">网页版体验</button>
+                 <a href="https://github.com/Junpgle" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-600 font-bold transition">开发者</a>
+              </div>
+              <p className="text-slate-300 text-xs font-black uppercase tracking-[0.3em] mb-2">Designed for Productivity</p>
+              <p className="text-slate-400 text-xs font-bold">© 2026 JUNPGLE. ALL RIGHTS RESERVED.</p>
             </div>
-            <span className="font-black text-2xl text-slate-900 tracking-tighter">CountDownTodo</span>
-          </div>
-          <div className="flex gap-10 mb-10">
-             <a href="#features" className="text-slate-400 hover:text-indigo-600 font-bold transition">核心特性</a>
-             <a href="#download" className="text-slate-400 hover:text-indigo-600 font-bold transition">获取下载</a>
-             <button onClick={onOpenWeb} className="text-slate-400 hover:text-indigo-600 font-bold transition">网页版体验</button>
-             <a href="https://github.com/Junpgle" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-600 font-bold transition">开发者</a>
-          </div>
-          <p className="text-slate-300 text-xs font-black uppercase tracking-[0.3em] mb-2">Designed for Productivity</p>
-          <p className="text-slate-400 text-xs font-bold">© 2026 JUNPGLE. ALL RIGHTS RESERVED.</p>
-        </div>
-      </footer>
+          </footer>
+        </>
+      )}
     </div>
   );
 };
