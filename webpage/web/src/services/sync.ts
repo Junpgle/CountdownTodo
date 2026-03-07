@@ -2,20 +2,22 @@ import { ApiService } from './api';
 import type { TodoItem, CountdownItem } from '../types';
 
 export const SyncEngine = {
-  getLocalTodos: (): TodoItem[] => JSON.parse(localStorage.getItem('cdt_web_todos') || '[]'),
-  getLocalCountdowns: (): CountdownItem[] => JSON.parse(localStorage.getItem('cdt_web_countdowns') || '[]'),
-  getLastSyncTime: () => parseInt(localStorage.getItem('cdt_last_sync_time') || '0', 10),
+  // --- 带用户 ID 隔离的存储键 ---
 
-  setLocalTodos: (todos: TodoItem[]) => localStorage.setItem('cdt_web_todos', JSON.stringify(todos)),
-  setLocalCountdowns: (cds: CountdownItem[]) => localStorage.setItem('cdt_web_countdowns', JSON.stringify(cds)),
-  setLastSyncTime: (time: number) => localStorage.setItem('cdt_last_sync_time', time.toString()),
-  resetSync: () => localStorage.setItem('cdt_last_sync_time', '0'),
+  getLocalTodos: (userId: number): TodoItem[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'web_todos')) || '[]'),
+  getLocalCountdowns: (userId: number): CountdownItem[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'web_countdowns')) || '[]'),
+  getLastSyncTime: (userId: number) => parseInt(localStorage.getItem(ApiService.getUserKey(userId, 'last_sync_time')) || '0', 10),
+
+  setLocalTodos: (userId: number, todos: TodoItem[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_todos'), JSON.stringify(todos)),
+  setLocalCountdowns: (userId: number, cds: CountdownItem[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_countdowns'), JSON.stringify(cds)),
+  setLastSyncTime: (userId: number, time: number) => localStorage.setItem(ApiService.getUserKey(userId, 'last_sync_time'), time.toString()),
+  resetSync: (userId: number) => localStorage.setItem(ApiService.getUserKey(userId, 'last_sync_time'), '0'),
 
   async syncData(userId: number) {
-    const lastSyncTime = this.getLastSyncTime();
+    const lastSyncTime = this.getLastSyncTime(userId);
     const deviceId = ApiService.getDeviceId();
-    const allLocalTodos = this.getLocalTodos();
-    const allLocalCds = this.getLocalCountdowns();
+    const allLocalTodos = this.getLocalTodos(userId);
+    const allLocalCds = this.getLocalCountdowns(userId);
 
     // 筛选脏数据 (待上传)
     const dirtyTodos = allLocalTodos.filter(t => t.updated_at > lastSyncTime || t.is_deleted);
@@ -51,7 +53,7 @@ export const SyncEngine = {
              }
           }
         }
-        this.setLocalTodos(Array.from(todoMap.values()));
+        this.setLocalTodos(userId, Array.from(todoMap.values()));
 
         // --- 合并 Countdowns ---
         const serverCds: CountdownItem[] = response.server_countdowns || [];
@@ -67,9 +69,9 @@ export const SyncEngine = {
              }
           }
         }
-        this.setLocalCountdowns(Array.from(cdMap.values()));
+        this.setLocalCountdowns(userId, Array.from(cdMap.values()));
 
-        this.setLastSyncTime(response.new_sync_time);
+        this.setLastSyncTime(userId, response.new_sync_time);
         return true;
       }
       return false;

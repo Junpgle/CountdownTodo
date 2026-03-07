@@ -42,24 +42,90 @@ const formatTimeNum = (timeInt: number) => {
 };
 
 // --------------------------------------------------------
+// 本地缓存工具 (同日有效，避免重复调用 API)
+// --------------------------------------------------------
+function readDayCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { date, data } = JSON.parse(raw) as { date: string; data: T };
+    if (date === new Date().toDateString()) return data;
+  } catch { /* ignore */ }
+  return null;
+}
+
+function writeDayCache<T>(key: string, data: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify({ date: new Date().toDateString(), data }));
+  } catch { /* ignore */ }
+}
+
+// --------------------------------------------------------
+// 内部类型定义
+// --------------------------------------------------------
+interface ScreenTimeStat {
+  app_name: string;
+  category: string;
+  device_name: string;
+  duration: number;
+}
+
+interface AppGroup {
+  total: number;
+  category: string;
+  devices: Record<string, number>;
+}
+
+interface CourseItem {
+  id: number;
+  course_name: string;
+  room_name: string;
+  teacher_name: string;
+  weekday: number;
+  start_time: number;
+  end_time: number;
+  week_index: number;
+}
+
+type CalendarItemType = 'course' | 'todo' | 'countdown' | 'multi';
+
+interface CalendarEntry {
+  type: 'todo' | 'countdown';
+  data: TodoItem | CountdownItem;
+}
+
+interface DetailItem {
+  type: CalendarItemType;
+  data: CourseItem | TodoItem | CountdownItem | CalendarEntry[];
+}
+
+// --------------------------------------------------------
 // 屏幕时间组件
 // --------------------------------------------------------
 const ScreenTimeView = ({ userId }: { userId: number }) => {
-  const [stats, setStats] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `u${userId}_screen_time_${new Date().toDateString()}`;
+  const cached = readDayCache<ScreenTimeStat[]>(cacheKey);
+
+  const [stats, setStats] = useState<ScreenTimeStat[]>(cached ?? []);
+  const [loading, setLoading] = useState(!cached); // 有缓存则不显示 loading
   const [filter, setFilter] = useState<'all' | 'pc' | 'mobile'>('all');
   const [selectedDate] = useState(new Date());
 
   useEffect(() => {
+    // 有缓存直接用，不再请求 API
+    if (cached) return;
     fetchStats();
-  }, [selectedDate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchStats = async () => {
     setLoading(true);
     try {
       const dateStr = selectedDate.toISOString().split('T')[0];
       const data = await ApiService.request(`/api/screen_time?user_id=${userId}&date=${dateStr}`, { method: 'GET' });
-      setStats(data || []);
+      const result: ScreenTimeStat[] = data || [];
+      setStats(result);
+      writeDayCache(cacheKey, result);
     } catch (e) {
       console.error("获取屏幕时间失败", e);
     } finally {
@@ -86,10 +152,10 @@ const ScreenTimeView = ({ userId }: { userId: number }) => {
     acc[appName].total += item.duration;
     acc[appName].devices[item.device_name] = (acc[appName].devices[item.device_name] || 0) + item.duration;
     return acc;
-  }, {} as Record<string, any>);
+  }, {} as Record<string, AppGroup>);
 
   const topApps = Object.entries(appGroups)
-    .map(([name, data]: [string, any]) => ({
+    .map(([name, data]: [string, AppGroup]) => ({
       name,
       total: data.total,
       category: data.category,
@@ -107,10 +173,20 @@ const ScreenTimeView = ({ userId }: { userId: number }) => {
           </h2>
           <p className="text-slate-500 text-sm mt-1">跨设备使用时长分析</p>
         </div>
-        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl shrink-0">
-          <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg text-sm font-bold transition ${filter === 'all' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>全部</button>
-          <button onClick={() => setFilter('pc')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1 ${filter === 'pc' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><Monitor className="w-4 h-4" /> 电脑</button>
-          <button onClick={() => setFilter('mobile')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1 ${filter === 'mobile' ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}><Smartphone className="w-4 h-4" /> 移动端</button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={fetchStats}
+            disabled={loading}
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl transition disabled:opacity-50"
+            title="刷新数据"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl">
+            <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg text-sm font-bold transition ${filter === 'all' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>全部</button>
+            <button onClick={() => setFilter('pc')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1 ${filter === 'pc' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><Monitor className="w-4 h-4" /> 电脑</button>
+            <button onClick={() => setFilter('mobile')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-1 ${filter === 'mobile' ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}><Smartphone className="w-4 h-4" /> 移动端</button>
+          </div>
         </div>
       </div>
 
@@ -178,8 +254,11 @@ const ScreenTimeView = ({ userId }: { userId: number }) => {
 // 课表/周视图组件 (内嵌到首页左侧使用)
 // --------------------------------------------------------
 const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: TodoItem[], countdowns: CountdownItem[] }) => {
-  const [courses, setCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const courseCacheKey = `u${userId}_courses`;
+  const cachedCourses = readDayCache<CourseItem[]>(courseCacheKey);
+
+  const [courses, setCourses] = useState<CourseItem[]>(cachedCourses ?? []);
+  const [loading, setLoading] = useState(!cachedCourses);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [semesterMonday, setSemesterMonday] = useState(new Date());
 
@@ -188,37 +267,48 @@ const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: Todo
   const [showViewMenu, setShowViewMenu] = useState(false);
 
   // 详情弹窗状态
-  const [detailItem, setDetailItem] = useState<{type: 'course'|'todo'|'countdown'|'multi', data: any} | null>(null);
-  const [multiParent, setMultiParent] = useState<{type: 'course'|'todo'|'countdown'|'multi', data: any} | null>(null);
+  const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
+  const [multiParent, setMultiParent] = useState<DetailItem | null>(null);
 
   const startHour = 8;
   const endHour = 22;
   const totalMins = (endHour - startHour) * 60;
 
+  // 根据课程列表计算当前周和学期起始周一
+  const applyCourseData = (data: CourseItem[]) => {
+    let activeWeek = 1;
+    if (data.length > 0) {
+      const minWeek = Math.min(...data.map((c: CourseItem) => c.week_index));
+      activeWeek = minWeek > 0 ? minWeek : 1;
+    }
+    setCurrentWeek(activeWeek);
+    const todayDay = new Date().getDay() || 7;
+    const thisMonday = new Date();
+    thisMonday.setDate(new Date().getDate() - todayDay + 1);
+    thisMonday.setHours(0, 0, 0, 0);
+    const semMonday = new Date(thisMonday);
+    semMonday.setDate(thisMonday.getDate() - (activeWeek - 1) * 7);
+    setSemesterMonday(semMonday);
+  };
+
   useEffect(() => {
+    if (cachedCourses) {
+      // 缓存命中：直接计算周信息，不请求 API
+      applyCourseData(cachedCourses);
+      return;
+    }
     fetchCourses();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchCourses = async () => {
     setLoading(true);
     try {
-      const data = await ApiService.request(`/api/courses?user_id=${userId}`, { method: 'GET' });
-      setCourses(data || []);
-
-      let activeWeek = 1;
-      if (data && data.length > 0) {
-         const minWeek = Math.min(...data.map((c:any) => c.week_index));
-         activeWeek = minWeek > 0 ? minWeek : 1;
-      }
-      setCurrentWeek(activeWeek);
-
-      const todayDay = new Date().getDay() || 7;
-      const thisMonday = new Date();
-      thisMonday.setDate(new Date().getDate() - todayDay + 1);
-      thisMonday.setHours(0, 0, 0, 0);
-      const semMonday = new Date(thisMonday);
-      semMonday.setDate(thisMonday.getDate() - (activeWeek - 1) * 7);
-      setSemesterMonday(semMonday);
+      const data: CourseItem[] = await ApiService.request(`/api/courses?user_id=${userId}`, { method: 'GET' });
+      const result = data || [];
+      setCourses(result);
+      writeDayCache(courseCacheKey, result);
+      applyCourseData(result);
     } catch (e) {
       console.error("获取课表失败", e);
     } finally {
@@ -235,8 +325,8 @@ const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: Todo
   }, [semesterMonday, currentWeek]);
 
   const { allDayItems, intraDayItems } = useMemo(() => {
-    const all = { 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[] } as Record<number, any[]>;
-    const intra = { 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[] } as Record<number, any[]>;
+    const all = { 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[] } as Record<number, CalendarEntry[]>;
+    const intra = { 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[] } as Record<number, CalendarEntry[]>;
 
     todos.forEach(t => {
       if (t.is_deleted || t.is_completed) return;
@@ -331,67 +421,74 @@ const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: Todo
           </div>
 
           <div className="space-y-5 overflow-y-auto pr-2 flex-1 min-h-0">
-            {type === 'course' && (
-              <>
-                <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{data.course_name}</h3>
-                <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                  <div className="flex items-center gap-3 text-slate-600">
-                    <MapPin className="w-5 h-5 text-blue-400" />
-                    <span className="font-bold">{data.room_name || '未安排教室'}</span>
+            {type === 'course' && (() => {
+              const course = data as CourseItem;
+              return (
+                <>
+                  <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{course.course_name}</h3>
+                  <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-3 text-slate-600">
+                      <MapPin className="w-5 h-5 text-blue-400" />
+                      <span className="font-bold">{course.room_name || '未安排教室'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-600">
+                      <UserIcon className="w-5 h-5 text-blue-400" />
+                      <span className="font-bold">{course.teacher_name || '未知讲师'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-600">
+                      <Clock className="w-5 h-5 text-blue-400" />
+                      <span className="font-bold">
+                        周{course.weekday} {formatTimeNum(course.start_time)} - {formatTimeNum(course.end_time)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-600">
+                      <Hash className="w-5 h-5 text-blue-400" />
+                      <span className="font-bold">第 {course.week_index} 周</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-slate-600">
-                    <UserIcon className="w-5 h-5 text-blue-400" />
-                    <span className="font-bold">{data.teacher_name || '未知讲师'}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-600">
-                    <Clock className="w-5 h-5 text-blue-400" />
-                    <span className="font-bold">
-                      周{data.weekday} {formatTimeNum(data.start_time)} - {formatTimeNum(data.end_time)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-600">
-                    <Hash className="w-5 h-5 text-blue-400" />
-                    <span className="font-bold">第 {data.week_index} 周</span>
-                  </div>
-                </div>
-              </>
-            )}
+                </>
+              );
+            })()}
 
-            {type === 'todo' && (
-              <>
-                <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{data.content}</h3>
-                <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                  <div className="flex items-center gap-3 text-slate-600">
-                    <Flag className="w-5 h-5 text-emerald-500" />
-                    <span className="font-bold">{data.is_completed ? '已完成' : '进行中'}</span>
+            {type === 'todo' && (() => {
+              const todo = data as TodoItem;
+              return (
+                <>
+                  <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{todo.content}</h3>
+                  <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-3 text-slate-600">
+                      <Flag className="w-5 h-5 text-emerald-500" />
+                      <span className="font-bold">{todo.is_completed ? '已完成' : '进行中'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-600">
+                      <PlayCircle className="w-5 h-5 text-emerald-500" />
+                      <span className="font-bold text-sm">开始: {formatDt(new Date(todo.created_date ?? todo.created_at))}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-600">
+                      <StopCircle className="w-5 h-5 text-emerald-500" />
+                      <span className="font-bold text-sm">截止: {todo.due_date ? formatDt(new Date(todo.due_date)) : '无限制'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-600">
+                      <RefreshCw className="w-5 h-5 text-emerald-500" />
+                      <span className="font-bold text-sm">最近同步: {formatDt(new Date(todo.updated_at))}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-slate-600">
-                    <PlayCircle className="w-5 h-5 text-emerald-500" />
-                    <span className="font-bold text-sm">开始: {formatDt(new Date(data.created_date ?? data.created_at))}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-600">
-                    <StopCircle className="w-5 h-5 text-emerald-500" />
-                    <span className="font-bold text-sm">截止: {data.due_date ? formatDt(new Date(data.due_date)) : '无限制'}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-600">
-                    <RefreshCw className="w-5 h-5 text-emerald-500" />
-                    <span className="font-bold text-sm">最近同步: {formatDt(new Date(data.updated_at))}</span>
-                  </div>
-                </div>
-              </>
-            )}
+                </>
+              );
+            })()}
 
             {type === 'countdown' && (() => {
-               const daysLeft = getDaysLeftLocal(data.target_time);
+               const cd = data as CountdownItem;
+               const daysLeft = getDaysLeftLocal(cd.target_time);
                const isPast = daysLeft < 0;
                return (
                  <>
-                  <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{data.title}</h3>
+                  <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{cd.title}</h3>
                   <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                     <div className="flex items-center justify-between text-slate-600">
                       <div className="flex items-center gap-3">
                         <Clock className="w-5 h-5 text-amber-500" />
-                        <span className="font-bold">目标日: {new Date(data.target_time).toLocaleDateString()}</span>
+                        <span className="font-bold">目标日: {new Date(cd.target_time).toLocaleDateString()}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 text-slate-600 mt-4">
@@ -403,24 +500,24 @@ const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: Todo
                     </div>
                   </div>
                  </>
-               )
+               );
             })()}
 
             {type === 'multi' && (
               <div className="space-y-2">
                 <p className="text-sm font-bold text-slate-500 mb-3">此日包含多项全天任务，请选择查看：</p>
-                {data.map((item: any, idx: number) => (
+                {(data as CalendarEntry[]).map((item: CalendarEntry, idx: number) => (
                   <button
                     key={idx}
                     onClick={() => {
-                       setMultiParent(detailItem); // 记住父级状态
-                       setDetailItem(item); // 钻入子级
+                       setMultiParent(detailItem);
+                       setDetailItem(item as DetailItem);
                     }}
                     className="w-full text-left bg-slate-50 hover:bg-slate-100 p-4 rounded-2xl border border-slate-200 transition flex items-center gap-3 group"
                   >
                     {item.type === 'todo' ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <Clock className="w-5 h-5 text-amber-500" />}
                     <span className="font-bold text-slate-700 flex-1 truncate group-hover:text-indigo-600 transition">
-                      {item.type === 'todo' ? item.data.content : item.data.title}
+                      {item.type === 'todo' ? (item.data as TodoItem).content : (item.data as CountdownItem).title}
                     </span>
                     <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" />
                   </button>
@@ -457,7 +554,7 @@ const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: Todo
             {showViewMenu && (
               <div className="absolute top-full right-0 mt-2 w-32 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 overflow-hidden">
                 {[0,1,2].map((v) => (
-                  <button key={v} onClick={() => { setViewMode(v as any); setShowViewMenu(false); }} className={`w-full text-left px-4 py-2 text-sm font-bold hover:bg-slate-50 transition ${viewMode === v ? 'text-blue-600' : 'text-slate-600'}`}>
+                  <button key={v} onClick={() => { setViewMode(v as 0 | 1 | 2); setShowViewMenu(false); }} className={`w-full text-left px-4 py-2 text-sm font-bold hover:bg-slate-50 transition ${viewMode === v ? 'text-blue-600' : 'text-slate-600'}`}>
                     {v === 0 ? '混合查看' : (v === 1 ? '只看课表' : '只看待办')}
                   </button>
                 ))}
@@ -475,141 +572,160 @@ const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: Todo
       {loading ? (
         <div className="flex-1 flex items-center justify-center min-h-0"><RefreshCw className="w-8 h-8 text-blue-300 animate-spin" /></div>
       ) : (
-        <div className="flex-1 flex flex-col min-h-0 relative">
-          {/* 星期与日期头 */}
-          <div className="flex ml-10 sm:ml-12 pr-2 py-1.5 sm:py-2 bg-white z-10 relative border-b border-slate-50 shrink-0">
-            {weekdays.map((day, i) => {
-              const d = weekDates[i];
-              const isToday = d.toDateString() === new Date().toDateString();
-              return (
-                <div key={day} className="flex-1 flex flex-col items-center">
-                  <span className={`text-[9px] sm:text-[11px] font-bold ${isToday ? 'text-blue-600' : 'text-slate-500'}`}>{day}</span>
-                  <span className={`text-[8px] sm:text-[10px] font-medium ${isToday ? 'text-blue-500' : 'text-slate-400'}`}>{d.getMonth()+1}/{d.getDate()}</span>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 全天事件吸顶区 */}
-          {hasAnyAllDay && viewMode !== 1 && (
-            <div className="flex ml-10 sm:ml-12 pr-2 pb-1.5 bg-white z-10 relative shrink-0 border-b border-slate-50">
-              {Array.from({length: 7}).map((_, i) => {
-                const items = allDayItems[i+1];
-                if (!items || items.length === 0) return <div key={i} className="flex-1 px-0.5"></div>;
-                const text = items.length === 1 ? (items[0].data.title || items[0].data.content) : `${items.length}项全天`;
-                const isAllDone = items.every(x => x.type === 'todo' && x.data.is_completed);
+        <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
+          {/* 星期与日期头 — 左侧留出与时间轴等宽的空白 */}
+          <div className="flex shrink-0 border-b border-slate-50 bg-white z-10">
+            {/* 与时间轴等宽的占位 */}
+            <div className="w-10 sm:w-12 shrink-0" />
+            {/* 7列星期头，flex-1 均分，与下方网格列对齐 */}
+            <div className="flex flex-1 min-w-0 py-1.5 sm:py-2 pr-2">
+              {weekdays.map((day, i) => {
+                const d = weekDates[i];
+                const isToday = d.toDateString() === new Date().toDateString();
                 return (
-                  <div key={i} className="flex-1 px-0.5 flex flex-col justify-end">
-                     <button
-                        onClick={() => {
-                           if (items.length === 1) {
-                             setDetailItem(items[0]);
-                           } else {
-                             setDetailItem({ type: 'multi', data: items });
-                           }
-                        }}
-                        className={`w-full text-[8px] sm:text-[10px] text-white text-center rounded py-0.5 px-0.5 sm:px-1 shadow-sm transition hover:scale-[1.02] ${isAllDone ? 'bg-green-500/80 line-through' : 'bg-amber-500/90'}`}
-                     >
-                       <span className="block truncate w-full">{text}</span>
-                     </button>
+                  <div key={day} className="flex-1 flex flex-col items-center min-w-0">
+                    <span className={`text-[9px] sm:text-[11px] font-bold ${isToday ? 'text-blue-600' : 'text-slate-500'}`}>{day}</span>
+                    <span className={`text-[8px] sm:text-[10px] font-medium ${isToday ? 'text-blue-500' : 'text-slate-400'}`}>{d.getMonth()+1}/{d.getDate()}</span>
                   </div>
                 );
               })}
             </div>
+          </div>
+
+          {/* 全天事件吸顶区 */}
+          {hasAnyAllDay && viewMode !== 1 && (
+            <div className="flex shrink-0 border-b border-slate-50 bg-white z-10">
+              <div className="w-10 sm:w-12 shrink-0" />
+              <div className="flex flex-1 min-w-0 pt-1 pb-1.5 pr-2">
+                {Array.from({length: 7}).map((_, i) => {
+                  const items = allDayItems[i+1];
+                  if (!items || items.length === 0) return <div key={i} className="flex-1 min-w-0" />;
+                  const firstData = items[0].data;
+                  const text = items.length === 1
+                    ? (items[0].type === 'todo' ? (firstData as TodoItem).content : (firstData as CountdownItem).title)
+                    : `${items.length}项全天`;
+                  const isAllDone = items.every(x => x.type === 'todo' && (x.data as TodoItem).is_completed);
+                  return (
+                    <div key={i} className="flex-1 min-w-0 px-px">
+                      <button
+                        onClick={() => {
+                          if (items.length === 1) {
+                            setDetailItem(items[0] as DetailItem);
+                          } else {
+                            setDetailItem({ type: 'multi', data: items });
+                          }
+                        }}
+                        className={`w-full h-8 sm:h-9 text-[8px] sm:text-[10px] text-white rounded shadow-sm transition hover:opacity-80 px-0.5 py-0.5 flex items-center justify-center overflow-hidden ${isAllDone ? 'bg-green-500/80 line-through' : 'bg-amber-500/90'}`}
+                      >
+                        <span className="line-clamp-2 leading-tight break-all text-center">{text}</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
-          {/* 绝对自适应时间轴网格 */}
-          <div className="flex-1 relative ml-10 sm:ml-12 mr-2 mb-2 mt-2 bg-slate-50/30 border border-slate-100 rounded-xl overflow-hidden shadow-inner min-h-[400px] lg:min-h-0">
-            {/* 横向时间线 */}
-            {Array.from({ length: endHour - startHour + 1 }).map((_, i) => (
-              <div key={`grid-line-${i}`} className="absolute w-full border-t border-slate-200/60" style={{ top: `${(i * 60 / totalMins) * 100}%` }}>
-                <span className="absolute -top-2 -left-8 sm:-left-10 text-[9px] sm:text-[10px] font-bold text-slate-400 w-6 sm:w-8 text-right">{startHour + i}:00</span>
-              </div>
-            ))}
+          {/* 时间轴 + 网格主体 */}
+          <div className="flex flex-1 min-h-0 mt-2 mb-2 pr-2">
+            {/* 时间标签列 */}
+            <div className="w-10 sm:w-12 shrink-0 relative">
+              {Array.from({ length: endHour - startHour + 1 }).map((_, i) => (
+                <div key={`lbl-${i}`} className="absolute w-full" style={{ top: `${(i * 60 / totalMins) * 100}%` }}>
+                  <span className="block text-[9px] sm:text-[10px] font-bold text-slate-400 text-right pr-1.5 -translate-y-1/2">
+                    {startHour + i}:00
+                  </span>
+                </div>
+              ))}
+            </div>
 
-            {/* 纵向列分割线 */}
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={`grid-col-${i}`} className="absolute h-full border-l border-slate-200/60" style={{ left: `${i * (100/7)}%` }} />
-            ))}
+            {/* 网格主体 — 与星期头的 flex-1 区域完全对齐 */}
+            <div className="flex-1 relative bg-slate-50/30 border border-slate-100 rounded-xl overflow-hidden shadow-inner min-h-[400px] lg:min-h-0">
+              {/* 横向时间线 */}
+              {Array.from({ length: endHour - startHour + 1 }).map((_, i) => (
+                <div key={`grid-line-${i}`} className="absolute w-full border-t border-slate-200/60" style={{ top: `${(i * 60 / totalMins) * 100}%` }} />
+              ))}
 
-            {/* 渲染课程 */}
-            {viewMode !== 2 && weekCourses.map(course => {
-               const sh = Math.floor(course.start_time / 100);
-               const sm = course.start_time % 100;
-               const eh = Math.floor(course.end_time / 100);
-               const em = course.end_time % 100;
-               const top = getTopPercent(sh, sm);
-               const height = getHeightPercent(sh, sm, eh, em);
-               const left = (course.weekday - 1) * (100 / 7);
+              {/* 纵向列分割线 */}
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={`grid-col-${i}`} className="absolute h-full border-l border-slate-200/60" style={{ left: `${i * (100/7)}%` }} />
+              ))}
 
-               return (
-                 <div key={`c-${course.id}`} className="absolute p-[1px] sm:p-0.5" style={{ top: `${top}%`, height: `${height}%`, left: `${left}%`, width: `${100/7}%` }}>
-                   <button
-                     onClick={() => setDetailItem({ type: 'course', data: course })}
-                     className="w-full h-full text-left rounded shadow-sm border border-white/20 p-0.5 sm:p-1 flex flex-col overflow-hidden text-white transition-transform hover:scale-[1.02] hover:z-20 hover:shadow-md"
-                     style={{ backgroundColor: getCourseColor(course.course_name) }}
-                   >
+              {/* 渲染课程 */}
+              {viewMode !== 2 && weekCourses.map(course => {
+                const sh = Math.floor(course.start_time / 100);
+                const sm = course.start_time % 100;
+                const eh = Math.floor(course.end_time / 100);
+                const em = course.end_time % 100;
+                const top = getTopPercent(sh, sm);
+                const height = getHeightPercent(sh, sm, eh, em);
+                const left = (course.weekday - 1) * (100 / 7);
+                return (
+                  <div key={`c-${course.id}`} className="absolute" style={{ top: `${top}%`, height: `${height}%`, left: `${left}%`, width: `${100/7}%`, padding: '1px' }}>
+                    <button
+                      onClick={() => setDetailItem({ type: 'course', data: course })}
+                      className="w-full h-full text-left rounded shadow-sm border border-white/20 p-0.5 sm:p-1 flex flex-col overflow-hidden text-white transition-transform hover:scale-[1.02] hover:z-20 hover:shadow-md"
+                      style={{ backgroundColor: getCourseColor(course.course_name) }}
+                    >
                       <span className="font-bold text-[8px] sm:text-[10px] leading-tight line-clamp-3">{course.course_name}</span>
                       {height > 5 && <span className="text-[7px] sm:text-[9px] mt-auto opacity-90 line-clamp-1">{course.room_name}</span>}
-                   </button>
-                 </div>
-               );
-            })}
+                    </button>
+                  </div>
+                );
+              })}
 
-            {/* 渲染日内待办 */}
-            {viewMode !== 1 && Object.entries(intraDayItems).flatMap(([dayStr, items]) => {
-               const weekday = parseInt(dayStr);
-               const collisionMap: Record<number, number> = {};
-               return items.map(item => {
+              {/* 渲染日内待办 */}
+              {viewMode !== 1 && Object.entries(intraDayItems).flatMap(([dayStr, items]) => {
+                const weekday = parseInt(dayStr);
+                const collisionMap: Record<number, number> = {};
+                return items.map(item => {
                   const t = item.data as TodoItem;
                   const start = new Date(t.created_date ?? t.created_at);
                   const end = t.due_date ? new Date(t.due_date) : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59);
                   const top = getTopPercent(start.getHours(), start.getMinutes());
                   const height = getHeightPercent(start.getHours(), start.getMinutes(), end.getHours(), end.getMinutes());
-
                   const bucket = Math.floor(top / 5);
                   const stackIndex = collisionMap[bucket] || 0;
                   collisionMap[bucket] = stackIndex + 1;
-
                   const baseLeft = (weekday - 1) * (100 / 7);
-
                   return (
-                     <div key={`t-${t.uuid}`} className="absolute p-[1px] sm:p-0.5 z-10" style={{ top: `${top}%`, height: `${height}%`, left: `calc(${baseLeft}% + ${stackIndex * 3}px)`, width: `calc(${100/7}% - ${stackIndex * 3}px)` }}>
-                       <button
-                         onClick={() => setDetailItem(item)}
-                         className={`w-full h-full text-left rounded shadow-sm border border-white p-0.5 sm:p-1 flex flex-col overflow-hidden transition-transform hover:scale-[1.05] hover:z-30 hover:shadow-md ${t.is_completed ? 'bg-green-500/60' : 'bg-amber-500/90'}`}
-                       >
-                         <div className="flex items-start gap-0.5">
-                            <CheckCircle2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white shrink-0 mt-[1px]" />
-                            <span className={`text-[7px] sm:text-[9px] font-bold text-white leading-tight break-all ${t.is_completed ? 'line-through opacity-80' : ''}`}>{t.content}</span>
-                         </div>
-                       </button>
-                     </div>
+                    <div key={`t-${t.uuid}`} className="absolute z-10" style={{ top: `${top}%`, height: `${height}%`, left: `calc(${baseLeft}% + ${stackIndex * 3}px)`, width: `calc(${100/7}% - ${stackIndex * 3}px)`, padding: '1px' }}>
+                      <button
+                        onClick={() => setDetailItem(item as DetailItem)}
+                        className={`w-full h-full text-left rounded shadow-sm border border-white p-0.5 sm:p-1 flex flex-col overflow-hidden transition-transform hover:scale-[1.05] hover:z-30 hover:shadow-md ${t.is_completed ? 'bg-green-500/60' : 'bg-amber-500/90'}`}
+                      >
+                        <div className="flex items-start gap-0.5">
+                          <CheckCircle2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white shrink-0 mt-px" />
+                          <span className={`text-[7px] sm:text-[9px] font-bold text-white leading-tight break-all ${t.is_completed ? 'line-through opacity-80' : ''}`}>{t.content}</span>
+                        </div>
+                      </button>
+                    </div>
                   );
-               });
-            })}
+                });
+              })}
 
-            {/* 当前时间红线 */}
-            {(() => {
-               const now = new Date();
-               const h = now.getHours();
-               const m = now.getMinutes();
-               if (h >= startHour && h < endHour) {
-                 const currentDay = now.getDay() || 7;
-                 const todayIsRendered = weekDates.some(d => d.toDateString() === now.toDateString());
-                 if (todayIsRendered) {
-                     const top = getTopPercent(h, m);
-                     const left = (currentDay - 1) * (100 / 7);
-                     return (
-                       <>
-                         <div className="absolute w-full border-t-[1.5px] border-red-400 z-30 pointer-events-none shadow-sm" style={{ top: `${top}%` }} />
-                         <div className="absolute w-2 h-2 bg-red-500 rounded-full z-30 pointer-events-none" style={{ top: `calc(${top}% - 3px)`, left: `calc(${left}% - 2px)` }} />
-                       </>
-                     );
-                 }
-               }
-               return null;
-            })()}
+              {/* 当前时间红线 */}
+              {(() => {
+                const now = new Date();
+                const h = now.getHours();
+                const m = now.getMinutes();
+                if (h >= startHour && h < endHour) {
+                  const currentDay = now.getDay() || 7;
+                  const todayIsRendered = weekDates.some(d => d.toDateString() === now.toDateString());
+                  if (todayIsRendered) {
+                    const top = getTopPercent(h, m);
+                    const left = (currentDay - 1) * (100 / 7);
+                    return (
+                      <>
+                        <div className="absolute w-full border-t-[1.5px] border-red-400 z-30 pointer-events-none" style={{ top: `${top}%` }} />
+                        <div className="absolute w-2 h-2 bg-red-500 rounded-full z-30 pointer-events-none" style={{ top: `calc(${top}% - 3px)`, left: `calc(${left}% - 2px)` }} />
+                      </>
+                    );
+                  }
+                }
+                return null;
+              })()}
+            </div>
           </div>
 
           {/* 渲染详情弹窗 */}
@@ -674,8 +790,8 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   }, []);
 
   const loadLocalData = () => {
-    setTodos(SyncEngine.getLocalTodos().filter(t => !t.is_deleted));
-    setCountdowns(SyncEngine.getLocalCountdowns().filter(c => !c.is_deleted));
+    setTodos(SyncEngine.getLocalTodos(user.id).filter(t => !t.is_deleted));
+    setCountdowns(SyncEngine.getLocalCountdowns(user.id).filter(c => !c.is_deleted));
   };
 
   // 🚀 核心修复：请求正确的后端 API 路径 /api/user/status
@@ -720,7 +836,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
     setIsSyncing(true);
     try {
-      SyncEngine.resetSync(); // 关键：重置水位线，强迫后端下发全量
+      SyncEngine.resetSync(user.id); // 关键：重置水位线，强迫后端下发全量
       await SyncEngine.syncData(user.id);
       loadLocalData();
       await fetchSyncStats();
@@ -784,7 +900,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   const isHistorical = (t: TodoItem) => {
     if (!t.is_completed) return false;
     const todayMs = getTodayStartMs();
-    let d = new Date(t.due_date ?? (t.created_date ?? t.created_at));
+    const d = new Date(t.due_date ?? (t.created_date ?? t.created_at));
     d.setHours(0, 0, 0, 0);
     return d.getTime() < todayMs;
   };
@@ -848,9 +964,9 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       device_id: ApiService.getDeviceId()
     };
 
-    const all = SyncEngine.getLocalTodos();
+    const all = SyncEngine.getLocalTodos(user.id);
     all.unshift(newTodo);
-    SyncEngine.setLocalTodos(all);
+    SyncEngine.setLocalTodos(user.id, all);
     loadLocalData();
     setShowAddModal(null);
     resetForm();
@@ -871,9 +987,9 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       created_at: now,
       device_id: ApiService.getDeviceId()
     };
-    const all = SyncEngine.getLocalCountdowns();
+    const all = SyncEngine.getLocalCountdowns(user.id);
     all.push(newC);
-    SyncEngine.setLocalCountdowns(all);
+    SyncEngine.setLocalCountdowns(user.id, all);
     loadLocalData();
     setShowAddModal(null);
     resetForm();
@@ -887,39 +1003,39 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   };
 
   const toggleTodo = (uuid: string) => {
-    const all = SyncEngine.getLocalTodos();
+    const all = SyncEngine.getLocalTodos(user.id);
     const target = all.find(t => t.uuid === uuid);
     if (target) {
       target.is_completed = !target.is_completed;
       target.version++;
       target.updated_at = Date.now();
-      SyncEngine.setLocalTodos(all);
+      SyncEngine.setLocalTodos(user.id, all);
       loadLocalData();
       handleSync();
     }
   };
 
   const deleteTodo = (uuid: string) => {
-    const all = SyncEngine.getLocalTodos();
+    const all = SyncEngine.getLocalTodos(user.id);
     const target = all.find(t => t.uuid === uuid);
     if (target) {
       target.is_deleted = true;
       target.version++;
       target.updated_at = Date.now();
-      SyncEngine.setLocalTodos(all);
+      SyncEngine.setLocalTodos(user.id, all);
       loadLocalData();
       handleSync();
     }
   };
 
   const deleteCountdown = (uuid: string) => {
-    const all = SyncEngine.getLocalCountdowns();
+    const all = SyncEngine.getLocalCountdowns(user.id);
     const target = all.find(t => t.uuid === uuid);
     if (target) {
       target.is_deleted = true;
       target.version++;
       target.updated_at = Date.now();
-      SyncEngine.setLocalCountdowns(all);
+      SyncEngine.setLocalCountdowns(user.id, all);
       loadLocalData();
       handleSync();
     }
@@ -951,38 +1067,38 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     }
 
     return (
-      <div className={`relative group flex items-start gap-4 p-4 rounded-2xl transition-all duration-300 ${
+      <div className={`relative group flex items-start gap-2 sm:gap-4 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl transition-all duration-300 ${
         todo.is_completed
           ? 'bg-slate-100/50 border border-transparent'
           : `bg-white shadow-sm border border-slate-200 ${isPast ? 'border-red-100' : ''}`
       }`}>
         <button
           onClick={() => toggleTodo(todo.uuid)}
-          className={`mt-1 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+          className={`mt-0.5 flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
             todo.is_completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-400'
           }`}
         >
-          <Check className="w-4 h-4" />
+          <Check className="w-3 h-3 sm:w-4 sm:h-4" />
         </button>
 
         <div className="flex-1 min-w-0">
-          <p className={`text-base font-semibold truncate ${
+          <p className={`text-sm sm:text-base font-semibold truncate ${
             todo.is_completed ? 'text-slate-400 line-through' : (isPast || isFuture ? 'text-slate-600 font-medium' : 'text-slate-800')
           }`}>
             {todo.content}
           </p>
-          <div className="mt-2 space-y-2">
-            <p className={`text-xs ${todo.is_completed ? 'text-slate-400' : (isPast ? 'text-red-500 font-medium' : 'text-slate-500')}`}>
+          <div className="mt-1 sm:mt-2 space-y-1 sm:space-y-2">
+            <p className={`text-[10px] sm:text-xs ${todo.is_completed ? 'text-slate-400' : (isPast ? 'text-red-500 font-medium' : 'text-slate-500')}`}>
               {dateStr}
             </p>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex-1 h-1 sm:h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${todo.is_completed ? 'bg-slate-300' : 'bg-indigo-600'}`}
                   style={{ width: `${progress * 100}%` }}
                 />
               </div>
-              <span className={`text-[11px] font-bold ${todo.is_completed ? 'text-slate-400' : (isPast ? 'text-red-500' : 'text-slate-500')}`}>
+              <span className={`text-[10px] sm:text-[11px] font-bold ${todo.is_completed ? 'text-slate-400' : (isPast ? 'text-red-500' : 'text-slate-500')}`}>
                 {Math.floor(progress * 100)}%
               </span>
             </div>
@@ -991,9 +1107,9 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
         <button
           onClick={() => deleteTodo(todo.uuid)}
-          className="opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition"
+          className="opacity-0 group-hover:opacity-100 p-1.5 sm:p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg sm:rounded-xl transition"
         >
-          <Trash2 className="w-5 h-5" />
+          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
       </div>
     );
@@ -1061,7 +1177,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
         {/* 待办清单长列表 */}
         <div className="flex-1 flex flex-col bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden min-h-[400px] lg:min-h-0">
-          <div className="px-6 py-4 flex justify-between items-center border-b border-slate-50 shrink-0 bg-white z-10">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center border-b border-slate-50 shrink-0 bg-white z-10">
             <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-500" />
               待办清单
@@ -1071,32 +1187,32 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+          <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-2 sm:space-y-4 min-h-0">
             {pastTodos.length > 0 && (
-              <div className="bg-red-50/50 rounded-2xl border border-red-100 p-2">
-                <button onClick={() => setIsPastExpanded(!isPastExpanded)} className="w-full flex items-center gap-2 p-2 text-red-600 hover:bg-red-100/50 rounded-xl transition">
+              <div className="bg-red-50/50 rounded-xl sm:rounded-2xl border border-red-100 p-1.5 sm:p-2">
+                <button onClick={() => setIsPastExpanded(!isPastExpanded)} className="w-full flex items-center gap-2 p-1.5 sm:p-2 text-red-600 hover:bg-red-100/50 rounded-lg sm:rounded-xl transition">
                   {isPastExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   <span className="font-bold text-sm">以往待办 ({pastTodos.length})</span>
                 </button>
                 {isPastExpanded && (
-                  <div className="p-2 space-y-2">
+                  <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
                     {pastTodos.map(t => <TodoCard key={t.uuid} todo={t} isPast={true} isFuture={false} />)}
                   </div>
                 )}
               </div>
             )}
 
-            <div className="bg-slate-50 rounded-2xl border border-slate-100 p-2">
-              <button onClick={() => setIsTodayExpanded(!isTodayExpanded)} className="w-full flex items-center gap-2 p-2 text-slate-600 hover:bg-slate-200/50 rounded-xl transition">
+            <div className="bg-slate-50 rounded-xl sm:rounded-2xl border border-slate-100 p-1.5 sm:p-2">
+              <button onClick={() => setIsTodayExpanded(!isTodayExpanded)} className="w-full flex items-center gap-2 p-1.5 sm:p-2 text-slate-600 hover:bg-slate-200/50 rounded-lg sm:rounded-xl transition">
                 {isTodayExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 <span className="font-bold text-sm">
                   今日待办 ({todayTodos.filter(t=>t.is_completed).length}/{todayTodos.length})
                 </span>
               </button>
               {isTodayExpanded && (
-                <div className="p-2 space-y-2">
+                <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
                   {sortedToday.length === 0 ? (
-                    <div className="text-center py-6 text-sm font-medium text-slate-400">今日暂无待办</div>
+                    <div className="text-center py-4 sm:py-6 text-sm font-medium text-slate-400">今日暂无待办</div>
                   ) : (
                     sortedToday.map(t => <TodoCard key={t.uuid} todo={t} isPast={false} isFuture={false} />)
                   )}
@@ -1105,8 +1221,8 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
             </div>
 
             {sortedFuture.length > 0 && (
-              <div className="bg-blue-50/50 rounded-2xl border border-blue-100 p-2 flex flex-col min-h-0 shrink-0">
-                <button onClick={() => setIsFutureExpanded(!isFutureExpanded)} className="w-full flex items-center justify-between p-2 text-blue-600 hover:bg-blue-100/50 rounded-xl transition">
+              <div className="bg-blue-50/50 rounded-xl sm:rounded-2xl border border-blue-100 p-1.5 sm:p-2 flex flex-col min-h-0 shrink-0">
+                <button onClick={() => setIsFutureExpanded(!isFutureExpanded)} className="w-full flex items-center justify-between p-1.5 sm:p-2 text-blue-600 hover:bg-blue-100/50 rounded-lg sm:rounded-xl transition">
                   <div className="flex items-center gap-2">
                     {isFutureExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     <CalendarDays className="w-4 h-4" />
@@ -1117,7 +1233,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                   </span>
                 </button>
                 {isFutureExpanded && (
-                  <div className="p-2 space-y-2">
+                  <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
                     {sortedFuture.map(t => <TodoCard key={t.uuid} todo={t} isPast={false} isFuture={true} />)}
                   </div>
                 )}

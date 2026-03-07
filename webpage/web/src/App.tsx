@@ -7,41 +7,39 @@ import type { User } from './types';
 import './index.css';
 
 const App = () => {
-  // 1. 核心修改：检测网址后缀，如果是直达链接，跳过 landing
   const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp'>(() => {
-    if (window.location.hash.includes('app') || window.location.search.includes('app')) {
-      return 'auth';
-    }
+    if (window.location.hash.includes('app') || window.location.search.includes('app')) return 'auth';
     return 'landing';
   });
 
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    // 检查本地登录态
     const token = ApiService.getToken();
     const savedUser = localStorage.getItem('cdt_user');
     if (token && savedUser) {
-      setUser(JSON.parse(savedUser));
-
-      // 2. 核心修改：如果是直达链接且已经登录过，直接进入网页版主界面
-      if (window.location.hash.includes('app') || window.location.search.includes('app')) {
-        setCurrentView('webapp');
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+        if (window.location.hash.includes('app') || window.location.search.includes('app')) {
+          setCurrentView('webapp');
+        }
+      } catch (e) {
+        ApiService.clearAuthAndData();
       }
     }
   }, []);
 
   const handleOpenWeb = () => {
-    if (user) {
-      setCurrentView('webapp');
-    } else {
-      setCurrentView('auth');
-    }
+    if (user) setCurrentView('webapp');
+    else setCurrentView('auth');
   };
 
+  /**
+   * 修复：登出时彻底清理状态
+   */
   const handleLogout = () => {
-    ApiService.clearToken();
-    localStorage.removeItem('cdt_user');
+    ApiService.clearAuthAndData();
     setUser(null);
     setCurrentView('landing');
   };
