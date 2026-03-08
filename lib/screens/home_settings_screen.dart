@@ -759,7 +759,7 @@ class _SettingsPageState extends State<SettingsPage> {
     List<String>? leftOrder = prefs.getStringList('home_section_order_left');
     List<String>? rightOrder = prefs.getStringList('home_section_order_right');
 
-    final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math'];
+    final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math', 'pomodoro'];
 
     if (leftOrder == null || rightOrder == null) {
       List<String> oldOrder = prefs.getStringList('home_section_order') ?? defaultOrder;
@@ -780,7 +780,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     List<String> mobileCombinedOrder = [...leftOrder, ...rightOrder];
 
-    Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true};
+    Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true, 'pomodoro': true};
     String? visStr = prefs.getString('home_section_visibility');
     if (visStr != null) visibility = Map<String, bool>.from(jsonDecode(visStr));
     for (var key in defaultOrder) visibility.putIfAbsent(key, () => true);
@@ -790,7 +790,8 @@ class _SettingsPageState extends State<SettingsPage> {
       'countdowns': '重要日与倒计时',
       'todos': '待办事项清单',
       'screenTime': '屏幕时间面板',
-      'math': '数学测验入口'
+      'math': '数学测验入口',
+      'pomodoro': '今日专注统计',
     };
 
     if (!mounted) return;

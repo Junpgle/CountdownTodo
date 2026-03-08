@@ -405,14 +405,32 @@ class PomodoroService {
     await prefs.setString(_keyRecords, jsonEncode(records.map((r) => r.toJson()).toList()));
   }
 
-  /// 添加一条专注记录并立即上传云端
+  /// 添加一条专注记录，本地保存后立即尝试上传云端；失败时保留本地记录等待下次 syncRecordsToCloud 补传
   static Future<void> addRecord(PomodoroRecord record) async {
-    final all = await _getAllRecordsRaw();   // ← 含 tombstone，防止覆盖
-    // 去重：同 uuid 已存在则跳过
-    if (all.any((r) => r.uuid == record.uuid)) return;
-    all.insert(0, record);
+    final all = await _getAllRecordsRaw();
+    // 去重：同 uuid 已存在则更新，否则插入
+    final idx = all.indexWhere((r) => r.uuid == record.uuid);
+    if (idx >= 0) {
+      all[idx] = record;
+    } else {
+      all.insert(0, record);
+    }
     await _saveRecords(all);
-    ApiService.uploadPomodoroRecord(record.toJson()).catchError((_) => false);
+    // 立即尝试上传
+    try {
+      final ok = await ApiService.uploadPomodoroRecord(record.toJson());
+      if (ok) {
+        // 上传成功，更新 lastUpload 时间戳，下次 syncRecordsToCloud 不会重复上传
+        final prefs = await SharedPreferences.getInstance();
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final current = prefs.getInt(_keyLastRecordUpload) ?? 0;
+        if (now > current) {
+          await prefs.setInt(_keyLastRecordUpload, now);
+        }
+      }
+    } catch (_) {
+      // 静默失败，等待下次手动/自动同步批量补传
+    }
   }
 
   /// 按时间范围查询（仅有效）
@@ -500,12 +518,24 @@ class PomodoroService {
     }
   }
 
-  /// 将本地未同步的记录批量推送到云端
+  static const _keyLastRecordUpload = 'pomodoro_last_record_upload';
+
+  /// 将本地未同步（updatedAt > 上次上传时间）的记录批量推送到云端
   static Future<void> syncRecordsToCloud() async {
     try {
-      final all = await _getAllRecordsRaw(); // 含已删除
+      final prefs = await SharedPreferences.getInstance();
+      final lastUpload = prefs.getInt(_keyLastRecordUpload) ?? 0;
+      final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
-      await ApiService.uploadPomodoroRecords(all.map((r) => r.toJson()).toList());
+      // 只上传比上次上传时间更新的记录（含已删除 tombstone）
+      final dirty = all.where((r) => r.updatedAt > lastUpload).toList();
+      if (dirty.isEmpty) return;
+      final ok = await ApiService.uploadPomodoroRecords(
+          dirty.map((r) => r.toJson()).toList());
+      if (ok) {
+        await prefs.setInt(
+            _keyLastRecordUpload, DateTime.now().millisecondsSinceEpoch);
+      }
     } catch (_) {}
   }
 
@@ -527,6 +557,22 @@ class PomodoroService {
     return getRecordsInRange(start, end);
   }
 
+  /// 昨日专注记录（本地，不含已删除）
+  static Future<List<PomodoroRecord>> getYesterdayRecords() async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+    final end = start.add(const Duration(days: 1));
+    return getRecordsInRange(start, end);
+  }
+
+  /// 最近专注：今日有则返回今日，否则返回昨日；同时返回是哪天
+  static Future<({List<PomodoroRecord> records, bool isToday})> getRecentRecords() async {
+    final today = await getTodayRecords();
+    if (today.isNotEmpty) return (records: today, isToday: true);
+    final yesterday = await getYesterdayRecords();
+    return (records: yesterday, isToday: false);
+  }
+
   static Future<List<PomodoroRecord>> getSessions() => getRecords();
   static Future<void> addSession(PomodoroRecord session) => addRecord(session);
   static Future<List<PomodoroRecord>> getSessionsInRange(DateTime from, DateTime to) =>
@@ -534,12 +580,14 @@ class PomodoroService {
   static int totalFocusSecondsFromSessions(List<PomodoroRecord> s) => totalFocusSeconds(s);
 
   /// 更新一条记录（修改标签 / 绑定任务等）
+  /// 先本地保存（立即返回），云端上传在后台异步进行
   static Future<void> updateRecord(PomodoroRecord updated) async {
     final all = await _getAllRecordsRaw();
     final idx = all.indexWhere((r) => r.uuid == updated.uuid);
     if (idx != -1) {
       all[idx] = updated;
-      await _saveRecords(all);
+      await _saveRecords(all); // 本地保存完成，立即返回
+      // 后台异步上传，不阻塞调用方
       ApiService.uploadPomodoroRecord(updated.toJson()).catchError((_) => false);
     }
   }

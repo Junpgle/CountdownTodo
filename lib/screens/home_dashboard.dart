@@ -42,11 +42,9 @@ import 'pomodoro_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
-  final bool autoOpenPomodoro;
   const HomeDashboard({
     super.key,
     required this.username,
-    this.autoOpenPomodoro = false,
   });
 
   @override
@@ -81,6 +79,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   };
   Timer? _courseTimer;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
+  // 每次自增触发首页专注记录卡片刷新
+  int _pomodoroRefreshTrigger = 0;
 
   // === 初始化与生命周期 ===
   @override
@@ -94,19 +94,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     _fetchRandomWallpaper();
     WidgetService.init();
 
-    // 如果有正在进行的番茄钟，在第一帧渲染完后自动跳转（保留返回栈）
-    if (widget.autoOpenPomodoro) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PomodoroScreen(username: widget.username),
-            ),
-          );
-        }
-      });
-    }
 
     const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
     platform.setMethodCallHandler((call) async {
@@ -123,6 +110,9 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       _checkUpdatesSilently();
 
       _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) { _checkUpcomingEvents(); });
+
+      // 启动时检测是否有正在进行的番茄钟，有则自动跳转
+      _checkAndNavigateToPomodoro();
     });
   }
 
@@ -273,7 +263,30 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       _loadSectionPreferences();
       _loadSemesterSettings();
       _checkUpdatesSilently();
+      // 从番茄钟页或任何前台切换回来时，刷新专注记录卡片
+      if (mounted) setState(() => _pomodoroRefreshTrigger++);
     }
+  }
+
+  /// 启动时检测是否有正在进行的番茄钟，有则跳转至计时界面
+  Future<void> _checkAndNavigateToPomodoro() async {
+    // 稍微延迟，让首页先完成渲染
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    final saved = await PomodoroService.loadRunState();
+    if (saved == null) return;
+    if (saved.phase != PomodoroPhase.focusing && saved.phase != PomodoroPhase.breaking) return;
+    // 确认倒计时还没结束
+    final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
+    if (remaining <= 0) return;
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PomodoroScreen(username: widget.username),
+      ),
+    );
+    if (mounted) setState(() => _pomodoroRefreshTrigger++);
   }
 
   Future<void> _checkAutoSync() async {
@@ -699,6 +712,19 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                       Widget pomodoroSection = PomodoroTodaySection(
                         username: widget.username,
                         isLight: isLight,
+                        refreshTrigger: _pomodoroRefreshTrigger,
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PomodoroScreen(
+                                username: widget.username,
+                                initialTab: 1, // 直接打开统计看板
+                              ),
+                            ),
+                          );
+                          if (mounted) setState(() => _pomodoroRefreshTrigger++);
+                        },
                       );
 
                       Map<String, Widget> sectionsMap = {
@@ -770,13 +796,15 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         children: [
           FloatingActionButton.small(
             heroTag: 'fab_pomodoro',
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => PomodoroScreen(username: widget.username),
                 ),
               );
+              // 从番茄钟返回后立即刷新首页专注记录卡片
+              if (mounted) setState(() => _pomodoroRefreshTrigger++);
             },
             tooltip: '番茄钟',
             child: const Text('🍅', style: TextStyle(fontSize: 18)),

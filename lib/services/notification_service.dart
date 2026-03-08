@@ -187,6 +187,7 @@ class NotificationService {
   /// [currentCycle] 当前第几轮
   /// [totalCycles] 总轮数
   /// [tagNames] 已选标签名称列表
+  /// [alertKey] 非空时触发一次性普通提醒（仅开始事件传入，如 "pomo_start_<targetEndMs>"）
   static Future<void> updatePomodoroNotification({
     required int remainingSeconds,
     required String phase,
@@ -194,12 +195,19 @@ class NotificationService {
     int currentCycle = 1,
     int totalCycles = 4,
     List<String> tagNames = const [],
+    String alertKey = '',
   }) async {
-    final mins = remainingSeconds ~/ 60;
-    final secs = remainingSeconds % 60;
-    final countdownStr =
-        '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-
+    // >60s 只显示分钟，最后60s 才显示 MM:SS（降低通知刷新频率的配套格式）
+    final String countdownStr;
+    if (remainingSeconds > 60) {
+      final mins = (remainingSeconds / 60).ceil();
+      countdownStr = '$mins 分钟';
+    } else {
+      final mins = remainingSeconds ~/ 60;
+      final secs = remainingSeconds % 60;
+      countdownStr =
+          '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+    }
     try {
       await _channel.invokeMethod('showOngoingNotification', {
         'type': 'pomodoro',
@@ -209,9 +217,31 @@ class NotificationService {
         'currentCycle': currentCycle,
         'totalCycles': totalCycles,
         'tagNames': tagNames,
+        'alertKey': alertKey, // 空字符串 = 不触发普通提醒
       });
     } catch (e) {
       debugPrint('更新番茄钟通知失败: $e');
+    }
+  }
+
+  // 4. 番茄钟结束一次性提醒（专注完成 / 休息结束）
+  /// [alertKey] 去重 key，如 "pomo_end_<targetEndMs>"
+  /// [todoTitle] 绑定的任务标题（可选）
+  /// [isBreak] true = 休息结束，false = 专注完成
+  static Future<void> sendPomodoroEndAlert({
+    required String alertKey,
+    String? todoTitle,
+    bool isBreak = false,
+  }) async {
+    try {
+      await _channel.invokeMethod('showOngoingNotification', {
+        'type': 'pomodoro_end',
+        'alertKey': alertKey,
+        'todoTitle': todoTitle ?? '',
+        'isBreak': isBreak,
+      });
+    } catch (e) {
+      debugPrint('番茄钟结束提醒失败: $e');
     }
   }
 

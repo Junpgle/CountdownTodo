@@ -1,22 +1,24 @@
-import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../services/pomodoro_service.dart';
-import '../services/api_service.dart';
-import '../services/notification_service.dart';
-import '../storage_service.dart';
 
 // ============================================================
-// 首页今日专注记录卡片
+// 首页最近专注统计卡片
 // ============================================================
 class PomodoroTodaySection extends StatefulWidget {
   final String username;
   final bool isLight;
+  /// 每次自增时触发重新加载（由首页 resumed 回调驱动）
+  final int refreshTrigger;
+  /// 点击整个卡片时的回调（跳转统计看板）
+  final VoidCallback? onTap;
 
   const PomodoroTodaySection({
     super.key,
     required this.username,
     this.isLight = false,
+    this.refreshTrigger = 0,
+    this.onTap,
   });
 
   @override
@@ -28,110 +30,36 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
   List<PomodoroTag> _tags = [];
   bool _loading = true;
   bool _collapsed = false;
-
-  // 跨端感知
-  Map<String, dynamic>? _remoteActive;   // 其他端正在进行的专注信息
-  Timer? _pollTimer;
-  int _remoteCountdown = 0;              // 剩余秒数
-  Timer? _countdownTimer;
+  bool _isToday = true; // 当前显示的是今日还是昨日
 
   @override
   void initState() {
     super.initState();
-    _loadLocal();
-    _startPolling();
+    _loadData();
   }
 
   @override
-  void dispose() {
-    _pollTimer?.cancel();
-    _countdownTimer?.cancel();
-    super.dispose();
+  void didUpdateWidget(PomodoroTodaySection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshTrigger != widget.refreshTrigger) {
+      _loadData();
+    }
   }
 
-  Future<void> _loadLocal() async {
-    // 先从云端增量同步，再读本地（标签+记录）
-    await PomodoroService.syncTagsFromCloud();
-    final records = await PomodoroService.getTodayRecords();
-    final tags = await PomodoroService.getTags();
-    // 后台再拉一次记录（不阻塞）
-    PomodoroService.syncRecordsFromCloud().then((changed) {
-      if (changed && mounted) _loadLocal();
-    });
+  /// 只读本地数据（云端同步已由首页 _handleManualSync / _checkAutoSync 统一负责）
+  Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    final result = await PomodoroService.getRecentRecords();
+    final tags   = await PomodoroService.getTags();
     if (mounted) {
       setState(() {
-        _records = records;
-        _tags = tags;
+        _records = result.records;
+        _tags    = tags;
+        _isToday = result.isToday;
         _loading = false;
       });
     }
-  }
-
-  // 每 30 秒轮询一次其他端专注状态
-  void _startPolling() {
-    _poll();
-    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) => _poll());
-  }
-
-  Future<void> _poll() async {
-    final deviceId = await StorageService.getDeviceId();
-    final remote = await ApiService.fetchActivePomodoroFromOtherDevice(deviceId);
-    if (!mounted) return;
-    if (remote != null) {
-      // 计算剩余时间
-      final startMs = remote['start_time'] as int? ?? 0;
-      final planned = remote['planned_duration'] as int? ?? 1500;
-      final elapsed = ((DateTime.now().millisecondsSinceEpoch - startMs) / 1000).round();
-      final remaining = (planned - elapsed).clamp(0, planned);
-      setState(() {
-        _remoteActive = remote;
-        _remoteCountdown = remaining;
-      });
-      _startCountdownTimer();
-    } else {
-      if (_remoteActive != null) {
-        _countdownTimer?.cancel();
-        setState(() {
-          _remoteActive = null;
-          _remoteCountdown = 0;
-        });
-        // 其他端专注结束，刷新本地记录
-        await PomodoroService.syncRecordsFromCloud();
-        if (mounted) _loadLocal();
-      }
-    }
-  }
-
-  void _startCountdownTimer() {
-    _countdownTimer?.cancel();
-    if (_remoteCountdown <= 0) return;
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        _remoteCountdown = (_remoteCountdown - 1).clamp(0, 999999);
-      });
-      if (_remoteCountdown <= 0) {
-        _countdownTimer?.cancel();
-        _poll(); // 倒计时归零后立即重新查询
-      }
-    });
-  }
-
-  String _formatCountdown(int secs) {
-    final m = secs ~/ 60;
-    final s = secs % 60;
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
-  String? _tagNamesFor(PomodoroRecord r) {
-    if (r.tagUuids.isEmpty) return null;
-    final names = r.tagUuids
-        .map((uuid) => _tags.cast<PomodoroTag?>()
-            .firstWhere((t) => t?.uuid == uuid, orElse: () => null)
-            ?.name)
-        .whereType<String>()
-        .join(' · ');
-    return names.isEmpty ? null : names;
   }
 
   int get _totalSeconds =>
@@ -144,119 +72,178 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
         ? Colors.white.withValues(alpha: 0.7)
         : Theme.of(context).colorScheme.onSurfaceVariant;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── 标题行 ──
-        Row(
-          children: [
-            Icon(Icons.timer_rounded,
-                size: 20,
-                color: widget.isLight
-                    ? Colors.white
-                    : Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              '今日专注',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: textColor),
-            ),
-            const SizedBox(width: 8),
-            if (!_loading && _records.isNotEmpty)
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── 标题行 ──
+          Row(
+            children: [
+              Icon(Icons.bar_chart_rounded,
+                  size: 20,
+                  color: widget.isLight
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
               Text(
-                PomodoroService.formatDuration(_totalSeconds),
+                '最近专注',
                 style: TextStyle(
-                    fontSize: 14,
-                    color: widget.isLight
-                        ? Colors.white.withValues(alpha: 0.85)
-                        : Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w600),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: textColor),
               ),
-            const Spacer(),
-            // 折叠按钮
-            if (_records.isNotEmpty)
-              GestureDetector(
-                onTap: () => setState(() => _collapsed = !_collapsed),
-                child: Icon(
-                  _collapsed
-                      ? Icons.keyboard_arrow_down
-                      : Icons.keyboard_arrow_up,
-                  color: subColor,
+              const SizedBox(width: 6),
+              // 今日 / 昨日 标签
+              if (!_loading)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (widget.isLight
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : Theme.of(context).colorScheme.primaryContainer),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    _isToday ? '今日' : '昨日',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: widget.isLight
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
+              const SizedBox(width: 8),
+              if (!_loading && _records.isNotEmpty)
+                Text(
+                  PomodoroService.formatDuration(_totalSeconds),
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: widget.isLight
+                          ? Colors.white.withValues(alpha: 0.85)
+                          : Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600),
+                ),
+              const Spacer(),
+              // 跳转箭头
+              if (widget.onTap != null)
+                Icon(Icons.chevron_right,
+                    size: 20,
+                    color: subColor),
+              if (_records.isNotEmpty)
+                GestureDetector(
+                  onTap: () => setState(() => _collapsed = !_collapsed),
+                  child: Icon(
+                    _collapsed
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_up,
+                    color: subColor,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
 
-        // ── 其他端专注提示条 ──
-        if (_remoteActive != null) _buildRemoteBanner(subColor),
-
-        // ── 记录列表 ──
-        if (_loading)
-          const Center(
-              child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: CircularProgressIndicator()))
-        else if (_records.isEmpty && _remoteActive == null)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text('今天还没有专注记录',
-                style: TextStyle(color: subColor, fontSize: 14)),
-          )
-        else if (!_collapsed)
-          ..._records.map((r) => _buildRecordTile(r, subColor)),
-      ],
+          // ── 统计视图 ──
+          if (_loading)
+            const Center(
+                child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator()))
+          else if (_records.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('暂无专注记录，开始你的第一个番茄钟吧！',
+                  style: TextStyle(color: subColor, fontSize: 14)),
+            )
+          else if (!_collapsed)
+            Column(
+              children: [
+                _buildHourlyChart(subColor),
+                const SizedBox(height: 16),
+                _buildTagStatistics(subColor),
+              ],
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildRemoteBanner(Color? subColor) {
-    final deviceId = (_remoteActive!['device_id'] as String?) ?? '其他设备';
-    final mins = _remoteCountdown ~/ 60;
-    final secs = _remoteCountdown % 60;
-    final timeStr =
-        '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  // ==========================================
+  // 24小时分布条形图
+  // ==========================================
+  Widget _buildHourlyChart(Color? subColor) {
+    List<int> hourlySeconds = List.filled(24, 0);
+    for (var r in _records) {
+      final startLocal =
+          DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
+      hourlySeconds[startLocal.hour] += r.effectiveDuration;
+    }
+
+    final maxSeconds = hourlySeconds.reduce(max);
+    final primaryColor = widget.isLight
+        ? Colors.white
+        : Theme.of(context).colorScheme.primary;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFF6B6B).withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border:
-            Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.4)),
+        color: widget.isLight
+            ? Colors.white.withValues(alpha: 0.1)
+            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('🍅', style: TextStyle(fontSize: 20)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '其他设备正在专注中',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: widget.isLight ? Colors.white : null),
-                ),
-                Text(
-                  '设备 ${deviceId.length > 8 ? deviceId.substring(0, 8) : deviceId}… · 剩余 $timeStr',
-                  style: TextStyle(fontSize: 12, color: subColor),
-                ),
-              ],
-            ),
-          ),
-          // 加标签按钮
-          TextButton.icon(
-            onPressed: () => _showRemoteTagDialog(),
-            icon: const Icon(Icons.label_outline, size: 16),
-            label: const Text('加标签', style: TextStyle(fontSize: 12)),
-            style: TextButton.styleFrom(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              foregroundColor: const Color(0xFFFF6B6B),
+          Text('时段分布', style: TextStyle(fontSize: 12, color: subColor)),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 80,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(24, (index) {
+                final sec = hourlySeconds[index];
+                final factor = maxSeconds == 0 ? 0.0 : sec / maxSeconds;
+
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: FractionallySizedBox(
+                              heightFactor: factor > 0 ? max(factor, 0.05) : 0,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: factor > 0 ? primaryColor : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        if (index % 6 == 0)
+                          Text(
+                            '$index',
+                            style: TextStyle(
+                                fontSize: 9,
+                                color: subColor?.withValues(alpha: 0.7)),
+                          )
+                        else
+                          const SizedBox(height: 11),
+                      ],
+                    ),
+                  ),
+                );
+              }),
             ),
           ),
         ],
@@ -264,180 +251,127 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
     );
   }
 
-  Widget _buildRecordTile(PomodoroRecord r, Color? subColor) {
-    final startLocal =
-        DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
-    final tagNames = _tagNamesFor(r);
+  // ==========================================
+  // 标签时间分布统计
+  // ==========================================
+  Widget _buildTagStatistics(Color? subColor) {
+    Map<String, int> tagSeconds = {};
+    int untaggedSeconds = 0;
+
+    for (var r in _records) {
+      if (r.tagUuids.isEmpty) {
+        untaggedSeconds += r.effectiveDuration;
+      } else {
+        final durationPerTag = r.effectiveDuration ~/ r.tagUuids.length;
+        for (var uuid in r.tagUuids) {
+          tagSeconds[uuid] = (tagSeconds[uuid] ?? 0) + durationPerTag;
+        }
+      }
+    }
+
+    List<MapEntry<String, int>> sortedTags = tagSeconds.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: widget.isLight
-            ? Colors.white.withValues(alpha: 0.12)
-            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: widget.isLight
-              ? Colors.white.withValues(alpha: 0.2)
-              : Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+            ? Colors.white.withValues(alpha: 0.1)
+            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(16),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('专注项目', style: TextStyle(fontSize: 12, color: subColor)),
+          const SizedBox(height: 12),
+          if (sortedTags.isEmpty && untaggedSeconds == 0)
+            Text('暂无数据', style: TextStyle(color: subColor, fontSize: 13)),
+
+          ...sortedTags.map((entry) {
+            final tag = _tags.cast<PomodoroTag?>().firstWhere(
+                  (t) => t?.uuid == entry.key,
+              orElse: () => null,
+            );
+            if (tag == null) return const SizedBox.shrink();
+
+            return _buildTagStatRow(
+              name: tag.name,
+              colorHex: tag.color,
+              seconds: entry.value,
+              totalSeconds: _totalSeconds,
+              subColor: subColor,
+            );
+          }),
+
+          if (untaggedSeconds > 0)
+            _buildTagStatRow(
+              name: '未分类',
+              colorHex: '#9E9E9E',
+              seconds: untaggedSeconds,
+              totalSeconds: _totalSeconds,
+              subColor: subColor,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTagStatRow({
+    required String name,
+    required String colorHex,
+    required int seconds,
+    required int totalSeconds,
+    required Color? subColor,
+  }) {
+    final color = _hexToColor(colorHex);
+    final percent = totalSeconds > 0 ? (seconds / totalSeconds) : 0.0;
+    final textColor = widget.isLight ? Colors.white : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: r.isCompleted
-                  ? const Color(0xFF4ECDC4).withValues(alpha: 0.15)
-                  : const Color(0xFFFF6B6B).withValues(alpha: 0.15),
-              shape: BoxShape.circle,
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 2,
+            child: Text(
+              name,
+              style: TextStyle(fontSize: 14, color: textColor),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            child: Icon(
-              r.isCompleted
-                  ? Icons.check_circle_rounded
-                  : Icons.timer_off_rounded,
-              size: 18,
-              color: r.isCompleted
-                  ? const Color(0xFF4ECDC4)
-                  : const Color(0xFFFF6B6B),
+          ),
+          Expanded(
+            flex: 3,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: percent,
+                backgroundColor: color.withValues(alpha: 0.2),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: 6,
+              ),
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  r.todoTitle ?? '自由专注',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color:
-                          widget.isLight ? Colors.white : null),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Row(
-                  children: [
-                    Text(
-                      DateFormat('HH:mm').format(startLocal),
-                      style: TextStyle(fontSize: 12, color: subColor),
-                    ),
-                    if (tagNames != null) ...[
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          '🏷 $tagNames',
-                          style:
-                              TextStyle(fontSize: 11, color: subColor),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
+          SizedBox(
+            width: 50,
+            child: Text(
+              PomodoroService.formatDuration(seconds),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: textColor),
+              textAlign: TextAlign.right,
             ),
           ),
-          Text(
-            PomodoroService.formatDuration(r.effectiveDuration),
-            style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: widget.isLight ? Colors.white : null),
-          ),
         ],
-      ),
-    );
-  }
-
-  // 为其他端正在进行的专注添加标签
-  void _showRemoteTagDialog() {
-    if (_remoteActive == null) return;
-    final todoUuid = _remoteActive!['todo_uuid'] as String?;
-    List<String> selectedTags = [];
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, sd) => Padding(
-          padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              left: 20,
-              right: 20,
-              top: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('为其他设备的专注添加标签',
-                  style:
-                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              if (_tags.isEmpty)
-                const Text('暂无标签，请先在番茄钟界面创建标签',
-                    style: TextStyle(color: Colors.grey))
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _tags.map((tag) {
-                    final sel = selectedTags.contains(tag.uuid);
-                    final color = _hexToColor(tag.color);
-                    return FilterChip(
-                      label: Text(tag.name),
-                      selected: sel,
-                      showCheckmark: false,
-                      selectedColor: color.withValues(alpha: 0.2),
-                      side: BorderSide(
-                          color: sel ? color : Colors.grey.shade300),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
-                      onSelected: (v) => sd(() {
-                        if (v) {
-                          selectedTags.add(tag.uuid);
-                        } else {
-                          selectedTags.remove(tag.uuid);
-                        }
-                      }),
-                    );
-                  }).toList(),
-                ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: selectedTags.isEmpty
-                      ? null
-                      : () async {
-                          Navigator.pop(ctx);
-                          // 上传标签关联（通过 todo_tags）
-                          if (todoUuid != null) {
-                            final fakeRecord = PomodoroRecord(
-                              uuid: _remoteActive!['uuid']?.toString() ?? '',
-                              todoUuid: todoUuid,
-                              tagUuids: selectedTags,
-                              startTime: _remoteActive!['start_time'] as int? ?? 0,
-                              plannedDuration: _remoteActive!['planned_duration'] as int? ?? 1500,
-                            );
-                            await ApiService.uploadPomodoroRecord(fakeRecord.toJson());
-                          }
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('标签已添加'), duration: Duration(seconds: 2)),
-                            );
-                          }
-                        },
-                  child: const Text('确认添加'),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -451,4 +385,3 @@ Color _hexToColor(String hex) {
     return Colors.blueGrey;
   }
 }
-

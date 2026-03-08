@@ -35,7 +35,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
     private val NOTIFICATION_CHANNEL_ID = "live_updates_official_v2"
-    private val NOTIFICATION_ID = 12345
+    // 🍅 番茄钟专属低功耗频道：IMPORTANCE_LOW 不唤醒屏幕、不振动
+    private val POMODORO_CHANNEL_ID = "pomodoro_timer_low"
+    // 🔔 普通提醒频道：IMPORTANCE_DEFAULT，有声音/震动，可同步手环，仅上岛时伴随触发一次
+    private val ALERT_CHANNEL_ID = "event_alert_v1"
+    private val NOTIFICATION_ID = 12345          // 主通知 ID（待办/测验）
+    private val POMODORO_NOTIFICATION_ID = 12346 // 🍅 番茄钟独立通知 ID
+    private val COURSE_NOTIFICATION_ID   = 12347 // 📚 课程提醒独立通知 ID
+    private val ALERT_COURSE_ID   = 12348 // 🔔 课程普通提醒
+    private val ALERT_TODO_ID     = 12349 // 🔔 待办普通提醒
+    private val ALERT_POMO_START_ID = 12350 // 🔔 番茄开始普通提醒
+    private val ALERT_POMO_END_ID   = 12351 // 🔔 番茄结束普通提醒
+    private val TODO_ISLAND_BIZ_TAG     = "math_quiz_todo"     // 待办独立岛 bizTag
+    private val COURSE_ISLAND_BIZ_TAG   = "math_quiz_course"   // 📚 课程独立岛 bizTag
+    private val POMODORO_ISLAND_BIZ_TAG = "math_quiz_pomodoro" // 🍅 番茄钟独立岛 bizTag
     private val TAG = "MathQuizApp"
 
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
@@ -124,6 +137,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                             "course" -> updateCourseNotification(args)
                             "upcoming_todo" -> updateUpcomingTodoNotification(args)
                             "pomodoro" -> updatePomodoroNotification(args)
+                            "pomodoro_end" -> sendPomodoroEndAlert(args)
                             else -> updateTodoNotification(args)
                         }
                         result.success(null)
@@ -133,6 +147,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 "cancelNotification" -> {
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(NOTIFICATION_ID)
+                    nm.cancel(COURSE_NOTIFICATION_ID)          // 📚 清除课程独立通知
+                    nm.cancel(POMODORO_NOTIFICATION_ID)        // 🍅 清除番茄钟独立通知
                     result.success(null)
                 }
 
@@ -299,16 +315,43 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val name = "Live Activities"
+
+            // 主频道：Live Activities（课程/待办 高优先级）
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                name,
+                "Live Activities",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 setSound(null, null)
                 enableVibration(false)
             }
             notificationManager.createNotificationChannel(channel)
+
+            // 🍅 番茄钟专属频道：低优先级，不唤醒屏幕，不振动，省电
+            val pomodoroChannel = NotificationChannel(
+                POMODORO_CHANNEL_ID,
+                "番茄钟计时",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "专注/休息倒计时常驻通知"
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            notificationManager.createNotificationChannel(pomodoroChannel)
+
+            // 🔔 普通提醒频道：上岛时伴随触发一次，可同步手环，每事件只响一次
+            val alertChannel = NotificationChannel(
+                ALERT_CHANNEL_ID,
+                "事件提醒",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "课程/待办/番茄钟开始与结束的一次性提醒（可同步手环）"
+                enableVibration(true)
+                setShowBadge(false)
+            }
+            notificationManager.createNotificationChannel(alertChannel)
         }
     }
 
@@ -335,8 +378,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             currentStep = 0,
             totalSteps = 0,
             isTodo = false,
-            shortText = room, // 这个会被映射到胶囊和锁屏的关键短文本
-            iconResId = R.drawable.play_lesson // 使用旧代码里的课程专属图标
+            shortText = room,
+            iconResId = R.drawable.play_lesson,
+            notificationId = COURSE_NOTIFICATION_ID,
+            islandBizTag   = COURSE_ISLAND_BIZ_TAG
+        )
+        // 🔔 上岛同时触发一次性普通提醒（可同步手环），相同课程+时间段不重复
+        sendAlertIfNew(
+            alertKey = "course_${courseName}_${timeStr}",
+            title = "📚 $courseName",
+            text = "$timeStr · $room",
+            alertNotificationId = ALERT_COURSE_ID,
+            iconResId = R.drawable.play_lesson
         )
     }
 
@@ -390,14 +443,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val totalCycles  = (args["totalCycles"]  as? Number)?.toInt() ?: 4
         @Suppress("UNCHECKED_CAST")
         val tagNames     = (args["tagNames"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+        // alertKey 非空时说明这是一个"开始"事件，触发一次性普通提醒
+        val alertKey     = (args["alertKey"] as? String)?.trim() ?: ""
 
         val isFocusing = phase == "focusing"
 
-        // 标题：🍅 专注中  04:33（倒计时在标题）
         val phaseLabel = if (isFocusing) "🍅 专注中" else "☕ 休息中"
         val title = "$phaseLabel  $countdown"
 
-        // 正文：任务名（第一行）+ 标签（第二行，若有）
         val taskLine = when {
             todoTitle.isNotEmpty() -> todoTitle
             isFocusing             -> "自由专注"
@@ -406,27 +459,54 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val tagsLine = if (tagNames.isNotEmpty()) tagNames.joinToString("  ") { "🏷 $it" } else ""
         val text = if (tagsLine.isNotEmpty()) "$taskLine\n$tagsLine" else taskLine
 
-        // ⭐ subText（顶部小字）= 第 X/Y 轮
         val subText = "第 $currentCycle/$totalCycles 轮"
-
-        // 颜色
         val color = if (isFocusing) 0xFFF44336.toInt() else 0xFF4CAF50.toInt()
-
-        // shortText（灵动岛胶囊）= "🍅·24:33"
-        val shortText = if (isFocusing) "🍅·$countdown" else "☕·$countdown"
+        val shortText = countdown
+        val iconResId = if (isFocusing) R.drawable.hourglass else R.drawable.hourglass_check
 
         buildAndNotify(
-            title      = title,
-            text       = text,
-            subText    = subText,
-            progress   = 0,
-            isOngoing  = true,
-            color      = color,
-            currentStep = 0,
-            totalSteps  = 0,
-            isTodo      = false,
-            shortText   = shortText,
-            iconResId   = R.drawable.ic_notification
+            title          = title,
+            text           = text,
+            subText        = subText,
+            progress       = 0,
+            isOngoing      = true,
+            color          = color,
+            currentStep    = 0,
+            totalSteps     = 0,
+            isTodo         = false,
+            shortText      = shortText,
+            iconResId      = iconResId,
+            notificationId = POMODORO_NOTIFICATION_ID,
+            islandBizTag   = POMODORO_ISLAND_BIZ_TAG
+        )
+
+        // 🔔 只有携带 alertKey 时才触发一次性普通提醒（开始事件）
+        if (alertKey.isNotEmpty()) {
+            val alertTitle = if (isFocusing) "🍅 专注开始" else "☕ 休息开始"
+            val alertText  = if (taskLine.isNotEmpty()) taskLine else "${totalCycles}轮番茄钟"
+            sendAlertIfNew(
+                alertKey = alertKey,
+                title = alertTitle,
+                text = alertText,
+                alertNotificationId = ALERT_POMO_START_ID,
+                iconResId = iconResId
+            )
+        }
+    }
+
+    // 🍅 番茄钟结束一次性提醒（由 Flutter 在专注/休息结束时单独触发）
+    private fun sendPomodoroEndAlert(args: Map<String, Any>) {
+        val alertKey  = (args["alertKey"]  as? String)?.trim() ?: return
+        val todoTitle = (args["todoTitle"] as? String)?.trim() ?: ""
+        val isBreak   = args["isBreak"] as? Boolean ?: false
+        val alertTitle = if (isBreak) "☕ 休息结束，准备下一轮" else "🍅 专注完成！"
+        val alertText  = if (todoTitle.isNotEmpty()) todoTitle else "干得不错，继续保持！"
+        sendAlertIfNew(
+            alertKey = alertKey,
+            title = alertTitle,
+            text = alertText,
+            alertNotificationId = ALERT_POMO_END_ID,
+            iconResId = R.drawable.hourglass_check
         )
     }
 
@@ -453,7 +533,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             currentStep = 0,
             totalSteps = 0,
             isTodo = true,
-            shortText = timeStr, // 胶囊短文本显示时间段
+            shortText = timeStr,
+            iconResId = R.drawable.calendar_clock
+        )
+        // 🔔 上岛同时触发一次性普通提醒
+        sendAlertIfNew(
+            alertKey = "todo_${todoTitle}_${timeStr}",
+            title = "🕒 $todoTitle",
+            text = if (todoRemark.isNotEmpty()) todoRemark else "即将开始 · $timeStr",
+            alertNotificationId = ALERT_TODO_ID,
             iconResId = R.drawable.calendar_clock
         )
     }
@@ -512,6 +600,47 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
+    /**
+     * 🔔 发送一次性普通提醒（可同步手环）。
+     * 用 SharedPreferences 记录已提醒的 alertKey，相同 key 不重复发送。
+     * alertKey 应体现事件的唯一性（如 "course_<名称>_<时间>" / "pomo_start_<endMs>"）。
+     */
+    private fun sendAlertIfNew(
+        alertKey: String,
+        title: String,
+        text: String,
+        alertNotificationId: Int,
+        iconResId: Int = R.drawable.ic_notification
+    ) {
+        val prefs = getSharedPreferences("alert_keys", MODE_PRIVATE)
+        val lastKey = prefs.getString("last_alerted_key_$alertNotificationId", "")
+        if (lastKey == alertKey) return // 已提醒过，跳过
+
+        prefs.edit().putString("last_alerted_key_$alertNotificationId", alertKey).apply()
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, alertNotificationId, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setSmallIcon(iconResId)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingIntent)
+            .build()
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(alertNotificationId, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendAlertIfNew error", e)
+        }
+    }
+
     private fun buildAndNotify(
         title: String,
         text: String,
@@ -523,7 +652,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         totalSteps: Int,
         isTodo: Boolean = false,
         shortText: String? = null,
-        iconResId: Int = R.drawable.ic_notification
+        iconResId: Int = R.drawable.ic_notification,
+        channelId: String = NOTIFICATION_CHANNEL_ID,
+        notificationId: Int = NOTIFICATION_ID,
+        islandBizTag: String = TODO_ISLAND_BIZ_TAG
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
@@ -537,7 +669,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         // 🚀 构建基础的 NotificationCompat.Builder
         // ==========================================
-        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(iconResId)
             .setLargeIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
             .setContentTitle(title)
@@ -658,7 +790,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         try {
             if (HyperIslandNotification.isSupported(this)) {
-                val hyperBuilder = HyperIslandNotification.Builder(this, "math_quiz_biz", title)
+                val hyperBuilder = HyperIslandNotification.Builder(this, islandBizTag, title)
                     .setSmallWindowTarget(MainActivity::class.java.name)
 
                 val islandIcon = HyperPicture("island_icon", this, iconResId)
@@ -718,7 +850,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
 
         try {
-            notificationManager.notify(NOTIFICATION_ID, notification)
+            notificationManager.notify(notificationId, notification)
         } catch (e: Exception) {
             Log.e(TAG, "Notify error", e)
         }

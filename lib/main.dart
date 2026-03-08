@@ -8,8 +8,6 @@ import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
 import 'screens/upgrade_guide_screen.dart';
-import 'screens/pomodoro_screen.dart';
-import 'services/pomodoro_service.dart';
 import 'storage_service.dart';
 
 void main() {
@@ -30,7 +28,6 @@ class _MyAppState extends State<MyApp> {
   String? _loggedInUser;
   bool _isChecking = true;
   bool _showUpgradeGuide = false;
-  bool _hasActivePomodoro = false; // 是否有正在进行或刚完成的番茄钟
 
   @override
   void initState() {
@@ -49,20 +46,10 @@ class _MyAppState extends State<MyApp> {
     // 2. 检查升级引导
     final needGuide = await UpgradeGuideScreen.shouldShow();
 
-    // 3. 检查是否有正在进行或刚完成的番茄钟（仅登录用户）
-    bool hasPomodoro = false;
-    if (user != null && user.isNotEmpty && !needGuide) {
-      final runState = await PomodoroService.loadRunState();
-      if (runState != null && runState.phase != PomodoroPhase.idle) {
-        hasPomodoro = true;
-      }
-    }
-
     if (mounted) {
       setState(() {
         _loggedInUser = user;
         _showUpgradeGuide = needGuide;
-        _hasActivePomodoro = hasPomodoro;
         _isChecking = false;
       });
     }
@@ -167,7 +154,6 @@ class _MyAppState extends State<MyApp> {
                   : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
                       ? HomeDashboard(
                           username: _loggedInUser!,
-                          autoOpenPomodoro: _hasActivePomodoro,
                         )
                       : const LoginScreen(),
         );
