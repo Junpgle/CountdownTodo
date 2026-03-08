@@ -146,16 +146,17 @@ class PomodoroRecord {
     return PomodoroRecord(
       uuid: j['uuid']?.toString() ?? const Uuid().v4(),
       todoUuid: j['todo_uuid']?.toString(),
-      todoTitle: j['todo_title']?.toString(),
+      // 后端 JOIN todos 返回 todo_title，本地存储也用 todo_title
+      todoTitle: (j['todo_title'] ?? j['todoTitle'])?.toString(),
       tagUuids: tags,
       startTime: _ms(j['start_time']),
       endTime: j['end_time'] != null ? _ms(j['end_time']) : null,
-      plannedDuration: j['planned_duration'] as int? ?? 25 * 60,
-      actualDuration: j['actual_duration'] as int?,
+      plannedDuration: (j['planned_duration'] as num?)?.toInt() ?? 25 * 60,
+      actualDuration: (j['actual_duration'] as num?)?.toInt(),
       status: _parseStatus(j['status']),
       deviceId: j['device_id']?.toString(),
       isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
-      version: j['version'] as int? ?? 1,
+      version: (j['version'] as num?)?.toInt() ?? 1,
       createdAt: _ms(j['created_at']),
       updatedAt: _ms(j['updated_at']),
     );
@@ -501,11 +502,35 @@ class PomodoroService {
       for (final rr in remoteRecords) {
         final ex = merged[rr.uuid];
         if (ex == null) {
+          // 本地没有 → 直接用云端
           merged[rr.uuid] = rr;
           hasChange = true;
-        } else if (rr.updatedAt > ex.updatedAt) {
-          merged[rr.uuid] = rr;
-          hasChange = true;
+        } else {
+          // 合并策略：
+          // 1. 云端更新时间更新 → 采用云端数据为主
+          // 2. 任何情况下：若云端有 tagUuids/todoTitle 而本地没有 → 补全（修复旧记录标签丢失）
+          final cloudNewer = rr.updatedAt > ex.updatedAt;
+          final needPatch = (rr.tagUuids.isNotEmpty && ex.tagUuids.isEmpty) ||
+                            (rr.todoTitle?.isNotEmpty == true && ex.todoTitle == null);
+          if (cloudNewer || needPatch) {
+            merged[rr.uuid] = PomodoroRecord(
+              uuid: rr.uuid,
+              todoUuid: rr.todoUuid ?? ex.todoUuid,
+              todoTitle: (rr.todoTitle?.isNotEmpty == true) ? rr.todoTitle : ex.todoTitle,
+              tagUuids: rr.tagUuids.isNotEmpty ? rr.tagUuids : ex.tagUuids,
+              startTime: cloudNewer ? rr.startTime : ex.startTime,
+              endTime: cloudNewer ? rr.endTime : ex.endTime,
+              plannedDuration: cloudNewer ? rr.plannedDuration : ex.plannedDuration,
+              actualDuration: cloudNewer ? rr.actualDuration : ex.actualDuration,
+              status: cloudNewer ? rr.status : ex.status,
+              deviceId: rr.deviceId ?? ex.deviceId,
+              isDeleted: cloudNewer ? rr.isDeleted : ex.isDeleted,
+              version: cloudNewer ? rr.version : ex.version,
+              createdAt: ex.createdAt,
+              updatedAt: cloudNewer ? rr.updatedAt : ex.updatedAt,
+            );
+            hasChange = true;
+          }
         }
       }
 
@@ -516,21 +541,19 @@ class PomodoroService {
         );
       }
       return hasChange;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[PomodoroService] syncRecordsFromCloud error: $e');
       return false;
     }
   }
-
   static const _keyLastRecordUpload = 'pomodoro_last_record_upload';
 
-  /// 将本地未同步（updatedAt > 上次上传时间）的记录批量推送到云端
   static Future<void> syncRecordsToCloud() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final lastUpload = prefs.getInt(_keyLastRecordUpload) ?? 0;
       final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
-      // 只上传比上次上传时间更新的记录（含已删除 tombstone）
       final dirty = all.where((r) => r.updatedAt > lastUpload).toList();
       if (dirty.isEmpty) return;
       final ok = await ApiService.uploadPomodoroRecords(
@@ -539,7 +562,9 @@ class PomodoroService {
         await prefs.setInt(
             _keyLastRecordUpload, DateTime.now().millisecondsSinceEpoch);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PomodoroService] syncRecordsToCloud error: $e');
+    }
   }
 
   /// 读取全量（含已删除）内部方法

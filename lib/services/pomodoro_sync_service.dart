@@ -38,11 +38,20 @@ class CrossDevicePomodoroState {
         action: j['action']?.toString().toUpperCase() ?? 'UNKNOWN',
         todoUuid: j['todo_uuid']?.toString(),
         todoTitle: j['todo_title']?.toString(),
-        duration: j['duration'] as int?,
-        targetEndMs: j['target_end_ms'] as int?,
-        sourceDevice: j['sourceDevice']?.toString(),
-        timestamp: j['timestamp'] as int?,
+        duration: _parseInt(j['duration']),
+        targetEndMs: _parseInt(j['target_end_ms'] ?? j['targetEndMs']),
+        sourceDevice: (j['sourceDevice'] ?? j['source_device'])?.toString(),
+        timestamp: _parseInt(j['timestamp']),
       );
+
+  /// 安全解析 int，兼容 int / double / String 三种情况
+  static int? _parseInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is double) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
 
   Map<String, dynamic> toJson() => {
         'action': action,
@@ -93,7 +102,6 @@ class PomodoroSyncService {
 
   /// 页面初始化时调用：传入 userId + deviceId，如果已连接且参数相同则幂等跳过。
   Future<void> ensureConnected(String userId, String deviceId) async {
-    // 参数未变且已连接 → 无需重连
     if (_userId == userId &&
         _deviceId == deviceId &&
         _connState == SyncConnectionState.connected) {
@@ -103,6 +111,14 @@ class PomodoroSyncService {
     _userId = userId;
     _deviceId = deviceId;
     await _doConnect();
+  }
+
+  /// 每次进入番茄钟页面调用：强制断开重建连接，
+  /// 让服务器的"迟到同步"机制推送当前房间的 focusState（SYNC 消息）。
+  Future<void> forceReconnect(String userId, String deviceId) async {
+    _userId = userId;
+    _deviceId = deviceId;
+    await _doConnect(); // _doConnect 内部已处理关闭旧连接
   }
 
   /// 页面 resume 时调用：如果当前已断开则触发重连（参数已知）

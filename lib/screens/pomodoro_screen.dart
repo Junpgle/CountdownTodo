@@ -29,6 +29,8 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   PomodoroPhase _currentPhase = PomodoroPhase.idle;
+  // _workbenchReady: false = workbench 还在 _init 中，此时隐藏 Tab 栏和标题
+  bool _workbenchReady = false;
   final _statsKey = GlobalKey<_PomodoroStatsState>();
 
   @override
@@ -36,7 +38,6 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     super.initState();
     _tabController = TabController(
         length: 2, vsync: this, initialIndex: widget.initialTab);
-    // 切换到统计 Tab 时自动刷新本地数据
     _tabController.addListener(() {
       if (_tabController.index == 1 && !_tabController.indexIsChanging) {
         _statsKey.currentState?.reload();
@@ -52,8 +53,9 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
   @override
   Widget build(BuildContext context) {
-    // 专注中或跨端观察中都隐藏顶部标题和底部 Tab
-    final isFocusingOrWatching = _currentPhase == PomodoroPhase.focusing
+    // loading 中或专注中/观察中都隐藏顶部标题和底部 Tab
+    final isFocusingOrWatching = !_workbenchReady
+        || _currentPhase == PomodoroPhase.focusing
         || _currentPhase == PomodoroPhase.remoteWatching;
 
     return Scaffold(
@@ -95,6 +97,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                     onPhaseChanged: (phase) {
                       if (mounted && _currentPhase != phase) {
                         setState(() => _currentPhase = phase);
+                      }
+                    },
+                    onReady: () {
+                      if (mounted && !_workbenchReady) {
+                        setState(() => _workbenchReady = true);
                       }
                     },
                   ),
@@ -150,10 +157,13 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 class _PomodoroWorkbench extends StatefulWidget {
   final String username;
   final ValueChanged<PomodoroPhase> onPhaseChanged;
+  /// _init 完成后调用，通知外层取消 loading 状态
+  final VoidCallback? onReady;
 
   const _PomodoroWorkbench({
     required this.username,
     required this.onPhaseChanged,
+    this.onReady,
   });
 
   @override
@@ -190,12 +200,13 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   // ── 跨端感知 ──
   final _syncService = PomodoroSyncService();
   StreamSubscription<CrossDevicePomodoroState>? _crossDeviceSub;
-  /// 来自其他设备的专注状态（null = 无）
   CrossDevicePomodoroState? _remoteState;
   bool _showRemoteBanner = false;
-  /// 横幅倒计时剩余秒数（每秒由 _remoteTicker 刷新）
   int _remoteRemainingSeconds = 0;
   Timer? _remoteTicker;
+
+  // ── 初始化标志（init 完成前不渲染主 UI，避免闪出"准备开始"界面）──
+  bool _initializing = true;
 
   static const _keyBoundTodoUuid  = 'pomodoro_idle_bound_todo_uuid';
   static const _keyBoundTodoTitle = 'pomodoro_idle_bound_todo_title'; // 兜底标题
@@ -224,7 +235,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       case AppLifecycleState.resumed:
         _notifyTickCount = 0;
         _recoverFromBackground();
-        // 确保 WebSocket 在后台被系统断开后自动重连
+        // 强制重连让服务器推送 SYNC，确保跨端状态最新
         _syncService.reconnectIfNeeded();
         break;
       case AppLifecycleState.inactive:
@@ -287,25 +298,33 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     }
 
     // ── ② 本地状态已稳定，再连接 WebSocket ──
-    // 此时 _phase 已确定，SYNC 信号到达时可以正确判断是否属于其他设备
     await _connectCrossDevice();
+
+    // 等 400ms 让服务器 SYNC 消息有时间到达并被处理
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    if (mounted) {
+      setState(() => _initializing = false);
+      widget.onReady?.call();
+    }
   }
 
   // ── 跨端感知：连接 & 处理信号 ───────────────────────────────
 
   Future<void> _connectCrossDevice() async {
-    // 从本地 SharedPreferences 取当前已登录用户的 userId（int 类型）
     final prefs = await SharedPreferences.getInstance();
     final userIdInt = prefs.getInt('current_user_id');
     if (userIdInt == null || _deviceId.isEmpty) return;
     final userId = userIdInt.toString();
 
-    // ① 先订阅广播流，再 connect——避免握手期间服务器推送的 SYNC 消息因为订阅还未建立而丢失
+    // ① 先订阅广播流，再 connect——避免 SYNC 消息在订阅建立前到达而丢失
     _crossDeviceSub?.cancel();
     _crossDeviceSub = _syncService.onStateChanged.listen(_handleCrossDeviceSignal);
 
-    // ② ensureConnected：幂等，已连接且参数相同则直接跳过，不重复建立连接
-    await _syncService.ensureConnected(userId, 'flutter_$_deviceId');
+    // ② 每次进入番茄钟页面都强制重新连接：
+    //    服务器的 SYNC 只在新设备上线时推送一次（迟到同步机制），
+    //    重连会触发服务器推当前房间的 focusState，接收端才能拿到对方的专注状态。
+    await _syncService.forceReconnect(userId, 'flutter_$_deviceId');
   }
 
   void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) {
@@ -591,6 +610,10 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     _ticker?.cancel();
     _notifyTickCount = 0;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (!mounted) return;
+      // phase 已切换（对话框期间）则停止推送通知
+      if (_phase != PomodoroPhase.focusing && _phase != PomodoroPhase.breaking) return;
+
       final now = DateTime.now().millisecondsSinceEpoch;
       final remaining = ((_targetEndMs - now) / 1000).ceil();
       if (remaining <= 0) {
@@ -602,16 +625,14 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
           await _onBreakEnd();
         }
       } else {
-        if (mounted) {
-          setState(() => _remainingSeconds = remaining);
+        setState(() => _remainingSeconds = remaining);
 
-          // ── 省电：动态通知刷新间隔 ────────────────────────────
-          // 最后60秒：每秒刷（倒计时精确显示 MM:SS）
-          // 超过1分钟：每60秒刷一次（通知只显示分钟数，分钟数不变就不推）
-          _notifyTickCount++;
-          final int interval = remaining <= 60 ? 1 : 60;
-          if (_notifyTickCount >= interval) {
-            _notifyTickCount = 0;
+        _notifyTickCount++;
+        final int interval = remaining <= 60 ? 1 : 60;
+        if (_notifyTickCount >= interval) {
+          _notifyTickCount = 0;
+          // 再次确认 phase 未切换
+          if (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking) {
             _pushPomodoroNotification(overrideRemaining: remaining);
           }
         }
@@ -653,15 +674,18 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       _targetEndMs = end;
       _remainingSeconds = _settings.focusMinutes * 60;
       _sessionStartMs = now;
-      // 本机开始专注，隐藏其他设备的横幅
       _showRemoteBanner = false;
       _remoteState = null;
     });
     _stopRemoteTicker();
     widget.onPhaseChanged(_phase);
 
-    // ① 先写 RunState（防止被杀后数据丢失）
-    await PomodoroService.saveRunState(PomodoroRunState(
+    // 立即上岛 + 启动计时（不等 IO）
+    _pushPomodoroNotification(alertKey: 'pomo_start_$end');
+    _startTicker();
+
+    // 后台：写 RunState / 清 idle 持久化 / 广播（不阻塞 UI）
+    PomodoroService.saveRunState(PomodoroRunState(
       phase: PomodoroPhase.focusing,
       targetEndMs: end,
       currentCycle: _currentCycle,
@@ -674,21 +698,13 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       sessionStartMs: now,
       plannedFocusSeconds: _settings.focusMinutes * 60,
     ));
-    // ② RunState 已安全写入，再清除 idle 持久化（避免重进时读到旧 idle 数据）
-    await _persistIdleBoundTodo(null);
-
-    // ③ 广播给其他设备
+    _persistIdleBoundTodo(null);
     _syncService.sendStartSignal(
       todoUuid: _boundTodo?.id,
       todoTitle: _boundTodo?.title,
       durationSeconds: _settings.focusMinutes * 60,
       targetEndMs: end,
     );
-    // 收到自己发出的广播后不展示横幅（已在信号来源过滤）
-    setState(() { _showRemoteBanner = false; });
-
-    _pushPomodoroNotification(alertKey: 'pomo_start_$end'); // 开始专注时触发横幅
-    _startTicker();
   }
   Future<void> _switchTask(TodoItem newTodo) async {
     if (_phase != PomodoroPhase.focusing) return;
@@ -696,31 +712,33 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     final now = DateTime.now().millisecondsSinceEpoch;
     final actualSeconds = ((now - _sessionStartMs) / 1000).round();
 
-    // 记录上一段任务的时长（状态 switched）
-    if (actualSeconds > 5) {
-      final record = PomodoroRecord(
-        todoUuid: _boundTodo?.id,
-        todoTitle: _boundTodo?.title,
-        tagUuids: List.from(_selectedTagUuids),
-        startTime: _sessionStartMs,
-        endTime: now,
-        plannedDuration: _settings.focusMinutes * 60,
-        actualDuration: actualSeconds,
-        status: PomodoroRecordStatus.switched,
-        deviceId: _deviceId.isNotEmpty ? _deviceId : null,
-      );
-      await PomodoroService.addRecord(record);
-    }
-
-    // ⚠️ 不重置 _targetEndMs，倒计时继续，仅切换绑定任务和片段起点
+    // 立即切换 UI（不等 IO）
     setState(() {
       _boundTodo = newTodo;
       _sessionStartMs = now;
     });
 
-    await PomodoroService.saveRunState(PomodoroRunState(
+    // 立即更新通知，让任务名马上跟随切换
+    _pushPomodoroNotification();
+
+    // 后台：记录上一段任务 + 保存 RunState（不阻塞 UI）
+    if (actualSeconds > 5) {
+      PomodoroService.addRecord(PomodoroRecord(
+        todoUuid: _boundTodo?.id,
+        todoTitle: _boundTodo?.title,
+        tagUuids: List.from(_selectedTagUuids),
+        startTime: _sessionStartMs - actualSeconds * 1000,
+        endTime: now,
+        plannedDuration: _settings.focusMinutes * 60,
+        actualDuration: actualSeconds,
+        status: PomodoroRecordStatus.switched,
+        deviceId: _deviceId.isNotEmpty ? _deviceId : null,
+      ));
+    }
+
+    PomodoroService.saveRunState(PomodoroRunState(
       phase: PomodoroPhase.focusing,
-      targetEndMs: _targetEndMs,   // 保持原有结束时间
+      targetEndMs: _targetEndMs,
       currentCycle: _currentCycle,
       totalCycles: _settings.cycles,
       focusSeconds: _settings.focusMinutes * 60,
@@ -732,7 +750,6 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       plannedFocusSeconds: _settings.focusMinutes * 60,
     ));
 
-    // 广播任务切换给其他设备
     _syncService.sendSwitchSignal(todoUuid: newTodo.id, todoTitle: newTodo.title);
 
     if (mounted) {
@@ -753,24 +770,26 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     final now = DateTime.now().millisecondsSinceEpoch;
     final actualSeconds = ((now - _sessionStartMs) / 1000).round();
 
-    // 先写持久化 / 清状态（不通知外层，避免 Tab 栏过早出现导致 UI 跳动）
+    // 先写持久化 / 清状态
     await _persistIdleBoundTodo(_boundTodo);
     await PomodoroService.clearRunState();
     _syncService.sendStopSignal();
 
-    // 弹对话框并写记录（此时 UI 保持在专注模式，无跳动）
+    // 弹对话框并写记录（此时 _phase 仍是 focusing，大圆环不跳动）
     await _askCompletionAndRecord(
       durationSeconds: actualSeconds,
       startMs: _sessionStartMs,
       endMs: now,
     );
 
-    // 对话框关闭后发结束通知，再决定下一步
+    // 发结束通知
     NotificationService.sendPomodoroEndAlert(
       alertKey: 'pomo_end_$now',
       todoTitle: _boundTodo?.title,
       isBreak: false,
     );
+
+    // 对话框关闭后才切换 phase & 决定下一步
     await _proceedAfterRecord();
   }
 
@@ -782,19 +801,20 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     await PomodoroService.clearRunState();
     _syncService.sendStopSignal();
 
-    // 弹对话框并写记录
+    // 弹对话框并写记录（_phase 仍是 focusing）
     await _askCompletionAndRecord(
       durationSeconds: _settings.focusMinutes * 60,
       startMs: _sessionStartMs,
       endMs: now,
     );
 
-    // 对话框关闭后发结束通知，再决定下一步
     NotificationService.sendPomodoroEndAlert(
       alertKey: 'pomo_end_$now',
       todoTitle: _boundTodo?.title,
       isBreak: false,
     );
+
+    // 对话框关闭后切换 phase & 决定下一步
     await _proceedAfterRecord();
   }
 
@@ -806,7 +826,6 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   }) async {
     if (!mounted) return false;
 
-    // 弹出确认对话框
     final completed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -830,7 +849,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       ),
     );
 
-    // 写入本地专注记录
+    // 构建记录
     final record = PomodoroRecord(
       todoUuid: (_boundTodo?.id?.isNotEmpty == true) ? _boundTodo!.id : null,
       todoTitle: _boundTodo?.title,
@@ -845,20 +864,22 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       deviceId: _deviceId.isNotEmpty ? _deviceId : null,
     );
 
-    await PomodoroService.addRecord(record);
+    // 本地写入：先保存本地（快），网络上传后台做（不阻塞）
+    PomodoroService.addRecord(record);
 
-    // 若用户选择完成，标记待办为已完成
-    if (completed == true && _boundTodo != null && (_boundTodo!.id.isNotEmpty)) {
-      final allTodos = await StorageService.getTodos(widget.username);
-      final idx = allTodos.indexWhere((t) => t.id == _boundTodo!.id);
-      if (idx != -1) {
-        allTodos[idx].isDone = true;
-        allTodos[idx].markAsChanged();
-        await StorageService.saveTodos(widget.username, allTodos);
-        final localIdx = _todos.indexWhere((t) => t.id == _boundTodo!.id);
-        if (localIdx != -1 && mounted) {
-          setState(() => _todos[localIdx].isDone = true);
+    // 若用户选择完成，标记待办
+    if (completed == true && _boundTodo != null && _boundTodo!.id.isNotEmpty) {
+      StorageService.getTodos(widget.username).then((allTodos) async {
+        final idx = allTodos.indexWhere((t) => t.id == _boundTodo!.id);
+        if (idx != -1) {
+          allTodos[idx].isDone = true;
+          allTodos[idx].markAsChanged();
+          await StorageService.saveTodos(widget.username, allTodos);
         }
+      });
+      final localIdx = _todos.indexWhere((t) => t.id == _boundTodo!.id);
+      if (localIdx != -1 && mounted) {
+        setState(() => _todos[localIdx].isDone = true);
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -876,20 +897,18 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   /// 对话框关闭后决定下一步：开始休息 or 全部完成
   Future<void> _proceedAfterRecord() async {
+    if (!mounted) return;
     if (_currentCycle < _settings.cycles) {
-      setState(() => _phase = PomodoroPhase.breaking);
-      widget.onPhaseChanged(_phase);
+      // _startBreak 内部会自己 setState(_phase = breaking) + widget.onPhaseChanged
       await _startBreak();
     } else {
-      if (mounted) {
-        setState(() {
-          _phase = PomodoroPhase.finished;
-          _currentCycle = 1;
-          _remainingSeconds = _settings.focusMinutes * 60;
-        });
-        widget.onPhaseChanged(_phase);
-        await _persistIdleBoundTodo(_boundTodo);
-      }
+      setState(() {
+        _phase = PomodoroPhase.finished;
+        _currentCycle = 1;
+        _remainingSeconds = _settings.focusMinutes * 60;
+      });
+      widget.onPhaseChanged(_phase);
+      await _persistIdleBoundTodo(_boundTodo);
     }
   }
 
@@ -904,7 +923,12 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     });
     widget.onPhaseChanged(_phase);
 
-    await PomodoroService.saveRunState(PomodoroRunState(
+    // 立即上岛 + 启动计时
+    _pushPomodoroNotification();
+    _startTicker();
+
+    // 后台写 RunState（不阻塞 UI）
+    PomodoroService.saveRunState(PomodoroRunState(
       phase: PomodoroPhase.breaking,
       targetEndMs: end,
       currentCycle: _currentCycle,
@@ -917,8 +941,6 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       sessionStartMs: now,
       plannedFocusSeconds: _settings.focusMinutes * 60,
     ));
-    _pushPomodoroNotification(); // 上岛（不触发横幅，休息开始提醒已在 sendPomodoroEndAlert 里发）
-    _startTicker();
   }
 
   // ── 休息结束 ─────────────────────────────────────────────────
@@ -950,6 +972,10 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   // ── 放弃当前专注 ─────────────────────────────────────────────
   Future<void> _abandonFocus() async {
+    // ① 先暂停 ticker，防止 dialog 期间触发 _onFocusEnd 弹出第二个对话框
+    _ticker?.cancel();
+    _ticker = null;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -967,7 +993,6 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       ),
     );
     if (confirm == true) {
-      _ticker?.cancel();
       NotificationService.cancelNotification();
       _syncService.sendStopSignal();
       setState(() {
@@ -976,9 +1001,11 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         _remainingSeconds = _settings.focusMinutes * 60;
       });
       widget.onPhaseChanged(_phase);
-      // 先写 idle 持久化，再清 RunState
-      await _persistIdleBoundTodo(_boundTodo);
-      await PomodoroService.clearRunState();
+      _persistIdleBoundTodo(_boundTodo);
+      PomodoroService.clearRunState();
+    } else {
+      // 用户选"继续专注"：恢复 ticker
+      _startTicker();
     }
   }
 
@@ -1304,6 +1331,12 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   @override
   Widget build(BuildContext context) {
+    // 初始化（加载本地状态 + 连接 WS）完成前显示加载中，
+    // 避免接收端先闪出"准备开始"界面再跳到倒计时
+    if (_initializing) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     final bool isIdle = _phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished;
     final bool isFocusing = _phase == PomodoroPhase.focusing;
     final bool isRemoteWatching = _phase == PomodoroPhase.remoteWatching;
@@ -1865,8 +1898,10 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
     _loadLocal().then((_) => _syncIfDue());
   }
 
-  /// 外部（TabController 切换）触发刷新，只加载本地，不触发云端同步
-  void reload() => _loadLocal();
+  /// 外部（TabController 切换）触发刷新：先加载本地，再触发增量同步
+  void reload() {
+    _loadLocal().then((_) => _syncAndRefresh());
+  }
 
   /// 按设置里的同步频率决定是否触发增量同步（与主页 checkAutoSync 逻辑一致）
   Future<void> _syncIfDue() async {
@@ -1913,7 +1948,9 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
     try {
       await PomodoroService.syncTagsFromCloud();
       await PomodoroService.syncRecordsFromCloud();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PomodoroStats] _syncAndRefresh error: $e');
+    }
     if (!mounted) return;
     setState(() => _syncing = false);
     await _loadLocal();

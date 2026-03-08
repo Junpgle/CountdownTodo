@@ -775,19 +775,20 @@ export default {
         const batch = [];
 
         for (const r of records) {
-          const uuid             = String(r.uuid ?? '');
+          const uuid            = String(r.uuid ?? '');
           if (!uuid) continue;
-          const todoUuid         = r.todo_uuid   ? String(r.todo_uuid)   : null;
-          const startTime        = normalizeToMs(r.start_time)  || now;
-          const endTime          = r.end_time != null ? (normalizeToMs(r.end_time) || null) : null;
-          const plannedDuration  = typeof r.planned_duration === 'number' ? r.planned_duration : parseInt(r.planned_duration || 25*60, 10);
-          const actualDuration   = r.actual_duration != null ? parseInt(r.actual_duration, 10) : null;
-          const status           = ['completed','interrupted','switched'].includes(r.status) ? r.status : 'completed';
-          const deviceId         = r.device_id   ? String(r.device_id)   : null;
-          const isDeleted        = (r.is_deleted ?? r.isDeleted) ? 1 : 0;
-          const version          = parseInt(r.version ?? 1, 10);
-          const createdAt        = normalizeToMs(r.created_at ?? r.createdAt) || now;
-          const updatedAt        = normalizeToMs(r.updated_at ?? r.updatedAt) || now;
+          const todoUuid        = r.todo_uuid  ? String(r.todo_uuid)  : null;
+          const startTime       = normalizeToMs(r.start_time)  || now;
+          const endTime         = r.end_time != null ? (normalizeToMs(r.end_time) || null) : null;
+          const plannedDuration = typeof r.planned_duration === 'number' ? r.planned_duration : parseInt(r.planned_duration || 25*60, 10);
+          const actualDuration  = r.actual_duration != null ? parseInt(r.actual_duration, 10) : null;
+          const status          = ['completed','interrupted','switched'].includes(r.status) ? r.status : 'completed';
+          const deviceId        = r.device_id  ? String(r.device_id)  : null;
+          const isDeleted       = (r.is_deleted ?? r.isDeleted) ? 1 : 0;
+          const version         = parseInt(r.version ?? 1, 10);
+          const createdAt       = normalizeToMs(r.created_at ?? r.createdAt) || now;
+          const updatedAt       = normalizeToMs(r.updated_at ?? r.updatedAt) || now;
+          const tagUuidsArr     = Array.isArray(r.tag_uuids) ? r.tag_uuids.map(String) : [];
 
           const existing = await DB.prepare(
             "SELECT version, updated_at FROM pomodoro_records WHERE uuid = ? AND user_id = ?"
@@ -808,12 +809,14 @@ export default {
             `).bind(todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, updatedAt, uuid, authUserId));
           }
 
-          // 同步 todo_tags 关联
-          if (Array.isArray(r.tag_uuids) && r.tag_uuids.length > 0 && todoUuid) {
-            for (const tagUuid of r.tag_uuids) {
+          // 写入 todo_tags 关联
+          // todoUuid 非空 → 用 todoUuid 作键；自由专注 → 用 record uuid 作键
+          if (tagUuidsArr.length > 0) {
+            const tagsKey = todoUuid || uuid;
+            for (const tagUuid of tagUuidsArr) {
               batch.push(DB.prepare(
                 "INSERT OR REPLACE INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at) VALUES (?,?,0,?)"
-              ).bind(todoUuid, String(tagUuid), now));
+              ).bind(tagsKey, tagUuid, now));
             }
           }
         }
@@ -822,18 +825,37 @@ export default {
         return jsonResponse({ success: true });
       }
 
-      // 拉取专注记录（按时间范围）
+      // 拉取专注记录（按时间范围），通过 todo_uuid JOIN todo_tags 附带标签
       if (url.pathname === "/api/pomodoro/records" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const fromMs = parseInt(url.searchParams.get("from") || "0", 10);
         const toMs   = parseInt(url.searchParams.get("to")   || String(Date.now()), 10);
+
+        // 一次 SQL 聚合标签：LEFT JOIN todo_tags + todos，支持 todo_uuid 和 record uuid 两种键
         const { results } = await DB.prepare(`
-          SELECT * FROM pomodoro_records
-          WHERE user_id = ? AND is_deleted = 0
-            AND start_time >= ? AND start_time <= ?
-          ORDER BY start_time DESC
+          SELECT r.*,
+            t.content AS todo_title,
+            GROUP_CONCAT(tt.tag_uuid) AS tag_uuids_concat
+          FROM pomodoro_records r
+          LEFT JOIN todos t ON r.todo_uuid = t.uuid
+          LEFT JOIN todo_tags tt
+            ON COALESCE(r.todo_uuid, r.uuid) = tt.todo_uuid AND tt.is_deleted = 0
+          WHERE r.user_id = ? AND r.is_deleted = 0
+            AND r.start_time >= ? AND r.start_time <= ?
+          GROUP BY r.uuid
+          ORDER BY r.start_time DESC
         `).bind(authUserId, fromMs, toMs).all();
-        return jsonResponse(results);
+
+        // 把 GROUP_CONCAT 结果拆成数组
+        const enriched = results.map(r => ({
+          ...r,
+          tag_uuids: r.tag_uuids_concat
+            ? r.tag_uuids_concat.split(',').filter(Boolean)
+            : [],
+          tag_uuids_concat: undefined, // 不暴露内部字段
+        }));
+
+        return jsonResponse(enriched);
       }
 
       // --------------------------
