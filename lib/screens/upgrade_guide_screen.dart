@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import 'login_screen.dart';
+import 'home_dashboard.dart';
 
 /// 重大版本升级引导页
 /// - 首次打开新版本时展示更新日志
@@ -130,7 +131,16 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
 
   Future<void> _done() async {
     await UpgradeGuideScreen.markShown();
-    if (mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    // 引导页是路由根（home），不能 pop，必须 pushAndRemoveUntil
+    final username = widget.loggedInUser;
+    final dest = (username != null && username.isNotEmpty)
+        ? HomeDashboard(username: username)
+        : const LoginScreen();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => dest),
+      (_) => false,
+    );
   }
 
   @override
