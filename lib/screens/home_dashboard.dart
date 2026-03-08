@@ -286,7 +286,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         builder: (_) => PomodoroScreen(username: widget.username),
       ),
     );
-    if (mounted) setState(() => _pomodoroRefreshTrigger++);
+    if (mounted) {
+      setState(() => _pomodoroRefreshTrigger++);
+      _loadAllData(); // 番茄钟可能标记了待办完成，刷新首页待办列表
+    }
   }
 
   Future<void> _checkAutoSync() async {
@@ -466,7 +469,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     if (_isSyncing) return;
     setState(() {
       _isSyncing = true;
-      if (syncScreenTime) _isLoadingScreenTime = true;
     });
 
     try {
@@ -524,7 +526,6 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       if (mounted) {
         setState(() {
           _isSyncing = false;
-          _isLoadingScreenTime = false;
         });
       }
     }
@@ -723,7 +724,10 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                               ),
                             ),
                           );
-                          if (mounted) setState(() => _pomodoroRefreshTrigger++);
+                          if (mounted) {
+                            setState(() => _pomodoroRefreshTrigger++);
+                            _loadAllData(); // 刷新待办（可能有完成状态变更）
+                          }
                         },
                       );
 
@@ -803,8 +807,11 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                   builder: (_) => PomodoroScreen(username: widget.username),
                 ),
               );
-              // 从番茄钟返回后立即刷新首页专注记录卡片
-              if (mounted) setState(() => _pomodoroRefreshTrigger++);
+              // 从番茄钟返回后刷新专注记录卡片和待办列表（可能有完成状态变更）
+              if (mounted) {
+                setState(() => _pomodoroRefreshTrigger++);
+                _loadAllData();
+              }
             },
             tooltip: '番茄钟',
             child: const Text('🍅', style: TextStyle(fontSize: 18)),

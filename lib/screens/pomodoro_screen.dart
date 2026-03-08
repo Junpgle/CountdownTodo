@@ -641,12 +641,19 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     await PomodoroService.addRecord(record);
 
     if (completed == true && _boundTodo != null) {
-      _boundTodo!.isDone = true;
-      _boundTodo!.markAsChanged();
       final allTodos = await StorageService.getTodos(widget.username);
       final idx = allTodos.indexWhere((t) => t.id == _boundTodo!.id);
-      if (idx != -1) allTodos[idx] = _boundTodo!;
-      await StorageService.saveTodos(widget.username, allTodos);
+      if (idx != -1) {
+        // 用完整对象标记完成，避免占位 _boundTodo 覆盖原始字段（remark/dueDate 等）
+        allTodos[idx].isDone = true;
+        allTodos[idx].markAsChanged();
+        await StorageService.saveTodos(widget.username, allTodos);
+        // 同步更新内存中的 _todos，让工作台 UI 即时反映
+        final localIdx = _todos.indexWhere((t) => t.id == _boundTodo!.id);
+        if (localIdx != -1 && mounted) {
+          setState(() => _todos[localIdx].isDone = true);
+        }
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
