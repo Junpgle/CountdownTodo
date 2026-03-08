@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'api_service.dart';
@@ -108,22 +109,26 @@ class PomodoroRecord {
   /// 是否已完成（status == completed）
   bool get isCompleted => status == PomodoroRecordStatus.completed;
 
-  Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'todo_uuid': todoUuid,
-        'todo_title': todoTitle,       // 后端暂不入库，仅本地用
-        'tag_uuids': tagUuids,         // 本地缓存，上传时通过 todo_tags 单独处理
-        'start_time': startTime,
-        'end_time': endTime,
-        'planned_duration': plannedDuration,
-        'actual_duration': actualDuration,
-        'status': _statusStr(status),
-        'device_id': deviceId,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-      };
+  Map<String, dynamic> toJson() {
+    // 空字符串的 todoUuid 视为无绑定任务，传 null 给后端
+    final cleanTodoUuid = (todoUuid?.isNotEmpty == true) ? todoUuid : null;
+    return {
+      'uuid': uuid,
+      'todo_uuid': cleanTodoUuid,
+      'todo_title': todoTitle,
+      'tag_uuids': tagUuids,
+      'start_time': startTime,
+      'end_time': endTime,
+      'planned_duration': plannedDuration,
+      'actual_duration': actualDuration,
+      'status': _statusStr(status),
+      'device_id': deviceId,
+      'is_deleted': isDeleted ? 1 : 0,
+      'version': version,
+      'created_at': createdAt,
+      'updated_at': updatedAt,
+    };
+  }
 
   factory PomodoroRecord.fromJson(Map<String, dynamic> j) {
     // 兼容后端返回（无 todo_title / tag_uuids）
@@ -234,7 +239,7 @@ class PomodoroSettings {
 // 番茄钟运行状态（防误杀持久化，仅本地存储）
 // ============================================================
 
-enum PomodoroPhase { idle, focusing, breaking, finished }
+enum PomodoroPhase { idle, focusing, breaking, finished, remoteWatching }
 
 class PomodoroRunState {
   PomodoroPhase phase;
@@ -408,7 +413,6 @@ class PomodoroService {
   /// 添加一条专注记录，本地保存后立即尝试上传云端；失败时保留本地记录等待下次 syncRecordsToCloud 补传
   static Future<void> addRecord(PomodoroRecord record) async {
     final all = await _getAllRecordsRaw();
-    // 去重：同 uuid 已存在则更新，否则插入
     final idx = all.indexWhere((r) => r.uuid == record.uuid);
     if (idx >= 0) {
       all[idx] = record;
@@ -416,20 +420,19 @@ class PomodoroService {
       all.insert(0, record);
     }
     await _saveRecords(all);
-    // 立即尝试上传
+    debugPrint('[PomodoroService] addRecord OK, uuid=${record.uuid}, total=${all.length}');
+    // 立即尝试上传（静默失败，本地已保存）
     try {
       final ok = await ApiService.uploadPomodoroRecord(record.toJson());
+      debugPrint('[PomodoroService] upload result: $ok');
       if (ok) {
-        // 上传成功，更新 lastUpload 时间戳，下次 syncRecordsToCloud 不会重复上传
         final prefs = await SharedPreferences.getInstance();
         final now = DateTime.now().millisecondsSinceEpoch;
         final current = prefs.getInt(_keyLastRecordUpload) ?? 0;
-        if (now > current) {
-          await prefs.setInt(_keyLastRecordUpload, now);
-        }
+        if (now > current) await prefs.setInt(_keyLastRecordUpload, now);
       }
-    } catch (_) {
-      // 静默失败，等待下次手动/自动同步批量补传
+    } catch (e) {
+      debugPrint('[PomodoroService] upload error (local saved): $e');
     }
   }
 
@@ -546,7 +549,10 @@ class PomodoroService {
     if (s == null) return [];
     try {
       return (jsonDecode(s) as List).map((e) => PomodoroRecord.fromJson(e)).toList();
-    } catch (_) { return []; }
+    } catch (e) {
+      debugPrint('[PomodoroService] _getAllRecordsRaw parse error: $e');
+      return [];
+    }
   }
 
   /// 今日专注记录（本地，不含已删除）
