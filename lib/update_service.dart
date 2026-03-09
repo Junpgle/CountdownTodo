@@ -13,6 +13,26 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 // 数据模型类
+class ChangelogEntry {
+  final String versionName;
+  final String date;
+  final List<String> items;
+
+  const ChangelogEntry({
+    required this.versionName,
+    required this.date,
+    required this.items,
+  });
+
+  factory ChangelogEntry.fromJson(Map<String, dynamic> json) => ChangelogEntry(
+        versionName: json['version_name'] ?? '',
+        date: json['date'] ?? '',
+        items: (json['items'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toList(),
+      );
+}
+
 class AppManifest {
   final int versionCode;
   final String versionName;
@@ -20,6 +40,7 @@ class AppManifest {
   final UpdateInfo updateInfo;
   final Announcement announcement;
   final WallpaperConfig wallpaper;
+  final List<ChangelogEntry> changelogHistory;
 
   AppManifest({
     required this.versionCode,
@@ -28,6 +49,7 @@ class AppManifest {
     required this.updateInfo,
     required this.announcement,
     required this.wallpaper,
+    this.changelogHistory = const [],
   });
 
   factory AppManifest.fromJson(Map<String, dynamic> json) {
@@ -38,6 +60,9 @@ class AppManifest {
       updateInfo: UpdateInfo.fromJson(json['update_info'] ?? {}),
       announcement: Announcement.fromJson(json['announcement'] ?? {}),
       wallpaper: WallpaperConfig.fromJson(json['wallpaper'] ?? {}),
+      changelogHistory: (json['changelog_history'] as List<dynamic>? ?? [])
+          .map((e) => ChangelogEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 }

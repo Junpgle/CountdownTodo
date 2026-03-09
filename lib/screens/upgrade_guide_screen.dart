@@ -45,9 +45,11 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
   // 从远端加载的数据
   String _currentVersion = '';
   String _changelogTitle = '';
-  String _changelogDescription = '';
+  List<ChangelogEntry> _changelogHistory = [];
   bool _loadingChangelog = true;
   bool _needsMigration = false; // 是否是需要数据清洗的版本
+  // 控制历史版本展开/折叠（key = version_name）
+  final Set<String> _expandedVersions = {};
 
   @override
   void initState() {
@@ -60,7 +62,6 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
     _currentVersion = info.version;
     _needsMigration = _currentVersion == UpgradeGuideScreen._dataMigrationVersion;
 
-    // 拉取 manifest 获取更新日志
     try {
       final manifest = await UpdateService.checkManifest();
       if (manifest != null && mounted) {
@@ -68,18 +69,18 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
           _changelogTitle = manifest.updateInfo.title.isNotEmpty
               ? manifest.updateInfo.title
               : 'v$_currentVersion 更新日志';
-          _changelogDescription = manifest.updateInfo.description;
+          _changelogHistory = manifest.changelogHistory;
           _loadingChangelog = false;
         });
         return;
       }
     } catch (_) {}
 
-    // 网络失败时的兜底
+    // 网络失败兜底
     if (mounted) {
       setState(() {
         _changelogTitle = 'v$_currentVersion 更新日志';
-        _changelogDescription = '请联网后查看详细更新内容。';
+        _changelogHistory = [];
         _loadingChangelog = false;
       });
     }
@@ -151,101 +152,290 @@ class _UpgradeGuideScreenState extends State<UpgradeGuideScreen> {
 
   // ─── 更新日志页 ───────────────────────────────────────────
   Widget _buildChangelogPage() {
+    // 当前版本条目（从历史记录中找，或兜底空列表）
+    final current = _changelogHistory.isNotEmpty
+        ? _changelogHistory.first
+        : null;
+    // 历史版本（当前版本之外的所有条目）
+    final history = _changelogHistory.length > 1
+        ? _changelogHistory.sublist(1)
+        : <ChangelogEntry>[];
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 8),
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                _loadingChangelog ? '加载中…' : _changelogTitle,
+          // ── 当前版本卡片 ──────────────────────────────────
+          _buildCurrentVersionCard(current),
+
+          // ── 历史版本折叠列表 ──────────────────────────────
+          if (history.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Row(children: [
+              Icon(Icons.history_rounded,
+                  size: 16,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.45)),
+              const SizedBox(width: 6),
+              Text(
+                '历史版本',
                 style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.45),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 24),
+            ]),
+            const SizedBox(height: 8),
+            ...history.map((e) => _buildHistoryVersionTile(e)),
+          ],
 
           if (_loadingChangelog)
-            const Center(child: CircularProgressIndicator())
-          else ...[
-            // 将 description 按换行/逗号分割成条目展示
-            _changelogSection(
-              icon: Icons.new_releases_rounded,
-              iconColor: Theme.of(context).colorScheme.primary,
-              title: '本次更新内容',
-              items: _changelogDescription
-                  .split(RegExp(r'[,，\n]'))
-                  .map((s) => s.trim())
-                  .where((s) => s.isNotEmpty)
-                  .toList(),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(child: CircularProgressIndicator()),
             ),
-
-            // v1.7.7 额外说明数据清洗原因
-            if (_needsMigration)
-              _changelogSection(
-                icon: Icons.warning_amber_rounded,
-                iconColor: Colors.orange,
-                title: '⚠️ 为什么需要清洗数据？',
-                items: const [
-                  '由于之前云端下发了部分丢失日期的脏数据，本次升级需强制清洗本地缓存。',
-                  '清除后，应用将重新拉取你云端最完整、正确的最新数据。',
-                ],
-              ),
-          ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  Widget _changelogSection({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required List<String> items,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+  /// 当前版本高亮卡片（带 "NEW" 徽章）
+  Widget _buildCurrentVersionCard(ChangelogEntry? entry) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.3)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 版本号 + NEW 徽章 + 日期
           Row(children: [
-            Icon(icon, size: 18, color: iconColor),
-            const SizedBox(width: 8),
-            Text(title,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-          ]),
-          const SizedBox(height: 8),
-          ...items.map((item) => Padding(
-            padding: const EdgeInsets.only(left: 26, bottom: 5),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('• ', style: TextStyle(fontSize: 14)),
-                Expanded(
-                  child: Text(item,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.75),
-                          height: 1.4)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: scheme.primary,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'v${entry?.versionName ?? _currentVersion}',
+                style: TextStyle(
+                  color: scheme.onPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
+              ),
             ),
-          )),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text('NEW',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold)),
+            ),
+            const Spacer(),
+            if (entry?.date.isNotEmpty == true)
+              Text(
+                entry!.date,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: scheme.onSurface.withValues(alpha: 0.45),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 14),
+          if (_loadingChangelog)
+            const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          else if (entry == null || entry.items.isEmpty)
+            Text(
+              '请联网后查看详细更新内容。',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: scheme.onSurface.withValues(alpha: 0.6)),
+            )
+          else
+            ...entry.items.map((item) => _buildBulletItem(item, scheme)),
+
+          // v1.7.7 额外警告
+          if (_needsMigration) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning_amber_rounded,
+                      size: 16, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '本版本需要清除本地数据并重新登录，点击下一步了解详情。',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange.shade800,
+                          height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 历史版本折叠 Tile
+  Widget _buildHistoryVersionTile(ChangelogEntry entry) {
+    final scheme = Theme.of(context).colorScheme;
+    final isExpanded = _expandedVersions.contains(entry.versionName);
+    return Column(
+      children: [
+        InkWell(
+          onTap: () => setState(() {
+            if (isExpanded) {
+              _expandedVersions.remove(entry.versionName);
+            } else {
+              _expandedVersions.add(entry.versionName);
+            }
+          }),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(children: [
+              Text(
+                'v${entry.versionName}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurface.withValues(alpha: 0.75),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (entry.date.isNotEmpty)
+                Text(
+                  entry.date,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurface.withValues(alpha: 0.4),
+                  ),
+                ),
+              const Spacer(),
+              // 摘要（折叠时显示第一条）
+              if (!isExpanded && entry.items.isNotEmpty)
+                Flexible(
+                  child: Text(
+                    entry.items.first,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.onSurface.withValues(alpha: 0.35)),
+                  ),
+                ),
+              const SizedBox(width: 4),
+              Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: scheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ]),
+          ),
+        ),
+        // 展开内容
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 200),
+          crossFadeState: isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          firstChild: const SizedBox.shrink(),
+          secondChild: Container(
+            margin: const EdgeInsets.only(top: 2, bottom: 4),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest.withValues(alpha: 0.25),
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(12),
+                bottomRight: Radius.circular(12),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: entry.items
+                  .map((item) => _buildBulletItem(item, scheme,
+                      textAlpha: 0.65, fontSize: 12.5))
+                  .toList(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+      ],
+    );
+  }
+
+  Widget _buildBulletItem(String item, ColorScheme scheme,
+      {double textAlpha = 0.75, double fontSize = 13.5}) {
+    // 根据前缀选择颜色和图标
+    Color dotColor = scheme.onSurface.withValues(alpha: 0.4);
+    if (item.startsWith('【新增】')) dotColor = Colors.green;
+    else if (item.startsWith('【优化】')) dotColor = Colors.blue;
+    else if (item.startsWith('【修复】')) dotColor = Colors.orange;
+    else if (item.startsWith('【重构】')) dotColor = Colors.purple;
+    else if (item.startsWith('⚠️')) dotColor = Colors.red;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              item,
+              style: TextStyle(
+                fontSize: fontSize,
+                color: scheme.onSurface.withValues(alpha: textAlpha),
+                height: 1.45,
+              ),
+            ),
+          ),
         ],
       ),
     );
