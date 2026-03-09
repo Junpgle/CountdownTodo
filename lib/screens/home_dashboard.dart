@@ -22,6 +22,7 @@ import '../services/course_service.dart';
 import '../services/external_share_handler.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../services/reminder_schedule_service.dart';
 
 // 引入其他页面
 import 'screen_time_detail_screen.dart';
@@ -114,6 +115,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       Future.delayed(const Duration(milliseconds: 500), () { if (mounted) _initNotifications(); });
       Future.delayed(const Duration(milliseconds: 1000), () { if (mounted) _initScreenTime(); });
       Future.delayed(const Duration(milliseconds: 1500), () { if (mounted) StorageService.syncAppMappings(); });
+      // 保活：检查精确闹钟权限（Android 12+），仅首次提示一次
+      Future.delayed(const Duration(milliseconds: 2000), () { if (mounted) _checkExactAlarmPermission(); });
 
       ExternalShareHandler.init(context, () { _loadAllData(); });
       _checkAutoSync();
@@ -132,6 +135,23 @@ class _HomeDashboardState extends State<HomeDashboard>
     _courseTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// 检查 Android 12+ 精确闹钟权限，未授权时弹一次引导 SnackBar
+  Future<void> _checkExactAlarmPermission() async {
+    final granted = await NotificationService.checkExactAlarmPermission();
+    if (granted) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('⏰ 需要「精确闹钟」权限才能在 App 被杀后准时发送提醒'),
+        action: SnackBarAction(
+          label: '去授权',
+          onPressed: NotificationService.openExactAlarmSettings,
+        ),
+        duration: const Duration(seconds: 8),
+      ),
+    );
   }
 
   Future<void> _initCrossDevicePomodoro() async {
@@ -599,6 +619,13 @@ class _HomeDashboardState extends State<HomeDashboard>
       });
       _syncTodoNotification();
       await WidgetService.updateTodoWidget(_todos);
+
+      // 保活：重新调度未来 7 天内的提醒 Alarm（后台异步，不阻塞 UI）
+      final allCourses = await CourseService.getAllCourses();
+      unawaited(ReminderScheduleService.scheduleAll(
+        todos: _todos,
+        courses: allCourses,
+      ));
     }
   }
 
@@ -668,7 +695,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               const SnackBar(content: Text('✅ 数据同步完成'), backgroundColor: Colors.green)
           );
         }
-        if (hasChanges) _loadAllData();
+        if (hasChanges) _loadAllData(); // _loadAllData 内部会重新 scheduleAll
       }
     } catch (e) {
       debugPrint("Sync Error: $e");

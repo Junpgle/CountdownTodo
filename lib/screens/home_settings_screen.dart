@@ -105,6 +105,14 @@ class _SettingsPageState extends State<SettingsPage> {
       'color': Colors.teal,
       'critical': false,
     },
+    {
+      'key': 'exact_alarm',
+      'label': '精确提醒',
+      'desc': '保活核心权限：App 被杀后仍能在准确时刻推送待办/课程提醒',
+      'icon': Icons.alarm_outlined,
+      'color': Colors.red,
+      'critical': true,
+    },
   ];
 
   Future<void> _checkAllPermissions() async {
@@ -145,6 +153,20 @@ class _SettingsPageState extends State<SettingsPage> {
       results['request_install'] = await Permission.requestInstallPackages.status;
     } else {
       results['request_install'] = PermissionStatus.granted;
+    }
+
+    // 精确闹钟（Android 12+ 需要用户在设置里单独授权）
+    if (Platform.isAndroid) {
+      try {
+        final bool granted = await const MethodChannel(
+            'com.math_quiz.junpgle.com.math_quiz_app/notifications')
+            .invokeMethod<bool>('checkExactAlarmPermission') ?? true;
+        results['exact_alarm'] = granted ? PermissionStatus.granted : PermissionStatus.denied;
+      } catch (_) {
+        results['exact_alarm'] = PermissionStatus.granted;
+      }
+    } else {
+      results['exact_alarm'] = PermissionStatus.granted;
     }
 
     if (mounted) {
@@ -188,6 +210,15 @@ class _SettingsPageState extends State<SettingsPage> {
       case 'request_install':
         final status = await Permission.requestInstallPackages.request();
         if (status.isPermanentlyDenied || status.isDenied) await openAppSettings();
+        break;
+      case 'exact_alarm':
+        try {
+          await const MethodChannel(
+              'com.math_quiz.junpgle.com.math_quiz_app/notifications')
+              .invokeMethod('openExactAlarmSettings');
+        } catch (_) {
+          await openAppSettings();
+        }
         break;
     }
 

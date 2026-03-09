@@ -254,4 +254,66 @@ class NotificationService {
       debugPrint("取消通知失败: $e");
     }
   }
+
+  // ── 保活：精确 Alarm 调度 ──────────────────────────────────────
+
+  /// 向原生注册一批提醒 Alarm（会覆盖上次的列表）。
+  /// [reminders] 每项包含：
+  ///   - triggerAtMs : int   触发时间（UTC 毫秒时间戳）
+  ///   - title       : String 通知标题
+  ///   - text        : String 通知正文
+  ///   - notifId     : int   通知 ID（唯一，用于去重 / 取消）
+  static Future<void> scheduleReminders(
+      List<Map<String, dynamic>> reminders) async {
+    if (reminders.isEmpty) return;
+    try {
+      final json = reminders
+          .map((r) =>
+              '{"triggerAtMs":${r['triggerAtMs']},'
+              '"title":${_jsonStr(r['title'])},'
+              '"text":${_jsonStr(r['text'])},'
+              '"notifId":${r['notifId']}}')
+          .join(',');
+      await _channel.invokeMethod('scheduleReminders', {
+        'remindersJson': '[$json]',
+      });
+    } catch (e) {
+      debugPrint('scheduleReminders 失败: $e');
+    }
+  }
+
+  /// 取消某个 Alarm（通过 notifId 定定位）
+  static Future<void> cancelReminder(int notifId) async {
+    try {
+      await _channel.invokeMethod('cancelReminder', {'notifId': notifId});
+    } catch (e) {
+      debugPrint('cancelReminder 失败: $e');
+    }
+  }
+
+  /// 检查 Android 12+ 精确闹钟权限（true = 已授权，false = 需要引导用户设置）
+  static Future<bool> checkExactAlarmPermission() async {
+    try {
+      return await _channel.invokeMethod<bool>('checkExactAlarmPermission') ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// 跳转到系统精确闹钟权限设置页（Android 12+）
+  static Future<void> openExactAlarmSettings() async {
+    try {
+      await _channel.invokeMethod('openExactAlarmSettings');
+    } catch (e) {
+      debugPrint('openExactAlarmSettings 失败: $e');
+    }
+  }
+
+  static String _jsonStr(dynamic v) {
+    final s = (v ?? '').toString()
+        .replaceAll('\\', '\\\\')
+        .replaceAll('"', '\\"');
+    return '"$s"';
+  }
 }
+

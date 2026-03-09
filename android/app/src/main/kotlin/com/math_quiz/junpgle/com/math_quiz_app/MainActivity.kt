@@ -210,6 +210,68 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     }
                 }
 
+                // ── 保活：调度提醒 Alarm ──────────────────────────────────
+                /**
+                 * Flutter 端调用示例：
+                 * await _channel.invokeMethod('scheduleReminders', {
+                 *   'remindersJson': '[{"triggerAtMs":1234567890000,"title":"上课啦","text":"数学","notifId":30001}]'
+                 * });
+                 * 此方法将 JSON 写入 SharedPreferences，然后启动 ReminderService 注册 Alarm。
+                 */
+                "scheduleReminders" -> {
+                    val args = call.arguments as? Map<String, Any>
+                    val json = args?.get("remindersJson") as? String ?: "[]"
+                    // 持久化到 SharedPreferences（开机后 ReminderService 读取重建 Alarm）
+                    getSharedPreferences(ReminderService.PREFS_NAME, MODE_PRIVATE)
+                        .edit().putString(ReminderService.KEY_REMINDERS, json).apply()
+                    // 启动 Service 重新调度
+                    startForegroundService(
+                        Intent(this, ReminderService::class.java).apply {
+                            action = ReminderService.ACTION_RESCHEDULE
+                        }
+                    )
+                    result.success(true)
+                }
+
+                "cancelReminder" -> {
+                    val args = call.arguments as? Map<String, Any>
+                    val notifId = (args?.get("notifId") as? Number)?.toInt() ?: return@setMethodCallHandler
+                    val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                    val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+                        action = ReminderAlarmReceiver.ACTION_FIRE
+                    }
+                    val pi = PendingIntent.getBroadcast(
+                        this, notifId, intent,
+                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    pi?.let { am.cancel(it) }
+                    result.success(true)
+                }
+
+                "checkExactAlarmPermission" -> {
+                    val canSchedule = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        (getSystemService(Context.ALARM_SERVICE) as AlarmManager).canScheduleExactAlarms()
+                    } else true
+                    result.success(canSchedule)
+                }
+
+                "openExactAlarmSettings" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                data = android.net.Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(true)
+                    }
+                }
+
                 else -> result.notImplemented()
             }
         }
