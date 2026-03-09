@@ -1426,7 +1426,7 @@ const PomodoroFocusView = ({
           <h2 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
             <span className="text-2xl">🍅</span> 番茄专注工作台
           </h2>
-          <p className="text-slate-500 text-sm mt-0.5">深度专注，高效完成每一项任务</p>
+          <p className="text-slate-500 text-sm mt-0.5">深度专注，高效完成每一项任务。因技术原因，网页端不支持跨端感知。如需使用请下载PC端或者Android端。</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -1976,22 +1976,6 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     if (totalMinutes <= 0) return 1.0;
     const passedMinutes = (nowMs - start) / 60000;
     return Math.max(0, Math.min(1, passedMinutes / totalMinutes));
-  };
-
-  const durationMinutes = (t: TodoItem) => {
-    const start = t.created_date ?? t.created_at;
-    let endMs;
-    if (t.due_date) {
-      const d = new Date(t.due_date);
-      d.setSeconds(59, 999);
-      endMs = d.getTime();
-    } else {
-      const d = new Date(start);
-      d.setHours(23, 59, 59, 999);
-      endMs = d.getTime();
-    }
-    const mins = (endMs - start) / 60000;
-    return mins <= 0 ? 1 : mins;
   };
 
   const getTodayStartMs = () => {

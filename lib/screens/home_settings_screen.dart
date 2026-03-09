@@ -703,6 +703,16 @@ class _SettingsPageState extends State<SettingsPage> {
           StorageService.saveAppSetting(StorageService.KEY_SEMESTER_END, picked.toIso8601String());
         }
       });
+      // 同步到云端（后台静默）
+      if (_userId != null) {
+        final startMs = _semesterStart != null
+            ? DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day).millisecondsSinceEpoch
+            : null;
+        final endMs = _semesterEnd != null
+            ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day).millisecondsSinceEpoch
+            : null;
+        ApiService.uploadUserSettings(semesterStartMs: startMs, semesterEndMs: endMs);
+      }
     }
   }
 
@@ -1292,6 +1302,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final result = await CourseService.syncCoursesToCloud(_userId!);
 
+    // 同时上传开学/放假时间
+    if (result['success'] == true) {
+      final startMs = _semesterStart != null
+          ? DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day).millisecondsSinceEpoch
+          : null;
+      final endMs = _semesterEnd != null
+          ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day).millisecondsSinceEpoch
+          : null;
+      await ApiService.uploadUserSettings(semesterStartMs: startMs, semesterEndMs: endMs);
+    }
+
     if (!mounted) return;
     Navigator.pop(context);
 
@@ -1309,6 +1330,41 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result['message'] ?? '同步失败')),
       );
+    }
+  }
+
+  Future<void> _fetchSemesterFromCloud() async {
+    if (_userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先登录账号')));
+      return;
+    }
+    final data = await ApiService.fetchUserSettings();
+    if (!mounted) return;
+    if (data == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 拉取失败，请检查网络')));
+      return;
+    }
+    final startMs = data['semester_start'];
+    final endMs = data['semester_end'];
+    if (startMs == null && endMs == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('云端暂无开学/放假时间数据')));
+      return;
+    }
+    DateTime? newStart = startMs != null ? DateTime.fromMillisecondsSinceEpoch((startMs as num).toInt(), isUtc: true).toLocal() : null;
+    DateTime? newEnd = endMs != null ? DateTime.fromMillisecondsSinceEpoch((endMs as num).toInt(), isUtc: true).toLocal() : null;
+    // 保存到本地
+    if (newStart != null) {
+      await StorageService.saveAppSetting(StorageService.KEY_SEMESTER_START, DateTime(newStart.year, newStart.month, newStart.day).toIso8601String());
+    }
+    if (newEnd != null) {
+      await StorageService.saveAppSetting(StorageService.KEY_SEMESTER_END, DateTime(newEnd.year, newEnd.month, newEnd.day).toIso8601String());
+    }
+    if (mounted) {
+      setState(() {
+        if (newStart != null) _semesterStart = DateTime(newStart.year, newStart.month, newStart.day);
+        if (newEnd != null) _semesterEnd = DateTime(newEnd.year, newEnd.month, newEnd.day);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 已从云端同步开学/放假时间')));
     }
   }
 
@@ -1646,6 +1702,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: const Text('放假日期'),
                 trailing: Text(_semesterEnd == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
                 onTap: () => _pickSemesterDate(false),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.cloud_download_outlined, color: Colors.teal),
+                title: const Text('从云端同步开学/放假时间'),
+                subtitle: const Text('将另一设备设置的学期日期同步到本机'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _fetchSemesterFromCloud,
               ),
             ],
           ]),

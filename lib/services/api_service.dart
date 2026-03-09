@@ -311,6 +311,50 @@ class ApiService {
   }
 
   // ==========================================
+  // 7b. 用户设置同步 (semester dates)
+  // ==========================================
+
+  /// 上传开学/放假时间到云端（毫秒时间戳，null 表示清除）
+  static Future<bool> uploadUserSettings({
+    required int? semesterStartMs,
+    required int? semesterEndMs,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/settings'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'semester_start': semesterStartMs,
+          'semester_end': semesterEndMs,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 从云端拉取开学/放假时间（返回毫秒时间戳，null 表示未设置）
+  static Future<Map<String, dynamic>?> fetchUserSettings() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/settings'),
+        headers: _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ==========================================
   // 8. 番茄钟 (Pomodoro)
   // ==========================================
 

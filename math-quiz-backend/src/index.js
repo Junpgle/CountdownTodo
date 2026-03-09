@@ -591,6 +591,29 @@ export default {
       }
 
       // --------------------------
+      // 模块 E2: 用户设置 (User Settings) - 开学/放假时间同步
+      // --------------------------
+      if (url.pathname === "/api/settings" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const row = await DB.prepare("SELECT semester_start, semester_end FROM users WHERE id = ?").bind(authUserId).first();
+        return jsonResponse({
+          success: true,
+          semester_start: row ? (row.semester_start ?? null) : null,
+          semester_end: row ? (row.semester_end ?? null) : null,
+        });
+      }
+
+      if (url.pathname === "/api/settings" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const body = await request.json();
+        const semStart = body.semester_start != null ? normalizeToMs(body.semester_start) : null;
+        const semEnd = body.semester_end != null ? normalizeToMs(body.semester_end) : null;
+        await DB.prepare("UPDATE users SET semester_start = ?, semester_end = ? WHERE id = ?")
+          .bind(semStart, semEnd, authUserId).run();
+        return jsonResponse({ success: true });
+      }
+
+      // --------------------------
       // 模块 F: 数据库迁移
       // --------------------------
       if (url.pathname === "/api/admin/migrate" && request.method === "POST") {
@@ -601,7 +624,9 @@ export default {
           `ALTER TABLE todos ADD COLUMN recurrence INTEGER DEFAULT 0`,
           `ALTER TABLE todos ADD COLUMN custom_interval_days INTEGER`,
           `ALTER TABLE todos ADD COLUMN recurrence_end_date INTEGER`,
-          `ALTER TABLE sync_limits ADD COLUMN last_sync_time INTEGER DEFAULT 0`
+          `ALTER TABLE sync_limits ADD COLUMN last_sync_time INTEGER DEFAULT 0`,
+          `ALTER TABLE users ADD COLUMN semester_start INTEGER`,
+          `ALTER TABLE users ADD COLUMN semester_end INTEGER`
         ];
 
         const results = [];
