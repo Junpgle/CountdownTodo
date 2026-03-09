@@ -1,9 +1,9 @@
 {
   "version_code": 1,
-  "version_name": "1.8.4",
+  "version_name": "1.8.5",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 1.8.4",
+    "title": "版本更新 1.8.5",
     "description": "【新增】跨端感知功能，支持在不同设备上同步更新任务状态\n【优化】修复了一些已知的bug，提升了应用的稳定性和性能\n【优化】优化了用户界面，使其更加美观和易用",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "patch_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk"
@@ -19,7 +19,7 @@
   },
   "changelog_history": [
     {
-      "version_name": "1.8.4",
+      "version_name": "1.8.5",
       "date": "2026-03-09",
       "items": [
         "【新增】跨端感知功能，支持在不同设备上同步更新任务状态",
@@ -31,7 +31,7 @@
     },
     {
       "version_name": "1.8.3",
-      "date": "2026-03-05",
+      "date": "2026-03-09",
       "items": [
         "【新增】番茄钟统计看板支持按年/月/日筛选",
         "【新增】专注记录支持编辑标签和绑定待办",
@@ -41,7 +41,7 @@
     },
     {
       "version_name": "1.8.2",
-      "date": "2026-02-28",
+      "date": "2026-03-08",
       "items": [
         "【新增】番茄钟跨端感知，WebSocket 实时同步倒计时",
         "【新增】专注结束后询问任务是否完成并自动同步",
@@ -51,7 +51,7 @@
     },
     {
       "version_name": "1.8.1",
-      "date": "2026-02-20",
+      "date": "2026-03-08",
       "items": [
         "【新增】番茄钟功能：专注/休息交替计时，支持自定义时长和循环次数",
         "【新增】番茄钟自定义标签，云端同步多端一致",
@@ -61,7 +61,7 @@
     },
     {
       "version_name": "1.7.9",
-      "date": "2026-02-10",
+      "date": "2026-03-07",
       "items": [
         "【新增】待办备注功能，通知副标题同步显示备注",
         "【新增】待办支持编辑",
@@ -71,7 +71,7 @@
     },
     {
       "version_name": "1.7.8",
-      "date": "2026-02-01",
+      "date": "2026-03-07",
       "items": [
         "【新增】待办备注功能",
         "【修复】同步时间字段混淆 (created_at/created_date) 导致开始时间错误",
@@ -80,7 +80,7 @@
     },
     {
       "version_name": "1.7.7",
-      "date": "2026-01-15",
+      "date": "2026-03-07",
       "items": [
         "【重构】账户和数据库大幅重构，云端同步更稳定",
         "【修复】重要日/倒计时跨端同步问题",
