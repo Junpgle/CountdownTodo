@@ -2030,24 +2030,28 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
   const sortedToday = [
     ...todayTodos.filter(t => !t.is_completed).sort((a, b) => {
-      const pa = calcProgress(a);
-      const pb = calcProgress(b);
-      if (pb !== pa) return pb - pa;
-      return durationMinutes(a) - durationMinutes(b);
+      const sa = a.created_date ?? a.created_at;
+      const sb = b.created_date ?? b.created_at;
+      return sa - sb;
     }),
-    ...todayTodos.filter(t => t.is_completed)
+    ...todayTodos.filter(t => t.is_completed).sort((a, b) => {
+      const sa = a.created_date ?? a.created_at;
+      const sb = b.created_date ?? b.created_at;
+      return sa - sb;
+    })
   ];
 
   const sortedFuture = [
     ...futureTodos.filter(t => !t.is_completed).sort((a, b) => {
-      const pa = calcProgress(a);
-      const pb = calcProgress(b);
-      if (pb !== pa) return pb - pa;
-      const da = a.due_date || 9999999999999;
-      const db = b.due_date || 9999999999999;
-      return da - db;
+      const sa = a.created_date ?? a.created_at;
+      const sb = b.created_date ?? b.created_at;
+      return sa - sb;
     }),
-    ...futureTodos.filter(t => t.is_completed)
+    ...futureTodos.filter(t => t.is_completed).sort((a, b) => {
+      const sa = a.created_date ?? a.created_at;
+      const sb = b.created_date ?? b.created_at;
+      return sa - sb;
+    })
   ];
 
   const handleTodoCompleted = (uuid: string) => {

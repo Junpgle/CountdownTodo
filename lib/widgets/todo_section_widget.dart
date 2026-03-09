@@ -567,53 +567,35 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
   // ─────────────────────────────────────────────
   // 当日待办排序：
-  //   未完成 → 进度高的优先；进度相同 → 持续时间短的优先
-  //   已完成 → 排在未完成之后
+  //   未完成 → 按开始时间升序（保证跨设备一致）
+  //   已完成 → 排在未完成之后，同样按开始时间升序
   // ─────────────────────────────────────────────
   List<TodoItem> _sortTodayTodos(List<TodoItem> list, DateTime now) {
-    int durationMinutes(TodoItem t) {
-      final DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
-      final DateTime end = t.dueDate != null
-          ? DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day, t.dueDate!.hour, t.dueDate!.minute, 59)
-          : DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-      final int mins = end.difference(cDate).inMinutes;
-      return mins <= 0 ? 1 : mins;
-    }
+    int startMs(TodoItem t) => t.createdDate ?? t.createdAt;
 
     final undone = list.where((t) => !t.isDone).toList()
-      ..sort((a, b) {
-        final double pa = _calcProgress(a, now);
-        final double pb = _calcProgress(b, now);
-        // 进度更高的排前面（降序）
-        final int cmp = pb.compareTo(pa);
-        if (cmp != 0) return cmp;
-        // 进度相同：持续时间短的排前面（升序）
-        return durationMinutes(a).compareTo(durationMinutes(b));
-      });
+      ..sort((a, b) => startMs(a).compareTo(startMs(b)));
 
-    final done = list.where((t) => t.isDone).toList();
+    final done = list.where((t) => t.isDone).toList()
+      ..sort((a, b) => startMs(a).compareTo(startMs(b)));
+
     return [...undone, ...done];
   }
 
   // ─────────────────────────────────────────────
   // 未来待办排序：
-  //   未完成 → 进度高的优先；进度相同 → 截止日期近的优先
-  //   已完成 → 排在未完成之后
+  //   未完成 → 按开始时间升序（保证跨设备一致）
+  //   已完成 → 排在未完成之后，同样按开始时间升序
   // ─────────────────────────────────────────────
   List<TodoItem> _sortFutureTodos(List<TodoItem> list, DateTime now) {
-    final undone = list.where((t) => !t.isDone).toList()
-      ..sort((a, b) {
-        final double pa = _calcProgress(a, now);
-        final double pb = _calcProgress(b, now);
-        final int cmp = pb.compareTo(pa);
-        if (cmp != 0) return cmp;
-        // 进度相同：截止时间近的排前面（升序）
-        final DateTime da = a.dueDate ?? DateTime(9999);
-        final DateTime db = b.dueDate ?? DateTime(9999);
-        return da.compareTo(db);
-      });
+    int startMs(TodoItem t) => t.createdDate ?? t.createdAt;
 
-    final done = list.where((t) => t.isDone).toList();
+    final undone = list.where((t) => !t.isDone).toList()
+      ..sort((a, b) => startMs(a).compareTo(startMs(b)));
+
+    final done = list.where((t) => t.isDone).toList()
+      ..sort((a, b) => startMs(a).compareTo(startMs(b)));
+
     return [...undone, ...done];
   }
 

@@ -13,6 +13,65 @@ import '../services/pomodoro_sync_service.dart';
 // 动态隐藏的 AppBar 包装器
 
 // ══════════════════════════════════════════════════════════════
+// 保持状态的淡入淡出 IndexedStack
+// ══════════════════════════════════════════════════════════════
+class _FadingIndexedStack extends StatefulWidget {
+  final int index;
+  final List<Widget> children;
+  const _FadingIndexedStack({required this.index, required this.children});
+
+  @override
+  State<_FadingIndexedStack> createState() => _FadingIndexedStackState();
+}
+
+class _FadingIndexedStackState extends State<_FadingIndexedStack>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+  int _displayIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayIndex = widget.index;
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 280));
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+    _ctrl.forward();
+  }
+
+  @override
+  void didUpdateWidget(_FadingIndexedStack old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index) {
+      _ctrl.reverse().then((_) {
+        if (mounted) {
+          setState(() => _displayIndex = widget.index);
+          _ctrl.forward();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _anim,
+      child: IndexedStack(
+        index: _displayIndex,
+        children: widget.children,
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // 番茄钟主页（TabBar: 专注工作台 + 统计看板）
 // ══════════════════════════════════════════════════════════════
 class PomodoroScreen extends StatefulWidget {
@@ -29,7 +88,6 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   PomodoroPhase _currentPhase = PomodoroPhase.idle;
-  // _workbenchReady: false = workbench 还在 _init 中，此时隐藏 Tab 栏和标题
   bool _workbenchReady = false;
   final _statsKey = GlobalKey<_PomodoroStatsState>();
 
@@ -42,6 +100,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       if (_tabController.index == 1 && !_tabController.indexIsChanging) {
         _statsKey.currentState?.reload();
       }
+      if (mounted) setState(() {});
     });
   }
 
@@ -53,44 +112,57 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
   @override
   Widget build(BuildContext context) {
-    // loading 中或专注中/观察中都隐藏顶部标题和底部 Tab
     final isFocusingOrWatching = !_workbenchReady
         || _currentPhase == PomodoroPhase.focusing
         || _currentPhase == PomodoroPhase.remoteWatching;
+
+    final int tabIndex = _tabController.index;
 
     return Scaffold(
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            // ── 顶部导航栏（专注/观察时只留返回箭头）──
-            if (!isFocusingOrWatching)
-              Container(
-                height: kToolbarHeight,
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(
-                  children: [
-                    if (Navigator.canPop(context))
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    const Expanded(
-                      child: Center(
-                        child: Text('🍅 番茄钟',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      ),
+            // ── 顶部导航栏：淡入淡出 ──
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              height: isFocusingOrWatching ? 0 : kToolbarHeight,
+              clipBehavior: Clip.hardEdge,
+              decoration: const BoxDecoration(),
+              child: AnimatedOpacity(
+                opacity: isFocusingOrWatching ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                child: SizedBox(
+                  height: kToolbarHeight,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      children: [
+                        if (Navigator.canPop(context))
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        const Expanded(
+                          child: Center(
+                            child: Text('🍅 番茄钟',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        if (Navigator.canPop(context))
+                          const SizedBox(width: 48),
+                      ],
                     ),
-                    if (Navigator.canPop(context))
-                      const SizedBox(width: 48),
-                  ],
+                  ),
                 ),
               ),
-            // ── 主内容区 ──
+            ),
+
+            // ── 主内容区：IndexedStack 保持状态 + AnimatedOpacity 淡入淡出 ──
             Expanded(
-              child: TabBarView(
-                physics: const NeverScrollableScrollPhysics(),
-                controller: _tabController,
+              child: _FadingIndexedStack(
+                index: tabIndex,
                 children: [
                   _PomodoroWorkbench(
                     username: widget.username,
@@ -109,41 +181,52 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 ],
               ),
             ),
-            // ── 底部 Tab 导航（专注/观察时隐藏）──
-            if (!isFocusingOrWatching)
-              SafeArea(
-                top: false,
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .outlineVariant
-                            .withValues(alpha: 0.5),
-                        width: 1,
+
+            // ── 底部 Tab 导航：淡入淡出 ──
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              height: isFocusingOrWatching ? 0 : null,
+              clipBehavior: Clip.hardEdge,
+              decoration: const BoxDecoration(),
+              child: AnimatedOpacity(
+                opacity: isFocusingOrWatching ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                child: SafeArea(
+                  top: false,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outlineVariant
+                              .withValues(alpha: 0.5),
+                          width: 1,
+                        ),
                       ),
                     ),
-                  ),
-                  child: TabBar(
-                    controller: _tabController,
-                    indicatorSize: TabBarIndicatorSize.label,
-                    dividerColor: Colors.transparent,
-                    tabs: const [
-                      Tab(
-                        icon: Icon(Icons.timer_outlined),
-                        text: '工作台',
-                        iconMargin: EdgeInsets.only(bottom: 2),
-                      ),
-                      Tab(
-                        icon: Icon(Icons.bar_chart_rounded),
-                        text: '统计看板',
-                        iconMargin: EdgeInsets.only(bottom: 2),
-                      ),
-                    ],
+                    child: TabBar(
+                      controller: _tabController,
+                      indicatorSize: TabBarIndicatorSize.label,
+                      dividerColor: Colors.transparent,
+                      tabs: const [
+                        Tab(
+                          icon: Icon(Icons.timer_outlined),
+                          text: '工作台',
+                          iconMargin: EdgeInsets.only(bottom: 2),
+                        ),
+                        Tab(
+                          icon: Icon(Icons.bar_chart_rounded),
+                          text: '统计看板',
+                          iconMargin: EdgeInsets.only(bottom: 2),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -232,12 +315,12 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
-      case AppLifecycleState.resumed:
-        _notifyTickCount = 0;
-        _recoverFromBackground();
-        // 强制重连让服务器推送 SYNC，确保跨端状态最新
-        _syncService.reconnectIfNeeded();
-        break;
+    case AppLifecycleState.resumed:
+      _notifyTickCount = 0;
+      _recoverFromBackground();
+      // 强制重连让服务器推送 SYNC，确保跨端状态最新
+      _syncService.resumeSync();
+      break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
@@ -1195,6 +1278,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     final isBreaking = _phase == PomodoroPhase.breaking;
     final isFinished = _phase == PomodoroPhase.finished;
     final isRemote   = _phase == PomodoroPhase.remoteWatching;
+    final isActive   = isFocusing || isBreaking || isRemote;
     final totalSeconds = isBreaking
         ? _settings.breakMinutes * 60
         : _settings.focusMinutes * 60;
@@ -1221,7 +1305,6 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     final cycleBgColor   = Theme.of(context).colorScheme.surfaceContainerHighest;
     final trackColor     = Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
 
-    // 观察模式：从 remoteState.duration 倒推总时长
     final remoteTotal = _remoteState?.duration;
     final remoteProgress = (isRemote && remoteTotal != null && remoteTotal > 0)
         ? 1.0 - (_remainingSeconds / remoteTotal).clamp(0.0, 1.0)
@@ -1237,18 +1320,24 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         ? '同步观察'
         : '第 $_currentCycle / ${_settings.cycles} 轮';
 
+    // idle: 210, active: 268 — AnimatedContainer 驱动平滑放大/缩小
+    final double ringSize = isActive ? 268.0 : 210.0;
+    final double strokeW  = isActive ? 12.0 : 10.0;
+    final double timeFontSize  = isActive ? 60.0 : 48.0;
+    final double labelFontSize = isActive ? 13.0 : 12.0;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
-      width: 280,
-      height: 280,
+      width: ringSize,
+      height: ringSize,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         boxShadow: [
-          if (isFocusing || isBreaking || isRemote)
+          if (isActive)
             BoxShadow(
               color: ringColor.withValues(alpha: 0.2),
-              blurRadius: 40,
+              blurRadius: 36,
               spreadRadius: 8,
             ),
         ],
@@ -1256,28 +1345,28 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // 底部灰色细环
+          // 底部轨道环
           SizedBox(
-            width: 280,
-            height: 280,
+            width: ringSize,
+            height: ringSize,
             child: CircularProgressIndicator(
               value: 1.0,
-              strokeWidth: 12,
+              strokeWidth: strokeW,
               valueColor: AlwaysStoppedAnimation<Color>(trackColor),
             ),
           ),
-          // 进度粗环（带圆角）
+          // 进度环
           SizedBox(
-            width: 280,
-            height: 280,
+            width: ringSize,
+            height: ringSize,
             child: CircularProgressIndicator(
               value: remoteProgress,
-              strokeWidth: 12,
+              strokeWidth: strokeW,
               strokeCap: StrokeCap.round,
               valueColor: AlwaysStoppedAnimation<Color>(ringColor),
             ),
           ),
-          // 中间文字区域
+          // 中间文字
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1287,7 +1376,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
                   labelText,
                   key: ValueKey(_phase),
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: labelFontSize,
                     fontWeight: FontWeight.w500,
                     color: labelColor,
                   ),
@@ -1295,28 +1384,30 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                timeStr,
+              const SizedBox(height: 2),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOut,
                 style: TextStyle(
-                  fontSize: 64,
+                  fontSize: timeFontSize,
                   fontWeight: FontWeight.w300,
                   color: timeColor,
                   fontFeatures: const [FontFeature.tabularFigures()],
                   letterSpacing: -2,
                 ),
+                child: Text(timeStr),
               ),
               const SizedBox(height: 2),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 decoration: BoxDecoration(
                   color: cycleBgColor,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   cycleText,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: cycleTextColor,
                   ),
@@ -1331,12 +1422,6 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   @override
   Widget build(BuildContext context) {
-    // 初始化（加载本地状态 + 连接 WS）完成前显示加载中，
-    // 避免接收端先闪出"准备开始"界面再跳到倒计时
-    if (_initializing) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     final bool isIdle = _phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished;
     final bool isFocusing = _phase == PomodoroPhase.focusing;
     final bool isRemoteWatching = _phase == PomodoroPhase.remoteWatching;
@@ -1344,77 +1429,371 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
     return SafeArea(
       bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // 顶部工具栏
-            SizedBox(
-              height: kToolbarHeight,
-              child: Row(
-                children: [
-                  // 专注/观察时显示返回按钮
-                  if ((isFocusing || isRemoteWatching) && Navigator.canPop(context))
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.pop(context),
-                    )
-                  else
-                    const SizedBox(width: 48),
-                  const Spacer(),
-                  // idle 时显示设置和标签（专注和观察模式都隐藏）
-                  AnimatedOpacity(
-                    opacity: isIdle ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 300),
-                    child: IgnorePointer(
-                      ignoring: !isIdle,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.settings_outlined),
-                            tooltip: '设置',
-                            onPressed: isIdle ? _showSettingsDialog : null,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.label_outline),
-                            tooltip: '标签',
-                            onPressed: isIdle ? _showTagsDialog : null,
-                          ),
-                        ],
+      child: AnimatedOpacity(
+        opacity: _initializing ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOut,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // ── 顶部工具栏 ──
+              SizedBox(
+                height: kToolbarHeight,
+                child: Row(
+                  children: [
+                    AnimatedOpacity(
+                      opacity: (isFocusing || isRemoteWatching) ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: IgnorePointer(
+                        ignoring: !(isFocusing || isRemoteWatching),
+                        child: Navigator.canPop(context)
+                            ? IconButton(
+                                icon: const Icon(Icons.arrow_back),
+                                onPressed: () => Navigator.pop(context),
+                              )
+                            : const SizedBox(width: 48),
                       ),
                     ),
-                  ),
-                ],
+                    const Spacer(),
+                    AnimatedOpacity(
+                      opacity: isIdle ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: IgnorePointer(
+                        ignoring: !isIdle,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.settings_outlined),
+                              tooltip: '设置',
+                              onPressed: isIdle ? _showSettingsDialog : null,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.label_outline),
+                              tooltip: '标签',
+                              onPressed: isIdle ? _showTagsDialog : null,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // 主内容区
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildImmersiveTimer(),
-                  const SizedBox(height: 32),
-                  _buildTaskArea(isIdle, isFocusing, isRemoteWatching, contentColor),
-                  const SizedBox(height: 40),
-                  _buildActionButtons(isIdle, isFocusing, isRemoteWatching, contentColor),
-                ],
+              // ── 主内容区 ──
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 400),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, anim) =>
+                      FadeTransition(opacity: anim, child: child),
+                  child: isIdle
+                      ? KeyedSubtree(
+                          key: const ValueKey('layout_idle'),
+                          child: _buildIdleLayout(contentColor),
+                        )
+                      : KeyedSubtree(
+                          key: ValueKey('layout_active_$_phase'),
+                          child: _buildActiveLayout(isFocusing, isRemoteWatching, contentColor),
+                        ),
+                ),
               ),
-            ),
-          ],
+
+              SafeArea(top: false, child: const SizedBox(height: 8)),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // ── 任务绑定区域（抽成独立方法，保持 build 整洁）────────────
+  // ── idle 布局：圆环偏上，中间标签，底部固定按钮 ──────────────
+  Widget _buildIdleLayout(Color contentColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // 圆环区域，给一个顶部弹性间距让它偏上
+        const Spacer(flex: 2),
+        _buildImmersiveTimer(),
+        const SizedBox(height: 20),
+        // 标签选择区（限高3行，可滚动）
+        _buildIdleMiddle(),
+        const Spacer(flex: 3),
+        // 底部按钮固定
+        _buildBottomActions(true, false, false, contentColor),
+      ],
+    );
+  }
+
+  // ── active 布局：圆环居中，下方标签只读 + 任务/按钮 ──────────
+  Widget _buildActiveLayout(bool isFocusing, bool isRemoteWatching, Color contentColor) {
+    // 专注中已选标签（只读展示）
+    final List<PomodoroTag> activeTags = _allTags
+        .where((t) => _selectedTagUuids.contains(t.uuid))
+        .toList();
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // 圆环（active 时大）
+        _buildImmersiveTimer(),
+        const SizedBox(height: 16),
+
+        // 已选标签（只读小胶囊）
+        if (activeTags.isNotEmpty && !isRemoteWatching) ...[
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            alignment: WrapAlignment.center,
+            children: activeTags.map((tag) {
+              final color = _hexToColor(tag.color);
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: color.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  tag.name,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: color.withValues(alpha: 0.9),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // 任务胶囊 / 观察提示（专注和休息中显示）
+        _buildTaskArea(false, isFocusing, isRemoteWatching, contentColor),
+        const SizedBox(height: 24),
+
+        // 操作按钮
+        _buildBottomActions(false, isFocusing, isRemoteWatching, contentColor),
+      ],
+    );
+  }
+
+  /// idle 状态中间区：标签（限 3 行，超出可滚动）+ 任务区在底部单独处理
+  Widget _buildIdleMiddle() {
+    if (_allTags.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    // 计算 chip 高度：每行约 40px，3 行约 140px
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 148),
+      child: SingleChildScrollView(
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: _allTags.map((tag) {
+            final selected = _selectedTagUuids.contains(tag.uuid);
+            final color = _hexToColor(tag.color);
+            return FilterChip(
+              label: Text(tag.name, style: const TextStyle(fontSize: 13)),
+              selected: selected,
+              showCheckmark: false,
+              selectedColor: color.withValues(alpha: 0.2),
+              side: BorderSide(
+                color: selected ? color : Theme.of(context).colorScheme.outlineVariant,
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              onSelected: (val) async {
+                setState(() {
+                  if (val) {
+                    _selectedTagUuids.add(tag.uuid);
+                  } else {
+                    _selectedTagUuids.remove(tag.uuid);
+                  }
+                });
+                await _persistIdleBoundTodo(_boundTodo);
+              },
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  /// 底部固定操作区
+  Widget _buildBottomActions(bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
+    // 观察模式
+    if (isRemoteWatching) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.info_outline, size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+            const SizedBox(width: 6),
+            Text(
+              '请在专注发起端进行操作',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isIdle) {
+      // 并排：[绑定任务(Expanded)]  [开始专注(Expanded)]
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            // 绑定任务按钮
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _showBindTodoDialog,
+                icon: Icon(
+                  _boundTodo != null ? Icons.task_alt : Icons.add_task,
+                  size: 20,
+                  color: _boundTodo != null
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                label: Flexible(
+                  child: Text(
+                    _boundTodo?.title ?? '绑定任务',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: _boundTodo != null ? FontWeight.w600 : FontWeight.normal,
+                      color: _boundTodo != null
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  side: BorderSide(
+                    color: _boundTodo != null
+                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.6)
+                        : Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // 开始专注按钮
+            Expanded(
+              child: FilledButton.icon(
+                key: const ValueKey('start_btn'),
+                onPressed: () {
+                  if (_phase == PomodoroPhase.finished) {
+                    setState(() {
+                      _currentCycle = 1;
+                      _remainingSeconds = _settings.focusMinutes * 60;
+                    });
+                  }
+                  _startFocus();
+                },
+                icon: const Icon(Icons.play_arrow_rounded, size: 24),
+                label: Text(
+                  _phase == PomodoroPhase.finished ? '再来一轮' : '开始专注',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: const Color(0xFFFF6B6B),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isFocusing) {
+      return Column(
+        key: const ValueKey('focus_btns'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _finishEarly,
+                  icon: const Icon(Icons.check_circle_outline, size: 20),
+                  label: const Text('提前完成', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: const Color(0xFF4CAF50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _abandonFocus,
+                  icon: const Icon(Icons.stop_circle_outlined, size: 20),
+                  label: const Text('放弃专注', style: TextStyle(fontSize: 15)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    // 休息中
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: OutlinedButton.icon(
+        key: const ValueKey('skip_break_btn'),
+        onPressed: () async {
+          _ticker?.cancel();
+          NotificationService.cancelNotification();
+          await _persistIdleBoundTodo(_boundTodo);
+          await PomodoroService.clearRunState();
+          setState(() {
+            _phase = PomodoroPhase.idle;
+            _currentCycle += 1;
+            _remainingSeconds = _settings.focusMinutes * 60;
+          });
+          widget.onPhaseChanged(_phase);
+        },
+        icon: const Icon(Icons.skip_next_rounded),
+        label: const Text('跳过休息', style: TextStyle(fontSize: 16)),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 52),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
+  // ── 任务胶囊（active 状态中间区）──────────────────────────────
   Widget _buildTaskArea(bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
-    // 观察模式：显示只读任务胶囊（不可点击）
     if (isRemoteWatching) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(30),
@@ -1423,7 +1802,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.track_changes_outlined, size: 16,
+            Icon(Icons.track_changes_outlined, size: 15,
                 color: const Color(0xFFFF6B6B).withValues(alpha: 0.7)),
             const SizedBox(width: 8),
             Flexible(
@@ -1442,258 +1821,75 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       );
     }
 
-    if (isIdle) {
-      return Column(
-        children: [
-          // 标签选择
-          if (_allTags.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: _allTags.map((tag) {
-                final selected = _selectedTagUuids.contains(tag.uuid);
-                final color = _hexToColor(tag.color);
-                return FilterChip(
-                  label: Text(tag.name, style: const TextStyle(fontSize: 13)),
-                  selected: selected,
-                  showCheckmark: false,
-                  selectedColor: color.withValues(alpha: 0.2),
-                  side: BorderSide(
-                    color: selected ? color : Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  onSelected: (val) async {
-                    setState(() {
-                      if (val) {
-                        _selectedTagUuids.add(tag.uuid);
-                      } else {
-                        _selectedTagUuids.remove(tag.uuid);
-                      }
-                    });
-                    // await 确保写入完成，防止快速离开导致持久化丢失
-                    await _persistIdleBoundTodo(_boundTodo);
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 24),
-          ],
-          // 任务绑定卡片
-          InkWell(
+    if (isFocusing) {
+      // 可点击切换的任务胶囊（全宽）
+      return GestureDetector(
+        onTap: () => _showBindTodoDialog(isSwitching: _boundTodo != null),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(16),
-            onTap: _showBindTodoDialog,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _boundTodo != null
-                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
-                          : Theme.of(context).colorScheme.surfaceContainerHighest,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _boundTodo != null ? Icons.task_alt : Icons.add_task,
-                      color: _boundTodo != null
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _boundTodo?.title ?? '点击绑定专注任务',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight:
-                                _boundTodo != null ? FontWeight.bold : FontWeight.normal,
-                            color: _boundTodo == null
-                                ? Theme.of(context).colorScheme.onSurfaceVariant
-                                : null,
-                          ),
-                        ),
-                        if (_boundTodo?.remark != null && _boundTodo!.remark!.isNotEmpty)
-                          Text(
-                            _boundTodo!.remark!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ],
-              ),
-            ),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           ),
-        ],
-      );
-    }
-
-    // 专注/休息中：始终显示任务胶囊，无论是否已绑定
-    return GestureDetector(
-      onTap: isFocusing ? () => _showBindTodoDialog(isSwitching: _boundTodo != null) : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              _boundTodo != null ? Icons.track_changes_outlined : Icons.add_task,
-              size: 16,
-              color: _boundTodo != null
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                _boundTodo?.title ?? '点击绑定任务',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: _boundTodo != null ? FontWeight.w500 : FontWeight.normal,
-                  color: _boundTodo != null
-                      ? contentColor
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
+          child: Row(
+            children: [
+              Icon(
+                _boundTodo != null ? Icons.track_changes_outlined : Icons.add_task,
+                size: 16,
+                color: _boundTodo != null
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _boundTodo?.title ?? '点击绑定任务',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: _boundTodo != null ? FontWeight.w500 : FontWeight.normal,
+                    color: _boundTodo != null
+                        ? contentColor
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-            if (isFocusing) ...[
-              const SizedBox(width: 8),
               Icon(
                 _boundTodo != null ? Icons.swap_horiz : Icons.chevron_right,
                 size: 16,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ],
-          ],
+          ),
         ),
+      );
+    }
+
+    // 休息中：只读胶囊
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4)),
       ),
-    );
-  }
-
-  // ── 底部操作按钮 ──────────────────────────────────────────────
-  Widget _buildActionButtons(bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
-    // 观察模式：只显示提示文字，无任何可操作按钮
-    if (isRemoteWatching) {
-      return Column(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.info_outline, size: 18,
+          Icon(Icons.track_changes_outlined, size: 15,
               color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-          const SizedBox(height: 6),
-          Text(
-            '请在专注发起端进行操作',
-            style: TextStyle(
-              fontSize: 13,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              _boundTodo?.title ?? '自由专注',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
         ],
-      );
-    }
-
-    if (isIdle) {
-      return FilledButton.icon(
-        key: const ValueKey('start_btn'),
-        onPressed: () {
-          if (_phase == PomodoroPhase.finished) {
-            setState(() {
-              _currentCycle = 1;
-              _remainingSeconds = _settings.focusMinutes * 60;
-            });
-          }
-          _startFocus();
-        },
-        icon: const Icon(Icons.play_arrow_rounded, size: 28),
-        label: Text(
-          _phase == PomodoroPhase.finished ? '再来一轮' : '开始专注',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(220, 56),
-          backgroundColor: const Color(0xFFFF6B6B),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-          elevation: 4,
-        ),
-      );
-    }
-
-    if (isFocusing) {
-      return Column(
-        key: const ValueKey('focus_btns'),
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FilledButton.icon(
-            onPressed: _finishEarly,
-            icon: const Icon(Icons.check_circle_outline, size: 22),
-            label: const Text('提前完成',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(220, 52),
-              backgroundColor: const Color(0xFF4CAF50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            onPressed: _abandonFocus,
-            icon: const Icon(Icons.stop_circle_outlined, size: 20),
-            label: const Text('放弃本次专注', style: TextStyle(fontSize: 15)),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-          ),
-        ],
-      );
-    }
-
-    // 休息中
-    return OutlinedButton.icon(
-      key: const ValueKey('skip_break_btn'),
-      onPressed: () async {
-        _ticker?.cancel();
-        NotificationService.cancelNotification();
-        // 先写 idle 持久化，再清 RunState，保留绑定任务和标签
-        await _persistIdleBoundTodo(_boundTodo);
-        await PomodoroService.clearRunState();
-        setState(() {
-          _phase = PomodoroPhase.idle;
-          _currentCycle += 1;
-          _remainingSeconds = _settings.focusMinutes * 60;
-        });
-        widget.onPhaseChanged(_phase);
-      },
-      icon: const Icon(Icons.skip_next_rounded),
-      label: const Text('跳过休息', style: TextStyle(fontSize: 16)),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       ),
     );
   }
@@ -1822,14 +2018,23 @@ class _TagManagerSheetState extends State<_TagManagerSheet> {
             )
           else
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 320),
-              child: ListView.builder(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: ReorderableListView.builder(
                 shrinkWrap: true,
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    if (newIndex > oldIndex) newIndex--;
+                    final tag = _tags.removeAt(oldIndex);
+                    _tags.insert(newIndex, tag);
+                  });
+                  widget.onChanged(_tags, _selected);
+                },
                 itemCount: _tags.length,
                 itemBuilder: (_, i) {
                   final tag = _tags[i];
                   final color = _hexToColor(tag.color);
                   return ListTile(
+                    key: ValueKey(tag.uuid),
                     leading: CircleAvatar(radius: 8, backgroundColor: color),
                     title: Text(tag.name),
                     trailing: Row(
@@ -1859,6 +2064,8 @@ class _TagManagerSheetState extends State<_TagManagerSheet> {
                             widget.onChanged(_tags, _selected);
                           },
                         ),
+                        const Icon(Icons.drag_handle, size: 20, color: Colors.grey),
+                        const SizedBox(width: 4),
                       ],
                     ),
                   );
@@ -2162,6 +2369,131 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
     );
   }
 
+  // ── 构建明细列表（月/年维度按天分组，日维度直接列出）──────
+  List<Widget> _buildSessionList() {
+    // 按开始时间降序（最近的在前）
+    final sorted = List<PomodoroSession>.from(_sessions)
+      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+
+    if (_dimension == 0) {
+      // 日视图：直接列出，只显示时刻
+      return sorted.map((s) => _buildSessionCard(s, showDate: false)).toList();
+    }
+
+    // 月/年视图：按"本地日期"分组，组内按时间降序
+    final Map<String, List<PomodoroSession>> groups = {};
+    for (final s in sorted) {
+      final local = DateTime.fromMillisecondsSinceEpoch(s.startTime, isUtc: true).toLocal();
+      final key = DateFormat('yyyy-MM-dd').format(local);
+      groups.putIfAbsent(key, () => []).add(s);
+    }
+
+    // 按日期键降序（最近日期在最上）
+    final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final widgets = <Widget>[];
+    for (final key in sortedKeys) {
+      final dayDate = DateTime.parse(key);
+      final dayLabel = _dimension == 1
+          ? DateFormat('MM月dd日').format(dayDate)
+          : DateFormat('yyyy年MM月dd日').format(dayDate);
+      widgets.add(Padding(
+        padding: const EdgeInsets.only(top: 16, bottom: 8),
+        child: Text(
+          dayLabel,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ));
+      for (final s in groups[key]!) {
+        widgets.add(_buildSessionCard(s, showDate: false));
+      }
+    }
+    return widgets;
+  }
+
+  Widget _buildSessionCard(PomodoroSession s, {required bool showDate}) {
+    final startLocal = DateTime.fromMillisecondsSinceEpoch(s.startTime, isUtc: true).toLocal();
+    final tagNames = s.tagUuids.isNotEmpty
+        ? s.tagUuids
+            .map((uuid) => _tags.cast<PomodoroTag?>()
+                .firstWhere((t) => t?.uuid == uuid, orElse: () => null)
+                ?.name ?? uuid)
+            .join(', ')
+        : null;
+    final timeLabel = showDate
+        ? DateFormat('MM-dd HH:mm').format(startLocal)
+        : DateFormat('HH:mm').format(startLocal);
+
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: s.isCompleted
+                ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
+                : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            s.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded,
+            color: s.isCompleted ? const Color(0xFF4ECDC4) : const Color(0xFFFF6B6B),
+          ),
+        ),
+        title: Text(s.todoTitle ?? '自由专注',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            children: [
+              Text(timeLabel, style: const TextStyle(fontSize: 13)),
+              if (tagNames != null) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(tagNames,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              PomodoroService.formatDuration(s.effectiveDuration),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.more_vert, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () => _editSession(s),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _deleteSession(PomodoroSession session) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -2377,96 +2709,8 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
           if (_sessions.isNotEmpty) ...[
             const Text('专注明细', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            ..._sessions.map((s) {
-              final startLocal = DateTime.fromMillisecondsSinceEpoch(
-                      s.startTime, isUtc: true)
-                  .toLocal();
-              final tagNames = s.tagUuids.isNotEmpty
-                  ? s.tagUuids
-                      .map((uuid) => _tags
-                          .cast<PomodoroTag?>()
-                          .firstWhere((t) => t?.uuid == uuid,
-                              orElse: () => null)
-                          ?.name ?? uuid)
-                      .join(', ')
-                  : null;
-              return Card(
-                elevation: 0,
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(alpha: 0.3),
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                child: ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: s.isCompleted
-                          ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
-                          : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      s.isCompleted
-                          ? Icons.check_circle_rounded
-                          : Icons.timer_off_rounded,
-                      color: s.isCompleted
-                          ? const Color(0xFF4ECDC4)
-                          : const Color(0xFFFF6B6B),
-                    ),
-                  ),
-                  title: Text(s.todoTitle ?? '自由专注',
-                      style:
-                          const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      children: [
-                        Text(DateFormat('HH:mm').format(startLocal),
-                            style: const TextStyle(fontSize: 13)),
-                        if (tagNames != null) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(tagNames,
-                                style: const TextStyle(fontSize: 11)),
-                          ),
-                        ]
-                      ],
-                    ),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        PomodoroService.formatDuration(s.effectiveDuration),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                      const SizedBox(width: 4),
-                      // 编辑按钮
-                      IconButton(
-                        icon: const Icon(Icons.more_vert, size: 20),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () => _editSession(s),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
+            // 按日期分组：月/年维度按天分组，日维度直接列出
+            ..._buildSessionList(),
           ] else
             Center(
               child: Padding(

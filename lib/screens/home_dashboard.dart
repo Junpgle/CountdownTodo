@@ -424,6 +424,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       _checkUpdatesSilently();
       // 从番茄钟页或任何前台切换回来时，刷新专注记录卡片
       if (mounted) setState(() => _pomodoroRefreshTrigger++);
+      // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
+      _syncService.resumeSync();
     }
   }
 

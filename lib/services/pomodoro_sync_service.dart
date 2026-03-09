@@ -128,6 +128,13 @@ class PomodoroSyncService {
     await _doConnect();
   }
 
+  /// App 从后台恢复时调用：无论是否已连接，都强制重连，
+  /// 触发服务器的"迟到同步"机制推送最新 focusState（SYNC 消息）。
+  Future<void> resumeSync() async {
+    if (_userId == null || _deviceId == null) return;
+    await _doConnect();
+  }
+
   // ── 内部连接 ─────────────────────────────────────────────
 
   Future<void> _doConnect() async {
