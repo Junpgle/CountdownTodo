@@ -25,12 +25,12 @@ class ChangelogEntry {
   });
 
   factory ChangelogEntry.fromJson(Map<String, dynamic> json) => ChangelogEntry(
-        versionName: json['version_name'] ?? '',
-        date: json['date'] ?? '',
-        items: (json['items'] as List<dynamic>? ?? [])
-            .map((e) => e.toString())
-            .toList(),
-      );
+    versionName: json['version_name'] ?? '',
+    date: json['date'] ?? '',
+    items: (json['items'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList(),
+  );
 }
 
 class AppManifest {
@@ -103,19 +103,22 @@ class UpdateService {
 
   static bool _isDialogShowing = false;
 
-  // 🚀 全局下载状态：脱离UI独立存活，弹窗重开也能接上进度
+  // 全局下载状态：脱离UI独立存活，弹窗重开也能接上进度
   static bool _isDownloading = false;
   static double _downloadProgress = 0.0;
   static bool _isDownloaded = false;
-  static String? _localApkPath;
+  static String? _localPackagePath;
   static StreamSubscription<List<int>>? _downloadSubscription;
 
-  // 用于动态绑定最新打开的弹窗回调
   static Function(double)? _uiProgressCallback;
   static Function(String)? _uiCompleteCallback;
   static Function(String)? _uiErrorCallback;
 
-  static String getUpdateFileName(String versionName) => "MathQuiz_v$versionName.apk";
+  // 🚀 动态区分 Android 和 Windows 的安装包后缀
+  static String getUpdateFileName(String versionName) {
+    if (Platform.isWindows) return "MathQuiz_v$versionName.exe";
+    return "MathQuiz_v$versionName.apk";
+  }
 
   static Future<AppManifest?> checkManifest() async {
     try {
@@ -125,13 +128,12 @@ class UpdateService {
         return AppManifest.fromJson(jsonDecode(body));
       }
     } catch (e) {
-      print("获取更新配置失败: $e");
+      debugPrint("获取更新配置失败: $e");
     }
     return null;
   }
 
-  /// 检查特定版本的安装包是否已经完整下载到本地
-  static Future<String?> isApkAlreadyDownloaded(String versionName) async {
+  static Future<String?> isPackageAlreadyDownloaded(String versionName) async {
     final path = await getDownloadDirectory();
     if (path == null) return null;
 
@@ -140,20 +142,17 @@ class UpdateService {
 
     if (!await file.exists()) {
       final zipFile = File("$path/$fileName.zip");
-      if (await zipFile.exists()) {
-        file = zipFile;
-      }
+      if (await zipFile.exists()) file = zipFile;
     }
 
-    // 🚀 因为我们引入了 .download 临时后缀，所以能走到这的绝对是 100% 下载完毕的好包
     if (await file.exists() && await file.length() > 1024 * 1024) {
       return file.path;
     }
     return null;
   }
 
-  /// 1. 环境准备：清理所有旧版本和损坏的包，并请求权限
   static Future<bool> prepareForDownload(String targetVersionName) async {
+    // Windows 直接放行，跳过移动端权限申请
     if (!Platform.isAndroid) return true;
 
     final deviceInfo = DeviceInfoPlugin();
@@ -181,22 +180,19 @@ class UpdateService {
           final List<FileSystemEntity> files = dir.listSync();
           for (var file in files) {
             String name = file.path.split(Platform.pathSeparator).last.toLowerCase();
-            // 清理旧包与各种下载残骸
-            if (name.endsWith(".apk") || name.endsWith(".zip") || name.endsWith(".download")) {
-              print("清理发现的残留或旧包: ${file.path}");
+            if (name.endsWith(".apk") || name.endsWith(".exe") || name.endsWith(".zip") || name.endsWith(".download")) {
               await file.delete();
             }
           }
         }
       }
     } catch (e) {
-      print("预清理旧文件失败: $e");
+      debugPrint("预清理旧文件失败: $e");
     }
 
     return true;
   }
 
-  /// 2. 获取公开下载目录中的专属文件夹
   static Future<String?> getDownloadDirectory() async {
     if (Platform.isAndroid) {
       const String baseDownloadPath = '/storage/emulated/0/Download';
@@ -204,9 +200,7 @@ class UpdateService {
       final customDir = Directory(customPath);
 
       try {
-        if (!await customDir.exists()) {
-          await customDir.create(recursive: true);
-        }
+        if (!await customDir.exists()) await customDir.create(recursive: true);
         return customDir.path;
       } catch (e) {
         final externalDir = await getExternalStorageDirectory();
@@ -214,19 +208,17 @@ class UpdateService {
       }
     }
 
+    // Windows 获取系统 Downloads 文件夹
     final downloadDir = await getDownloadsDirectory();
     if (downloadDir != null) {
       final customDir = Directory('${downloadDir.path}/CountdownTodo');
-      if (!await customDir.exists()) {
-        await customDir.create(recursive: true);
-      }
+      if (!await customDir.exists()) await customDir.create(recursive: true);
       return customDir.path;
     }
     return null;
   }
 
-  /// 3. 安装唤起
-  static Future<void> installApk(String filePath) async {
+  static Future<void> installPackage(String filePath) async {
     File file = File(filePath);
 
     if (!await file.exists()) {
@@ -250,15 +242,8 @@ class UpdateService {
 
     await OpenFile.open(
       file.path,
-      type: "application/vnd.android.package-archive",
+      type: Platform.isAndroid ? "application/vnd.android.package-archive" : null,
     );
-  }
-
-  static Future<void> launchURL(String url) async {
-    final Uri uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw '无法打开链接 $url';
-    }
   }
 
   static Future<void> checkUpdateAndPrompt(BuildContext context, {bool isManual = false}) async {
@@ -273,33 +258,41 @@ class UpdateService {
     }
 
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
-    int localBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
     String localVersion = packageInfo.version;
 
     bool hasUpdate = false;
     try {
-      List<int> v1 = manifest.versionName.split('.').map(int.parse).toList();
-      List<int> v2 = localVersion.split('.').map(int.parse).toList();
-      int minLen = v1.length < v2.length ? v1.length : v2.length;
+      // 🚀 核心修复：纯三位数版本号对比，不依赖任何 BuildNumber 和 versionCode
+      String cleanManifestVersion = manifest.versionName.split('+')[0].split('-')[0];
+      String cleanLocalVersion = localVersion.split('+')[0].split('-')[0];
+
+      List<int> v1 = cleanManifestVersion.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      List<int> v2 = cleanLocalVersion.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+      int maxLen = v1.length > v2.length ? v1.length : v2.length;
       bool isVersionDifferent = false;
 
-      for (int i = 0; i < minLen; i++) {
-        if (v1[i] > v2[i]) {
+      for (int i = 0; i < maxLen; i++) {
+        int p1 = i < v1.length ? v1[i] : 0;
+        int p2 = i < v2.length ? v2[i] : 0;
+
+        if (p1 > p2) {
           hasUpdate = true;
           isVersionDifferent = true;
           break;
-        } else if (v1[i] < v2[i]) {
+        } else if (p1 < p2) {
           hasUpdate = false;
           isVersionDifferent = true;
           break;
         }
       }
 
+      // 如果 versionName 字符串一致，绝对禁止误判更新
       if (!isVersionDifferent) {
-        hasUpdate = manifest.versionCode > localBuild;
+        hasUpdate = false;
       }
     } catch (e) {
-      hasUpdate = manifest.versionCode > localBuild;
+      hasUpdate = false;
     }
 
     bool hasNotice = manifest.announcement.show;
@@ -327,12 +320,11 @@ class UpdateService {
     if (_isDialogShowing) return;
     _isDialogShowing = true;
 
-    // 💡 渲染前检查本地是否已经有现成的安装包（仅当没在下载时才检查）
     if (!_isDownloading && !_isDownloaded) {
-      String? existingPath = await isApkAlreadyDownloaded(manifest.versionName);
+      String? existingPath = await isPackageAlreadyDownloaded(manifest.versionName);
       if (existingPath != null) {
         _isDownloaded = true;
-        _localApkPath = existingPath;
+        _localPackagePath = existingPath;
       }
     }
 
@@ -346,12 +338,10 @@ class UpdateService {
       barrierDismissible: false,
       builder: (ctx) {
         return PopScope(
-          // 只要不是强制更新，无论是不是在下载，都允许返回（隐藏弹窗），完美支持后台下载！
           canPop: !manifest.forceUpdate,
           child: StatefulBuilder(
               builder: (BuildContext context, StateSetter setState) {
 
-                // 🚀 动态绑定回调到当前弹出的UI上，任何数据流变动直接驱动这里的 setState
                 _uiProgressCallback = (p) { if (context.mounted) setState(() {}); };
                 _uiCompleteCallback = (path) { if (context.mounted) setState(() {}); };
                 _uiErrorCallback = (err) {
@@ -401,18 +391,19 @@ class UpdateService {
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.stretch,
                                       children: [
+                                        // 🚀 核心防崩区域：安全地保留纯 Text，禁止外部包裹任何 Expanded/Flexible
                                         ElevatedButton.icon(
                                           icon: const Icon(Icons.system_update),
-                                          label: const Text("下载完成，立即安装"),
+                                          label: const Text("下载完成，立即安装", overflow: TextOverflow.ellipsis),
                                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
                                           onPressed: () {
-                                            if (_localApkPath != null) installApk(_localApkPath!);
+                                            if (_localPackagePath != null) installPackage(_localPackagePath!);
                                           },
                                         ),
                                         TextButton(
                                           onPressed: () {
                                             if (_isDownloading) return;
-                                            setState(() {}); // 触发UI转入等待动画
+                                            setState(() {});
                                             _startForegroundDownload(manifest);
                                           },
                                           child: const Text("安装失败？点击强制重新下载", style: TextStyle(color: Colors.grey, fontSize: 13, decoration: TextDecoration.underline)),
@@ -447,7 +438,7 @@ class UpdateService {
                                       width: double.infinity,
                                       child: ElevatedButton.icon(
                                           icon: const Icon(Icons.download),
-                                          label: const Text("立即下载新版本"),
+                                          label: const Text("立即下载新版本", overflow: TextOverflow.ellipsis),
                                           onPressed: () {
                                             if (_isDownloading) return;
                                             setState(() {});
@@ -478,7 +469,6 @@ class UpdateService {
                     if (!manifest.forceUpdate)
                       TextButton(
                           onPressed: () => Navigator.pop(ctx),
-                          // 动态文本提示：如果正在下载，允许用户把弹窗藏到后台
                           child: Text(_isDownloading ? "后台下载" : (_isDownloaded ? "关闭" : "稍后再说"), style: const TextStyle(color: Colors.grey))
                       ),
                   ],
@@ -488,7 +478,6 @@ class UpdateService {
         );
       },
     ).then((_) {
-      // 弹窗销毁时释放锁，并剥离绑定的回调防止内存泄漏（但保留下载状态！）
       _isDialogShowing = false;
       _uiProgressCallback = null;
       _uiCompleteCallback = null;
@@ -496,11 +485,7 @@ class UpdateService {
     });
   }
 
-  // =========================================================================
-  // 👉 终极防御：带 .download 安全后缀与断点续联的流式下载
-  // =========================================================================
   static Future<void> _startForegroundDownload(AppManifest manifest) async {
-    // 强制斩断上一个未完结的流（防止重下时产生幽灵线程）
     await _downloadSubscription?.cancel();
 
     _isDownloading = true;
@@ -524,7 +509,6 @@ class UpdateService {
 
     String fileName = getUpdateFileName(manifest.versionName);
     String savePath = "$path/$fileName";
-    // 🚀 核心防御：下载过程中的临时后缀！
     String tempPath = "$savePath.download";
     File tempFile = File(tempPath);
 
@@ -544,18 +528,16 @@ class UpdateService {
             sink.add(chunk);
             if (totalBytes > 0) {
               _downloadProgress = receivedBytes / totalBytes;
-              // 通知绑定的弹窗（如果弹窗关了，回调是 null，也不影响后台继续跑）
               _uiProgressCallback?.call(_downloadProgress);
             }
           },
           onDone: () async {
             await sink.close();
-            // 🚀 下载到100%了，终于可以光明正大把名字改回 .apk！
             File finalFile = await tempFile.rename(savePath);
 
             _isDownloading = false;
             _isDownloaded = true;
-            _localApkPath = finalFile.path;
+            _localPackagePath = finalFile.path;
 
             _uiCompleteCallback?.call(finalFile.path);
           },

@@ -199,7 +199,7 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         break;
       case 'usage_stats':
-        // 应用使用情况权限必须去系统设置页开启
+      // 应用使用情况权限必须去系统设置页开启
         try {
           final bool opened = await platform.invokeMethod('openUsageStatsSettings') ?? false;
           if (!opened) await openAppSettings();
@@ -313,6 +313,14 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  // === 辅助方法：字节大小格式化 ===
+  String _formatSize(double size) {
+    if (size <= 0) return "0 B";
+    const List<String> suffixes = ["B", "KB", "MB", "GB", "TB"];
+    int i = (log(size) / log(1024)).floor();
+    return '${(size / pow(1024, i)).toStringAsFixed(2)} ${suffixes[i]}';
+  }
+
   // === 深度缓存计算与清理 ===
   Future<void> _calculateCacheSize() async {
     try {
@@ -325,12 +333,13 @@ class _SettingsPageState extends State<SettingsPage> {
       size += _getTotalSizeOfFilesInDir(supportDir);
 
       final docDir = await getApplicationDocumentsDirectory();
-      size += _getApkSizeInDir(docDir);
+      // 🚀 更新为清理包括 exe 在内的安装包
+      size += _getPackageSizeInDir(docDir);
 
       if (Platform.isAndroid) {
         final extDir = await getExternalStorageDirectory();
         if (extDir != null) {
-          size += _getApkSizeInDir(extDir);
+          size += _getPackageSizeInDir(extDir);
         }
       }
 
@@ -361,26 +370,22 @@ class _SettingsPageState extends State<SettingsPage> {
     return 0;
   }
 
-  double _getApkSizeInDir(Directory dir) {
+  // 🚀 获取 APK 和 EXE 安装包的体积
+  double _getPackageSizeInDir(Directory dir) {
     double total = 0;
     if (dir.existsSync()) {
       try {
         for (var child in dir.listSync(recursive: true)) {
-          if (child is File && child.path.toLowerCase().endsWith('.apk')) {
-            total += child.lengthSync();
+          if (child is File) {
+            String name = child.path.toLowerCase();
+            if (name.endsWith('.apk') || name.endsWith('.exe')) {
+              total += child.lengthSync();
+            }
           }
         }
       } catch (e) {}
     }
     return total;
-  }
-
-  String _formatSize(double value) {
-    if (value == 0) return '0 B';
-    if (value < 1024) return '${value.toStringAsFixed(0)} B';
-    if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(2)} KB';
-    if (value < 1024 * 1024 * 1024) return '${(value / (1024 * 1024)).toStringAsFixed(2)} MB';
-    return '${(value / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   Future<void> _clearCache() async {
@@ -401,11 +406,11 @@ class _SettingsPageState extends State<SettingsPage> {
       _deleteDirectoryContents(supportDir);
 
       final docDir = await getApplicationDocumentsDirectory();
-      _deleteApkFilesInDir(docDir);
+      _deletePackageFilesInDir(docDir);
 
       if (Platform.isAndroid) {
         final extDir = await getExternalStorageDirectory();
-        if (extDir != null) _deleteApkFilesInDir(extDir);
+        if (extDir != null) _deletePackageFilesInDir(extDir);
       }
 
       try {
@@ -440,14 +445,18 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  void _deleteApkFilesInDir(Directory dir) {
+  // 🚀 清理安装包文件
+  void _deletePackageFilesInDir(Directory dir) {
     if (dir.existsSync()) {
       try {
         for (var child in dir.listSync(recursive: true)) {
-          if (child is File && child.path.toLowerCase().endsWith('.apk')) {
-            try {
-              child.deleteSync();
-            } catch (e) {}
+          if (child is File) {
+            String name = child.path.toLowerCase();
+            if (name.endsWith('.apk') || name.endsWith('.exe')) {
+              try {
+                child.deleteSync();
+              } catch (e) {}
+            }
           }
         }
       } catch (e) {}
@@ -653,7 +662,8 @@ class _SettingsPageState extends State<SettingsPage> {
       if (task.filename != null) {
         final String fullPath = "${task.savedDir}/${task.filename}";
         await Future.delayed(const Duration(milliseconds: 1500));
-        await UpdateService.installApk(fullPath);
+        // 🚀 核心修复：更新为调起统一跨平台的 installPackage 方法
+        await UpdateService.installPackage(fullPath);
       }
     } catch (e) {}
   }
@@ -1449,8 +1459,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   padding: const EdgeInsets.all(4.0),
                   child: _isCheckingPermissions
                       ? const SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.refresh, size: 18, color: Colors.grey),
                 ),
               ),
@@ -1840,7 +1850,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   context: context,
                   builder: (ctx) => AlertDialog(
                     title: const Text("深度清理空间"),
-                    content: Text("检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响)"),
+                    content: Text("检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK/EXE) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响)"),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
                       FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("清理")),
@@ -1884,4 +1894,3 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
-

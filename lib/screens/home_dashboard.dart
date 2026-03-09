@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -106,10 +107,13 @@ class _HomeDashboardState extends State<HomeDashboard>
     WidgetService.init();
     _initCrossDevicePomodoro(); // 首页也连接 WS
 
-    const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
-    platform.setMethodCallHandler((call) async {
-      if (call.method == "markCurrentTodoDone") _markCurrentTodoDone();
-    });
+    // 🚀 桌面端拦截：确保只在移动设备监听通道
+    if (Platform.isAndroid || Platform.isIOS) {
+      const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+      platform.setMethodCallHandler((call) async {
+        if (call.method == "markCurrentTodoDone") _markCurrentTodoDone();
+      });
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 500), () { if (mounted) _initNotifications(); });
@@ -565,13 +569,28 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   Future<void> _initNotifications() async {
     await NotificationService.init();
-    if (await Permission.notification.isDenied) {
-      await Permission.notification.request();
+    // 🚀 桌面端拦截：Windows 暂无原生通知权限请求
+    if (Platform.isAndroid || Platform.isIOS) {
+      if (await Permission.notification.isDenied) {
+        await Permission.notification.request();
+      }
     }
   }
 
   Future<void> _initScreenTime() async {
     if (mounted) setState(() => _isLoadingScreenTime = true);
+
+    // 🚀 桌面端拦截：直接屏蔽 Android 专属的屏幕时间权限请求
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      if (mounted) {
+        setState(() {
+          _hasUsagePermission = true; // 假装已授权，防止渲染错误按钮
+          _screenTimeStats = [];
+          _isLoadingScreenTime = false;
+        });
+      }
+      return;
+    }
 
     bool permit = await ScreenTimeService.checkPermission();
     if (mounted) {
@@ -640,8 +659,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     if (activeTodos.isEmpty || activeTodos.every((t) => t.isDone)) {
-      const MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications')
-          .invokeMethod('cancelNotification');
+      // 🚀 桌面端拦截
+      if (Platform.isAndroid || Platform.isIOS) {
+        const MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications')
+            .invokeMethod('cancelNotification');
+      }
     } else {
       NotificationService.updateTodoNotification(activeTodos);
     }
@@ -683,8 +705,11 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
 
       if (syncScreenTime) {
-        await ScreenTimeService.syncScreenTime(userId);
-        await _loadCachedScreenTime();
+        // 🚀 桌面端拦截
+        if (Platform.isAndroid || Platform.isIOS) {
+          await ScreenTimeService.syncScreenTime(userId);
+          await _loadCachedScreenTime();
+        }
       }
 
       await StorageService.updateLastAutoSyncTime();
@@ -889,7 +914,12 @@ class _HomeDashboardState extends State<HomeDashboard>
                           SectionHeader(title: "屏幕时间 (今日汇总)", icon: Icons.timer_outlined, isLight: isLight),
                           ScreenTimeCard(
                             stats: _screenTimeStats, hasPermission: _hasUsagePermission, isLoading: _isLoadingScreenTime, lastSyncTime: _lastScreenTimeSync,
-                            onOpenSettings: () async { await ScreenTimeService.openSettings(); _initScreenTime(); },
+                            onOpenSettings: () async {
+                              if (Platform.isAndroid || Platform.isIOS) {
+                                await ScreenTimeService.openSettings();
+                              }
+                              _initScreenTime();
+                            },
                             onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(todayStats: _screenTimeStats))); },
                           ),
                         ],
@@ -1019,4 +1049,3 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 }
-

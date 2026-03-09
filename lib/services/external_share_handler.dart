@@ -13,6 +13,9 @@ class ExternalShareHandler {
 
   /// 初始化监听，放在主页的 initState 中调用
   static void init(BuildContext context, Function onSuccessCallback) {
+    // 🚀 桌面端拦截：Windows/macOS 暂不支持 ReceiveSharingIntent
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+
     // 1. 处理 App 在后台运行时，其他应用分享进来的文件 (热启动)
     _intentDataStreamSubscription = ReceiveSharingIntent.instance.getMediaStream().listen((List<SharedMediaFile> value) {
       _processSharedFiles(context, value, onSuccessCallback);
@@ -27,6 +30,9 @@ class ExternalShareHandler {
   }
 
   static void _processSharedFiles(BuildContext context, List<SharedMediaFile> files, Function onSuccess) async {
+    // 🚀 桌面端拦截
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+
     // 🚀 核心拦截：如果正在处理，或者文件为空，立刻抛弃后续的重复通知！
     if (files.isEmpty || _isProcessing) return;
     _isProcessing = true;

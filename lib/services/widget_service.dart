@@ -7,6 +7,9 @@ import '../storage_service.dart';
 // 必须是顶级函数或静态函数，供原生后台调用
 @pragma('vm:entry-point')
 Future<void> widgetBackgroundCallback(Uri? uri) async {
+  // 🚀 桌面端拦截
+  if (!Platform.isAndroid && !Platform.isIOS) return;
+
   if (uri != null && uri.scheme == 'todowidget' && uri.host == 'markdone') {
     final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
 
@@ -48,6 +51,9 @@ class WidgetService {
 
   // 必须在 App 启动时调用，以注册这个后台监听器
   static Future<void> init() async {
+    // 🚀 桌面端拦截：Windows/macOS 不支持安卓/iOS的桌面小组件
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+
     if (_initialized) return;
     try {
       await HomeWidget.registerBackgroundCallback(widgetBackgroundCallback);
@@ -58,6 +64,9 @@ class WidgetService {
   }
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
+    // 🚀 桌面端拦截
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+
     // --- 提取并排序最紧急的待办 ---
 
     // 1. 我们只想要展示未完成且未被逻辑删除的待办

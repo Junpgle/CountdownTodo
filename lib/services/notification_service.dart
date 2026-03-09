@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -11,6 +12,9 @@ class NotificationService {
 
   // 初始化方法
   static Future<void> init() async {
+    // 🚀 桌面端拦截：暂不初始化 Android/iOS 的通知服务
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+
     final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -37,6 +41,7 @@ class NotificationService {
     required String timeStr,
     required String teacher,
   }) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       await _channel.invokeMethod('showOngoingNotification', {
         'type': 'course',
@@ -58,6 +63,7 @@ class NotificationService {
     required bool isOver,
     int score = 0,
   }) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     if (isOver) {
       await cancelNotification();
       return;
@@ -81,6 +87,7 @@ class NotificationService {
 
   // 1. 更新今日待办概览通知
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     final DateTime now = DateTime.now();
 
     // 过滤出：1. 今天的任务 2. 全天任务
@@ -153,6 +160,7 @@ class NotificationService {
 
   // 2. 即将开始的特定时间待办通知 (单条提醒)
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     if (todo.dueDate == null) return;
 
     // 检查是否为今天的任务，非今天的任务不触发实时提醒
@@ -197,6 +205,7 @@ class NotificationService {
     List<String> tagNames = const [],
     String alertKey = '',
   }) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     // >60s 只显示分钟，最后60s 才显示 MM:SS（降低通知刷新频率的配套格式）
     final String countdownStr;
     if (remainingSeconds > 60) {
@@ -206,7 +215,7 @@ class NotificationService {
       final mins = remainingSeconds ~/ 60;
       final secs = remainingSeconds % 60;
       countdownStr =
-          '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+      '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
     }
     try {
       await _channel.invokeMethod('showOngoingNotification', {
@@ -233,6 +242,7 @@ class NotificationService {
     String? todoTitle,
     bool isBreak = false,
   }) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       await _channel.invokeMethod('showOngoingNotification', {
         'type': 'pomodoro_end',
@@ -248,6 +258,7 @@ class NotificationService {
   // --- 通用方法 ---
 
   static Future<void> cancelNotification() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       await _channel.invokeMethod('cancelNotification');
     } catch (e) {
@@ -265,14 +276,15 @@ class NotificationService {
   ///   - notifId     : int   通知 ID（唯一，用于去重 / 取消）
   static Future<void> scheduleReminders(
       List<Map<String, dynamic>> reminders) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     if (reminders.isEmpty) return;
     try {
       final json = reminders
           .map((r) =>
-              '{"triggerAtMs":${r['triggerAtMs']},'
-              '"title":${_jsonStr(r['title'])},'
-              '"text":${_jsonStr(r['text'])},'
-              '"notifId":${r['notifId']}}')
+      '{"triggerAtMs":${r['triggerAtMs']},'
+          '"title":${_jsonStr(r['title'])},'
+          '"text":${_jsonStr(r['text'])},'
+          '"notifId":${r['notifId']}}')
           .join(',');
       await _channel.invokeMethod('scheduleReminders', {
         'remindersJson': '[$json]',
@@ -284,6 +296,7 @@ class NotificationService {
 
   /// 取消某个 Alarm（通过 notifId 定定位）
   static Future<void> cancelReminder(int notifId) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       await _channel.invokeMethod('cancelReminder', {'notifId': notifId});
     } catch (e) {
@@ -293,6 +306,7 @@ class NotificationService {
 
   /// 检查 Android 12+ 精确闹钟权限（true = 已授权，false = 需要引导用户设置）
   static Future<bool> checkExactAlarmPermission() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return true;
     try {
       return await _channel.invokeMethod<bool>('checkExactAlarmPermission') ?? true;
     } catch (_) {
@@ -302,6 +316,7 @@ class NotificationService {
 
   /// 跳转到系统精确闹钟权限设置页（Android 12+）
   static Future<void> openExactAlarmSettings() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       await _channel.invokeMethod('openExactAlarmSettings');
     } catch (e) {
@@ -316,4 +331,3 @@ class NotificationService {
     return '"$s"';
   }
 }
-
