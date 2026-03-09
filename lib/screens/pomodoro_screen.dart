@@ -584,6 +584,22 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
           widget.onPhaseChanged(_phase);
           _pushPomodoroNotification(overrideRemaining: remaining); // 立即上岛
           _startTicker();
+
+          // 重新注册保活 Alarm（防止 ReminderService rescheduleAll 覆写后失效）
+          final isFocusing = saved.phase == PomodoroPhase.focusing;
+          final alarmNotifId = isFocusing ? 40001 : 40002;
+          final alarmTitle = isFocusing ? '🍅 专注时间到！' : '☕ 休息结束，继续出发！';
+          final alarmText = isFocusing
+              ? (saved.todoTitle?.isNotEmpty == true
+                  ? '"${saved.todoTitle}" 专注时段已结束'
+                  : '本轮专注已结束，做个总结吧')
+              : '第 ${saved.currentCycle}/${saved.totalCycles} 轮完成，下一轮专注准备好了';
+          NotificationService.scheduleReminders([{
+            'triggerAtMs': saved.targetEndMs,
+            'title': alarmTitle,
+            'text': alarmText,
+            'notifId': alarmNotifId,
+          }]);
         }
       }
     }
@@ -607,6 +623,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   }
 
   Future<void> _handleFocusEndFromBackground(PomodoroRunState saved) async {
+    // App 重启后自行处理结束流程，取消保活 Alarm 避免重复弹通知
+    NotificationService.cancelReminder(40001);
     TodoItem? boundTodo;
     if (saved.todoUuid != null) {
       boundTodo = _todos.cast<TodoItem?>().firstWhere(
@@ -639,6 +657,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   }
 
   Future<void> _handleBreakEndFromBackground(PomodoroRunState saved) async {
+    // App 重启后自行处理结束流程，取消保活 Alarm 避免重复弹通知
+    NotificationService.cancelReminder(40002);
     // 从 saved 中恢复 boundTodo（与 _recoverState 相同的兜底逻辑）
     TodoItem? boundTodo;
     if (saved.todoUuid != null) {
@@ -767,6 +787,16 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     _pushPomodoroNotification(alertKey: 'pomo_start_$end');
     _startTicker();
 
+    // 保活：注册精确 Alarm，App 被杀后在 end 时刻发出"专注结束"通知
+    NotificationService.scheduleReminders([{
+      'triggerAtMs': end,
+      'title': '🍅 专注时间到！',
+      'text': _boundTodo?.title?.isNotEmpty == true
+          ? '"${_boundTodo!.title}" 专注时段已结束'
+          : '本轮专注已结束，做个总结吧',
+      'notifId': 40001,
+    }]);
+
     // 后台：写 RunState / 清 idle 持久化 / 广播（不阻塞 UI）
     PomodoroService.saveRunState(PomodoroRunState(
       phase: PomodoroPhase.focusing,
@@ -850,6 +880,9 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   Future<void> _finishEarly() async {
     _ticker?.cancel();
     NotificationService.cancelNotification();
+    // 取消保活 Alarm，避免 App 活着时重复弹出
+    NotificationService.cancelReminder(40001);
+    NotificationService.cancelReminder(40002);
     final now = DateTime.now().millisecondsSinceEpoch;
     final actualSeconds = ((now - _sessionStartMs) / 1000).round();
 
@@ -878,6 +911,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   // ── 专注结束 ─────────────────────────────────────────────────
   Future<void> _onFocusEnd() async {
+    // App 活着时自然到点，取消保活 Alarm，避免重复弹出
+    NotificationService.cancelReminder(40001);
     final now = DateTime.now().millisecondsSinceEpoch;
 
     await _persistIdleBoundTodo(_boundTodo);
@@ -1010,6 +1045,15 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     _pushPomodoroNotification();
     _startTicker();
 
+    // 保活：注册休息结束 Alarm，先取消专注 Alarm（如果有）
+    NotificationService.cancelReminder(40001);
+    NotificationService.scheduleReminders([{
+      'triggerAtMs': end,
+      'title': '☕ 休息结束，继续出发！',
+      'text': '第 $_currentCycle/${_settings.cycles} 轮完成，下一轮专注准备好了',
+      'notifId': 40002,
+    }]);
+
     // 后台写 RunState（不阻塞 UI）
     PomodoroService.saveRunState(PomodoroRunState(
       phase: PomodoroPhase.breaking,
@@ -1028,6 +1072,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   // ── 休息结束 ─────────────────────────────────────────────────
   Future<void> _onBreakEnd() async {
+    // App 活着时自然到点，取消保活 Alarm，避免重复弹出
+    NotificationService.cancelReminder(40002);
     NotificationService.sendPomodoroEndAlert(
       alertKey: 'pomo_end_${_targetEndMs}',
       todoTitle: _boundTodo?.title,
@@ -1077,6 +1123,9 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     );
     if (confirm == true) {
       NotificationService.cancelNotification();
+      // 取消保活 Alarm
+      NotificationService.cancelReminder(40001);
+      NotificationService.cancelReminder(40002);
       _syncService.sendStopSignal();
       setState(() {
         _phase = PomodoroPhase.idle;
@@ -1769,6 +1818,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         onPressed: () async {
           _ticker?.cancel();
           NotificationService.cancelNotification();
+          // 取消休息保活 Alarm
+          NotificationService.cancelReminder(40002);
           await _persistIdleBoundTodo(_boundTodo);
           await PomodoroService.clearRunState();
           setState(() {

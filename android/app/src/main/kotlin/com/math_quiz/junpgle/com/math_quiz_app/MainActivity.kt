@@ -22,6 +22,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.*
+import org.json.JSONArray as KJSONArray
 
 // 导入 HyperIsland Kit 的核心类
 import io.github.d4viddf.hyperisland_kit.HyperAction
@@ -220,11 +221,31 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                  */
                 "scheduleReminders" -> {
                     val args = call.arguments as? Map<String, Any>
-                    val json = args?.get("remindersJson") as? String ?: "[]"
-                    // 持久化到 SharedPreferences（开机后 ReminderService 读取重建 Alarm）
-                    getSharedPreferences(ReminderService.PREFS_NAME, MODE_PRIVATE)
-                        .edit().putString(ReminderService.KEY_REMINDERS, json).apply()
-                    // 启动 Service 重新调度
+                    val newJson = args?.get("remindersJson") as? String ?: "[]"
+                    val prefs = getSharedPreferences(ReminderService.PREFS_NAME, MODE_PRIVATE)
+
+                    // ── Upsert：按 notifId 合并，不覆盖其他提醒 ──────────────
+                    val existing = KJSONArray(
+                        prefs.getString(ReminderService.KEY_REMINDERS, "[]") ?: "[]"
+                    )
+                    val incoming = KJSONArray(newJson)
+
+                    val incomingIds = mutableSetOf<Int>()
+                    for (i in 0 until incoming.length()) {
+                        incomingIds.add(incoming.getJSONObject(i).optInt("notifId", -1))
+                    }
+                    val merged = KJSONArray()
+                    for (i in 0 until existing.length()) {
+                        val obj = existing.getJSONObject(i)
+                        if (!incomingIds.contains(obj.optInt("notifId", -1))) {
+                            merged.put(obj)
+                        }
+                    }
+                    for (i in 0 until incoming.length()) {
+                        merged.put(incoming.getJSONObject(i))
+                    }
+
+                    prefs.edit().putString(ReminderService.KEY_REMINDERS, merged.toString()).apply()
                     startForegroundService(
                         Intent(this, ReminderService::class.java).apply {
                             action = ReminderService.ACTION_RESCHEDULE
@@ -235,7 +256,19 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
                 "cancelReminder" -> {
                     val args = call.arguments as? Map<String, Any>
-                    val notifId = (args?.get("notifId") as? Number)?.toInt() ?: return@setMethodCallHandler
+                    val notifId = (args?.get("notifId") as? Number)?.toInt()
+                        ?: return@setMethodCallHandler
+                    val prefs = getSharedPreferences(ReminderService.PREFS_NAME, MODE_PRIVATE)
+                    val existing = KJSONArray(
+                        prefs.getString(ReminderService.KEY_REMINDERS, "[]") ?: "[]"
+                    )
+                    val filtered = KJSONArray()
+                    for (i in 0 until existing.length()) {
+                        val obj = existing.getJSONObject(i)
+                        if (obj.optInt("notifId", -1) != notifId) filtered.put(obj)
+                    }
+                    prefs.edit().putString(ReminderService.KEY_REMINDERS, filtered.toString()).apply()
+
                     val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
                     val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
                         action = ReminderAlarmReceiver.ACTION_FIRE
