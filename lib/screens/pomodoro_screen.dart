@@ -287,6 +287,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   bool _showRemoteBanner = false;
   int _remoteRemainingSeconds = 0;
   Timer? _remoteTicker;
+  /// 观察模式下来自 WS 的标签名称列表（直接用名字显示，不转 uuid）
+  List<String> _remoteTagNames = [];
 
   // ── 初始化标志（init 完成前不渲染主 UI，避免闪出"准备开始"界面）──
   bool _initializing = true;
@@ -420,6 +422,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     switch (signal.action) {
       case 'START':
       case 'SYNC':
+      case 'SYNC_FOCUS':          // 新后端迟到同步用 SYNC_FOCUS
         // 本机正在专注/休息时不覆盖（不打扰自己）
         if (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking) break;
 
@@ -441,9 +444,17 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
           _remainingSeconds = rem;
           _boundTodo = remoteTodo;
           _remoteState = signal;
+          _remoteTagNames = signal.tags; // 直接用名字，不转 uuid
         });
         widget.onPhaseChanged(_phase);
         _startRemoteTicker(endMs);
+        break;
+
+      case 'SYNC_TAGS':           // 新后端迟到同步标签
+      case 'UPDATE_TAGS':         // 实时标签变更
+        if (_phase != PomodoroPhase.remoteWatching) break;
+        // 直接用名字更新，不转 uuid
+        if (mounted) setState(() => _remoteTagNames = signal.tags);
         break;
 
       case 'STOP':
@@ -455,6 +466,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
           _remainingSeconds = _settings.focusMinutes * 60;
           _remoteState = null;
           _boundTodo = null;
+          _remoteTagNames = [];
         });
         widget.onPhaseChanged(_phase);
         break;
@@ -487,6 +499,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     }
   }
 
+
   /// 启动跨端观察倒计时（驱动 _remainingSeconds，与本地专注共用同一个字段）
   void _startRemoteTicker(int targetEndMs) {
     _remoteTicker?.cancel();
@@ -503,6 +516,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
             _remainingSeconds = _settings.focusMinutes * 60;
             _remoteState = null;
             _boundTodo = null;
+            _remoteTagNames = [];
           });
           widget.onPhaseChanged(_phase);
         }
@@ -812,11 +826,17 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       plannedFocusSeconds: _settings.focusMinutes * 60,
     ));
     _persistIdleBoundTodo(null);
+    // 计算当前已选标签的名称列表，一并发给服务器
+    final tagNames = _allTags
+        .where((t) => _selectedTagUuids.contains(t.uuid))
+        .map((t) => t.name)
+        .toList();
     _syncService.sendStartSignal(
       todoUuid: _boundTodo?.id,
       todoTitle: _boundTodo?.title,
       durationSeconds: _settings.focusMinutes * 60,
       targetEndMs: end,
+      tagNames: tagNames,
     );
   }
   Future<void> _switchTask(TodoItem newTodo) async {
@@ -1214,13 +1234,21 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         allTags: _allTags,
         selectedUuids: _selectedTagUuids,
         onChanged: (tags, selected) async {
-          await PomodoroService.saveTags(tags); // 本地保存，立即完成
-          PomodoroService.syncTagsToCloud().catchError((_) => null); // 后台同步
+          await PomodoroService.saveTags(tags);
+          PomodoroService.syncTagsToCloud().catchError((_) => null);
           setState(() {
             _allTags = tags;
             _selectedTagUuids = selected;
           });
           await _persistIdleBoundTodo(_boundTodo);
+          // 若正在专注，通知其他端标签已更新
+          if (_phase == PomodoroPhase.focusing) {
+            final tagNames = tags
+                .where((t) => selected.contains(t.uuid))
+                .map((t) => t.name)
+                .toList();
+            _syncService.sendUpdateTagsSignal(tagNames);
+          }
         },
       ),
     );
@@ -1594,6 +1622,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         const SizedBox(height: 16),
 
         // 已选标签（只读小胶囊）
+        // 本机专注中：已选标签（只读小胶囊，通过 uuid 查本地颜色）
         if (activeTags.isNotEmpty && !isRemoteWatching) ...[
           Wrap(
             spacing: 6,
@@ -1613,6 +1642,34 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
                   style: TextStyle(
                     fontSize: 12,
                     color: color.withValues(alpha: 0.9),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // 观察模式：直接用 WS 传来的标签名字展示（无需 uuid，固定颜色）
+        if (isRemoteWatching && _remoteTagNames.isNotEmpty) ...[
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            alignment: WrapAlignment.center,
+            children: _remoteTagNames.map((name) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blueAccent.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1666,6 +1723,14 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
                   }
                 });
                 await _persistIdleBoundTodo(_boundTodo);
+                // 若正在专注，通知其他端标签已更新
+                if (_phase == PomodoroPhase.focusing) {
+                  final tagNames = _allTags
+                      .where((t) => _selectedTagUuids.contains(t.uuid))
+                      .map((t) => t.name)
+                      .toList();
+                  _syncService.sendUpdateTagsSignal(tagNames);
+                }
               },
             );
           }).toList(),

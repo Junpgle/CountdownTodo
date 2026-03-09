@@ -15,13 +15,14 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 
 /// 从 WebSocket 收到的跨端专注状态
 class CrossDevicePomodoroState {
-  final String action;      // 'START' | 'STOP' | 'SWITCH' | 'HEARTBEAT'
+  final String action;      // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'
   final String? todoUuid;
   final String? todoTitle;
   final int? duration;      // 本次专注计划时长（秒）
   final int? targetEndMs;   // 专注结束时间戳（UTC ms）
   final String? sourceDevice;
   final int? timestamp;
+  final List<String> tags;  // 当前标签名称数组（多标签）
 
   const CrossDevicePomodoroState({
     required this.action,
@@ -31,6 +32,7 @@ class CrossDevicePomodoroState {
     this.targetEndMs,
     this.sourceDevice,
     this.timestamp,
+    this.tags = const [],
   });
 
   factory CrossDevicePomodoroState.fromJson(Map<String, dynamic> j) =>
@@ -42,9 +44,9 @@ class CrossDevicePomodoroState {
         targetEndMs: _parseInt(j['target_end_ms'] ?? j['targetEndMs']),
         sourceDevice: (j['sourceDevice'] ?? j['source_device'])?.toString(),
         timestamp: _parseInt(j['timestamp']),
+        tags: _parseStringList(j['tags']),
       );
 
-  /// 安全解析 int，兼容 int / double / String 三种情况
   static int? _parseInt(dynamic v) {
     if (v == null) return null;
     if (v is int) return v;
@@ -53,12 +55,19 @@ class CrossDevicePomodoroState {
     return null;
   }
 
+  static List<String> _parseStringList(dynamic v) {
+    if (v == null) return const [];
+    if (v is List) return v.map((e) => e.toString()).toList();
+    return const [];
+  }
+
   Map<String, dynamic> toJson() => {
         'action': action,
         if (todoUuid != null) 'todo_uuid': todoUuid,
         if (todoTitle != null) 'todo_title': todoTitle,
         if (duration != null) 'duration': duration,
         if (targetEndMs != null) 'target_end_ms': targetEndMs,
+        if (tags.isNotEmpty) 'tags': tags,
       };
 }
 
@@ -243,6 +252,7 @@ class PomodoroSyncService {
     required String? todoTitle,
     required int durationSeconds,
     required int targetEndMs,
+    List<String> tagNames = const [],
   }) {
     _send({
       'action': 'START',
@@ -250,6 +260,7 @@ class PomodoroSyncService {
       if (todoTitle != null) 'todo_title': todoTitle,
       'duration': durationSeconds,
       'target_end_ms': targetEndMs,
+      'tags': tagNames,          // 始终携带，空数组也发
     });
   }
 
@@ -263,6 +274,14 @@ class PomodoroSyncService {
       'action': 'SWITCH',
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
+    });
+  }
+
+  /// 标签变化时单独发送 UPDATE_TAGS，让服务器和其他端同步最新标签数组
+  void sendUpdateTagsSignal(List<String> tagNames) {
+    _send({
+      'action': 'UPDATE_TAGS',
+      'tags': tagNames,
     });
   }
 
