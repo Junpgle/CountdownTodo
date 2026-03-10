@@ -280,6 +280,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   List<TodoItem> _todos = [];
   String _deviceId = '';
 
+  String _userId = '';
+
   // ── 跨端感知 ──
   final _syncService = PomodoroSyncService();
   StreamSubscription<CrossDevicePomodoroState>? _crossDeviceSub;
@@ -392,9 +394,23 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     // 等 400ms 让服务器 SYNC 消息有时间到达并被处理
     await Future.delayed(const Duration(milliseconds: 400));
 
+    // 在 _init() 里，setState(() => _initializing = false) 之后加：
     if (mounted) {
       setState(() => _initializing = false);
       widget.onReady?.call();
+
+      // 初始化完成后主动重连，确保能收到服务器推送的当前房间状态
+      await _syncService.forceReconnect(_userId!, 'flutter_$_deviceId');
+      await Future.delayed(const Duration(milliseconds: 400));
+
+      if (mounted) {
+        setState(() => _initializing = false);
+        widget.onReady?.call();
+        // 初始化完成后再重连一次，此时 _handleCrossDeviceSignal 不会被 _initializing 拦截
+        if (_userId.isNotEmpty && _deviceId.isNotEmpty) {
+          await _syncService.forceReconnect(_userId, 'flutter_$_deviceId');
+        }
+      }
     }
   }
 
@@ -404,14 +420,14 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     final prefs = await SharedPreferences.getInstance();
     final userIdInt = prefs.getInt('current_user_id');
     if (userIdInt == null || _deviceId.isEmpty) return;
-    final userId = userIdInt.toString();
+    _userId = userIdInt.toString();  // 存到成员变量
 
     // ① 先订阅广播流，再 connect——避免 SYNC 消息在订阅建立前到达而丢失
     _crossDeviceSub?.cancel();
     _crossDeviceSub = _syncService.onStateChanged.listen(_handleCrossDeviceSignal);
 
     // ② 每次进入番茄钟页面都强制重新连接
-    await _syncService.forceReconnect(userId, 'flutter_$_deviceId');
+    await _syncService.forceReconnect(_userId, 'flutter_$_deviceId');
 
     // ③ 连接完成后更新状态指示器
     if (mounted) setState(() => _wsConnected = true);
@@ -419,6 +435,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) {
     if (!mounted) return;
+    if (_initializing) return;  // 新增：初始化未完成时忽略，等 _init 完成后 forceReconnect 会重新触发
 
     // 过滤本机自己发出的信号（服务器 SYNC 可能把本机的专注状态回放给自己）
     final myDeviceId = 'flutter_$_deviceId';
@@ -428,6 +445,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       case 'START':
       case 'SYNC':
       case 'SYNC_FOCUS':          // 新后端迟到同步用 SYNC_FOCUS
+      case 'RECONNECT_SYNC':  // 新增这行
       // 本机正在专注/休息时不覆盖（不打扰自己）
         if (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking) break;
 
