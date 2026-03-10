@@ -290,6 +290,9 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   /// 观察模式下来自 WS 的标签名称列表（直接用名字显示，不转 uuid）
   List<String> _remoteTagNames = [];
 
+  // ── WebSocket 连接状态 ──
+  bool _wsConnected = false;
+
   // ── 初始化标志（init 完成前不渲染主 UI，避免闪出"准备开始"界面）──
   bool _initializing = true;
 
@@ -309,6 +312,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     _ticker?.cancel();
     _remoteTicker?.cancel();
     _crossDeviceSub?.cancel();   // 只取消 UI 层订阅，不断开 WebSocket 连接
+    _wsConnected = false;
     // ⚠️ 不调用 _syncService.disconnect()，单例连接保持 App 级生命周期
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -317,12 +321,12 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
-    case AppLifecycleState.resumed:
-      _notifyTickCount = 0;
-      _recoverFromBackground();
-      // 强制重连让服务器推送 SYNC，确保跨端状态最新
-      _syncService.resumeSync();
-      break;
+      case AppLifecycleState.resumed:
+        _notifyTickCount = 0;
+        _recoverFromBackground();
+        // 强制重连让服务器推送 SYNC，确保跨端状态最新
+        _syncService.resumeSync();
+        break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
@@ -360,7 +364,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       TodoItem? restoredTodo;
       if (savedUuid != null && savedUuid.isNotEmpty) {
         restoredTodo = _todos.cast<TodoItem?>().firstWhere(
-          (t) => t?.id == savedUuid,
+              (t) => t?.id == savedUuid,
           orElse: () => null,
         );
         // 任务已完成/被删，但 title 还在 → 构造占位，让界面仍能显示绑定
@@ -406,10 +410,11 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     _crossDeviceSub?.cancel();
     _crossDeviceSub = _syncService.onStateChanged.listen(_handleCrossDeviceSignal);
 
-    // ② 每次进入番茄钟页面都强制重新连接：
-    //    服务器的 SYNC 只在新设备上线时推送一次（迟到同步机制），
-    //    重连会触发服务器推当前房间的 focusState，接收端才能拿到对方的专注状态。
+    // ② 每次进入番茄钟页面都强制重新连接
     await _syncService.forceReconnect(userId, 'flutter_$_deviceId');
+
+    // ③ 连接完成后更新状态指示器
+    if (mounted) setState(() => _wsConnected = true);
   }
 
   void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) {
@@ -423,7 +428,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       case 'START':
       case 'SYNC':
       case 'SYNC_FOCUS':          // 新后端迟到同步用 SYNC_FOCUS
-        // 本机正在专注/休息时不覆盖（不打扰自己）
+      // 本机正在专注/休息时不覆盖（不打扰自己）
         if (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking) break;
 
         // 验证 targetEndMs 仍然有效
@@ -472,7 +477,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         break;
 
       case 'SWITCH':
-        // 仅在观察模式下更新任务信息
+      // 仅在观察模式下更新任务信息
         if (_phase != PomodoroPhase.remoteWatching) break;
         if (signal.todoTitle != null && signal.todoTitle!.isNotEmpty) {
           setState(() {
@@ -569,7 +574,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         TodoItem? boundTodo;
         if (saved.todoUuid != null) {
           boundTodo = _todos.cast<TodoItem?>().firstWhere(
-            (t) => t?.id == saved.todoUuid,
+                (t) => t?.id == saved.todoUuid,
             orElse: () => null,
           );
           // 任务已完成或被删除，但标题还在 RunState 里 → 构造只读占位，让界面能显示
@@ -605,8 +610,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
           final alarmTitle = isFocusing ? '🍅 专注时间到！' : '☕ 休息结束，继续出发！';
           final alarmText = isFocusing
               ? (saved.todoTitle?.isNotEmpty == true
-                  ? '"${saved.todoTitle}" 专注时段已结束'
-                  : '本轮专注已结束，做个总结吧')
+              ? '"${saved.todoTitle}" 专注时段已结束'
+              : '本轮专注已结束，做个总结吧')
               : '第 ${saved.currentCycle}/${saved.totalCycles} 轮完成，下一轮专注准备好了';
           NotificationService.scheduleReminders([{
             'triggerAtMs': saved.targetEndMs,
@@ -642,7 +647,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     TodoItem? boundTodo;
     if (saved.todoUuid != null) {
       boundTodo = _todos.cast<TodoItem?>().firstWhere(
-        (t) => t?.id == saved.todoUuid,
+            (t) => t?.id == saved.todoUuid,
         orElse: () => null,
       );
       if (boundTodo == null && saved.todoTitle != null && saved.todoTitle!.isNotEmpty) {
@@ -677,7 +682,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     TodoItem? boundTodo;
     if (saved.todoUuid != null) {
       boundTodo = _todos.cast<TodoItem?>().firstWhere(
-        (t) => t?.id == saved.todoUuid,
+            (t) => t?.id == saved.todoUuid,
         orElse: () => null,
       );
       if (boundTodo == null && saved.todoTitle != null && saved.todoTitle!.isNotEmpty) {
@@ -773,7 +778,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       TodoItem? localTodo;
       if (savedUuid != null && savedUuid.isNotEmpty) {
         localTodo = _todos.cast<TodoItem?>().firstWhere(
-          (t) => t?.id == savedUuid, orElse: () => null);
+                (t) => t?.id == savedUuid, orElse: () => null);
         if (localTodo == null && savedTitle != null && savedTitle.isNotEmpty) {
           localTodo = TodoItem(id: savedUuid, title: savedTitle, isDone: false, createdAt: 0);
         }
@@ -1527,9 +1532,9 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
                         ignoring: !(isFocusing || isRemoteWatching),
                         child: Navigator.canPop(context)
                             ? IconButton(
-                                icon: const Icon(Icons.arrow_back),
-                                onPressed: () => Navigator.pop(context),
-                              )
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.pop(context),
+                        )
                             : const SizedBox(width: 48),
                       ),
                     ),
@@ -1556,6 +1561,28 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
                         ),
                       ),
                     ),
+                    // ── 右侧对称占位：与左侧返回按钮等宽，内嵌连接状态图标 ──
+                    SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: AnimatedOpacity(
+                        opacity: _wsConnected ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 600),
+                        child: Tooltip(
+                          message: '跨端同步已连接',
+                          child: Center(
+                            child: Icon(
+                              Icons.link_rounded,
+                              size: 16,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withValues(alpha: 0.45),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1570,13 +1597,13 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
                       FadeTransition(opacity: anim, child: child),
                   child: isIdle
                       ? KeyedSubtree(
-                          key: const ValueKey('layout_idle'),
-                          child: _buildIdleLayout(contentColor),
-                        )
+                    key: const ValueKey('layout_idle'),
+                    child: _buildIdleLayout(contentColor),
+                  )
                       : KeyedSubtree(
-                          key: ValueKey('layout_active_$_phase'),
-                          child: _buildActiveLayout(isFocusing, isRemoteWatching, contentColor),
-                        ),
+                    key: ValueKey('layout_active_$_phase'),
+                    child: _buildActiveLayout(isFocusing, isRemoteWatching, contentColor),
+                  ),
                 ),
               ),
 
@@ -1780,18 +1807,17 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
                       ? Theme.of(context).colorScheme.primary
                       : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                label: Flexible(
-                  child: Text(
-                    _boundTodo?.title ?? '绑定任务',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: _boundTodo != null ? FontWeight.w600 : FontWeight.normal,
-                      color: _boundTodo != null
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                // ✅ 修复：直接使用 Text，移除了外层的 Flexible 包装
+                label: Text(
+                  _boundTodo?.title ?? '绑定任务',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: _boundTodo != null ? FontWeight.w600 : FontWeight.normal,
+                    color: _boundTodo != null
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -2326,160 +2352,160 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, sd) {
           return Padding(
-          padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              left: 20, right: 20, top: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('编辑专注记录',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () async {
-                      Navigator.pop(ctx);
-                      await _deleteSession(session);
-                    },
-                  ),
-                ],
-              ),
-              const Divider(),
-              const SizedBox(height: 8),
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+                left: 20, right: 20, top: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('编辑专注记录',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await _deleteSession(session);
+                      },
+                    ),
+                  ],
+                ),
+                const Divider(),
+                const SizedBox(height: 8),
 
-              // 绑定任务
-              const Text('绑定任务', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () async {
-                  final picked = await showDialog<TodoItem?>(
-                    context: ctx,
-                    builder: (dctx) => AlertDialog(
-                      title: const Text('选择任务'),
-                      content: SizedBox(
-                        width: double.maxFinite,
-                        child: ListView(
-                          shrinkWrap: true,
-                          children: [
-                            ListTile(
-                              title: const Text('自由专注（无绑定）'),
-                              leading: const Icon(Icons.clear),
-                              onTap: () => Navigator.pop(dctx, null),
-                            ),
-                            const Divider(),
-                            ..._todos.map((t) => ListTile(
-                                  title: Text(t.title),
-                                  subtitle: t.remark != null ? Text(t.remark!) : null,
-                                  leading: Icon(t.isDone
-                                      ? Icons.check_circle_outline
-                                      : Icons.radio_button_unchecked),
-                                  onTap: () => Navigator.pop(dctx, t),
-                                )),
-                          ],
+                // 绑定任务
+                const Text('绑定任务', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () async {
+                    final picked = await showDialog<TodoItem?>(
+                      context: ctx,
+                      builder: (dctx) => AlertDialog(
+                        title: const Text('选择任务'),
+                        content: SizedBox(
+                          width: double.maxFinite,
+                          child: ListView(
+                            shrinkWrap: true,
+                            children: [
+                              ListTile(
+                                title: const Text('自由专注（无绑定）'),
+                                leading: const Icon(Icons.clear),
+                                onTap: () => Navigator.pop(dctx, null),
+                              ),
+                              const Divider(),
+                              ..._todos.map((t) => ListTile(
+                                title: Text(t.title),
+                                subtitle: t.remark != null ? Text(t.remark!) : null,
+                                leading: Icon(t.isDone
+                                    ? Icons.check_circle_outline
+                                    : Icons.radio_button_unchecked),
+                                onTap: () => Navigator.pop(dctx, t),
+                              )),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                  if (picked != null) {
-                    sd(() {
-                      editTodoUuid = picked.id;
-                      editTodoTitle = picked.title;
-                    });
-                  } else if (picked == null &&
-                      (editTodoUuid != null)) {
-                    // 用户选了"自由专注"
-                    sd(() {
-                      editTodoUuid = null;
-                      editTodoTitle = null;
-                    });
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.task_alt_outlined, size: 18),
-                      const SizedBox(width: 8),
-                      Text(editTodoTitle ?? '自由专注（点击选择）'),
-                      const Spacer(),
-                      const Icon(Icons.chevron_right, size: 18),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 标签
-              const Text('标签', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              if (_tags.isEmpty)
-                const Text('暂无标签', style: TextStyle(color: Colors.grey))
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _tags.map((tag) {
-                    final sel = editTags.contains(tag.uuid);
-                    final color = _hexToColor(tag.color);
-                    return FilterChip(
-                      label: Text(tag.name, style: const TextStyle(fontSize: 13)),
-                      selected: sel,
-                      showCheckmark: false,
-                      selectedColor: color.withValues(alpha: 0.2),
-                      side: BorderSide(color: sel ? color : Colors.grey.shade300),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
-                      onSelected: (v) => sd(() {
-                        if (v) {
-                          editTags.add(tag.uuid);
-                        } else {
-                          editTags.remove(tag.uuid);
-                        }
-                      }),
                     );
-                  }).toList(),
-                ),
-
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () async {
-                    final updated = PomodoroSession(
-                      uuid: session.uuid,
-                      todoUuid: editTodoUuid,
-                      todoTitle: editTodoTitle,
-                      tagUuids: editTags,
-                      startTime: session.startTime,
-                      endTime: session.endTime,
-                      plannedDuration: session.plannedDuration,
-                      actualDuration: session.actualDuration,
-                      status: session.status,
-                      deviceId: session.deviceId,
-                      isDeleted: session.isDeleted,
-                      version: session.version + 1,
-                      createdAt: session.createdAt,
-                      updatedAt: DateTime.now().millisecondsSinceEpoch,
-                    );
-                    await PomodoroService.updateSession(updated); // 本地保存，极快
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    if (mounted) await _loadLocal();
+                    if (picked != null) {
+                      sd(() {
+                        editTodoUuid = picked.id;
+                        editTodoTitle = picked.title;
+                      });
+                    } else if (picked == null &&
+                        (editTodoUuid != null)) {
+                      // 用户选了"自由专注"
+                      sd(() {
+                        editTodoUuid = null;
+                        editTodoTitle = null;
+                      });
+                    }
                   },
-                  child: const Text('保存'),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.task_alt_outlined, size: 18),
+                        const SizedBox(width: 8),
+                        Text(editTodoTitle ?? '自由专注（点击选择）'),
+                        const Spacer(),
+                        const Icon(Icons.chevron_right, size: 18),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
+                const SizedBox(height: 16),
+
+                // 标签
+                const Text('标签', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                if (_tags.isEmpty)
+                  const Text('暂无标签', style: TextStyle(color: Colors.grey))
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _tags.map((tag) {
+                      final sel = editTags.contains(tag.uuid);
+                      final color = _hexToColor(tag.color);
+                      return FilterChip(
+                        label: Text(tag.name, style: const TextStyle(fontSize: 13)),
+                        selected: sel,
+                        showCheckmark: false,
+                        selectedColor: color.withValues(alpha: 0.2),
+                        side: BorderSide(color: sel ? color : Colors.grey.shade300),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
+                        onSelected: (v) => sd(() {
+                          if (v) {
+                            editTags.add(tag.uuid);
+                          } else {
+                            editTags.remove(tag.uuid);
+                          }
+                        }),
+                      );
+                    }).toList(),
+                  ),
+
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () async {
+                      final updated = PomodoroSession(
+                        uuid: session.uuid,
+                        todoUuid: editTodoUuid,
+                        todoTitle: editTodoTitle,
+                        tagUuids: editTags,
+                        startTime: session.startTime,
+                        endTime: session.endTime,
+                        plannedDuration: session.plannedDuration,
+                        actualDuration: session.actualDuration,
+                        status: session.status,
+                        deviceId: session.deviceId,
+                        isDeleted: session.isDeleted,
+                        version: session.version + 1,
+                        createdAt: session.createdAt,
+                        updatedAt: DateTime.now().millisecondsSinceEpoch,
+                      );
+                      await PomodoroService.updateSession(updated); // 本地保存，极快
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) await _loadLocal();
+                    },
+                    child: const Text('保存'),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          );
         },
       ),
     );
@@ -2535,10 +2561,10 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
     final startLocal = DateTime.fromMillisecondsSinceEpoch(s.startTime, isUtc: true).toLocal();
     final tagNames = s.tagUuids.isNotEmpty
         ? s.tagUuids
-            .map((uuid) => _tags.cast<PomodoroTag?>()
-                .firstWhere((t) => t?.uuid == uuid, orElse: () => null)
-                ?.name ?? uuid)
-            .join(', ')
+        .map((uuid) => _tags.cast<PomodoroTag?>()
+        .firstWhere((t) => t?.uuid == uuid, orElse: () => null)
+        ?.name ?? uuid)
+        .join(', ')
         : null;
     final timeLabel = showDate
         ? DateFormat('MM-dd HH:mm').format(startLocal)
@@ -2636,15 +2662,15 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
   }
 
   void _prev() {    setState(() {
-      if (_dimension == 0) {
-        _selected = _selected.subtract(const Duration(days: 1));
-      } else if (_dimension == 1) {
-        _selected = DateTime(_selected.year, _selected.month - 1, 1);
-      } else {
-        _selected = DateTime(_selected.year - 1, 1, 1);
-      }
-    });
-    _loadLocal();
+    if (_dimension == 0) {
+      _selected = _selected.subtract(const Duration(days: 1));
+    } else if (_dimension == 1) {
+      _selected = DateTime(_selected.year, _selected.month - 1, 1);
+    } else {
+      _selected = DateTime(_selected.year - 1, 1, 1);
+    }
+  });
+  _loadLocal();
   }
 
   void _next() {
@@ -2674,54 +2700,66 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── 维度切换 ──
-          Center(
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('日'))),
-                ButtonSegment(value: 1, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('月'))),
-                ButtonSegment(value: 2, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('年'))),
-              ],
-              selected: {_dimension},
-              onSelectionChanged: (s) {
-                setState(() => _dimension = s.first);
-                _loadLocal();
-              },
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── 维度切换 ──
+            Center(
+              child: SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(value: 0, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('日'))),
+                  ButtonSegment(value: 1, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('月'))),
+                  ButtonSegment(value: 2, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('年'))),
+                ],
+                selected: {_dimension},
+                onSelectionChanged: (s) {
+                  setState(() => _dimension = s.first);
+                  _loadLocal();
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // ── 日期导航 + 同步按钮 ──
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton.filledTonal(icon: const Icon(Icons.chevron_left), onPressed: _prev),
-              Text(_rangeLabel(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              IconButton.filledTonal(icon: const Icon(Icons.chevron_right), onPressed: _next),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // 同步状态行
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              if (_syncing)
-                const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(width: 14, height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
-                    SizedBox(width: 6),
-                    Text('同步中...', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-                )
-              else
+            // ── 日期导航 + 同步按钮 ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton.filledTonal(icon: const Icon(Icons.chevron_left), onPressed: _prev),
+                Text(_rangeLabel(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton.filledTonal(icon: const Icon(Icons.chevron_right), onPressed: _next),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // 同步状态行
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (_syncing)
+                  const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                      SizedBox(width: 6),
+                      Text('同步中...', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: _syncAndRefresh,
+                    icon: const Icon(Icons.sync, size: 16),
+                    label: const Text('增量同步', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                const SizedBox(width: 4),
                 TextButton.icon(
-                  onPressed: _syncAndRefresh,
-                  icon: const Icon(Icons.sync, size: 16),
-                  label: const Text('增量同步', style: TextStyle(fontSize: 12)),
+                  onPressed: _syncing ? null : _fullPull,
+                  icon: const Icon(Icons.cloud_download_outlined, size: 16),
+                  label: const Text('全量拉取', style: TextStyle(fontSize: 12)),
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.grey,
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -2729,118 +2767,106 @@ class _PomodoroStatsState extends State<_PomodoroStats> {
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
-              const SizedBox(width: 4),
-              TextButton.icon(
-                onPressed: _syncing ? null : _fullPull,
-                icon: const Icon(Icons.cloud_download_outlined, size: 16),
-                label: const Text('全量拉取', style: TextStyle(fontSize: 12)),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // ── 总览卡片 ──
-          Row(
-            children: [
-              _StatCard(
-                label: '总专注时长',
-                value: PomodoroService.formatDuration(totalSecs),
-                icon: Icons.timer_rounded,
-                color: const Color(0xFFFF6B6B),
-              ),
-              const SizedBox(width: 16),
-              _StatCard(
-                label: '完成次数',
-                value: '$completedCount 次',
-                icon: Icons.check_circle_rounded,
-                color: const Color(0xFF4ECDC4),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-
-          // ── 标签分布 ──
-          if (byTag.isNotEmpty) ...[
-            const Text('标签分布', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: byTag.entries.map((e) {
-                  final tagUuid = e.key;
-                  final secs = e.value;
-                  final tag = tagUuid == '__none__'
-                      ? null
-                      : _tags.cast<PomodoroTag?>().firstWhere(
-                          (t) => t?.uuid == tagUuid,
-                      orElse: () => null);
-                  final color = tag != null ? _hexToColor(tag.color) : Colors.grey;
-                  final ratio = totalSecs > 0 ? secs / totalSecs : 0.0;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            CircleAvatar(radius: 6, backgroundColor: color),
-                            const SizedBox(width: 8),
-                            Text(tag?.name ?? '未分类', style: const TextStyle(fontWeight: FontWeight.w500)),
-                            const Spacer(),
-                            Text(PomodoroService.formatDuration(secs),
-                                style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            value: ratio,
-                            minHeight: 10,
-                            backgroundColor: color.withValues(alpha: 0.15),
-                            valueColor: AlwaysStoppedAnimation<Color>(color),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
+              ],
             ),
-          ],
-
-          const SizedBox(height: 32),
-
-          // ── 明细列表 ──
-          if (_sessions.isNotEmpty) ...[
-            const Text('专注明细', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            // 按日期分组：月/年维度按天分组，日维度直接列出
-            ..._buildSessionList(),
-          ] else
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(40),
+
+            // ── 总览卡片 ──
+            Row(
+              children: [
+                _StatCard(
+                  label: '总专注时长',
+                  value: PomodoroService.formatDuration(totalSecs),
+                  icon: Icons.timer_rounded,
+                  color: const Color(0xFFFF6B6B),
+                ),
+                const SizedBox(width: 16),
+                _StatCard(
+                  label: '完成次数',
+                  value: '$completedCount 次',
+                  icon: Icons.check_circle_rounded,
+                  color: const Color(0xFF4ECDC4),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+
+            // ── 标签分布 ──
+            if (byTag.isNotEmpty) ...[
+              const Text('标签分布', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainer,
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 child: Column(
-                  children: [
-                    Icon(Icons.coffee_outlined, size: 64, color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                    const SizedBox(height: 16),
-                    const Text('此时段暂无专注记录', style: TextStyle(color: Colors.grey)),
-                  ],
+                  children: byTag.entries.map((e) {
+                    final tagUuid = e.key;
+                    final secs = e.value;
+                    final tag = tagUuid == '__none__'
+                        ? null
+                        : _tags.cast<PomodoroTag?>().firstWhere(
+                            (t) => t?.uuid == tagUuid,
+                        orElse: () => null);
+                    final color = tag != null ? _hexToColor(tag.color) : Colors.grey;
+                    final ratio = totalSecs > 0 ? secs / totalSecs : 0.0;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(radius: 6, backgroundColor: color),
+                              const SizedBox(width: 8),
+                              Text(tag?.name ?? '未分类', style: const TextStyle(fontWeight: FontWeight.w500)),
+                              const Spacer(),
+                              Text(PomodoroService.formatDuration(secs),
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: LinearProgressIndicator(
+                              value: ratio,
+                              minHeight: 10,
+                              backgroundColor: color.withValues(alpha: 0.15),
+                              valueColor: AlwaysStoppedAnimation<Color>(color),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
-            ),
-        ],
+            ],
+
+            const SizedBox(height: 32),
+
+            // ── 明细列表 ──
+            if (_sessions.isNotEmpty) ...[
+              const Text('专注明细', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              // 按日期分组：月/年维度按天分组，日维度直接列出
+              ..._buildSessionList(),
+            ] else
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Column(
+                    children: [
+                      Icon(Icons.coffee_outlined, size: 64, color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                      const SizedBox(height: 16),
+                      const Text('此时段暂无专注记录', style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

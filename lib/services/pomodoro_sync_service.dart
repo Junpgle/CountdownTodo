@@ -264,6 +264,25 @@ class PomodoroSyncService {
     });
   }
 
+  /// 🚀 新增：断线重连/初次连上时，如果本地正在专注，主动向服务端同步本地状态
+  /// 服务端会进行防冲突校验，若无冲突则接纳并广播，若有冲突则下发云端最新状态纠正本地
+  void sendReconnectSyncSignal({
+    required String? todoUuid,
+    required String? todoTitle,
+    required int durationSeconds,
+    required int targetEndMs,
+    List<String> tagNames = const [],
+  }) {
+    _send({
+      'action': 'RECONNECT_SYNC', // 发送专属的重连同步 Action
+      if (todoUuid != null) 'todo_uuid': todoUuid,
+      if (todoTitle != null) 'todo_title': todoTitle,
+      'duration': durationSeconds,
+      'target_end_ms': targetEndMs,
+      'tags': tagNames,
+    });
+  }
+
   void sendStopSignal() => _send({'action': 'STOP'});
 
   void sendSwitchSignal({

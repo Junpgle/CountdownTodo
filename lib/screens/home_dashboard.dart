@@ -91,6 +91,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Timer? _remotePomodoroTicker;
   int _remotePomodoroRemaining = 0;
   StreamSubscription<CrossDevicePomodoroState>? _remotePomodoroSub;
+  StreamSubscription<SyncConnectionState>? _connStateSub; // 🚀 新增：连接状态订阅
   final _syncService = PomodoroSyncService();
   String _deviceId = '';
 
@@ -133,6 +134,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   @override
   void dispose() {
+    _connStateSub?.cancel(); // 🚀 新增
     _remotePomodoroSub?.cancel();
     _remotePomodoroTicker?.cancel();
     ExternalShareHandler.dispose();
@@ -166,6 +168,46 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     _remotePomodoroSub?.cancel();
     _remotePomodoroSub = _syncService.onStateChanged.listen(_handleRemotePomodoroSignal);
+
+    // 🚀 新增：监听网络重连，主动上报本地专注状态
+    _connStateSub?.cancel();
+    _connStateSub = _syncService.onConnectionChanged.listen((state) async {
+      if (state == SyncConnectionState.connected) {
+        // 读取本地缓存的专注状态
+        final saved = await PomodoroService.loadRunState();
+        if (saved == null) return;
+
+        // 判断当前是否处于正在计时的阶段
+        if (saved.phase == PomodoroPhase.focusing || saved.phase == PomodoroPhase.breaking) {
+          final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
+          if (remaining > 0) {
+            debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
+
+            // 1. 临时查出真实的标签名字
+            final allTags = await PomodoroService.getTags();
+            List<String> realTagNames = [];
+            for (String uuid in saved.tagUuids) {
+              final tag = allTags.where((t) => t.uuid == uuid).firstOrNull;
+              if (tag != null) {
+                realTagNames.add(tag.name);
+              }
+            }
+
+            _syncService.sendReconnectSyncSignal(
+              todoUuid: saved.todoUuid,
+              todoTitle: saved.todoTitle,
+              // 根据当前所处的阶段，上报对应的设定时长
+              durationSeconds: saved.phase == PomodoroPhase.focusing
+                  ? saved.plannedFocusSeconds
+                  : saved.breakSeconds,
+              targetEndMs: saved.targetEndMs,
+              tagNames: realTagNames, // 对应模型里的 tagUuids
+            );
+          }
+        }
+      }
+    });
+
     await _syncService.ensureConnected(userIdInt.toString(), 'flutter_$_deviceId');
   }
 
