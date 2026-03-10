@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "1.8.5",
+  "version_name": "1.8.9",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 1.8.5",
-    "description": "【新增】跨端感知功能，支持在不同设备上同步更新任务状态\n【优化】修复了一些已知的bug，提升了应用的稳定性和性能\n【优化】优化了用户界面，使其更加美观和易用",
+    "title": "版本更新 1.8.9",
+    "description": "【适配】Flutter-Windows端，支持云端同步和数据迁移\n【新增】Windows端支持番茄悬浮窗\n【新增】Windows端支持课表同步【已知bug】Windows端暂不支持检查更新（会下载到手机的apk版本）【修复】修复了一些已知的 bug，提升稳定性和性能",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/"
   },
@@ -19,6 +19,16 @@
   },
   "changelog_history": [
     {
+      "version_name": "1.8.8",
+      "date": "2026-03-10",
+      "items": [
+        "【新增】跨端感知功能，支持在不同设备上同步更新任务状态",
+        "【新增】番茄钟保活机制，App 被杀后仍能准时发出提醒",
+        "【新增】精确闹钟权限引导，开机自动重注册提醒",
+        "【优化】标签跨端同步直接传名字，简化数据流",
+        "【修复】修复了一些已知的 bug，提升稳定性和性能"
+      ]
+    }, {
       "version_name": "1.8.5",
       "date": "2026-03-09",
       "items": [
