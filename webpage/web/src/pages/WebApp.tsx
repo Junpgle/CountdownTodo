@@ -12,7 +12,7 @@ import type { TodoItem, CountdownItem, User } from '../types';
 // --------------------------------------------------------
 // 常量与工具函数
 // --------------------------------------------------------
-const CURRENT_WEB_VERSION = "1.0.4"; // 当前网页版的硬编码版本号
+const CURRENT_WEB_VERSION = "1.0.5"; // 当前网页版的硬编码版本号
 
 const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
 const formatDt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -369,47 +369,81 @@ const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: Todo
   const endHour = 22;
   const totalMins = (endHour - startHour) * 60;
 
-  // 根据课程列表计算当前周和学期起始周一
-  const applyCourseData = (data: CourseItem[]) => {
-    let activeWeek = 1;
-    if (data.length > 0) {
-      const minWeek = Math.min(...data.map((c: CourseItem) => c.week_index));
-      activeWeek = minWeek > 0 ? minWeek : 1;
+  /**
+   * 根据开学时间（毫秒时间戳）计算学期第一周周一和当前周数。
+   * 若 semesterStartMs 无效则回退到用 week_index 反推的旧逻辑。
+   */
+  const applySemesterStart = (semesterStartMs: number | null, data: CourseItem[]) => {
+    if (semesterStartMs && semesterStartMs > 0) {
+      // 新逻辑：直接用 semester_start 锚定
+      const startDate = new Date(semesterStartMs);
+      const startDayOfWeek = startDate.getDay() || 7; // 1=周一 … 7=周日
+      const firstMonday = new Date(startDate);
+      firstMonday.setDate(startDate.getDate() - startDayOfWeek + 1);
+      firstMonday.setHours(0, 0, 0, 0);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const diffDays = Math.floor((today.getTime() - firstMonday.getTime()) / 86400000);
+      const week = diffDays >= 0 ? Math.floor(diffDays / 7) + 1 : 1;
+
+      setSemesterMonday(firstMonday);
+      setCurrentWeek(week);
+    } else {
+      // 旧逻辑回退：用课程 week_index 反推
+      let activeWeek = 1;
+      if (data.length > 0) {
+        const minWeek = Math.min(...data.map((c: CourseItem) => c.week_index));
+        activeWeek = minWeek > 0 ? minWeek : 1;
+      }
+      setCurrentWeek(activeWeek);
+      const todayDay = new Date().getDay() || 7;
+      const thisMonday = new Date();
+      thisMonday.setDate(new Date().getDate() - todayDay + 1);
+      thisMonday.setHours(0, 0, 0, 0);
+      const semMonday = new Date(thisMonday);
+      semMonday.setDate(thisMonday.getDate() - (activeWeek - 1) * 7);
+      setSemesterMonday(semMonday);
     }
-    setCurrentWeek(activeWeek);
-    const todayDay = new Date().getDay() || 7;
-    const thisMonday = new Date();
-    thisMonday.setDate(new Date().getDate() - todayDay + 1);
-    thisMonday.setHours(0, 0, 0, 0);
-    const semMonday = new Date(thisMonday);
-    semMonday.setDate(thisMonday.getDate() - (activeWeek - 1) * 7);
-    setSemesterMonday(semMonday);
   };
 
   useEffect(() => {
-    if (cachedCourses) {
-      // 缓存命中：直接计算周信息，不请求 API
-      applyCourseData(cachedCourses);
-      return;
-    }
-    fetchCourses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const init = async () => {
+      // 1. 课程数据（优先缓存）
+      let courseData = cachedCourses;
+      if (!courseData) {
+        setLoading(true);
+        try {
+          const data = await ApiService.request(`/api/courses?user_id=${userId}`, { method: 'GET' });
+          courseData = (Array.isArray(data) ? data : []) as CourseItem[];
+          setCourses(courseData);
+          writeDayCache(courseCacheKey, courseData);
+        } catch (e) {
+          console.error("获取课表失败", e);
+          courseData = [];
+        }
+      }
 
-  const fetchCourses = async () => {
-    setLoading(true);
-    try {
-      const data = await ApiService.request(`/api/courses?user_id=${userId}`, { method: 'GET' });
-      const result = (Array.isArray(data) ? data : []) as CourseItem[];
-      setCourses(result);
-      writeDayCache(courseCacheKey, result);
-      applyCourseData(result);
-    } catch (e) {
-      console.error("获取课表失败", e);
-    } finally {
+      // 2. 拉取开学时间（不缓存，保证用最新配置）
+      let semesterStartMs: number | null = null;
+      try {
+        const settings = await ApiService.request('/api/settings', { method: 'GET' });
+        if (settings && settings.semester_start) {
+          const parsed = Number(settings.semester_start);
+          if (!isNaN(parsed) && parsed > 0) semesterStartMs = parsed;
+        }
+      } catch (e) {
+        console.error("获取开学时间失败，使用课表反推", e);
+      }
+
+      // 3. 应用开学时间，计算当前周
+      applySemesterStart(semesterStartMs, courseData ?? []);
       setLoading(false);
-    }
-  };
+    };
+
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   const weekDates = useMemo(() => {
     return Array.from({length: 7}).map((_, i) => {
