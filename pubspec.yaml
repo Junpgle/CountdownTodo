@@ -31,6 +31,8 @@ dependencies:
   receive_sharing_intent: ^1.8.1
   html: ^0.15.4
   web_socket_channel: ^3.0.1
+  sqflite_common_ffi: ^2.3.0   # 桌面端 SQLite 读取
+
 
 dev_dependencies:
   flutter_test:

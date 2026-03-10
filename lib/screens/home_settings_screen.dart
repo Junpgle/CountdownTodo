@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
+import '../services/tai_service.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
@@ -46,6 +47,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _islandStatus = "点击检测设备是否支持";
   String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)";
   bool _isCheckingUpdate = false;
+  String _taiDbPath = '';
 
   // 用户与偏好设置状态
   String _username = "加载中...";
@@ -691,6 +693,12 @@ class _SettingsPageState extends State<SettingsPage> {
         _noCourseBehavior = noCourseBehaviorPref;
       }
     });
+    if (Platform.isWindows) {
+      final taiPath = await TaiService.getSavedDbPath()
+          ?? await TaiService.detectDefaultPath();
+      if (taiPath != null) await TaiService.saveDbPath(taiPath);
+      setState(() => _taiDbPath = taiPath ?? '');
+    }
   }
 
   Future<void> _pickSemesterDate(bool isStart) async {
@@ -1343,45 +1351,140 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _fetchSemesterFromCloud() async {
+  Future<void> _fetchCoursesFromCloud() async {
     if (_userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先登录账号')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录账号')),
+      );
       return;
     }
-    final data = await ApiService.fetchUserSettings();
-    if (!mounted) return;
-    if (data == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 拉取失败，请检查网络')));
-      return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('从云端获取课表'),
+        content: const Text('这将用云端课表数据覆盖本地课表。\n\n本地已有的课表数据将被替换。\n\n是否继续？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('获取')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final List<dynamic> data = await ApiService.fetchCourses(_userId!);
+
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (data.isNotEmpty) {
+        if (_semesterStart == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('⚠️ 请先在学期设置中配置开学日期')),
+          );
+          return;
+        }
+
+// 将开学日期对齐到本周一（第1周第1天）
+        final DateTime semesterMonday = _semesterStart!.subtract(
+          Duration(days: _semesterStart!.weekday - 1),
+        );
+
+        final courses = data.map<CourseItem>((c) {
+          final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
+          final int weekday  = (c['weekday']   as num?)?.toInt() ?? 1;
+
+          // 第 weekIndex 周的周一 + (weekday - 1) 天 = 该课的具体日期
+          final DateTime courseDate = semesterMonday
+              .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
+          final String dateStr = DateFormat('yyyy-MM-dd').format(courseDate);
+
+          return CourseItem(
+            courseName: c['course_name'] ?? '',
+            roomName:   c['room_name']   ?? '',
+            teacherName:c['teacher_name']?? '',
+            startTime:  (c['start_time'] as num?)?.toInt() ?? 0,
+            endTime:    (c['end_time']   as num?)?.toInt() ?? 0,
+            weekday:    weekday,
+            weekIndex:  weekIndex,
+            lessonType: c['lesson_type'] ?? '',
+            date:       dateStr,
+          );
+        }).toList();
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'course_schedule_json',
+          jsonEncode(courses.map((c) => c.toJson()).toList()),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✅ 已从云端同步 ${courses.length} 条课程数据')),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ 获取失败，请检查网络或云端暂无数据')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ 发生错误: $e')),
+        );
+      }
     }
-    final startMs = data['semester_start'];
-    final endMs = data['semester_end'];
-    if (startMs == null && endMs == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('云端暂无开学/放假时间数据')));
-      return;
-    }
-    DateTime? newStart = startMs != null ? DateTime.fromMillisecondsSinceEpoch((startMs as num).toInt(), isUtc: true).toLocal() : null;
-    DateTime? newEnd = endMs != null ? DateTime.fromMillisecondsSinceEpoch((endMs as num).toInt(), isUtc: true).toLocal() : null;
-    // 保存到本地
-    if (newStart != null) {
-      await StorageService.saveAppSetting(StorageService.KEY_SEMESTER_START, DateTime(newStart.year, newStart.month, newStart.day).toIso8601String());
-    }
-    if (newEnd != null) {
-      await StorageService.saveAppSetting(StorageService.KEY_SEMESTER_END, DateTime(newEnd.year, newEnd.month, newEnd.day).toIso8601String());
-    }
-    if (mounted) {
-      setState(() {
-        if (newStart != null) _semesterStart = DateTime(newStart.year, newStart.month, newStart.day);
-        if (newEnd != null) _semesterEnd = DateTime(newEnd.year, newEnd.month, newEnd.day);
-      });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 已从云端同步开学/放假时间')));
-    }
+  }
+
+  // 获取本地存储的 auth token
+  Future<String> _getAuthToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token') ?? '';
   }
 
   Future<void> _checkUpdatesAndNotices() async {
     setState(() => _isCheckingUpdate = true);
     await UpdateService.checkUpdateAndPrompt(context, isManual: true);
     if (mounted) setState(() => _isCheckingUpdate = false);
+  }
+
+  Future<void> _pickTaiDatabase() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['db', 'sqlite'],
+      dialogTitle: '选择 Tai 数据库文件',
+    );
+    if (result == null || result.files.single.path == null) return;
+
+    final path = result.files.single.path!;
+    final valid = await TaiService.validateDb(path);
+
+    if (!valid) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ 无效的 Tai 数据库文件')),
+        );
+      }
+      return;
+    }
+
+    await TaiService.saveDbPath(path);
+    setState(() => _taiDbPath = path);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ 数据库路径已保存')),
+      );
+    }
   }
 
   Future<void> _handleLogout({bool force = false}) async {
@@ -1669,6 +1772,14 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const Divider(height: 1, indent: 56),
             ListTile(
+              leading: const Icon(Icons.cloud_download_outlined, color: Colors.green),
+              title: const Text('从云端获取课表'),
+              subtitle: const Text('将云端课表同步到本机，覆盖本地数据'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _fetchCoursesFromCloud,
+            ),
+            const Divider(height: 1, indent: 56),
+            ListTile(
               leading: const Icon(Icons.layers_clear_outlined),
               title: const Text('无课时板块行为'),
               trailing: DropdownButton<String>(
@@ -1719,7 +1830,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: const Text('从云端同步开学/放假时间'),
                 subtitle: const Text('将另一设备设置的学期日期同步到本机'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: _fetchSemesterFromCloud,
+                onTap: _fetchCoursesFromCloud,
               ),
             ],
           ]),
@@ -1774,6 +1885,24 @@ class _SettingsPageState extends State<SettingsPage> {
                 },
               ),
             ),
+            if (Platform.isWindows) ...[
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.timer_outlined, color: Colors.indigo),
+                title: const Text('Tai 屏幕时间数据库'),
+                subtitle: Text(
+                  _taiDbPath.isEmpty ? '未设置，点击选择 data.db 文件' : _taiDbPath,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _taiDbPath.isEmpty ? Colors.orange : Colors.grey,
+                  ),
+                ),
+                trailing: const Icon(Icons.folder_open_outlined),
+                onTap: _pickTaiDatabase,
+              ),
+            ],
           ]),
 
           // --- 5. 权限管理 ---

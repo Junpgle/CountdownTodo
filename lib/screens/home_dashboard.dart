@@ -622,15 +622,10 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _initScreenTime() async {
     if (mounted) setState(() => _isLoadingScreenTime = true);
 
-    // 🚀 桌面端拦截：直接屏蔽 Android 专属的屏幕时间权限请求
     if (!Platform.isAndroid && !Platform.isIOS) {
-      if (mounted) {
-        setState(() {
-          _hasUsagePermission = true; // 假装已授权，防止渲染错误按钮
-          _screenTimeStats = [];
-          _isLoadingScreenTime = false;
-        });
-      }
+      // 桌面端：直接走缓存读取+Tai同步，不需要权限检查
+      if (mounted) setState(() => _hasUsagePermission = true);
+      await _loadCachedScreenTime();
       return;
     }
 
@@ -747,11 +742,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
 
       if (syncScreenTime) {
-        // 🚀 桌面端拦截
-        if (Platform.isAndroid || Platform.isIOS) {
-          await ScreenTimeService.syncScreenTime(userId);
-          await _loadCachedScreenTime();
-        }
+        await ScreenTimeService.syncScreenTime(userId);
+        await _loadCachedScreenTime();
       }
 
       await StorageService.updateLastAutoSyncTime();
