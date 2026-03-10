@@ -238,6 +238,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             'title': signal.todoTitle ?? '',
             'tags': signal.tags,
           });
+          debugPrint('FloatWindow: todoTitle=${signal.todoTitle}, tags=${signal.tags}');
         }
         break;
 
