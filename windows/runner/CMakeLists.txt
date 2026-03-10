@@ -7,13 +7,14 @@ project(runner LANGUAGES CXX)
 #
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
-  "flutter_window.cpp"
-  "main.cpp"
-  "utils.cpp"
-  "win32_window.cpp"
-  "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
-  "Runner.rc"
-  "runner.exe.manifest"
+        "float_window.cpp"
+        "flutter_window.cpp"
+        "main.cpp"
+        "utils.cpp"
+        "win32_window.cpp"
+        "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
+        "Runner.rc"
+        "runner.exe.manifest"
 )
 
 # Apply the standard set of build settings. This can be removed for applications
@@ -34,7 +35,9 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "psapi.lib")  # 新增
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
+target_link_libraries(${BINARY_NAME} PRIVATE "gdiplus.lib")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)

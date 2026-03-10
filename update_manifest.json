@@ -6,7 +6,7 @@
     "title": "版本更新 1.8.5",
     "description": "【新增】跨端感知功能，支持在不同设备上同步更新任务状态\n【优化】修复了一些已知的bug，提升了应用的稳定性和性能\n【优化】优化了用户界面，使其更加美观和易用",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
-    "patch_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk"
+    "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/"
   },
   "announcement": {
     "show": false,

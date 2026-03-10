@@ -211,14 +211,16 @@ class _HomeDashboardState extends State<HomeDashboard>
     await _syncService.ensureConnected(userIdInt.toString(), 'flutter_$_deviceId');
   }
 
+  static const _floatChannel = MethodChannel('com.math_quiz_app/float_window');
+
   void _handleRemotePomodoroSignal(CrossDevicePomodoroState signal) {
     if (!mounted) return;
-    // 过滤本机自己的信号
     if (signal.sourceDevice == 'flutter_$_deviceId') return;
 
     switch (signal.action) {
       case 'START':
       case 'SYNC':
+      case 'RECONNECT_SYNC':
         final endMs = signal.targetEndMs;
         if (endMs == null) return;
         final rem = ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
@@ -228,24 +230,25 @@ class _HomeDashboardState extends State<HomeDashboard>
           _remotePomodoroRemaining = rem;
         });
         _startRemotePomodoroTicker(endMs);
+
+        // 🚀 新增：Windows 端显示悬浮窗
+        if (Platform.isWindows) {
+          _floatChannel.invokeMethod('showFloat', {
+            'endMs': endMs,
+            'title': signal.todoTitle ?? '',
+            'tags': signal.tags,
+          });
+        }
         break;
+
       case 'STOP':
       case 'INTERRUPT':
         _stopRemotePomodoroTicker();
         setState(() => _remotePomodoro = null);
-        break;
-      case 'SWITCH':
-        if (_remotePomodoro != null && signal.todoTitle != null) {
-          setState(() {
-            _remotePomodoro = CrossDevicePomodoroState(
-              action: _remotePomodoro!.action,
-              todoUuid: signal.todoUuid ?? _remotePomodoro!.todoUuid,
-              todoTitle: signal.todoTitle,
-              duration: _remotePomodoro!.duration,
-              targetEndMs: _remotePomodoro!.targetEndMs,
-              sourceDevice: _remotePomodoro!.sourceDevice,
-            );
-          });
+
+        // 🚀 新增：隐藏悬浮窗
+        if (Platform.isWindows) {
+          _floatChannel.invokeMethod('hideFloat');
         }
         break;
     }
