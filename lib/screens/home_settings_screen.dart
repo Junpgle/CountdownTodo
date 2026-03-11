@@ -130,7 +130,6 @@ class _SettingsPageState extends State<SettingsPage> {
     // 存储权限（Android 13+ 用 photos/videos，低版本用 storage）
     if (Platform.isAndroid) {
       final storageStatus = await Permission.storage.status;
-      // manageExternalStorage 更准确地反映文件访问能力
       final manageStatus = await Permission.manageExternalStorage.status;
       results['storage'] = (storageStatus.isGranted || manageStatus.isGranted)
           ? PermissionStatus.granted
@@ -148,7 +147,7 @@ class _SettingsPageState extends State<SettingsPage> {
         results['usage_stats'] = PermissionStatus.denied;
       }
     } else {
-      results['usage_stats'] = PermissionStatus.granted; // iOS 不需要
+      results['usage_stats'] = PermissionStatus.granted;
     }
 
     // 安装未知来源
@@ -202,7 +201,6 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         break;
       case 'usage_stats':
-      // 应用使用情况权限必须去系统设置页开启
         try {
           final bool opened = await platform.invokeMethod('openUsageStatsSettings') ?? false;
           if (!opened) await openAppSettings();
@@ -225,7 +223,6 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
     }
 
-    // 跳转回来后刷新状态
     await Future.delayed(const Duration(milliseconds: 500));
     await _checkAllPermissions();
   }
@@ -236,7 +233,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadSettings().then((_) => _fetchAccountStatus());
     _setupDownloadListener();
     _calculateCacheSize();
-    // 进入设置页时自动检查一次所有权限状态
     _checkAllPermissions();
   }
 
@@ -247,7 +243,6 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  // 获取当前账户等级和同步额度
   Future<void> _fetchAccountStatus() async {
     if (_userId == null) {
       if (mounted) {
@@ -316,7 +311,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // === 辅助方法：字节大小格式化 ===
   String _formatSize(double size) {
     if (size <= 0) return "0 B";
     const List<String> suffixes = ["B", "KB", "MB", "GB", "TB"];
@@ -324,7 +318,6 @@ class _SettingsPageState extends State<SettingsPage> {
     return '${(size / pow(1024, i)).toStringAsFixed(2)} ${suffixes[i]}';
   }
 
-  // === 深度缓存计算与清理 ===
   Future<void> _calculateCacheSize() async {
     try {
       double size = 0;
@@ -336,7 +329,6 @@ class _SettingsPageState extends State<SettingsPage> {
       size += _getTotalSizeOfFilesInDir(supportDir);
 
       final docDir = await getApplicationDocumentsDirectory();
-      // 🚀 更新为清理包括 exe 在内的安装包
       size += _getPackageSizeInDir(docDir);
 
       if (Platform.isAndroid) {
@@ -373,7 +365,6 @@ class _SettingsPageState extends State<SettingsPage> {
     return 0;
   }
 
-  // 🚀 获取 APK 和 EXE 安装包的体积
   double _getPackageSizeInDir(Directory dir) {
     double total = 0;
     if (dir.existsSync()) {
@@ -448,7 +439,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // 🚀 清理安装包文件
   void _deletePackageFilesInDir(Directory dir) {
     if (dir.existsSync()) {
       try {
@@ -466,7 +456,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // === 空间占用超级底层分析工具 ===
   Future<void> _showStorageAnalysis() async {
     showDialog(
       context: context,
@@ -640,9 +629,8 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // === 既有逻辑 ===
   void _setupDownloadListener() {
-    if (!Platform.isAndroid && !Platform.isIOS) return; // 🚀 新增
+    if (!Platform.isAndroid && !Platform.isIOS) return;
     IsolateNameServer.removePortNameMapping('downloader_send_port');
     IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
 
@@ -666,7 +654,6 @@ class _SettingsPageState extends State<SettingsPage> {
       if (task.filename != null) {
         final String fullPath = "${task.savedDir}/${task.filename}";
         await Future.delayed(const Duration(milliseconds: 1500));
-        // 🚀 核心修复：更新为调起统一跨平台的 installPackage 方法
         await UpdateService.installPackage(fullPath);
       }
     } catch (e) {}
@@ -725,7 +712,6 @@ class _SettingsPageState extends State<SettingsPage> {
           StorageService.saveAppSetting(StorageService.KEY_SEMESTER_END, picked.toIso8601String());
         }
       });
-      // 同步到云端（后台静默）
       if (_userId != null) {
         final startMs = _semesterStart != null
             ? DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day).millisecondsSinceEpoch
@@ -1040,7 +1026,7 @@ class _SettingsPageState extends State<SettingsPage> {
         if (opened) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('请在设置中打开“推广的通知/实时更新”权限'), duration: Duration(seconds: 3)),
+            const SnackBar(content: Text('请在设置中打开"推广的通知/实时更新"权限'), duration: Duration(seconds: 3)),
           );
         } else {
           setState(() => _liveUpdatesStatus = "跳转失败，设备可能不是 Android 16+");
@@ -1068,7 +1054,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // 🚀 全新的智能导入核心方法：自动探嗅，自带精美进度弹窗
   Future<void> _smartImportCourse() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.any,
@@ -1079,11 +1064,9 @@ class _SettingsPageState extends State<SettingsPage> {
     String filePath = result.files.single.path!;
     File file = File(filePath);
 
-    // 使用 ValueNotifier 驱动局部 UI 刷新
     ValueNotifier<String> statusNotifier = ValueNotifier("获取课表文件中...");
     BuildContext? dialogContext;
 
-    // 弹出不可取消的进度弹窗
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1120,7 +1103,6 @@ class _SettingsPageState extends State<SettingsPage> {
       String content;
       String ext = filePath.split('.').last.toLowerCase();
 
-      // 安全读取文件：防止特殊网页编码直接造成 readAsString 崩溃
       try {
         content = await file.readAsString();
       } catch (e) {
@@ -1133,7 +1115,6 @@ class _SettingsPageState extends State<SettingsPage> {
       bool success = false;
       String sourceName = "";
 
-      // 👉 1. 判断是否为西电 ICS 日历
       if (ext == 'ics' || content.contains('BEGIN:VCALENDAR')) {
         sourceName = "西安电子科技大学";
         statusNotifier.value = "识别到: $sourceName\n正在导入...";
@@ -1145,9 +1126,7 @@ class _SettingsPageState extends State<SettingsPage> {
           return;
         }
         success = await CourseService.importXidianScheduleFromIcs(content, _semesterStart!);
-      }
-      // 👉 2. 判断是否为厦大 MHTML/HTML 网页档案
-      else if (['mhtml', 'html', 'htm'].contains(ext) || content.contains('quoted-printable') || content.toLowerCase().contains('<html')) {
+      } else if (['mhtml', 'html', 'htm'].contains(ext) || content.contains('quoted-printable') || content.toLowerCase().contains('<html')) {
         sourceName = "厦门大学";
         statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
 
@@ -1157,27 +1136,21 @@ class _SettingsPageState extends State<SettingsPage> {
           if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
           return;
         }
-        // 🚀 核心修复：直接传递给 Service，底层 XmuScheduleParser 会负责极其安全的 quoted-printable 解码
         success = await CourseService.importXmuScheduleFromHtml(content, _semesterStart!);
-      }
-      // 👉 3. 判断是否为合工大 JSON 数据
-      else if (['json', 'txt'].contains(ext) || content.trim().startsWith('[') || content.trim().startsWith('{')) {
+      } else if (['json', 'txt'].contains(ext) || content.trim().startsWith('[') || content.trim().startsWith('{')) {
         sourceName = "聚在工大";
         statusNotifier.value = "识别到: $sourceName\n正在导入...";
         success = await CourseService.importScheduleFromJson(content);
-      }
-      // 👉 4. 无法识别
-      else {
+      } else {
         statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
         await Future.delayed(const Duration(seconds: 2));
         if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
         return;
       }
 
-      // 提示结果并关闭弹窗
       if (success) {
         statusNotifier.value = "✅ $sourceName 导入成功！\n请返回主页查看课表";
-        await Future.delayed(const Duration(milliseconds: 1200)); // 让用户能看清成功提示
+        await Future.delayed(const Duration(milliseconds: 1200));
         if (dialogContext != null && dialogContext!.mounted) {
           Navigator.pop(dialogContext!);
         }
@@ -1225,7 +1198,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 尚未导入课表数据，请先在“课程设置”中导入')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 尚未导入课表数据，请先在"课程设置"中导入')));
       }
     }
   }
@@ -1238,7 +1211,6 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    // 二次确认
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1260,7 +1232,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
 
     try {
-      // 重置水位线 → 下次 syncData 会让服务端返回所有记录
       await StorageService.resetSyncTime(_username);
       await StorageService.syncData(_username, forceFullSync: true);
 
@@ -1311,8 +1282,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: const Text("上传")),
         ],
       ),
-    ) ??
-        false;
+    ) ?? false;
 
     if (!confirm) return;
 
@@ -1324,7 +1294,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final result = await CourseService.syncCoursesToCloud(_userId!);
 
-    // 同时上传开学/放假时间
     if (result['success'] == true) {
       final startMs = _semesterStart != null
           ? DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day).millisecondsSinceEpoch
@@ -1342,7 +1311,6 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('✅ 课表已成功同步到云端')),
       );
-
       _fetchAccountStatus();
     } else if (result['isLimitExceeded'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1396,7 +1364,6 @@ class _SettingsPageState extends State<SettingsPage> {
           return;
         }
 
-// 将开学日期对齐到本周一（第1周第1天）
         final DateTime semesterMonday = _semesterStart!.subtract(
           Duration(days: _semesterStart!.weekday - 1),
         );
@@ -1405,7 +1372,6 @@ class _SettingsPageState extends State<SettingsPage> {
           final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
           final int weekday  = (c['weekday']   as num?)?.toInt() ?? 1;
 
-          // 第 weekIndex 周的周一 + (weekday - 1) 天 = 该课的具体日期
           final DateTime courseDate = semesterMonday
               .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
           final String dateStr = DateFormat('yyyy-MM-dd').format(courseDate);
@@ -1449,7 +1415,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // 获取本地存储的 auth token
   Future<String> _getAuthToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('auth_token') ?? '';
@@ -1691,349 +1656,421 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  // ─── 构建账户管理 Section ────────────────────────────────────────
+  Widget _buildAccountSection() {
+    return _buildSection('账户管理', [
+      ListTile(
+        leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primaryContainer, child: const Icon(Icons.person)),
+        title: Text(_username, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(_userId != null ? "UID: $_userId" : "离线模式"),
+        trailing: const Icon(Icons.edit_square, size: 20, color: Colors.grey),
+        onTap: _showChangePasswordDialog,
+      ),
+      const Divider(height: 1, indent: 56),
+      Padding(
+        padding: const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("账户等级", style: TextStyle(fontSize: 14)),
+                _isLoadingStatus
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(
+                  _userTier.toUpperCase(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _userTier.toLowerCase() == 'pro' || _userTier.toLowerCase() == 'admin'
+                        ? Colors.orangeAccent
+                        : Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text("今日同步额度", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: _syncProgress,
+                minHeight: 6,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                    _syncProgress > 0.9 ? Colors.redAccent : Theme.of(context).colorScheme.primary
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.cloud_sync, color: Colors.deepPurple),
+        title: const Text('强制全量同步'),
+        subtitle: const Text('重置同步水位，从云端拉取所有最新数据'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _forceFullSync,
+      ),
+    ]);
+  }
+
+  // ─── 构建课程设置 Section ────────────────────────────────────────
+  Widget _buildCourseSection() {
+    return _buildSection('课程设置', [
+      ListTile(
+        leading: const Icon(Icons.cloud_upload_outlined, color: Colors.blue),
+        title: const Text('上传课表到云端'),
+        subtitle: const Text('用于与电脑或其他设备同步'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _uploadCoursesToCloud,
+      ),
+      ListTile(
+        leading: const Icon(Icons.file_upload_outlined),
+        title: const Text('智能导入本地课表'),
+        subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电)'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _smartImportCourse,
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.cloud_download_outlined, color: Colors.green),
+        title: const Text('从云端获取课表'),
+        subtitle: const Text('将云端课表同步到本机，覆盖本地数据'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _fetchCoursesFromCloud,
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.layers_clear_outlined),
+        title: const Text('无课时板块行为'),
+        trailing: DropdownButton<String>(
+          value: _noCourseBehavior,
+          underline: const SizedBox(),
+          items: const [
+            DropdownMenuItem(value: 'keep', child: Text('保持位置')),
+            DropdownMenuItem(value: 'bottom', child: Text('排到最后')),
+            DropdownMenuItem(value: 'hide', child: Text('自动隐藏')),
+          ],
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _noCourseBehavior = val);
+              SharedPreferences.getInstance().then((prefs) => prefs.setString('no_course_behavior', val));
+            }
+          },
+        ),
+      ),
+    ]);
+  }
+
+  // ─── 构建学期设置 Section ────────────────────────────────────────
+  Widget _buildSemesterSection() {
+    return _buildSection('学期设置', [
+      SwitchListTile(
+        secondary: const Icon(Icons.linear_scale),
+        title: const Text('首页学期进度条'),
+        value: _semesterEnabled,
+        onChanged: (val) {
+          setState(() => _semesterEnabled = val);
+          StorageService.saveAppSetting(StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+        },
+      ),
+      ListTile(
+        contentPadding: const EdgeInsets.only(left: 56, right: 16),
+        title: const Text('开学日期'),
+        trailing: Text(_semesterStart == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
+        onTap: () => _pickSemesterDate(true),
+      ),
+      ListTile(
+        contentPadding: const EdgeInsets.only(left: 56, right: 16),
+        title: const Text('放假日期'),
+        trailing: Text(_semesterEnd == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
+        onTap: () => _pickSemesterDate(false),
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.cloud_download_outlined, color: Colors.teal),
+        title: const Text('从云端同步开学/放假时间'),
+        subtitle: const Text('将另一设备设置的学期日期同步到本机'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _fetchCoursesFromCloud,
+      ),
+    ]);
+  }
+
+  // ─── 构建偏好设置 Section ────────────────────────────────────────
+  Widget _buildPreferenceSection() {
+    return _buildSection('偏好设置', [
+      ListTile(
+        leading: const Icon(Icons.dashboard_customize_outlined),
+        title: const Text('首页模块管理'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _showHomeSectionManager,
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.sync),
+        title: const Text('自动同步频率'),
+        trailing: DropdownButton<int>(
+          value: _syncInterval,
+          underline: const SizedBox(),
+          items: const [
+            DropdownMenuItem(value: 5, child: Text('每 5 分钟')),
+            DropdownMenuItem(value: 10, child: Text('每 10 分钟')),
+            DropdownMenuItem(value: 60, child: Text('每小时')),
+            DropdownMenuItem(value: 0, child: Text('每次启动')),
+          ],
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _syncInterval = val);
+              StorageService.saveAppSetting(StorageService.KEY_SYNC_INTERVAL, val);
+            }
+          },
+        ),
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.palette_outlined),
+        title: const Text('深色模式/主题'),
+        trailing: DropdownButton<String>(
+          value: _themeMode,
+          underline: const SizedBox(),
+          items: const [
+            DropdownMenuItem(value: 'system', child: Text('跟随系统')),
+            DropdownMenuItem(value: 'light', child: Text('浅色')),
+            DropdownMenuItem(value: 'dark', child: Text('深色')),
+          ],
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _themeMode = val);
+              StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, val);
+              StorageService.themeNotifier.value = val;
+            }
+          },
+        ),
+      ),
+      if (Platform.isWindows) ...[
+        const Divider(height: 1, indent: 56),
+        ListTile(
+          leading: const Icon(Icons.timer_outlined, color: Colors.indigo),
+          title: const Text('Tai 屏幕时间数据库'),
+          subtitle: Text(
+            _taiDbPath.isEmpty ? '未设置，点击选择 data.db 文件' : _taiDbPath,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: _taiDbPath.isEmpty ? Colors.orange : Colors.grey,
+            ),
+          ),
+          trailing: const Icon(Icons.folder_open_outlined),
+          onTap: _pickTaiDatabase,
+        ),
+        const Divider(height: 1, indent: 56),
+        SwitchListTile(
+          secondary: const Icon(Icons.picture_in_picture_alt_outlined, color: Colors.indigo),
+          title: const Text('番茄钟悬浮窗'),
+          subtitle: const Text('专注/跨端观察时显示桌面悬浮倒计时'),
+          value: _floatWindowEnabled,
+          onChanged: Platform.isWindows ? (val) async {
+            setState(() => _floatWindowEnabled = val);
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('float_window_enabled', val);
+          } : null,
+        ),
+      ],
+    ]);
+  }
+
+  // ─── 构建高级设置 Section ────────────────────────────────────────
+  Widget _buildAdvancedSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
+          child: Text('高级设置', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+        ),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            leading: const Icon(Icons.notification_important_outlined, color: Colors.amber),
+            title: const Text('测试课程实时通知'),
+            subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
+            trailing: TextButton(onPressed: _testCourseNotification, child: const Text("发送测试")),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            leading: const CircleAvatar(backgroundColor: Colors.teal, child: Icon(Icons.notifications_active, color: Colors.white)),
+            title: const Text('Android 16 实时活动', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(_liveUpdatesStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))
+            ),
+            trailing: ElevatedButton(
+                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                onPressed: _checkAndOpenLiveUpdates,
+                child: const Text('去开启')
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            leading: const CircleAvatar(backgroundColor: Colors.deepPurpleAccent, child: Icon(Icons.smart_button, color: Colors.white)),
+            title: const Text('小米超级岛支持', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text(_islandStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))
+            ),
+            trailing: ElevatedButton(
+                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                onPressed: _checkIslandSupport,
+                child: const Text('检测')
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── 构建系统与关于 Section ──────────────────────────────────────
+  Widget _buildSystemSection() {
+    return _buildSection('系统与关于', [
+      ListTile(
+        leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
+        title: const Text('深度清理缓存与冗余'),
+        subtitle: const Text('包含更新残留包与深度图片缓存'),
+        trailing: Text(_cacheSizeStr, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+        onTap: () async {
+          bool confirm = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text("深度清理空间"),
+                content: Text("检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK/EXE) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响"),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("清理")),
+              ],
+            ),
+          ) ?? false;
+
+          if (confirm) {
+            _clearCache();
+          }
+        },
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.data_usage, color: Colors.orange),
+        title: const Text('存储空间深度分析'),
+        subtitle: const Text('找出占用数百MB的隐藏文件'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _showStorageAnalysis,
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.system_update, color: Colors.green),
+        title: const Text('检查新版本'),
+        trailing: _isCheckingUpdate
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.chevron_right),
+        onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
+        leading: const Icon(Icons.logout, color: Colors.redAccent),
+        title: const Text('退出当前账号', style: TextStyle(color: Colors.redAccent)),
+        onTap: () => _handleLogout(force: false),
+      ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('设置'), centerTitle: true),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // 宽屏阈值：768px 以上切换为双栏布局
+          final bool isWide = constraints.maxWidth >= 768;
+
+          if (isWide) {
+            return _buildWideLayout();
+          } else {
+            return _buildNarrowLayout();
+          }
+        },
+      ),
+    );
+  }
+
+  // ─── 窄屏：单列 ListView（原始布局）───────────────────────────────
+  Widget _buildNarrowLayout() {
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+        _buildAccountSection(),
+        _buildCourseSection(),
+        _buildSemesterSection(),
+        _buildPreferenceSection(),
+        _buildPermissionSection(),
+        _buildAdvancedSection(),
+        _buildSystemSection(),
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+
+  // ─── 宽屏：双栏布局 ───────────────────────────────────────────────
+  // 左栏：账户、课程、学期
+  // 右栏：偏好、权限、高级、系统
+  Widget _buildWideLayout() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- 1. 账户管理 ---
-          _buildSection('账户管理', [
-            ListTile(
-              leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primaryContainer, child: const Icon(Icons.person)),
-              title: Text(_username, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(_userId != null ? "UID: $_userId" : "离线模式"),
-              trailing: const Icon(Icons.edit_square, size: 20, color: Colors.grey),
-              onTap: _showChangePasswordDialog,
-            ),
-            const Divider(height: 1, indent: 56),
-            Padding(
-              padding: const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("账户等级", style: TextStyle(fontSize: 14)),
-                      _isLoadingStatus
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Text(
-                        _userTier.toUpperCase(),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: _userTier.toLowerCase() == 'pro' || _userTier.toLowerCase() == 'admin'
-                              ? Colors.orangeAccent
-                              : Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text("今日同步额度", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _syncProgress,
-                      minHeight: 6,
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                          _syncProgress > 0.9 ? Colors.redAccent : Theme.of(context).colorScheme.primary
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.cloud_sync, color: Colors.deepPurple),
-              title: const Text('强制全量同步'),
-              subtitle: const Text('重置同步水位，从云端拉取所有最新数据'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _forceFullSync,
-            ),
-          ]),
-
-          // --- 2. 课程设置 ---
-          _buildSection('课程设置', [
-            ListTile(
-              leading: const Icon(Icons.cloud_upload_outlined, color: Colors.blue),
-              title: const Text('上传课表到云端'),
-              subtitle: const Text('用于与电脑或其他设备同步'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _uploadCoursesToCloud,
-            ),
-            // 🚀 替换为全新的智能导入入口
-            ListTile(
-              leading: const Icon(Icons.file_upload_outlined),
-              title: const Text('智能导入本地课表'),
-              subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电)'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _smartImportCourse,
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.cloud_download_outlined, color: Colors.green),
-              title: const Text('从云端获取课表'),
-              subtitle: const Text('将云端课表同步到本机，覆盖本地数据'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _fetchCoursesFromCloud,
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.layers_clear_outlined),
-              title: const Text('无课时板块行为'),
-              trailing: DropdownButton<String>(
-                value: _noCourseBehavior,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: 'keep', child: Text('保持位置')),
-                  DropdownMenuItem(value: 'bottom', child: Text('排到最后')),
-                  DropdownMenuItem(value: 'hide', child: Text('自动隐藏')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _noCourseBehavior = val);
-                    SharedPreferences.getInstance().then((prefs) => prefs.setString('no_course_behavior', val));
-                  }
-                },
-              ),
-            ),
-          ]),
-
-          // --- 3. 学期设置 ---
-          _buildSection('学期设置', [
-            SwitchListTile(
-              secondary: const Icon(Icons.linear_scale),
-              title: const Text('首页学期进度条'),
-              value: _semesterEnabled,
-              onChanged: (val) {
-                setState(() => _semesterEnabled = val);
-                StorageService.saveAppSetting(StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
-              },
-            ),
-            if (_semesterEnabled || true) ...[ // 移除限制条件以保证随时可设开学日期
-              ListTile(
-                contentPadding: const EdgeInsets.only(left: 56, right: 16),
-                title: const Text('开学日期'),
-                trailing: Text(_semesterStart == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
-                onTap: () => _pickSemesterDate(true),
-              ),
-              ListTile(
-                contentPadding: const EdgeInsets.only(left: 56, right: 16),
-                title: const Text('放假日期'),
-                trailing: Text(_semesterEnd == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
-                onTap: () => _pickSemesterDate(false),
-              ),
-              const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: const Icon(Icons.cloud_download_outlined, color: Colors.teal),
-                title: const Text('从云端同步开学/放假时间'),
-                subtitle: const Text('将另一设备设置的学期日期同步到本机'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: _fetchCoursesFromCloud,
-              ),
-            ],
-          ]),
-
-          // --- 4. 偏好与通用 ---
-          _buildSection('偏好设置', [
-            ListTile(
-              leading: const Icon(Icons.dashboard_customize_outlined),
-              title: const Text('首页模块管理'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _showHomeSectionManager,
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.sync),
-              title: const Text('自动同步频率'),
-              trailing: DropdownButton<int>(
-                value: _syncInterval,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: 5, child: Text('每 5 分钟')),
-                  DropdownMenuItem(value: 10, child: Text('每 10 分钟')),
-                  DropdownMenuItem(value: 60, child: Text('每小时')),
-                  DropdownMenuItem(value: 0, child: Text('每次启动')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _syncInterval = val);
-                    StorageService.saveAppSetting(StorageService.KEY_SYNC_INTERVAL, val);
-                  }
-                },
-              ),
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.palette_outlined),
-              title: const Text('深色模式/主题'),
-              trailing: DropdownButton<String>(
-                value: _themeMode,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: 'system', child: Text('跟随系统')),
-                  DropdownMenuItem(value: 'light', child: Text('浅色')),
-                  DropdownMenuItem(value: 'dark', child: Text('深色')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _themeMode = val);
-                    StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, val);
-                    StorageService.themeNotifier.value = val;
-                  }
-                },
-              ),
-            ),
-            if (Platform.isWindows) ...[
-              const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: const Icon(Icons.timer_outlined, color: Colors.indigo),
-                title: const Text('Tai 屏幕时间数据库'),
-                subtitle: Text(
-                  _taiDbPath.isEmpty ? '未设置，点击选择 data.db 文件' : _taiDbPath,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _taiDbPath.isEmpty ? Colors.orange : Colors.grey,
-                  ),
-                ),
-                trailing: const Icon(Icons.folder_open_outlined),
-                onTap: _pickTaiDatabase,
-              ),
-              const Divider(height: 1, indent: 56),
-              SwitchListTile(
-                secondary: const Icon(Icons.picture_in_picture_alt_outlined, color: Colors.indigo),
-                title: const Text('番茄钟悬浮窗'),
-                subtitle: const Text('专注/跨端观察时显示桌面悬浮倒计时'),
-                value: _floatWindowEnabled,
-                onChanged: Platform.isWindows ? (val) async {
-                  setState(() => _floatWindowEnabled = val);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('float_window_enabled', val);
-                } : null,
-              ),
-            ],
-          ]),
-
-          // --- 5. 权限管理 ---
-          _buildPermissionSection(),
-
-          // 3. 高级设置
-          const Padding(
-            padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-            child: Text('高级设置', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
-          ),
-
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const Icon(Icons.notification_important_outlined, color: Colors.amber),
-              title: const Text('测试课程实时通知'),
-              subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
-              trailing: TextButton(onPressed: _testCourseNotification, child: const Text("发送测试")),
+          // ── 左栏 ──
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildAccountSection(),
+                _buildCourseSection(),
+                _buildSemesterSection(),
+                const SizedBox(height: 40),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
 
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const CircleAvatar(backgroundColor: Colors.teal, child: Icon(Icons.notifications_active, color: Colors.white)),
-              title: const Text('Android 16 实时活动', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(_liveUpdatesStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))
-              ),
-              trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                  onPressed: _checkAndOpenLiveUpdates,
-                  child: const Text('去开启')
-              ),
+          const SizedBox(width: 20),
+
+          // ── 右栏 ──
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildPreferenceSection(),
+                _buildPermissionSection(),
+                _buildAdvancedSection(),
+                _buildSystemSection(),
+                const SizedBox(height: 40),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const CircleAvatar(backgroundColor: Colors.deepPurpleAccent, child: Icon(Icons.smart_button, color: Colors.white)),
-              title: const Text('小米超级岛支持', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(_islandStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))
-              ),
-              trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                  onPressed: _checkIslandSupport,
-                  child: const Text('检测')
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // --- 7. 关于与系统 ---
-          _buildSection('系统与关于', [
-            ListTile(
-              leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
-              title: const Text('深度清理缓存与冗余'),
-              subtitle: const Text('包含更新残留包与深度图片缓存'),
-              trailing: Text(_cacheSizeStr, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-              onTap: () async {
-                bool confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text("深度清理空间"),
-                    content: Text("检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK/EXE) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响)"),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
-                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("清理")),
-                    ],
-                  ),
-                ) ?? false;
-
-                if (confirm) {
-                  _clearCache();
-                }
-              },
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.data_usage, color: Colors.orange),
-              title: const Text('存储空间深度分析'),
-              subtitle: const Text('找出占用数百MB的隐藏文件'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _showStorageAnalysis,
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.system_update, color: Colors.green),
-              title: const Text('检查新版本'),
-              trailing: _isCheckingUpdate
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.chevron_right),
-              onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.redAccent),
-              title: const Text('退出当前账号', style: TextStyle(color: Colors.redAccent)),
-              onTap: () => _handleLogout(force: false),
-            ),
-          ]),
-
-          const SizedBox(height: 40),
         ],
       ),
     );
