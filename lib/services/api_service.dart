@@ -137,6 +137,7 @@ class ApiService {
     required List<Map<String, dynamic>> todosChanges,
     required List<Map<String, dynamic>> countdownsChanges,
     Map<String, dynamic>? screenTime,
+    List<Map<String, dynamic>> timeLogsChanges = const [], // 🚀 1. 新增命名参数，默认为空列表
   }) async {
     try {
       final Map<String, dynamic> body = {
@@ -145,6 +146,7 @@ class ApiService {
         'device_id': deviceId,
         'todos': todosChanges,
         'countdowns': countdownsChanges,
+        'time_logs_changes': timeLogsChanges, // 🚀 2. 将数据加入到 JSON Payload 中
       };
 
       if (screenTime != null) {

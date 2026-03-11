@@ -314,4 +314,70 @@ DateTime? _parseDateField(dynamic val) {
   return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
 }
 
+class TimeLogItem {
+  String id;             // 全局唯一标识
+  String title;          // 日志标题（如：阅读《人月神话》）
+  List<String> tagUuids; // 🚀 核心：复用 pomodoro_tags 表的标签 ID
+  int startTime;         // 开始时间 (UTC 毫秒时间戳)
+  int endTime;           // 结束时间 (UTC 毫秒时间戳)
+  String? remark;        // 可选备注
 
+  // --- Delta Sync 增量同步必需字段 ---
+  int version;           // 并发版本号
+  int updatedAt;         // 最后修改时间戳 (UTC 毫秒)
+  int createdAt;         // 创建时间戳 (UTC 毫秒)
+  bool isDeleted;        // 逻辑删除标记
+  String? deviceId;      // 设备标识（防冲突）
+
+  TimeLogItem({
+    String? id,
+    required this.title,
+    this.tagUuids = const [],
+    required this.startTime,
+    required this.endTime,
+    this.remark,
+    this.version = 1,
+    int? updatedAt,
+    int? createdAt,
+    this.isDeleted = false,
+    this.deviceId,
+  })  : id = id ?? const Uuid().v4(),
+        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  // 🚀 数据变更时必须调用此方法
+  void markAsChanged() {
+    version++;
+    updatedAt = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'tag_uuids': tagUuids,
+    'start_time': startTime,
+    'end_time': endTime,
+    'remark': remark,
+    'version': version,
+    'updated_at': updatedAt,
+    'created_at': createdAt,
+    'is_deleted': isDeleted ? 1 : 0,
+    'device_id': deviceId,
+  };
+
+  factory TimeLogItem.fromJson(Map<String, dynamic> json) {
+    return TimeLogItem(
+      id: json['id']?.toString() ?? const Uuid().v4(),
+      title: json['title'] ?? '',
+      tagUuids: (json['tag_uuids'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      startTime: json['start_time'] ?? 0,
+      endTime: json['end_time'] ?? 0,
+      remark: json['remark'],
+      version: json['version'] ?? 1,
+      updatedAt: json['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+      createdAt: json['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+      isDeleted: json['is_deleted'] == 1,
+      deviceId: json['device_id'],
+    );
+  }
+}

@@ -40,6 +40,8 @@ class StorageService {
   static const String KEY_SEMESTER_START = "semester_start_date";
   static const String KEY_SEMESTER_END = "semester_end_date";
 
+  static const String KEY_TIME_LOGS = "user_time_logs";
+
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
@@ -490,6 +492,7 @@ class StorageService {
         bool syncCountdowns = true,
         bool forceFullSync = false, // true = 强制全量拉取（lastSyncTime 置 0）
         BuildContext? context,
+        bool syncTimeLogs = true, // 🚀 新增参数
       }) async {
 
     if (!syncTodos && !syncCountdowns) return false;
@@ -510,6 +513,7 @@ class StorageService {
 
       List<TodoItem> allLocalTodos = await getTodos(username);
       List<CountdownItem> allLocalCountdowns = await getCountdowns(username);
+      List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
 
       // 打包增量数据：只发送本设备本地修改过的记录（updatedAt > lastSyncTime）
       // 注意：删除操作会调用 markAsChanged() 更新 updatedAt，所以无需额外的 isDeleted 条件
@@ -521,6 +525,10 @@ class StorageService {
           .where((c) => c.updatedAt > lastSyncTime)
           .map((c) => c.toJson()).toList();
 
+      List<Map<String, dynamic>> dirtyTimeLogs = allLocalTimeLogs
+          .where((t) => t.updatedAt > lastSyncTime)
+          .map((t) => t.toJson()).toList();
+
       // 发送请求
       final response = await ApiService.postDeltaSync(
         userId: userId,
@@ -528,6 +536,7 @@ class StorageService {
         deviceId: deviceId,
         todosChanges: dirtyTodos,
         countdownsChanges: dirtyCountdowns,
+        timeLogsChanges: dirtyTimeLogs, // 传入增量数据
       );
 
       if (response['success'] != true) throw Exception("${response['message'] ?? '未知错误'}");
@@ -585,10 +594,34 @@ class StorageService {
         }
       }
 
+      // 合并服务器返回的时间日志数据
+      List<dynamic> serverTimeLogs = response['server_time_logs'] ?? [];
+      for (var raw in serverTimeLogs) {
+        TimeLogItem sItem = TimeLogItem.fromJson(raw);
+        int index = allLocalTimeLogs.indexWhere((l) => l.id == sItem.id);
+
+        if (index == -1) {
+          if (!sItem.isDeleted) {
+            allLocalTimeLogs.add(sItem);
+            hasChanges = true;
+          }
+        } else {
+          if (sItem.isDeleted) {
+            allLocalTimeLogs[index] = sItem; // 变为 tombstone
+            hasChanges = true;
+          } else if (sItem.version > allLocalTimeLogs[index].version ||
+              sItem.updatedAt > allLocalTimeLogs[index].updatedAt) {
+            allLocalTimeLogs[index] = sItem;
+            hasChanges = true;
+          }
+        }
+      }
+
       // 持久化保存
       if (hasChanges) {
         await saveTodos(username, allLocalTodos, sync: false);
         await saveCountdowns(username, allLocalCountdowns, sync: false);
+        await saveTimeLogs(username, allLocalTimeLogs, sync: false); // 保存日志
       }
 
       await prefs.setInt('last_sync_time_$username', newSyncTime);
@@ -655,4 +688,60 @@ class StorageService {
     if (timestamp != null) return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).toLocal();
     return null;
   }
+
+  static Future<void> saveTimeLogs(String username, List<TimeLogItem> items, {bool sync = true}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, TimeLogItem> dedupeMap = {};
+
+    for (var item in items) {
+      final existing = dedupeMap[item.id];
+      // LWW 策略：比较 version 和 updatedAt
+      if (existing == null ||
+          item.version > existing.version ||
+          (item.version == existing.version && item.updatedAt > existing.updatedAt)) {
+        dedupeMap[item.id] = item;
+      }
+    }
+
+    // 按开始时间降序排序（可选，方便 UI 渲染）
+    List<TimeLogItem> result = dedupeMap.values.toList()
+      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+
+    List<String> jsonList = result.map((e) => jsonEncode(e.toJson())).toList();
+    await prefs.setStringList("${KEY_TIME_LOGS}_$username", jsonList);
+
+    // 异步触发增量同步
+    if (sync) Future.microtask(() => syncData(username));
+  }
+
+  // 3. 添加读取方法
+  static Future<List<TimeLogItem>> getTimeLogs(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> list = prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
+    List<TimeLogItem> logs = [];
+
+    for (var e in list) {
+      try {
+        logs.add(TimeLogItem.fromJson(jsonDecode(e)));
+      } catch (err) {
+        debugPrint("Parse TimeLog Error: $err");
+      }
+    }
+    return logs;
+  }
+
+  // 4. 添加全局逻辑删除方法
+  static Future<bool> deleteTimeLogGlobally(String username, String idToDelete) async {
+    List<TimeLogItem> localLogs = await getTimeLogs(username);
+    int index = localLogs.indexWhere((t) => t.id == idToDelete);
+
+    if (index == -1) return false;
+
+    localLogs[index].isDeleted = true;
+    localLogs[index].markAsChanged(); // 更新版本号和时间戳
+
+    await saveTimeLogs(username, localLogs, sync: true);
+    return true;
+  }
+
 }

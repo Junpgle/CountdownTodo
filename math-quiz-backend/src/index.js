@@ -1,6 +1,7 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
  * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题 + 修复清空日期的 null 覆盖 Bug
+ * [新增] 支持 time_logs (时间日志) 的增量同步
  */
 
 const SYNC_LIMITS = {
@@ -180,7 +181,6 @@ export default {
         const userIdStr = url.searchParams.get("user_id");
         if (!userIdStr) return errorResponse("缺少 user_id 参数", 400);
 
-        // 🚀 核心修复：必须强制转换为 Int，因为 url 取出来的是 String，D1 会直接拒绝匹配 INTEGER 字段，导致返回 null
         const userId = parseInt(userIdStr, 10);
 
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
@@ -226,8 +226,10 @@ export default {
 
         const payload = await request.json();
         const { user_id, last_sync_time = 0, device_id, screen_time } = payload;
-        const todos = payload.todos || payload.todosChanges || [];
-        const countdowns = payload.countdowns || payload.countdownsChanges || [];
+        const todos = payload.todos || payload.todos_changes || payload.todosChanges || [];
+        const countdowns = payload.countdowns || payload.countdowns_changes || payload.countdownsChanges || [];
+        // 🚀 新增：提取 time logs 数据
+        const timeLogs = payload.time_logs_changes || payload.timeLogsChanges || [];
 
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
         if (!device_id) return errorResponse("缺少 device_id", 400);
@@ -235,7 +237,7 @@ export default {
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError === 'IGNORE') {
-            return jsonResponse({ success: true, server_todos: [], server_countdowns: [], new_sync_time: last_sync_time });
+            return jsonResponse({ success: true, server_todos: [], server_countdowns: [], server_time_logs: [], new_sync_time: last_sync_time });
         } else if (limitError) {
             return errorResponse(limitError, 429);
         }
@@ -415,7 +417,48 @@ export default {
           }
         }
 
-        // 3. 屏幕时间
+        // 🚀 3. 处理 Time Logs (时间日志)
+        if (Array.isArray(timeLogs)) {
+          for (const l of timeLogs) {
+            const lUuid = String(l.uuid ?? l.id ?? l._id);
+            const lTitle = String(l.title ?? "");
+            // TagUuids 处理：客户端传过来的是数组，我们要存成 JSON String
+            const lTagUuids = JSON.stringify(l.tag_uuids ?? l.tagUuids ?? []);
+
+            const lStartTime = normalizeToMs(l.start_time ?? l.startTime) || now;
+            const lEndTime = normalizeToMs(l.end_time ?? l.endTime) || now;
+            const lRemark = l.remark != null ? String(l.remark) : null;
+
+            const lIsDeleted = (l.is_deleted ?? l.isDeleted) ? 1 : 0;
+            const lUpdatedAtClient = normalizeToMs(l.updated_at ?? l.updatedAt ?? now);
+            const lVersion = parseInt(l.version || 1, 10);
+            const lCreatedAt = normalizeToMs(l.created_at ?? l.createdAt) || now;
+
+            let existing = await DB.prepare(
+              "SELECT id, version, created_at, updated_at, uuid FROM time_logs WHERE uuid = ? AND user_id = ?"
+            ).bind(lUuid, authUserId).first();
+
+            if (!existing) {
+              batchStatements.push(DB.prepare(
+                `INSERT INTO time_logs (uuid, user_id, title, tag_uuids, start_time, end_time, remark, is_deleted, created_at, updated_at, version, device_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              ).bind(lUuid, authUserId, lTitle, lTagUuids, lStartTime, lEndTime, lRemark, lIsDeleted, lCreatedAt, now, lVersion, device_id));
+            } else {
+              const existingCreatedAt = normalizeToMs(existing.created_at) || lCreatedAt;
+              const finalCreatedAt = Math.min(lCreatedAt, existingCreatedAt) || existingCreatedAt;
+              const existingUpdatedAtMs = normalizeToMs(existing.updated_at);
+
+              // LWW 冲突解决机制
+              if (lVersion > (existing.version || 0) || lUpdatedAtClient > existingUpdatedAtMs || !existing.uuid) {
+                batchStatements.push(DB.prepare(
+                  `UPDATE time_logs SET title=?, tag_uuids=?, start_time=?, end_time=?, remark=?, is_deleted=?, created_at=?, updated_at=?, version=?, device_id=? WHERE id=?`
+                ).bind(lTitle, lTagUuids, lStartTime, lEndTime, lRemark, lIsDeleted, finalCreatedAt, now, lVersion, device_id, existing.id));
+              }
+            }
+          }
+        }
+
+        // 4. 屏幕时间
         if (screen_time && screen_time.device_name && screen_time.record_date && Array.isArray(screen_time.apps)) {
           const { device_name, record_date, apps } = screen_time;
           apps.forEach(app => {
@@ -427,34 +470,33 @@ export default {
           });
         }
 
+        // 统一提交当前批次执行的所有数据库变更
         if (batchStatements.length > 0) await DB.batch(batchStatements);
 
         // ==========================================
-        // 4. 拉取最终的增量数据下发给客户端
+        // 5. 拉取最终的增量数据下发给客户端
         // ==========================================
         let serverTodosRaw;
         let serverCountdownsRaw;
+        let serverTimeLogsRaw;
 
         if (last_sync_time === 0) {
-          // 🚀 核心修复：全量同步（本地被清除）时，必须无视 device_id 强制拉取云端所有数据！
-          // 否则本设备曾经创建的数据会因为 `device_id != ?` 过滤拦截，导致数据永远拉不回来。
-          serverTodosRaw = await DB.prepare(`
-            SELECT * FROM todos WHERE user_id = ?
-          `).bind(authUserId).all();
-
-          serverCountdownsRaw = await DB.prepare(`
-            SELECT * FROM countdowns WHERE user_id = ?
-          `).bind(authUserId).all();
+          // 全量同步
+          serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE user_id = ?`).bind(authUserId).all();
+          serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE user_id = ?`).bind(authUserId).all();
+          serverTimeLogsRaw = await DB.prepare(`SELECT * FROM time_logs WHERE user_id = ?`).bind(authUserId).all();
         } else {
           // 增量同步：排除本设备刚刚自己提交的数据
           serverTodosRaw = await DB.prepare(`
-            SELECT * FROM todos
-            WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
+            SELECT * FROM todos WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
           `).bind(authUserId, device_id).all();
 
           serverCountdownsRaw = await DB.prepare(`
-            SELECT * FROM countdowns
-            WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
+            SELECT * FROM countdowns WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
+          `).bind(authUserId, device_id).all();
+
+          serverTimeLogsRaw = await DB.prepare(`
+            SELECT * FROM time_logs WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
           `).bind(authUserId, device_id).all();
         }
 
@@ -466,6 +508,7 @@ export default {
 
         const filteredTodos = serverTodosRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
         const filteredCountdowns = serverCountdownsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
+        const filteredTimeLogs = serverTimeLogsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
 
         const mappedTodos = filteredTodos.map(row => {
             const idStr = row.uuid || String(row.id);
@@ -504,6 +547,26 @@ export default {
              };
         });
 
+        // 🚀 格式化返回给客户端的时间日志增量数据
+        const mappedTimeLogs = filteredTimeLogs.map(row => {
+             const idStr = row.uuid || String(row.id);
+             return {
+               id: idStr,
+               uuid: idStr,
+               title: row.title,
+               // 从数据库读取时，解析回数组，如果数据为空或异常则返回空数组 []
+               tag_uuids: JSON.parse(row.tag_uuids || '[]'),
+               start_time: normalizeTimestamp(row.start_time),
+               end_time: normalizeTimestamp(row.end_time),
+               remark: row.remark ?? null,
+               is_deleted: row.is_deleted,
+               version: row.version,
+               device_id: row.device_id,
+               created_at: normalizeTimestamp(row.created_at),
+               updated_at: normalizeTimestamp(row.updated_at),
+             };
+        });
+
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(authUserId).first();
         const tier = userRow ? userRow.tier : 'free';
         const syncLimit = SYNC_LIMITS[tier] || SYNC_LIMITS.free;
@@ -514,6 +577,7 @@ export default {
           success: true,
           server_todos: mappedTodos,
           server_countdowns: mappedCountdowns,
+          server_time_logs: mappedTimeLogs, // 🚀 添加在返回值中
           new_sync_time: now,
           status: { tier, sync_count: record ? record.sync_count : 1, sync_limit: syncLimit }
         });
