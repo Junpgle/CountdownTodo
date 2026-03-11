@@ -444,7 +444,9 @@ class _WeekViewState extends State<_WeekView> {
                   color: isToday ? accent.withOpacity(0.07) : null,
                   border: Border(right: BorderSide(color: _TC.divider(ctx).withOpacity(0.2))),
                 ),
-                child: ClipRect(
+                // 使用 FittedBox 自动缩放适配，避免布局溢出报错
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                     Text('周${['一','二','三','四','五','六','日'][i]}',
                         style: TextStyle(fontSize: 9,
@@ -474,7 +476,11 @@ class _WeekViewState extends State<_WeekView> {
             SizedBox(
               width: timeColW,
               height: totalH,
-              child: Stack(children: List.generate(24, (h) => Positioned(
+
+              child: Stack(
+                  clipBehavior: Clip.none,
+                  children: List.generate(24, (h) => Positioned(
+
                 top: h * hourH - 8,
                 right: 4,
                 child: Text('${h.toString().padLeft(2, '0')}:00',
@@ -893,11 +899,13 @@ class _DayView extends StatefulWidget {
   State<_DayView> createState() => _DayViewState();
 }
 
+// ══════════════════════════════════════════════════════════
+// 日视图（补录）- 状态类
+// ══════════════════════════════════════════════════════════
 class _DayViewState extends State<_DayView> {
   int _minutesPerBlock = 15;
   int? _dragStart, _dragEnd;
   String? _selectedTagId;
-  final _sc = ScrollController();
 
   @override
   void initState() {
@@ -905,17 +913,14 @@ class _DayViewState extends State<_DayView> {
     if (widget.tags.isNotEmpty) _selectedTagId = widget.tags.first.uuid;
   }
 
-  @override
-  void dispose() { _sc.dispose(); super.dispose(); }
-
   int get _bpr => 60 ~/ _minutesPerBlock;
   int get _totalBlocks => 24 * _bpr;
 
-  int? _getIndex(Offset pos, double width) {
+  int? _getIndex(Offset pos, double width, double hourH) {
     final bw = width / _bpr;
-    final y = pos.dy - kVPad;
-    if (y < 0 || y > 24 * kHourHeight) return null;
-    final hr = (y / kHourHeight).floor();
+    final y = pos.dy;
+    if (y < 0 || y > 24 * hourH) return null;
+    final hr = (y / hourH).floor().clamp(0, 23);
     final col = (pos.dx / bw).floor().clamp(0, _bpr - 1);
     return (hr * _bpr + col).clamp(0, _totalBlocks - 1);
   }
@@ -947,13 +952,27 @@ class _DayViewState extends State<_DayView> {
     return Column(children: [
       _buildCrossDayBar(),
       Expanded(child: Row(children: [
-        Expanded(child: SingleChildScrollView(
-          controller: _sc,
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _TimeAxis(),
-            Expanded(child: _buildGrid()),
-          ]),
-        )),
+        // 使用 LayoutBuilder 获取屏幕剩余高度，实现一屏铺满无滚动
+        Expanded(child: LayoutBuilder(builder: (ctx, constraints) {
+          final availH = constraints.maxHeight;
+          final hourH = availH / 24;
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: kTimeColW, height: availH,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: List.generate(24, (h) => Positioned(
+                  top: h * hourH - 8, right: 8,
+                  child: Text('${h.toString().padLeft(2, '0')}:00',
+                      style: TextStyle(fontSize: 9,
+                          color: _TC.timeLabel(context, major: h % 6 == 0),
+                          fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                )),
+              ),
+            ),
+            Expanded(child: _buildGrid(hourH, availH)),
+          ]);
+        })),
         _buildTagSidebar(),
       ])),
       if (_dragStart != null) _buildBottomBar(),
@@ -1002,7 +1021,7 @@ class _DayViewState extends State<_DayView> {
     );
   }
 
-  Widget _buildGrid() {
+  Widget _buildGrid(double hourH, double totalH) {
     return LayoutBuilder(builder: (ctx, constraints) {
       final w = constraints.maxWidth;
       final isDark = Theme.of(ctx).brightness == Brightness.dark;
@@ -1011,49 +1030,49 @@ class _DayViewState extends State<_DayView> {
 
       return GestureDetector(
         onPanStart: (d) {
-          final idx = _getIndex(d.localPosition, w);
+          final idx = _getIndex(d.localPosition, w, hourH);
           if (idx != null) setState(() { _dragStart = idx; _dragEnd = idx; });
         },
         onPanUpdate: (d) {
-          final idx = _getIndex(d.localPosition, w);
+          final idx = _getIndex(d.localPosition, w, hourH);
           if (idx != null) setState(() => _dragEnd = idx);
         },
         onTapDown: (d) {
-          final idx = _getIndex(d.localPosition, w);
+          final idx = _getIndex(d.localPosition, w, hourH);
           if (idx != null) setState(() { _dragStart = idx; _dragEnd = idx; });
         },
         child: Stack(children: [
           SizedBox(
-            height: kTotalH,
+            height: totalH,
             child: CustomPaint(
-              size: Size(w, kTotalH),
+              size: Size(w, totalH),
               painter: _DayGridPainter(
                 minutesPerBlock: _minutesPerBlock, dragStart: _dragStart, dragEnd: _dragEnd,
                 logs: widget.logs, tags: widget.tags, gridStart: _gridStart,
                 selColor: selTag != null ? hexColor(selTag.color, opacity: 0.48) : accent.withOpacity(0.45),
                 isDark: isDark,
+                hourH: hourH,
               ),
             ),
           ),
-          // ★ 日视图番茄钟点击层
-          ..._pomodoroTapTargets(w),
+          ..._pomodoroTapTargets(w, hourH),
         ]),
       );
     });
   }
 
-  List<Widget> _pomodoroTapTargets(double width) {
+  List<Widget> _pomodoroTapTargets(double width, double hourH) {
     final gsMs = _gridStart.millisecondsSinceEpoch;
     final geMs = gsMs + 86400000;
     return widget.pomodoros.where((p) {
       final pe = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
       return pe > gsMs && p.startTime < geMs;
     }).map((pom) {
-      final pomEnd = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
+      final pomEnd = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000); // ✅ 已修复
       final rs = max(pom.startTime, gsMs);
       final re = min(pomEnd, geMs);
-      final top = (rs - gsMs) / 3600000 * kHourHeight + kVPad;
-      final h = ((re - rs) / 3600000 * kHourHeight).clamp(4.0, 9999.0);
+      final top = (rs - gsMs) / 3600000 * hourH;
+      final h = ((re - rs) / 3600000 * hourH).clamp(4.0, 9999.0);
       return Positioned(
         top: top, right: 0, width: 16, height: h,
         child: GestureDetector(
@@ -1155,6 +1174,9 @@ class _DayViewState extends State<_DayView> {
   }
 }
 
+// ══════════════════════════════════════════════════════════
+// 补录网格绘制
+// ══════════════════════════════════════════════════════════
 class _DayGridPainter extends CustomPainter {
   final int minutesPerBlock;
   final int? dragStart, dragEnd;
@@ -1163,11 +1185,13 @@ class _DayGridPainter extends CustomPainter {
   final DateTime gridStart;
   final Color selColor;
   final bool isDark;
+  final double hourH;
 
   _DayGridPainter({
     required this.minutesPerBlock, this.dragStart, this.dragEnd,
     required this.logs, required this.tags, required this.gridStart,
     required this.selColor, required this.isDark,
+    required this.hourH,
   });
 
   @override
@@ -1181,7 +1205,7 @@ class _DayGridPainter extends CustomPainter {
     final mn = Paint()..color = isDark ? const Color(0xFF0E0E0E) : const Color(0xFFF2F2F2)..strokeWidth = 0.5;
 
     for (int h = 0; h <= 24; h++) {
-      final y = kVPad + h * kHourHeight;
+      final y = h * hourH;
       canvas.drawLine(Offset(0, y), Offset(size.width, y), h % 6 == 0 ? mj : mn);
     }
     for (int c = 0; c <= bpr; c++) {
@@ -1204,7 +1228,7 @@ class _DayGridPainter extends CustomPainter {
           : (isDark ? const Color(0x44888888) : const Color(0x44000000));
       _fill(canvas, sIdx, eIdx, bpr, bw, Paint()..color = fill);
       for (int i = sIdx; i <= eIdx; i++) {
-        canvas.drawRect(Rect.fromLTWH(i % bpr * bw + 1, i ~/ bpr * kHourHeight + kVPad + 1, 3, kHourHeight - 2),
+        canvas.drawRect(Rect.fromLTWH(i % bpr * bw + 1, i ~/ bpr * hourH + 1, 3, hourH - 2),
             Paint()..color = bar);
       }
     }
@@ -1213,10 +1237,9 @@ class _DayGridPainter extends CustomPainter {
       _fill(canvas, min(dragStart!, dragEnd!), max(dragStart!, dragEnd!), bpr, bw, Paint()..color = selColor);
     }
 
-    // 当前时间红线
     final now = DateTime.now();
     if (now.isAfter(gridStart) && now.isBefore(gridStart.add(const Duration(days: 1)))) {
-      final y = now.difference(gridStart).inMinutes / 60 * kHourHeight + kVPad;
+      final y = now.difference(gridStart).inMinutes / 60 * hourH;
       canvas.drawLine(Offset(0, y), Offset(size.width, y),
           Paint()..color = Colors.redAccent.withOpacity(0.7)..strokeWidth = 1.5);
       canvas.drawCircle(Offset(3, y), 3, Paint()..color = Colors.redAccent);
@@ -1226,7 +1249,7 @@ class _DayGridPainter extends CustomPainter {
   void _fill(Canvas canvas, int s, int e, int bpr, double bw, Paint p) {
     for (int i = s; i <= e; i++) {
       canvas.drawRRect(RRect.fromRectAndRadius(
-          Rect.fromLTWH(i % bpr * bw + 1, i ~/ bpr * kHourHeight + kVPad + 1, bw - 2, kHourHeight - 2),
+          Rect.fromLTWH(i % bpr * bw + 1, i ~/ bpr * hourH + 1, bw - 2, hourH - 2),
           const Radius.circular(3)), p);
     }
   }
