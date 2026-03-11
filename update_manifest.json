@@ -6,7 +6,7 @@
     "title": "版本更新 1.8.9",
     "description": "【适配】Flutter-Windows端，支持云端同步和数据迁移\n【新增】Windows端支持番茄悬浮窗\n【新增】Windows端支持课表同步【已知bug】Windows端暂不支持检查更新（会下载到手机的apk版本）【修复】修复了一些已知的 bug，提升稳定性和性能",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
-    "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/"
+    "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/Windows%20Prov1.8.9.zip"
   },
   "announcement": {
     "show": false,

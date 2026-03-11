@@ -285,40 +285,33 @@ class StorageService {
     bool needSave = false;
 
     for (var todo in todos) {
-      if (todo.isDeleted) continue;   // ⭐ 跳过已删除
-
+      if (todo.isDeleted) continue;
+      if (todo.recurrence == RecurrenceType.none) continue;
       if (todo.recurrenceEndDate != null && now.isAfter(todo.recurrenceEndDate!)) continue;
 
-      DateTime lastUpdateDate = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal();
-      bool isNewDay = !_isSameDay(lastUpdateDate, now);
+      // 🚀 修复核心：用 dueDate 或 createdDate 作为周期基准日
+      // 原来用 updatedAt，但每次 markAsChanged() 都会刷新它，导致永远判断不到跨天
+      final DateTime baseLocal = _getRecurrenceBaseDate(todo);
+      final DateTime baseDay = DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
+      final DateTime today = DateTime(now.year, now.month, now.day);
 
-      if (isNewDay) {
-        if (todo.recurrence == RecurrenceType.daily) {
+      if (todo.recurrence == RecurrenceType.daily) {
+        if (today.isAfter(baseDay)) {
           todo.isDone = false;
-
-          try {
-            todo.markAsChanged();
-          } catch (_) {
-            todo.updatedAt = DateTime.now().millisecondsSinceEpoch;
-            todo.version += 1;
-          }
-
+          _rollRecurrenceDateToToday(todo, now);
+          todo.markAsChanged();
           needSave = true;
-        } else if (todo.recurrence == RecurrenceType.customDays && todo.customIntervalDays != null) {
-          int diff = now.difference(lastUpdateDate).inDays;
-
-          if (diff >= todo.customIntervalDays!) {
-            todo.isDone = false;
-
-            try {
-              todo.markAsChanged();
-            } catch (_) {
-              todo.updatedAt = DateTime.now().millisecondsSinceEpoch;
-              todo.version += 1;
-            }
-
-            needSave = true;
-          }
+        }
+      } else if (todo.recurrence == RecurrenceType.customDays &&
+          todo.customIntervalDays != null &&
+          todo.customIntervalDays! > 0) {
+        int diffDays = today.difference(baseDay).inDays;
+        if (diffDays >= todo.customIntervalDays!) {
+          todo.isDone = false;
+          int periods = diffDays ~/ todo.customIntervalDays!;
+          _rollRecurrenceDateByDays(todo, periods * todo.customIntervalDays!);
+          todo.markAsChanged();
+          needSave = true;
         }
       }
     }
@@ -332,6 +325,36 @@ class StorageService {
 
   static bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  /// 获取重复任务的周期基准日（优先 dueDate，其次 createdDate，最后 createdAt）
+  static DateTime _getRecurrenceBaseDate(TodoItem todo) {
+    if (todo.dueDate != null) return todo.dueDate!;
+    final int ms = todo.createdDate ?? todo.createdAt;
+    return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
+  }
+
+  /// 每日重复：把 dueDate/createdDate 滚动到今天（保留原始时分秒）
+  static void _rollRecurrenceDateToToday(TodoItem todo, DateTime now) {
+    if (todo.dueDate != null) {
+      todo.dueDate = DateTime(
+        now.year, now.month, now.day,
+        todo.dueDate!.hour, todo.dueDate!.minute, todo.dueDate!.second,
+      );
+    } else if (todo.createdDate != null) {
+      final orig = DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true).toLocal();
+      todo.createdDate = DateTime(now.year, now.month, now.day, orig.hour, orig.minute, orig.second)
+          .millisecondsSinceEpoch;
+    }
+  }
+
+  /// 隔 N 天重复：把 dueDate/createdDate 向后滚动 days 天
+  static void _rollRecurrenceDateByDays(TodoItem todo, int days) {
+    if (todo.dueDate != null) {
+      todo.dueDate = todo.dueDate!.add(Duration(days: days));
+    } else if (todo.createdDate != null) {
+      todo.createdDate = todo.createdDate! + Duration(days: days).inMilliseconds;
+    }
   }
 
   // ==========================================

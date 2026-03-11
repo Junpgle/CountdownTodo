@@ -149,14 +149,14 @@ class TodoItem {
     'updated_at': updatedAt,          // UTC 毫秒时间戳
     'created_at': createdAt,          // UTC 毫秒时间戳（物理创建时间，不可变）
     'created_date': createdDate,      // UTC 毫秒时间戳（任务开始时间，可为 null）
-    'due_date': dueDate?.millisecondsSinceEpoch,  // UTC 毫秒时间戳（任务截止时间，可为 null）
+    'due_date': dueDate?.toUtc().millisecondsSinceEpoch,  // UTC 毫秒时间戳（任务截止时间，可为 null）
     'recurrence': recurrence.index,
     // 循环间隔：同时输出两种键名兼容后端列名(custom_interval_days)和本地存储名(customIntervalDays)
     'customIntervalDays': customIntervalDays,
     'custom_interval_days': customIntervalDays,
     // 循环结束日：同时输出两种键名
-    'recurrenceEndDate': recurrenceEndDate?.millisecondsSinceEpoch,
-    'recurrence_end_date': recurrenceEndDate?.millisecondsSinceEpoch,
+    'recurrenceEndDate': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
+    'recurrence_end_date': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
     'remark': remark,                 // 📝 备注（可为 null）
   };
 

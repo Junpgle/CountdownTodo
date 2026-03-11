@@ -71,11 +71,13 @@ class UpdateInfo {
   final String title;
   final String description;
   final String fullPackageUrl;
+  final String pcPackageUrl; // 新增
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
       : title = json['title'] ?? '版本更新',
         description = json['description'] ?? '',
-        fullPackageUrl = json['full_package_url'] ?? '';
+        fullPackageUrl = json['full_package_url'] ?? '',
+        pcPackageUrl = json['PC_package_url'] ?? ''; // 新增
 }
 
 class Announcement {
@@ -238,6 +240,11 @@ class UpdateService {
         final apkPath = filePath.substring(0, filePath.length - 4);
         file = await file.rename(apkPath);
       }
+    }
+
+    if (Platform.isWindows) {
+      await Process.run(file.path, [], runInShell: true);
+      return;
     }
 
     await OpenFile.open(
@@ -512,10 +519,15 @@ class UpdateService {
     String tempPath = "$savePath.download";
     File tempFile = File(tempPath);
 
+       // Windows 优先用 pcPackageUrl，Android 用 fullPackageUrl
+       final String downloadUrl = Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty
+           ? manifest.updateInfo.pcPackageUrl
+           : manifest.updateInfo.fullPackageUrl;
+
     try {
-      var client = HttpClient();
-      var request = await client.getUrl(Uri.parse(manifest.updateInfo.fullPackageUrl));
-      var response = await request.close();
+    var client = HttpClient();
+    var request = await client.getUrl(Uri.parse(downloadUrl));
+    var response = await request.close();
 
       if (response.statusCode == 200) {
         int totalBytes = response.contentLength;
