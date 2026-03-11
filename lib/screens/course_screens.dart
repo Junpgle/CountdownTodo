@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../services/course_service.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import 'time_log_screen.dart'; // 🚀 1. 引入时间日志页面
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
@@ -585,6 +586,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
             ],
           ),
           const SizedBox(width: 4),
+          // 🚀 2. 新增：跳转至“时间日志”的快捷入口
+          IconButton(
+            icon: const Icon(Icons.edit_calendar, size: 20),
+            tooltip: '记录时间日志',
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => TimeLogScreen(username: widget.username),
+              ));
+            },
+          ),
           PopupMenuButton<int>(
             initialValue: _viewMode,
             onSelected: (val) {
