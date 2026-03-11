@@ -308,6 +308,10 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   Future<void> _showLocalFloat() async {
     if (!Platform.isWindows) return;
+    // 🚀 检查开关
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('float_window_enabled') ?? true)) return; // 🚀
+
     final tagNames = _allTags
         .where((t) => _selectedTagUuids.contains(t.uuid))
         .map((t) => t.name)
@@ -317,7 +321,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
         'endMs': _targetEndMs,
         'title': _boundTodo?.title ?? '',
         'tags': tagNames,
-        'isLocal': true,  // 🚀 新增
+        'isLocal': true,
       });
     } catch (e) {
       debugPrint('FloatWindow show error: $e');

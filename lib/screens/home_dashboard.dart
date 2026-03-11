@@ -213,7 +213,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   static const _floatChannel = MethodChannel('com.math_quiz_app/float_window');
 
-  void _handleRemotePomodoroSignal(CrossDevicePomodoroState signal) {
+  Future<void> _handleRemotePomodoroSignal(CrossDevicePomodoroState signal) async {
     if (!mounted) return;
     if (signal.sourceDevice == 'flutter_$_deviceId') return;
 
@@ -233,13 +233,15 @@ class _HomeDashboardState extends State<HomeDashboard>
 
         // 🚀 新增：Windows 端显示悬浮窗
         if (Platform.isWindows) {
-          _floatChannel.invokeMethod('showFloat', {
-            'endMs': endMs,
-            'title': signal.todoTitle ?? '',
-            'tags': signal.tags,
-            'isLocal': false,  // 明确跨端
-          });
-          debugPrint('FloatWindow: todoTitle=${signal.todoTitle}, tags=${signal.tags}');
+          final prefs = await SharedPreferences.getInstance();
+          if (prefs.getBool('float_window_enabled') ?? true) { // 🚀
+            _floatChannel.invokeMethod('showFloat', {
+              'endMs': endMs,
+              'title': signal.todoTitle ?? '',
+              'tags': signal.tags,
+              'isLocal': false,
+            });
+          }
         }
         break;
 
@@ -513,17 +515,20 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (remaining <= 0) return;
 
     if (Platform.isWindows) {
-      final allTags = await PomodoroService.getTags();
-      final tagNames = saved.tagUuids
-          .map((uuid) => allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '')
-          .where((n) => n.isNotEmpty)
-          .toList();
-      _floatChannel.invokeMethod('showFloat', {
-        'endMs': saved.targetEndMs,
-        'title': saved.todoTitle ?? '',
-        'tags': tagNames,
-        'isLocal': true,  // 🚀 确保这里有
-      });
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('float_window_enabled') ?? true) {
+        final allTags = await PomodoroService.getTags();
+        final tagNames = saved.tagUuids
+            .map((uuid) => allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '')
+            .where((n) => n.isNotEmpty)
+            .toList();
+        _floatChannel.invokeMethod('showFloat', {
+          'endMs': saved.targetEndMs,
+          'title': saved.todoTitle ?? '',
+          'tags': tagNames,
+          'isLocal': true,
+        });
+      }
     }
 
     if (!mounted) return;

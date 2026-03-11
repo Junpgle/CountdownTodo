@@ -48,6 +48,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)";
   bool _isCheckingUpdate = false;
   String _taiDbPath = '';
+  bool _floatWindowEnabled = true;
 
   // 用户与偏好设置状态
   String _username = "加载中...";
@@ -681,6 +682,7 @@ class _SettingsPageState extends State<SettingsPage> {
     DateTime? sEnd = await StorageService.getSemesterEnd();
 
     String? noCourseBehaviorPref = prefs.getString('no_course_behavior');
+    bool floatEnabled = prefs.getBool('float_window_enabled') ?? true;
 
     setState(() {
       _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? "未登录";
@@ -693,6 +695,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (noCourseBehaviorPref != null) {
         _noCourseBehavior = noCourseBehaviorPref;
       }
+      _floatWindowEnabled = floatEnabled;
     });
     if (Platform.isWindows) {
       final taiPath = await TaiService.getSavedDbPath()
@@ -1902,6 +1905,18 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 trailing: const Icon(Icons.folder_open_outlined),
                 onTap: _pickTaiDatabase,
+              ),
+              const Divider(height: 1, indent: 56),
+              SwitchListTile(
+                secondary: const Icon(Icons.picture_in_picture_alt_outlined, color: Colors.indigo),
+                title: const Text('番茄钟悬浮窗'),
+                subtitle: const Text('专注/跨端观察时显示桌面悬浮倒计时'),
+                value: _floatWindowEnabled,
+                onChanged: Platform.isWindows ? (val) async {
+                  setState(() => _floatWindowEnabled = val);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('float_window_enabled', val);
+                } : null,
               ),
             ],
           ]),
