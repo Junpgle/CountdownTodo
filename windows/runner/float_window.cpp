@@ -123,7 +123,7 @@ void FloatWindow::Render() {
         RectF rcCD(8.0f, 4.0f, (float)(W - 24), (float)(divY * 0.65f));
         g.DrawString(countdown.c_str(), -1, &fBig, rcCD, &sfCenter, &whiteBr);
 
-        std::wstring phase = L"\u4e13\u6ce8\u4e2d (\u8de8\u7aef)";
+        std::wstring phase = isLocal_ ? L"\u4e13\u6ce8\u4e2d" : L"\u4e13\u6ce8\u4e2d (\u8de8\u7aef)";
         float subFontSz = (float)divY * 0.18f;
         if (subFontSz < 11.0f) subFontSz = 11.0f;
         Font fSub(&ff, subFontSz, FontStyleRegular, UnitPixel);
@@ -409,8 +409,9 @@ void FloatWindow::RunLoop(long long endMs, std::wstring title, std::vector<std::
 }
 
 void FloatWindow::Show(long long endMs, const std::wstring& title,
-                       const std::vector<std::wstring>& tags) {
+                       const std::vector<std::wstring>& tags, bool isLocal) {
     Hide();
+    isLocal_ = isLocal;
     running_ = true;
     thread_ = std::thread([this, endMs, title, tags]() {
         RunLoop(endMs, title, tags);

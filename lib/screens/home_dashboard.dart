@@ -237,6 +237,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             'endMs': endMs,
             'title': signal.todoTitle ?? '',
             'tags': signal.tags,
+            'isLocal': false,  // 明确跨端
           });
           debugPrint('FloatWindow: todoTitle=${signal.todoTitle}, tags=${signal.tags}');
         }
@@ -510,6 +511,21 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 确认倒计时还没结束
     final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
     if (remaining <= 0) return;
+
+    if (Platform.isWindows) {
+      final allTags = await PomodoroService.getTags();
+      final tagNames = saved.tagUuids
+          .map((uuid) => allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '')
+          .where((n) => n.isNotEmpty)
+          .toList();
+      _floatChannel.invokeMethod('showFloat', {
+        'endMs': saved.targetEndMs,
+        'title': saved.todoTitle ?? '',
+        'tags': tagNames,
+        'isLocal': true,  // 🚀 确保这里有
+      });
+    }
+
     if (!mounted) return;
     await Navigator.push(
       context,

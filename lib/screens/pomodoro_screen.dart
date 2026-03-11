@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
@@ -301,6 +303,35 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   static const _keyBoundTodoUuid  = 'pomodoro_idle_bound_todo_uuid';
   static const _keyBoundTodoTitle = 'pomodoro_idle_bound_todo_title'; // 兜底标题
   static const _keySelectedTagUuids = 'pomodoro_idle_selected_tag_uuids'; // 标签持久化
+
+  static const _floatChannel = MethodChannel('com.math_quiz_app/float_window');
+
+  Future<void> _showLocalFloat() async {
+    if (!Platform.isWindows) return;
+    final tagNames = _allTags
+        .where((t) => _selectedTagUuids.contains(t.uuid))
+        .map((t) => t.name)
+        .toList();
+    try {
+      await _floatChannel.invokeMethod('showFloat', {
+        'endMs': _targetEndMs,
+        'title': _boundTodo?.title ?? '',
+        'tags': tagNames,
+        'isLocal': true,  // 🚀 新增
+      });
+    } catch (e) {
+      debugPrint('FloatWindow show error: $e');
+    }
+  }
+
+  Future<void> _hideLocalFloat() async {
+    if (!Platform.isWindows) return;
+    try {
+      await _floatChannel.invokeMethod('hideFloat');
+    } catch (e) {
+      debugPrint('FloatWindow hide error: $e');
+    }
+  }
 
   @override
   void initState() {
@@ -822,6 +853,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
     // 立即上岛 + 启动计时（不等 IO）
     _pushPomodoroNotification(alertKey: 'pomo_start_$end');
+    _showLocalFloat(); // 🚀 新增
     _startTicker();
 
     // 保活：注册精确 Alarm，App 被杀后在 end 时刻发出"专注结束"通知
@@ -933,6 +965,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     await _persistIdleBoundTodo(_boundTodo);
     await PomodoroService.clearRunState();
     _syncService.sendStopSignal();
+    _hideLocalFloat(); // 🚀 新增
 
     // 弹对话框并写记录（此时 _phase 仍是 focusing，大圆环不跳动）
     await _askCompletionAndRecord(
@@ -961,6 +994,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     await _persistIdleBoundTodo(_boundTodo);
     await PomodoroService.clearRunState();
     _syncService.sendStopSignal();
+    _hideLocalFloat(); // 🚀 新增
 
     // 弹对话框并写记录（_phase 仍是 focusing）
     await _askCompletionAndRecord(
@@ -1170,6 +1204,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       NotificationService.cancelReminder(40001);
       NotificationService.cancelReminder(40002);
       _syncService.sendStopSignal();
+      _hideLocalFloat(); // 🚀 新增
       setState(() {
         _phase = PomodoroPhase.idle;
         _currentCycle = 1;

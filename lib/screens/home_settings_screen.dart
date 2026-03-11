@@ -641,6 +641,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // === 既有逻辑 ===
   void _setupDownloadListener() {
+    if (!Platform.isAndroid && !Platform.isIOS) return; // 🚀 新增
     IsolateNameServer.removePortNameMapping('downloader_send_port');
     IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
 

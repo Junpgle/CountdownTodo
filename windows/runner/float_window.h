@@ -14,7 +14,8 @@ public:
         static FloatWindow inst;
         return inst;
     }
-    void Show(long long endMs, const std::wstring& title, const std::vector<std::wstring>& tags);
+    void Show(long long endMs, const std::wstring& title,
+              const std::vector<std::wstring>& tags, bool isLocal);
     void Hide();
 
 private:
@@ -47,6 +48,8 @@ private:
     POINT resizeStart_ = { 0, 0 };
     int resizeOrigW_ = 0;
     int resizeOrigH_ = 0;
+
+    bool isLocal_ = false;
 
     BYTE  alpha_ = 200;
     int   winX_  = -1;

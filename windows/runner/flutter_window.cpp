@@ -69,7 +69,13 @@ bool FlutterWindow::OnCreate() {
                         tags.push_back(wt);
                     }
 
-                    FloatWindow::instance().Show(endMs, title, tags);
+                    bool isLocal = false;
+                    auto isLocalIt = args.find(flutter::EncodableValue("isLocal"));
+                    if (isLocalIt != args.end()) {
+                        isLocal = std::get<bool>(isLocalIt->second);
+                    }
+
+                    FloatWindow::instance().Show(endMs, title, tags, isLocal);
                     result->Success();
                 } else if (call.method_name() == "hideFloat") {
                     FloatWindow::instance().Hide();
