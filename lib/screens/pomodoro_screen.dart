@@ -429,22 +429,12 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     // 等 400ms 让服务器 SYNC 消息有时间到达并被处理
     await Future.delayed(const Duration(milliseconds: 400));
 
-    // 在 _init() 里，setState(() => _initializing = false) 之后加：
     if (mounted) {
       setState(() => _initializing = false);
       widget.onReady?.call();
 
-      // 初始化完成后主动重连，确保能收到服务器推送的当前房间状态
-      await _syncService.forceReconnect(_userId!, 'flutter_$_deviceId');
-      await Future.delayed(const Duration(milliseconds: 400));
-
-      if (mounted) {
-        setState(() => _initializing = false);
-        widget.onReady?.call();
-        // 初始化完成后再重连一次，此时 _handleCrossDeviceSignal 不会被 _initializing 拦截
-        if (_userId.isNotEmpty && _deviceId.isNotEmpty) {
-          await _syncService.forceReconnect(_userId, 'flutter_$_deviceId');
-        }
+      if (_userId.isNotEmpty && _deviceId.isNotEmpty) {
+        await _syncService.forceReconnect(_userId, 'flutter_$_deviceId');
       }
     }
   }
@@ -481,8 +471,10 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
       case 'SYNC':
       case 'SYNC_FOCUS':          // 新后端迟到同步用 SYNC_FOCUS
       case 'RECONNECT_SYNC':  // 新增这行
-      // 本机正在专注/休息时不覆盖（不打扰自己）
-        if (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking) break;
+    // 本机正在专注/休息/已完成时不覆盖
+      if (_phase == PomodoroPhase.focusing ||
+          _phase == PomodoroPhase.breaking ||
+          _phase == PomodoroPhase.finished) break;
 
         // 验证 targetEndMs 仍然有效
         final endMs = signal.targetEndMs;
