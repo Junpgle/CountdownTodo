@@ -367,17 +367,27 @@ class TimeLogItem {
 
   factory TimeLogItem.fromJson(Map<String, dynamic> json) {
     return TimeLogItem(
-      id: json['id']?.toString() ?? const Uuid().v4(),
-      title: json['title'] ?? '',
+      // 兼容后端可能传回 id 或 uuid 的情况
+      id: json['id']?.toString() ?? json['uuid']?.toString() ?? const Uuid().v4(),
+      title: json['title']?.toString() ?? '',
+
+      // 安全解析 List
       tagUuids: (json['tag_uuids'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-      startTime: json['start_time'] ?? 0,
-      endTime: json['end_time'] ?? 0,
-      remark: json['remark'],
-      version: json['version'] ?? 1,
-      updatedAt: json['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-      createdAt: json['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-      isDeleted: json['is_deleted'] == 1,
-      deviceId: json['device_id'],
+
+      // 🚀 核心修复：使用 num 强转 toInt()，彻底避免 int/double 类型冲突
+      startTime: (json['start_time'] as num?)?.toInt() ?? 0,
+      endTime: (json['end_time'] as num?)?.toInt() ?? 0,
+
+      remark: json['remark']?.toString(),
+
+      // 其他数字与标识同样做安全转换
+      version: (json['version'] as num?)?.toInt() ?? 1,
+      updatedAt: (json['updated_at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+      createdAt: (json['created_at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+
+      // 兼容 1/0 或者 true/false
+      isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
+      deviceId: json['device_id']?.toString(),
     );
   }
 }

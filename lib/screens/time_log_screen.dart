@@ -111,11 +111,33 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
+  // 增加一个 forceSync 参数，默认打开页面时不强制网络请求（为了秒开），点击刷新按钮时强制请求
+  Future<void> _loadData({bool forceSync = false}) async {
     setState(() => _isLoading = true);
+
+    // 🚀 核心修复：先触发云端同步，把新数据拉进本地 SQLite
+    if (forceSync) {
+      try {
+        // 如果你还在调试“回声消除”机制，这里可以传 forceFullSync: true 试试
+        await StorageService.syncData(
+            widget.username,
+            syncTimeLogs: true,
+            syncTodos: false, // 可选，如果只想刷新日志的话
+            syncCountdowns: false
+        );
+      } catch (e) {
+        debugPrint("刷新下拉同步失败: $e");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('同步失败: $e')));
+        }
+      }
+    }
+
+    // 同步完成后，再从本地读取最新合并后的数据
     final tags = await PomodoroService.getTags();
     final logs = await StorageService.getTimeLogs(widget.username);
     final pomodoros = await PomodoroService.getRecords();
+
     if (mounted) {
       setState(() {
         _tags = tags;
@@ -125,6 +147,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       });
     }
   }
+
 
   void _addLog(TimeLogItem log) {
     setState(() {
@@ -177,7 +200,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               ),
             IconButton(
               icon: const Icon(Icons.refresh, size: 20),
-              onPressed: _loadData,
+              onPressed: () => _loadData(forceSync: true),
             ),
           ],
           backgroundColor: _TC.topBar(context),
@@ -1884,4 +1907,6 @@ class _TinyButton extends StatelessWidget {
       ),
     );
   }
+
+
 }

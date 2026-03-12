@@ -167,6 +167,7 @@ class ApiService {
           'server_todos': data['server_todos'] ?? [],
           'server_countdowns': data['server_countdowns'] ?? [],
           'new_sync_time': data['new_sync_time'],
+          'server_time_logs': data['server_time_logs'] ?? [],
           'status': data['status'],
         };
       } else if (response.statusCode == 429) {
