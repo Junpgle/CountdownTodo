@@ -1,7 +1,9 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
+import '../services/api_service.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
 
@@ -398,6 +400,7 @@ class _WeekViewState extends State<_WeekView> {
 
   // ── 顶部操作栏 ──────────────────────────────────────────
   Widget _buildTopBar(int todayMin, bool isWide) {
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
       color: _TC.topBar(context),
@@ -416,6 +419,34 @@ class _WeekViewState extends State<_WeekView> {
         _TinyButton(label: '标签管理', onTap: widget.onManageTags),
         const SizedBox(width: 8),
         _TinyButton(label: '+ 补录', onTap: widget.onAddLog, primary: true),
+        const SizedBox(width: 8),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+          onPressed: () async {
+            // 1. 重置本地同步时间（让 last_sync_time 归 0）
+            await StorageService.resetSyncTime(widget.username);
+
+            // 2. 触发强制全量同步（绕过设备过滤，把云端所有数据强拉下来）
+            await StorageService.syncData(
+              widget.username,
+              forceFullSync: true,
+              syncTodos: true,
+              syncCountdowns: true,
+              syncTimeLogs: true,
+            );
+
+            // 3. 提示成功
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面'),
+                    duration: Duration(seconds: 4),
+                  )
+              );
+            }
+          },
+          child: const Text("🚑 一键恢复云端数据", style: TextStyle(color: Colors.white, fontSize: 12)),
+        )
       ]),
     );
   }

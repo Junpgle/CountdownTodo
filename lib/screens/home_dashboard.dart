@@ -737,6 +737,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool syncCountdowns = true,
     bool syncScreenTime = true,
     bool syncPomodoro = true,
+    bool syncTimeLogs = true, // 🚀 1. 新增同步时间日志的参数
   }) async {
     if (_isSyncing) return;
     setState(() {
@@ -750,11 +751,13 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       bool hasChanges = false;
 
-      if (syncTodos || syncCountdowns) {
+      // 🚀 2. 判断条件加入 syncTimeLogs
+      if (syncTodos || syncCountdowns || syncTimeLogs) {
         hasChanges = await StorageService.syncData(
           widget.username,
           syncTodos: syncTodos,
           syncCountdowns: syncCountdowns,
+          syncTimeLogs: syncTimeLogs, // 🚀 3. 将参数传给底层的增量同步引擎
           context: context,
         );
       }
@@ -808,6 +811,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool syncCountdowns = true;
     bool syncScreenTime = true;
     bool syncPomodoro = true;
+    bool syncTimeLogs = true; // 🚀 1. 新增弹窗状态变量
 
     showDialog(
       context: context,
@@ -815,38 +819,47 @@ class _HomeDashboardState extends State<HomeDashboard>
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text("手动同步", style: TextStyle(fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("请勾选你需要同步的数据模块：", style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(height: 12),
-                  CheckboxListTile(
-                    title: const Text("待办事项"),
-                    value: syncTodos,
-                    onChanged: (val) => setDialogState(() => syncTodos = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("重要日与倒计时"),
-                    value: syncCountdowns,
-                    onChanged: (val) => setDialogState(() => syncCountdowns = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("屏幕使用时间"),
-                    value: syncScreenTime,
-                    onChanged: (val) => setDialogState(() => syncScreenTime = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("番茄钟记录"),
-                    value: syncPomodoro,
-                    onChanged: (val) => setDialogState(() => syncPomodoro = val ?? false),
-                  ),
-                ],
+              content: SingleChildScrollView( // 加入滚动防止选项过多溢出屏幕
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("请勾选你需要同步的数据模块：", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      title: const Text("待办事项"),
+                      value: syncTodos,
+                      onChanged: (val) => setDialogState(() => syncTodos = val ?? false),
+                    ),
+                    CheckboxListTile(
+                      title: const Text("重要日与倒计时"),
+                      value: syncCountdowns,
+                      onChanged: (val) => setDialogState(() => syncCountdowns = val ?? false),
+                    ),
+                    CheckboxListTile(
+                      title: const Text("屏幕使用时间"),
+                      value: syncScreenTime,
+                      onChanged: (val) => setDialogState(() => syncScreenTime = val ?? false),
+                    ),
+                    CheckboxListTile(
+                      title: const Text("番茄钟记录"),
+                      value: syncPomodoro,
+                      onChanged: (val) => setDialogState(() => syncPomodoro = val ?? false),
+                    ),
+                    // 🚀 2. 新增时间日志的勾选项
+                    CheckboxListTile(
+                      title: const Text("时间日志 (补录)"),
+                      value: syncTimeLogs,
+                      onChanged: (val) => setDialogState(() => syncTimeLogs = val ?? false),
+                    ),
+                  ],
+                ),
               ),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
                 FilledButton(
-                  onPressed: (syncTodos || syncCountdowns || syncScreenTime || syncPomodoro) ? () {
+                  // 🚀 3. 按钮启用条件加入 syncTimeLogs
+                  onPressed: (syncTodos || syncCountdowns || syncScreenTime || syncPomodoro || syncTimeLogs) ? () {
                     Navigator.pop(ctx);
                     _handleManualSync(
                       silent: false,
@@ -854,6 +867,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       syncCountdowns: syncCountdowns,
                       syncScreenTime: syncScreenTime,
                       syncPomodoro: syncPomodoro,
+                      syncTimeLogs: syncTimeLogs, // 🚀 4. 传递给执行函数
                     );
                   } : null,
                   child: const Text("开始同步"),
