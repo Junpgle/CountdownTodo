@@ -7,21 +7,20 @@ import 'dart:ui';
 import 'dart:isolate';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/tai_service.dart';
 
-import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import 'login_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
+
+import 'feature_guide_screen.dart';
 
 // 引入课程数据服务来处理导入和通知测试
 import '../services/course_service.dart';
@@ -1949,6 +1948,21 @@ class _SettingsPageState extends State<SettingsPage> {
   // ─── 构建系统与关于 Section ──────────────────────────────────────
   Widget _buildSystemSection() {
     return _buildSection('系统与关于', [
+      ListTile(
+        leading: const Icon(Icons.school_rounded, color: Colors.indigo),
+        title: const Text('重新查看新版教程与权限设置'),
+        subtitle: const Text('可再次查看功能介绍与重新配置各项权限'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const FeatureGuideScreen(isManualReview: true),
+            ),
+          );
+        },
+      ),
+      const Divider(height: 1, indent: 56),
       ListTile(
         leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
         title: const Text('深度清理缓存与冗余'),

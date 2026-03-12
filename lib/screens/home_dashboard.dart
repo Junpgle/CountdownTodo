@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
@@ -29,11 +27,7 @@ import '../services/reminder_schedule_service.dart';
 import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'home_settings_screen.dart';
-import 'course_screens.dart';
-import 'historical_countdowns_screen.dart';
-import 'historical_todos_screen.dart';
-import 'upgrade_guide_screen.dart';
-
+import 'feature_guide_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
@@ -61,7 +55,10 @@ class _HomeDashboardState extends State<HomeDashboard>
   List<TodoItem> _todos = [];
   Map<String, dynamic> _mathStats = {};
   List<dynamic> _screenTimeStats = [];
-  Map<String, dynamic> _dashboardCourseData = {'title': '课程提醒', 'courses': <CourseItem>[]};
+  Map<String, dynamic> _dashboardCourseData = {
+    'title': '课程提醒',
+    'courses': <CourseItem>[]
+  };
 
   String _noCourseBehavior = 'keep';
   bool _hasUsagePermission = true;
@@ -78,8 +75,12 @@ class _HomeDashboardState extends State<HomeDashboard>
   List<String> _rightSections = ['countdowns', 'screenTime', 'pomodoro'];
 
   Map<String, bool> _sectionVisibility = {
-    'courses': true, 'countdowns': true, 'todos': true,
-    'screenTime': true, 'math': true, 'pomodoro': true,
+    'courses': true,
+    'countdowns': true,
+    'todos': true,
+    'screenTime': true,
+    'math': true,
+    'pomodoro': true,
   };
   Timer? _courseTimer;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
@@ -110,24 +111,37 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // 🚀 桌面端拦截：确保只在移动设备监听通道
     if (Platform.isAndroid || Platform.isIOS) {
-      const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+      const platform = MethodChannel(
+          'com.math_quiz.junpgle.com.math_quiz_app/notifications');
       platform.setMethodCallHandler((call) async {
         if (call.method == "markCurrentTodoDone") _markCurrentTodoDone();
       });
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 500), () { if (mounted) _initNotifications(); });
-      Future.delayed(const Duration(milliseconds: 1000), () { if (mounted) _initScreenTime(); });
-      Future.delayed(const Duration(milliseconds: 1500), () { if (mounted) StorageService.syncAppMappings(); });
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _initNotifications();
+      });
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) _initScreenTime();
+      });
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) StorageService.syncAppMappings();
+      });
       // 保活：检查精确闹钟权限（Android 12+），仅首次提示一次
-      Future.delayed(const Duration(milliseconds: 2000), () { if (mounted) _checkExactAlarmPermission(); });
+      Future.delayed(const Duration(milliseconds: 2000), () {
+        if (mounted) _checkExactAlarmPermission();
+      });
 
-      ExternalShareHandler.init(context, () { _loadAllData(); });
+      ExternalShareHandler.init(context, () {
+        _loadAllData();
+      });
       _checkAutoSync();
       _checkUpdatesSilently();
 
-      _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) { _checkUpcomingEvents(); });
+      _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+        _checkUpcomingEvents();
+      });
       _checkAndNavigateToPomodoro();
     });
   }
@@ -167,7 +181,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (userIdInt == null || _deviceId.isEmpty) return;
 
     _remotePomodoroSub?.cancel();
-    _remotePomodoroSub = _syncService.onStateChanged.listen(_handleRemotePomodoroSignal);
+    _remotePomodoroSub =
+        _syncService.onStateChanged.listen(_handleRemotePomodoroSignal);
 
     // 🚀 新增：监听网络重连，主动上报本地专注状态
     _connStateSub?.cancel();
@@ -178,8 +193,10 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (saved == null) return;
 
         // 判断当前是否处于正在计时的阶段
-        if (saved.phase == PomodoroPhase.focusing || saved.phase == PomodoroPhase.breaking) {
-          final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
+        if (saved.phase == PomodoroPhase.focusing ||
+            saved.phase == PomodoroPhase.breaking) {
+          final remaining =
+              saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
           if (remaining > 0) {
             debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
@@ -208,12 +225,14 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
     });
 
-    await _syncService.ensureConnected(userIdInt.toString(), 'flutter_$_deviceId');
+    await _syncService.ensureConnected(
+        userIdInt.toString(), 'flutter_$_deviceId');
   }
 
   static const _floatChannel = MethodChannel('com.math_quiz_app/float_window');
 
-  Future<void> _handleRemotePomodoroSignal(CrossDevicePomodoroState signal) async {
+  Future<void> _handleRemotePomodoroSignal(
+      CrossDevicePomodoroState signal) async {
     if (!mounted) return;
     if (signal.sourceDevice == 'flutter_$_deviceId') return;
 
@@ -223,7 +242,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       case 'RECONNECT_SYNC':
         final endMs = signal.targetEndMs;
         if (endMs == null) return;
-        final rem = ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+        final rem =
+            ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
         if (rem <= 0) return;
         setState(() {
           _remotePomodoro = signal;
@@ -234,7 +254,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         // 🚀 新增：Windows 端显示悬浮窗
         if (Platform.isWindows) {
           final prefs = await SharedPreferences.getInstance();
-          if (prefs.getBool('float_window_enabled') ?? true) { // 🚀
+          if (prefs.getBool('float_window_enabled') ?? true) {
+            // 🚀
             _floatChannel.invokeMethod('showFloat', {
               'endMs': endMs,
               'title': signal.todoTitle ?? '',
@@ -261,8 +282,12 @@ class _HomeDashboardState extends State<HomeDashboard>
   void _startRemotePomodoroTicker(int targetEndMs) {
     _remotePomodoroTicker?.cancel();
     _remotePomodoroTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) { _remotePomodoroTicker?.cancel(); return; }
-      final rem = ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+      if (!mounted) {
+        _remotePomodoroTicker?.cancel();
+        return;
+      }
+      final rem =
+          ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
       if (rem <= 0) {
         _remotePomodoroTicker?.cancel();
         if (mounted) setState(() => _remotePomodoro = null);
@@ -288,14 +313,17 @@ class _HomeDashboardState extends State<HomeDashboard>
     final timeStr = rem > 60
         ? '$m 分钟'
         : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-    final deviceLabel = state.sourceDevice?.replaceFirst('flutter_', '')
-        .substring(0, 8) ?? '其他设备';
+    final deviceLabel =
+        state.sourceDevice?.replaceFirst('flutter_', '').substring(0, 8) ??
+            '其他设备';
 
     return GestureDetector(
       onTap: () async {
-        await Navigator.push(context, MaterialPageRoute(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ));
+        await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PomodoroScreen(username: widget.username),
+            ));
         if (mounted) {
           setState(() => _pomodoroRefreshTrigger++);
           _loadAllData();
@@ -305,9 +333,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFFF6B6B).withValues(alpha: isLight ? 0.85 : 0.15),
+          color:
+              const Color(0xFFFF6B6B).withValues(alpha: isLight ? 0.85 : 0.15),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.4)),
+          border:
+              Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [
@@ -349,7 +379,8 @@ class _HomeDashboardState extends State<HomeDashboard>
             ),
             const SizedBox(width: 4),
             Icon(Icons.chevron_right,
-                color: isLight ? Colors.white70 : const Color(0xFFFF6B6B), size: 18),
+                color: isLight ? Colors.white70 : const Color(0xFFFF6B6B),
+                size: 18),
           ],
         ),
       ),
@@ -361,19 +392,22 @@ class _HomeDashboardState extends State<HomeDashboard>
     DateTime now = DateTime.now();
 
     final dashboardData = await CourseService.getDashboardCourses();
-    List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
+    List<CourseItem> courses =
+        (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
     bool hasUpcomingCourse = false;
     for (var course in courses) {
       try {
-        DateTime courseTime = DateFormat('yyyy-MM-dd HH:mm').parse('${course.date} ${course.formattedStartTime}');
+        DateTime courseTime = DateFormat('yyyy-MM-dd HH:mm')
+            .parse('${course.date} ${course.formattedStartTime}');
         int diffMinutes = courseTime.difference(now).inMinutes;
 
         if (diffMinutes >= 0 && diffMinutes <= 20) {
           NotificationService.showCourseLiveActivity(
             courseName: course.courseName,
             room: course.roomName,
-            timeStr: '${course.formattedStartTime} - ${course.formattedEndTime}',
+            timeStr:
+                '${course.formattedStartTime} - ${course.formattedEndTime}',
             teacher: course.teacherName,
           );
           hasUpcomingCourse = true;
@@ -389,12 +423,28 @@ class _HomeDashboardState extends State<HomeDashboard>
     List<TodoItem> upcomingTodos = _todos.where((t) {
       if (t.isDone) return false;
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      bool isAllDay = t.dueDate != null && DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal().hour == 0 && DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal().minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
+      bool isAllDay = t.dueDate != null &&
+          DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt,
+                      isUtc: true)
+                  .toLocal()
+                  .hour ==
+              0 &&
+          DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt,
+                      isUtc: true)
+                  .toLocal()
+                  .minute ==
+              0 &&
+          t.dueDate!.hour == 23 &&
+          t.dueDate!.minute == 59;
       if (isAllDay) return false;
 
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime created = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
-      DateTime startTime = DateTime(now.year, now.month, now.day, created.hour, created.minute);
+      DateTime created = DateTime.fromMillisecondsSinceEpoch(
+              t.createdDate ?? t.createdAt,
+              isUtc: true)
+          .toLocal();
+      DateTime startTime =
+          DateTime(now.year, now.month, now.day, created.hour, created.minute);
       int diffMinutes = startTime.difference(now).inMinutes;
       return diffMinutes >= 0 && diffMinutes <= 20;
     }).toList();
@@ -443,15 +493,25 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     List<String>? leftOrder = prefs.getStringList('home_section_order_left');
     List<String>? rightOrder = prefs.getStringList('home_section_order_right');
-    final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math', 'pomodoro'];
+    final List<String> defaultOrder = [
+      'courses',
+      'countdowns',
+      'todos',
+      'screenTime',
+      'math',
+      'pomodoro'
+    ];
 
     if (leftOrder == null || rightOrder == null) {
-      List<String> oldOrder = prefs.getStringList('home_section_order') ?? defaultOrder;
+      List<String> oldOrder =
+          prefs.getStringList('home_section_order') ?? defaultOrder;
       leftOrder = [];
       rightOrder = [];
       for (int i = 0; i < oldOrder.length; i++) {
-        if (i % 2 == 0) leftOrder.add(oldOrder[i]);
-        else rightOrder.add(oldOrder[i]);
+        if (i % 2 == 0)
+          leftOrder.add(oldOrder[i]);
+        else
+          rightOrder.add(oldOrder[i]);
       }
     } else {
       List<String> combined = [...leftOrder, ...rightOrder];
@@ -466,7 +526,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (savedVisibilityStr != null) {
       if (mounted) {
         setState(() {
-          Map<String, bool> savedMap = Map<String, bool>.from(jsonDecode(savedVisibilityStr));
+          Map<String, bool> savedMap =
+              Map<String, bool>.from(jsonDecode(savedVisibilityStr));
           savedMap.putIfAbsent('courses', () => true);
           savedMap.putIfAbsent('countdowns', () => true);
           savedMap.putIfAbsent('todos', () => true);
@@ -509,7 +570,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (!mounted) return;
     final saved = await PomodoroService.loadRunState();
     if (saved == null) return;
-    if (saved.phase != PomodoroPhase.focusing && saved.phase != PomodoroPhase.breaking) return;
+    if (saved.phase != PomodoroPhase.focusing &&
+        saved.phase != PomodoroPhase.breaking) return;
     // 确认倒计时还没结束
     final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
     if (remaining <= 0) return;
@@ -519,7 +581,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (prefs.getBool('float_window_enabled') ?? true) {
         final allTags = await PomodoroService.getTags();
         final tagNames = saved.tagUuids
-            .map((uuid) => allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '')
+            .map((uuid) =>
+                allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '')
             .where((n) => n.isNotEmpty)
             .toList();
         _floatChannel.invokeMethod('showFloat', {
@@ -547,7 +610,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _checkAutoSync() async {
     // 🛡️ 安全检查：升级引导未完成时禁止任何自动同步
     // 防止用户跳过引导进入主页后，空的本地数据被推送并覆盖云端数据
-    final guideNeeded = await UpgradeGuideScreen.shouldShow();
+    final guideNeeded = await FeatureGuideScreen.shouldShow();
     if (guideNeeded) return;
 
     int interval = await StorageService.getSyncInterval();
@@ -591,7 +654,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       // 所有的待办都需要连同隐藏的逻辑删除数据一起存
       final allTodos = await StorageService.getTodos(widget.username);
       int idx = allTodos.indexWhere((x) => x.id == currentTodo!.id);
-      if(idx != -1) allTodos[idx] = currentTodo!;
+      if (idx != -1) allTodos[idx] = currentTodo!;
       await StorageService.saveTodos(widget.username, allTodos);
 
       _syncTodoNotification();
@@ -599,7 +662,9 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已完成: ${currentTodo.title}'), duration: const Duration(seconds: 1)),
+          SnackBar(
+              content: Text('已完成: ${currentTodo.title}'),
+              duration: const Duration(seconds: 1)),
         );
       }
     }
@@ -618,17 +683,53 @@ class _HomeDashboardState extends State<HomeDashboard>
     List<String> greetings;
 
     if (hour >= 5 && hour < 11) {
-      greetings = ["今天也要元气超标！", "新的一天，把快乐置顶。", "迎着光，做自己的小太阳。", "起床充电，活力满格。", "今日宜：开心、努力、好运。"];
+      greetings = [
+        "今天也要元气超标！",
+        "新的一天，把快乐置顶。",
+        "迎着光，做自己的小太阳。",
+        "起床充电，活力满格。",
+        "今日宜：开心、努力、好运。"
+      ];
     } else if (hour >= 11 && hour < 14) {
-      greetings = ["吃饱喝足，继续奔赴。", "中场能量补给，快乐不打烊。", "稳住状态，万事可期。", "生活不慌不忙，慢慢发光。", "好好吃饭，就是好好爱自己。"];
+      greetings = [
+        "吃饱喝足，继续奔赴。",
+        "中场能量补给，快乐不打烊。",
+        "稳住状态，万事可期。",
+        "生活不慌不忙，慢慢发光。",
+        "好好吃饭，就是好好爱自己。"
+      ];
     } else if (hour >= 14 && hour < 18) {
-      greetings = ["保持热爱，保持冲劲。", "状态在线，干劲拉满。", "不急不躁，温柔又有力量。", "把普通日子，过得热气腾腾。", "继续向前，好运正在路上。"];
+      greetings = [
+        "保持热爱，保持冲劲。",
+        "状态在线，干劲拉满。",
+        "不急不躁，温柔又有力量。",
+        "把普通日子，过得热气腾腾。",
+        "继续向前，好运正在路上。"
+      ];
     } else if (hour >= 18 && hour < 23) {
-      greetings = ["晚风轻踩云朵，今天辛苦啦。", "卸下疲惫，拥抱温柔。", "今日圆满，万事顺心。", "把烦恼清空，把快乐装满。", "好好休息，明天依旧闪亮。"];
+      greetings = [
+        "晚风轻踩云朵，今天辛苦啦。",
+        "卸下疲惫，拥抱温柔。",
+        "今日圆满，万事顺心。",
+        "把烦恼清空，把快乐装满。",
+        "好好休息，明天依旧闪亮。"
+      ];
     } else if (hour >= 23 || hour < 3) {
-      greetings = ["愿你心安，好梦常伴。", "安静沉淀，积蓄力量。", "不慌不忙，自在生长。", "温柔治愈，接纳所有情绪。", "今夜安睡，明日更好。"];
+      greetings = [
+        "愿你心安，好梦常伴。",
+        "安静沉淀，积蓄力量。",
+        "不慌不忙，自在生长。",
+        "温柔治愈，接纳所有情绪。",
+        "今夜安睡，明日更好。"
+      ];
     } else {
-      greetings = ["凌晨的星光，为你照亮前路。", "此刻努力，未来可期。", "安静时光，悄悄变优秀。", "不负自己，不负岁月。", "愿你眼里有光，心中有梦。"];
+      greetings = [
+        "凌晨的星光，为你照亮前路。",
+        "此刻努力，未来可期。",
+        "安静时光，悄悄变优秀。",
+        "不负自己，不负岁月。",
+        "愿你眼里有光，心中有梦。"
+      ];
     }
 
     _currentGreeting = greetings[Random().nextInt(greetings.length)];
@@ -723,7 +824,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (activeTodos.isEmpty || activeTodos.every((t) => t.isDone)) {
       // 🚀 桌面端拦截
       if (Platform.isAndroid || Platform.isIOS) {
-        const MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications')
+        const MethodChannel(
+                'com.math_quiz.junpgle.com.math_quiz_app/notifications')
             .invokeMethod('cancelNotification');
       }
     } else {
@@ -778,9 +880,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       if (mounted) {
         if (!silent) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('✅ 数据同步完成'), backgroundColor: Colors.green)
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('✅ 数据同步完成'), backgroundColor: Colors.green));
         }
         if (hasChanges) _loadAllData(); // _loadAllData 内部会重新 scheduleAll
       }
@@ -794,8 +895,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           msg = "同步失败: 获取数据异常";
         }
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg), backgroundColor: Colors.redAccent)
-        );
+            SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
       }
     } finally {
       if (mounted) {
@@ -815,84 +915,107 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text("手动同步", style: TextStyle(fontWeight: FontWeight.bold)),
-              content: SingleChildScrollView( // 加入滚动防止选项过多溢出屏幕
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("请勾选你需要同步的数据模块：", style: TextStyle(fontSize: 13, color: Colors.grey)),
-                    const SizedBox(height: 12),
-                    CheckboxListTile(
-                      title: const Text("待办事项"),
-                      value: syncTodos,
-                      onChanged: (val) => setDialogState(() => syncTodos = val ?? false),
-                    ),
-                    CheckboxListTile(
-                      title: const Text("重要日与倒计时"),
-                      value: syncCountdowns,
-                      onChanged: (val) => setDialogState(() => syncCountdowns = val ?? false),
-                    ),
-                    CheckboxListTile(
-                      title: const Text("屏幕使用时间"),
-                      value: syncScreenTime,
-                      onChanged: (val) => setDialogState(() => syncScreenTime = val ?? false),
-                    ),
-                    CheckboxListTile(
-                      title: const Text("番茄钟记录"),
-                      value: syncPomodoro,
-                      onChanged: (val) => setDialogState(() => syncPomodoro = val ?? false),
-                    ),
-                    // 🚀 2. 新增时间日志的勾选项
-                    CheckboxListTile(
-                      title: const Text("时间日志 (补录)"),
-                      value: syncTimeLogs,
-                      onChanged: (val) => setDialogState(() => syncTimeLogs = val ?? false),
-                    ),
-                  ],
+      builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) {
+        return AlertDialog(
+          title:
+              const Text("手动同步", style: TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            // 加入滚动防止选项过多溢出屏幕
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("请勾选你需要同步的数据模块：",
+                    style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(height: 12),
+                CheckboxListTile(
+                  title: const Text("待办事项"),
+                  value: syncTodos,
+                  onChanged: (val) =>
+                      setDialogState(() => syncTodos = val ?? false),
                 ),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
-                FilledButton(
-                  // 🚀 3. 按钮启用条件加入 syncTimeLogs
-                  onPressed: (syncTodos || syncCountdowns || syncScreenTime || syncPomodoro || syncTimeLogs) ? () {
-                    Navigator.pop(ctx);
-                    _handleManualSync(
-                      silent: false,
-                      syncTodos: syncTodos,
-                      syncCountdowns: syncCountdowns,
-                      syncScreenTime: syncScreenTime,
-                      syncPomodoro: syncPomodoro,
-                      syncTimeLogs: syncTimeLogs, // 🚀 4. 传递给执行函数
-                    );
-                  } : null,
-                  child: const Text("开始同步"),
+                CheckboxListTile(
+                  title: const Text("重要日与倒计时"),
+                  value: syncCountdowns,
+                  onChanged: (val) =>
+                      setDialogState(() => syncCountdowns = val ?? false),
+                ),
+                CheckboxListTile(
+                  title: const Text("屏幕使用时间"),
+                  value: syncScreenTime,
+                  onChanged: (val) =>
+                      setDialogState(() => syncScreenTime = val ?? false),
+                ),
+                CheckboxListTile(
+                  title: const Text("番茄钟记录"),
+                  value: syncPomodoro,
+                  onChanged: (val) =>
+                      setDialogState(() => syncPomodoro = val ?? false),
+                ),
+                // 🚀 2. 新增时间日志的勾选项
+                CheckboxListTile(
+                  title: const Text("时间日志 (补录)"),
+                  value: syncTimeLogs,
+                  onChanged: (val) =>
+                      setDialogState(() => syncTimeLogs = val ?? false),
                 ),
               ],
-            );
-          }
-      ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+            FilledButton(
+              // 🚀 3. 按钮启用条件加入 syncTimeLogs
+              onPressed: (syncTodos ||
+                      syncCountdowns ||
+                      syncScreenTime ||
+                      syncPomodoro ||
+                      syncTimeLogs)
+                  ? () {
+                      Navigator.pop(ctx);
+                      _handleManualSync(
+                        silent: false,
+                        syncTodos: syncTodos,
+                        syncCountdowns: syncCountdowns,
+                        syncScreenTime: syncScreenTime,
+                        syncPomodoro: syncPomodoro,
+                        syncTimeLogs: syncTimeLogs, // 🚀 4. 传递给执行函数
+                      );
+                    }
+                  : null,
+              child: const Text("开始同步"),
+            ),
+          ],
+        );
+      }),
     );
   }
 
   Future<void> _fetchRandomWallpaper() async {
-    const String repoApiUrl = "https://api.github.com/repos/Junpgle/math_quiz_app/contents/wallpaper";
+    const String repoApiUrl =
+        "https://api.github.com/repos/Junpgle/math_quiz_app/contents/wallpaper";
     try {
       final response = await http.get(Uri.parse(repoApiUrl));
       if (response.statusCode == 200) {
         List<dynamic> files = jsonDecode(response.body);
-        List<String> urls = files.where((f) => f['name'].toString().toLowerCase().endsWith('.jpg') || f['name'].toString().toLowerCase().endsWith('.png')).map((f) => f['download_url'].toString()).toList();
-        if (urls.isNotEmpty && mounted) setState(() => _wallpaperUrl = urls[Random().nextInt(urls.length)]);
+        List<String> urls = files
+            .where((f) =>
+                f['name'].toString().toLowerCase().endsWith('.jpg') ||
+                f['name'].toString().toLowerCase().endsWith('.png'))
+            .map((f) => f['download_url'].toString())
+            .toList();
+        if (urls.isNotEmpty && mounted)
+          setState(() => _wallpaperUrl = urls[Random().nextInt(urls.length)]);
       }
-    } catch (e) { debugPrint("获取壁纸失败: $e"); }
+    } catch (e) {
+      debugPrint("获取壁纸失败: $e");
+    }
   }
 
   Widget _buildSemesterProgressBar(bool isLight) {
-    if (!_semesterEnabled || _semesterStart == null || _semesterEnd == null) return const SizedBox.shrink();
+    if (!_semesterEnabled || _semesterStart == null || _semesterEnd == null)
+      return const SizedBox.shrink();
 
     double progress = _calculateSemesterProgress();
 
@@ -904,11 +1027,16 @@ class _HomeDashboardState extends State<HomeDashboard>
         widthFactor: progress,
         child: Container(
           decoration: BoxDecoration(
-            color: isLight ? Colors.lightBlueAccent : Theme.of(context).colorScheme.primary,
+            color: isLight
+                ? Colors.lightBlueAccent
+                : Theme.of(context).colorScheme.primary,
             boxShadow: [
               if (progress > 0)
                 BoxShadow(
-                  color: (isLight ? Colors.lightBlueAccent : Theme.of(context).colorScheme.primary).withOpacity(0.5),
+                  color: (isLight
+                          ? Colors.lightBlueAccent
+                          : Theme.of(context).colorScheme.primary)
+                      .withOpacity(0.5),
                   blurRadius: 4,
                   offset: const Offset(0, 1),
                 )
@@ -926,14 +1054,22 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool isLight = showWallpaper;
 
     return Scaffold(
-      backgroundColor: showWallpaper ? Colors.transparent : Theme.of(context).colorScheme.surface,
+      backgroundColor: showWallpaper
+          ? Colors.transparent
+          : Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
           if (showWallpaper)
-            Positioned.fill(child: CachedNetworkImage(imageUrl: _wallpaperUrl!, fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 800), placeholder: (context, url) => Container(color: Theme.of(context).colorScheme.surface))),
+            Positioned.fill(
+                child: CachedNetworkImage(
+                    imageUrl: _wallpaperUrl!,
+                    fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 800),
+                    placeholder: (context, url) => Container(
+                        color: Theme.of(context).colorScheme.surface))),
           if (showWallpaper)
-            Positioned.fill(child: Container(color: Colors.black.withOpacity(0.4))),
-
+            Positioned.fill(
+                child: Container(color: Colors.black.withOpacity(0.4))),
           SafeArea(
             child: Column(
               children: [
@@ -947,7 +1083,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                   isSyncing: _isSyncing,
                   onSync: _showSyncOptionsDialog,
                   onSettings: () async {
-                    await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()));
+                    await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsPage()));
                     _loadSectionPreferences();
                     _loadSemesterSettings();
                     _loadAllData();
@@ -962,20 +1101,34 @@ class _HomeDashboardState extends State<HomeDashboard>
                     builder: (context, constraints) {
                       final bool isTablet = constraints.maxWidth >= 768;
 
-                      Widget courseSection = CourseSectionWidget(dashboardCourseData: _dashboardCourseData, isLight: isLight);
-                      Widget countdownSection = CountdownSectionWidget(countdowns: _countdowns, username: widget.username, isLight: isLight, onDataChanged: _loadAllData);
+                      Widget courseSection = CourseSectionWidget(
+                          dashboardCourseData: _dashboardCourseData,
+                          isLight: isLight);
+                      Widget countdownSection = CountdownSectionWidget(
+                          countdowns: _countdowns,
+                          username: widget.username,
+                          isLight: isLight,
+                          onDataChanged: _loadAllData);
                       Widget todoSection = TodoSectionWidget(
-                        key: _todoSectionKey, todos: _todos, username: widget.username, isLight: isLight,
+                        key: _todoSectionKey,
+                        todos: _todos,
+                        username: widget.username,
+                        isLight: isLight,
                         onTodosChanged: (newTodos) async {
                           setState(() => _todos = newTodos);
                           // 🚀 这里只修改当前展示的待办，存回数据库前要和隐藏的老数据合并
-                          final allTodos = await StorageService.getTodos(widget.username);
-                          for(var newT in _todos){
-                            int idx = allTodos.indexWhere((x) => x.id == newT.id);
-                            if(idx != -1) allTodos[idx] = newT;
-                            else allTodos.add(newT);
+                          final allTodos =
+                              await StorageService.getTodos(widget.username);
+                          for (var newT in _todos) {
+                            int idx =
+                                allTodos.indexWhere((x) => x.id == newT.id);
+                            if (idx != -1)
+                              allTodos[idx] = newT;
+                            else
+                              allTodos.add(newT);
                           }
-                          await StorageService.saveTodos(widget.username, allTodos);
+                          await StorageService.saveTodos(
+                              widget.username, allTodos);
                           _syncTodoNotification();
                           await WidgetService.updateTodoWidget(_todos);
                         },
@@ -984,24 +1137,48 @@ class _HomeDashboardState extends State<HomeDashboard>
                       Widget screenTimeSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SectionHeader(title: "屏幕时间 (今日汇总)", icon: Icons.timer_outlined, isLight: isLight),
+                          SectionHeader(
+                              title: "屏幕时间 (今日汇总)",
+                              icon: Icons.timer_outlined,
+                              isLight: isLight),
                           ScreenTimeCard(
-                            stats: _screenTimeStats, hasPermission: _hasUsagePermission, isLoading: _isLoadingScreenTime, lastSyncTime: _lastScreenTimeSync,
+                            stats: _screenTimeStats,
+                            hasPermission: _hasUsagePermission,
+                            isLoading: _isLoadingScreenTime,
+                            lastSyncTime: _lastScreenTimeSync,
                             onOpenSettings: () async {
                               if (Platform.isAndroid || Platform.isIOS) {
                                 await ScreenTimeService.openSettings();
                               }
                               _initScreenTime();
                             },
-                            onViewDetail: () { Navigator.push(context, MaterialPageRoute(builder: (_) => ScreenTimeDetailScreen(todayStats: _screenTimeStats))); },
+                            onViewDetail: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => ScreenTimeDetailScreen(
+                                          todayStats: _screenTimeStats)));
+                            },
                           ),
                         ],
                       );
                       Widget mathSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SectionHeader(title: "数学测验", icon: Icons.functions, isLight: isLight),
-                          MathStatsCard(stats: _mathStats, onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => MathMenuScreen(username: widget.username))); _loadAllData(); }),
+                          SectionHeader(
+                              title: "数学测验",
+                              icon: Icons.functions,
+                              isLight: isLight),
+                          MathStatsCard(
+                              stats: _mathStats,
+                              onTap: () async {
+                                await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) => MathMenuScreen(
+                                            username: widget.username)));
+                                _loadAllData();
+                              }),
                         ],
                       );
                       Widget pomodoroSection = PomodoroTodaySection(
@@ -1026,12 +1203,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                       );
 
                       Map<String, Widget> sectionsMap = {
-                        'courses': courseSection, 'countdowns': countdownSection,
-                        'todos': todoSection, 'screenTime': screenTimeSection,
-                        'math': mathSection, 'pomodoro': pomodoroSection,
+                        'courses': courseSection,
+                        'countdowns': countdownSection,
+                        'todos': todoSection,
+                        'screenTime': screenTimeSection,
+                        'math': mathSection,
+                        'pomodoro': pomodoroSection,
                       };
 
-                      bool hasNoCourse = (_dashboardCourseData['courses'] == null || (_dashboardCourseData['courses'] as List).isEmpty);
+                      bool hasNoCourse = (_dashboardCourseData['courses'] ==
+                              null ||
+                          (_dashboardCourseData['courses'] as List).isEmpty);
                       List<String> currentLeft = List.from(_leftSections);
                       List<String> currentRight = List.from(_rightSections);
 
@@ -1045,38 +1227,58 @@ class _HomeDashboardState extends State<HomeDashboard>
                           }
                         }
                       }
+
                       applyNoCourseBehavior(currentLeft);
                       applyNoCourseBehavior(currentRight);
 
                       List<Widget> buildColumnWidgets(List<String> keys) {
                         return keys
-                            .where((key) => _sectionVisibility[key] == true && sectionsMap.containsKey(key))
-                            .map((key) => Padding(padding: const EdgeInsets.only(bottom: 24.0), child: sectionsMap[key]!))
+                            .where((key) =>
+                                _sectionVisibility[key] == true &&
+                                sectionsMap.containsKey(key))
+                            .map((key) => Padding(
+                                padding: const EdgeInsets.only(bottom: 24.0),
+                                child: sectionsMap[key]!))
                             .toList();
                       }
 
-                      List<Widget> leftWidgets = buildColumnWidgets(currentLeft);
-                      List<Widget> rightWidgets = buildColumnWidgets(currentRight);
+                      List<Widget> leftWidgets =
+                          buildColumnWidgets(currentLeft);
+                      List<Widget> rightWidgets =
+                          buildColumnWidgets(currentRight);
 
                       return SingleChildScrollView(
-                        padding: EdgeInsets.symmetric(horizontal: isTablet ? 32 : 16, vertical: 16),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: isTablet ? 32 : 16, vertical: 16),
                         child: Align(
                           alignment: Alignment.topCenter,
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 1200),
                             child: isTablet
                                 ? Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: leftWidgets)),
-                                if (rightWidgets.isNotEmpty) const SizedBox(width: 32),
-                                if (rightWidgets.isNotEmpty) Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rightWidgets)),
-                              ],
-                            )
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                          child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: leftWidgets)),
+                                      if (rightWidgets.isNotEmpty)
+                                        const SizedBox(width: 32),
+                                      if (rightWidgets.isNotEmpty)
+                                        Expanded(
+                                            child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: rightWidgets)),
+                                    ],
+                                  )
                                 : Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [...leftWidgets, ...rightWidgets],
-                            ),
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [...leftWidgets, ...rightWidgets],
+                                  ),
                           ),
                         ),
                       );

@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   permission_handler_windows
   screen_retriever
   url_launcher_windows
+  video_player_win
   window_manager
 )
 

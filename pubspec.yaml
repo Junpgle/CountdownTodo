@@ -32,6 +32,8 @@ dependencies:
   html: ^0.15.4
   web_socket_channel: ^3.0.1
   sqflite_common_ffi: ^2.3.0   # 桌面端 SQLite 读取
+  video_player: ^2.11.1
+  video_player_win: ^3.2.2
 
 
 dev_dependencies:
@@ -41,3 +43,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/guide_media/

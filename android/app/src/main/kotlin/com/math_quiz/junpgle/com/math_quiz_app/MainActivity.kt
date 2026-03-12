@@ -178,6 +178,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     }
                 }
 
+                // 跳转到忽略电池优化设置页
+                "openBatteryOptimizationSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+
                 // 检查 Android 16 实时通知权限
                 "checkLiveUpdatesPermission" -> {
                     if (Build.VERSION.SDK_INT >= 36) {

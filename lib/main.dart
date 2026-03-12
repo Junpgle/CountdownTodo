@@ -4,10 +4,11 @@ import 'dart:io'; // 用于 Platform Check
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
+import 'package:video_player_win/video_player_win_plugin.dart'; // video_player_win plugin
 
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
-import 'screens/upgrade_guide_screen.dart';
+import 'screens/feature_guide_screen.dart';
 import 'storage_service.dart';
 
 void main() {
@@ -27,7 +28,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   String? _loggedInUser;
   bool _isChecking = true;
-  bool _showUpgradeGuide = false;
+  bool _showFeatureGuide = false;
 
   @override
   void initState() {
@@ -44,12 +45,12 @@ class _MyAppState extends State<MyApp> {
     final user = await StorageService.getLoginSession();
 
     // 2. 检查升级引导
-    final needGuide = await UpgradeGuideScreen.shouldShow();
+    final needGuide = await FeatureGuideScreen.shouldShow();
 
     if (mounted) {
       setState(() {
         _loggedInUser = user;
-        _showUpgradeGuide = needGuide;
+        _showFeatureGuide = needGuide;
         _isChecking = false;
       });
     }
@@ -68,6 +69,9 @@ class _MyAppState extends State<MyApp> {
     }
 
     if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      if (Platform.isWindows) {
+        WindowsVideoPlayer.registerWith();
+      }
       await windowManager.ensureInitialized();
       WindowOptions windowOptions = const WindowOptions(
         size: Size(1280, 720),
@@ -149,8 +153,8 @@ class _MyAppState extends State<MyApp> {
                     child: CircularProgressIndicator(color: Colors.white),
                   ),
                 )
-              : _showUpgradeGuide
-                  ? UpgradeGuideScreen(loggedInUser: _loggedInUser)
+              : _showFeatureGuide
+                  ? FeatureGuideScreen(loggedInUser: _loggedInUser)
                   : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
                       ? HomeDashboard(
                           username: _loggedInUser!,
