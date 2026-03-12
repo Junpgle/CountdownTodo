@@ -434,8 +434,9 @@ export default {
             const lVersion = parseInt(l.version || 1, 10);
             const lCreatedAt = normalizeToMs(l.created_at ?? l.createdAt) || now;
 
+            // 🔴 修改 1：去掉了不存在的 id 列，确保 SELECT 的是 uuid
             let existing = await DB.prepare(
-              "SELECT id, version, created_at, updated_at, uuid FROM time_logs WHERE uuid = ? AND user_id = ?"
+              "SELECT uuid, version, created_at, updated_at FROM time_logs WHERE uuid = ? AND user_id = ?"
             ).bind(lUuid, authUserId).first();
 
             if (!existing) {
@@ -450,9 +451,11 @@ export default {
 
               // LWW 冲突解决机制
               if (lVersion > (existing.version || 0) || lUpdatedAtClient > existingUpdatedAtMs || !existing.uuid) {
+                // 🔴 修改 2：将 WHERE id=? 改为了 WHERE uuid=?
+                // 🔴 修改 3：bind 的最后一个参数从 existing.id 改为了 existing.uuid
                 batchStatements.push(DB.prepare(
-                  `UPDATE time_logs SET title=?, tag_uuids=?, start_time=?, end_time=?, remark=?, is_deleted=?, created_at=?, updated_at=?, version=?, device_id=? WHERE id=?`
-                ).bind(lTitle, lTagUuids, lStartTime, lEndTime, lRemark, lIsDeleted, finalCreatedAt, now, lVersion, device_id, existing.id));
+                  `UPDATE time_logs SET title=?, tag_uuids=?, start_time=?, end_time=?, remark=?, is_deleted=?, created_at=?, updated_at=?, version=?, device_id=? WHERE uuid=?`
+                ).bind(lTitle, lTagUuids, lStartTime, lEndTime, lRemark, lIsDeleted, finalCreatedAt, now, lVersion, device_id, existing.uuid));
               }
             }
           }
@@ -549,13 +552,22 @@ export default {
 
         // 🚀 格式化返回给客户端的时间日志增量数据
         const mappedTimeLogs = filteredTimeLogs.map(row => {
-             const idStr = row.uuid || String(row.id);
+             // 1. 彻底移除 row.id 引用
+             const idStr = row.uuid;
+
+             // 2. 安全解析 JSON
+             let parsedTags = [];
+             try {
+               parsedTags = JSON.parse(row.tag_uuids || '[]');
+             } catch (e) {
+               console.error(`解析 tag_uuids 失败 [uuid: ${idStr}]:`, e);
+             }
+
              return {
                id: idStr,
                uuid: idStr,
                title: row.title,
-               // 从数据库读取时，解析回数组，如果数据为空或异常则返回空数组 []
-               tag_uuids: JSON.parse(row.tag_uuids || '[]'),
+               tag_uuids: parsedTags,
                start_time: normalizeTimestamp(row.start_time),
                end_time: normalizeTimestamp(row.end_time),
                remark: row.remark ?? null,
