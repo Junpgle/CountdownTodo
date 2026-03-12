@@ -27,7 +27,8 @@ import '../services/course_service.dart';
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
-  final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
+  final SendPort? send =
+      IsolateNameServer.lookupPortByName('downloader_send_port');
   send?.send([id, status, progress]);
 }
 
@@ -39,7 +40,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  static const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  static const platform =
+      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   final ReceivePort _port = ReceivePort();
 
   String _shizukuStatus = "点击右侧按钮获取或检查权限";
@@ -140,8 +142,10 @@ class _SettingsPageState extends State<SettingsPage> {
     // 应用使用情况（Android only，通过 MethodChannel 检查）
     if (Platform.isAndroid) {
       try {
-        final bool hasUsage = await platform.invokeMethod('checkUsageStatsPermission') ?? false;
-        results['usage_stats'] = hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
+        final bool hasUsage =
+            await platform.invokeMethod('checkUsageStatsPermission') ?? false;
+        results['usage_stats'] =
+            hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
       } catch (_) {
         results['usage_stats'] = PermissionStatus.denied;
       }
@@ -151,7 +155,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
     // 安装未知来源
     if (Platform.isAndroid) {
-      results['request_install'] = await Permission.requestInstallPackages.status;
+      results['request_install'] =
+          await Permission.requestInstallPackages.status;
     } else {
       results['request_install'] = PermissionStatus.granted;
     }
@@ -160,9 +165,11 @@ class _SettingsPageState extends State<SettingsPage> {
     if (Platform.isAndroid) {
       try {
         final bool granted = await const MethodChannel(
-            'com.math_quiz.junpgle.com.math_quiz_app/notifications')
-            .invokeMethod<bool>('checkExactAlarmPermission') ?? true;
-        results['exact_alarm'] = granted ? PermissionStatus.granted : PermissionStatus.denied;
+                    'com.math_quiz.junpgle.com.math_quiz_app/notifications')
+                .invokeMethod<bool>('checkExactAlarmPermission') ??
+            true;
+        results['exact_alarm'] =
+            granted ? PermissionStatus.granted : PermissionStatus.denied;
       } catch (_) {
         results['exact_alarm'] = PermissionStatus.granted;
       }
@@ -201,7 +208,8 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case 'usage_stats':
         try {
-          final bool opened = await platform.invokeMethod('openUsageStatsSettings') ?? false;
+          final bool opened =
+              await platform.invokeMethod('openUsageStatsSettings') ?? false;
           if (!opened) await openAppSettings();
         } catch (_) {
           await openAppSettings();
@@ -209,12 +217,13 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case 'request_install':
         final status = await Permission.requestInstallPackages.request();
-        if (status.isPermanentlyDenied || status.isDenied) await openAppSettings();
+        if (status.isPermanentlyDenied || status.isDenied)
+          await openAppSettings();
         break;
       case 'exact_alarm':
         try {
           await const MethodChannel(
-              'com.math_quiz.junpgle.com.math_quiz_app/notifications')
+                  'com.math_quiz.junpgle.com.math_quiz_app/notifications')
               .invokeMethod('openExactAlarmSettings');
         } catch (_) {
           await openAppSettings();
@@ -263,7 +272,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
     bool useCache = false;
     if (cachedDataStr != null && lastSyncTime != null) {
-      final DateTime lastSync = DateTime.fromMillisecondsSinceEpoch(lastSyncTime, isUtc: true).toLocal();
+      final DateTime lastSync =
+          DateTime.fromMillisecondsSinceEpoch(lastSyncTime, isUtc: true)
+              .toLocal();
       if (DateTime.now().difference(lastSync).inMinutes < 5) {
         useCache = true;
         try {
@@ -277,7 +288,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _isLoadingStatus = false;
             });
           }
-        } catch(e) {
+        } catch (e) {
           useCache = false;
         }
       }
@@ -286,7 +297,8 @@ class _SettingsPageState extends State<SettingsPage> {
     if (useCache) return;
 
     try {
-      final response = await http.get(Uri.parse('${ApiService.baseUrl}/api/user/status?user_id=$_userId'));
+      final response = await http.get(
+          Uri.parse('${ApiService.baseUrl}/api/user/status?user_id=$_userId'));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
@@ -303,10 +315,18 @@ class _SettingsPageState extends State<SettingsPage> {
           });
         }
       } else {
-        if (mounted) setState(() { _userTier = "Free"; _isLoadingStatus = false; });
+        if (mounted)
+          setState(() {
+            _userTier = "Free";
+            _isLoadingStatus = false;
+          });
       }
     } catch (e) {
-      if (mounted) setState(() { _userTier = "未知"; _isLoadingStatus = false; });
+      if (mounted)
+        setState(() {
+          _userTier = "未知";
+          _isLoadingStatus = false;
+        });
     }
   }
 
@@ -410,17 +430,18 @@ class _SettingsPageState extends State<SettingsPage> {
         final tasks = await FlutterDownloader.loadTasks();
         if (tasks != null) {
           for (var task in tasks) {
-            await FlutterDownloader.remove(taskId: task.taskId, shouldDeleteContent: true);
+            await FlutterDownloader.remove(
+                taskId: task.taskId, shouldDeleteContent: true);
           }
         }
       } catch (e) {}
-
     } catch (e) {
       debugPrint("深度清理缓存失败: $e");
     } finally {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 深度清理完成，设备空间已大幅释放！')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('✅ 深度清理完成，设备空间已大幅释放！')));
         _calculateCacheSize();
       }
     }
@@ -512,12 +533,14 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('扫描失败: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('扫描失败: $e')));
       }
     }
   }
 
-  void _showFilesDialog(List<Map<String, dynamic>> topFiles, Map<String, double> dirSizes) {
+  void _showFilesDialog(
+      List<Map<String, dynamic>> topFiles, Map<String, double> dirSizes) {
     showDialog(
       context: context,
       builder: (ctx) {
@@ -532,94 +555,123 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("📁 目录总览:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text("📁 目录总览:",
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
                     ...dirSizes.entries.map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(e.key, style: const TextStyle(fontSize: 13)),
-                          Text(_formatSize(e.value), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        ],
-                      ),
-                    )),
+                          padding: const EdgeInsets.only(bottom: 4.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(e.key, style: const TextStyle(fontSize: 13)),
+                              Text(_formatSize(e.value),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13)),
+                            ],
+                          ),
+                        )),
                     const Divider(height: 24),
-                    const Text("📄 Top 100 大文件 (点击垃圾桶可直删):", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text("📄 Top 100 大文件 (点击垃圾桶可直删):",
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Expanded(
                       child: topFiles.isEmpty
                           ? const Center(child: Text("未发现大于 50KB 的文件"))
                           : ListView.separated(
-                        itemCount: topFiles.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final fileInfo = topFiles[index];
-                          final path = fileInfo['path'] as String;
-                          final size = fileInfo['size'] as int;
-                          final fileName = path.split('/').last;
-                          final File file = fileInfo['file'] as File;
+                              itemCount: topFiles.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final fileInfo = topFiles[index];
+                                final path = fileInfo['path'] as String;
+                                final size = fileInfo['size'] as int;
+                                final fileName = path.split('/').last;
+                                final File file = fileInfo['file'] as File;
 
-                          bool isCore = path.contains('flutter_assets') ||
-                              path.endsWith('.db') ||
-                              path.contains('shared_prefs') ||
-                              path.contains('databases');
+                                bool isCore = path.contains('flutter_assets') ||
+                                    path.endsWith('.db') ||
+                                    path.contains('shared_prefs') ||
+                                    path.contains('databases');
 
-                          return ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: Icon(
-                                  isCore ? Icons.warning_amber_rounded : Icons.insert_drive_file,
-                                  color: isCore ? Colors.orange : Colors.grey
-                              ),
-                              title: Text(
-                                fileName,
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isCore ? Colors.orange : null),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Text(
-                                  path,
-                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis
-                              ),
-                              trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(_formatSize(size.toDouble()), style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                                    IconButton(
-                                        padding: const EdgeInsets.only(left: 8),
-                                        constraints: const BoxConstraints(),
-                                        icon: const Icon(Icons.delete_outline, size: 20),
-                                        onPressed: () async {
-                                          if (isCore) {
-                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！')));
-                                            return;
-                                          }
-                                          try {
-                                            if (file.existsSync()) {
-                                              file.deleteSync();
-                                              setDialogState(() {
-                                                topFiles.removeAt(index);
-                                              });
-                                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 文件已删除')));
-                                            }
-                                          } catch(e) {
-                                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败: $e')));
-                                          }
-                                        }
-                                    )
-                                  ]
-                              )
-                          );
-                        },
-                      ),
+                                return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(
+                                        isCore
+                                            ? Icons.warning_amber_rounded
+                                            : Icons.insert_drive_file,
+                                        color: isCore
+                                            ? Colors.orange
+                                            : Colors.grey),
+                                    title: Text(
+                                      fileName,
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: isCore ? Colors.orange : null),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(path,
+                                        style: const TextStyle(
+                                            fontSize: 10, color: Colors.grey),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis),
+                                    trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(_formatSize(size.toDouble()),
+                                              style: const TextStyle(
+                                                  color: Colors.redAccent,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold)),
+                                          IconButton(
+                                              padding: const EdgeInsets.only(
+                                                  left: 8),
+                                              constraints:
+                                                  const BoxConstraints(),
+                                              icon: const Icon(
+                                                  Icons.delete_outline,
+                                                  size: 20),
+                                              onPressed: () async {
+                                                if (isCore) {
+                                                  ScaffoldMessenger.of(context)
+                                                      .showSnackBar(const SnackBar(
+                                                          content: Text(
+                                                              '⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！')));
+                                                  return;
+                                                }
+                                                try {
+                                                  if (file.existsSync()) {
+                                                    file.deleteSync();
+                                                    setDialogState(() {
+                                                      topFiles.removeAt(index);
+                                                    });
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                            const SnackBar(
+                                                                content: Text(
+                                                                    '✅ 文件已删除')));
+                                                  }
+                                                } catch (e) {
+                                                  ScaffoldMessenger.of(context)
+                                                      .showSnackBar(SnackBar(
+                                                          content: Text(
+                                                              '删除失败: $e')));
+                                                }
+                                              })
+                                        ]));
+                              },
+                            ),
                     ),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("关闭")),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text("关闭")),
               ],
             );
           },
@@ -631,7 +683,8 @@ class _SettingsPageState extends State<SettingsPage> {
   void _setupDownloadListener() {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     IsolateNameServer.removePortNameMapping('downloader_send_port');
-    IsolateNameServer.registerPortWithName(_port.sendPort, 'downloader_send_port');
+    IsolateNameServer.registerPortWithName(
+        _port.sendPort, 'downloader_send_port');
 
     _port.listen((dynamic data) {
       String id = data[0];
@@ -684,15 +737,16 @@ class _SettingsPageState extends State<SettingsPage> {
       _floatWindowEnabled = floatEnabled;
     });
     if (Platform.isWindows) {
-      final taiPath = await TaiService.getSavedDbPath()
-          ?? await TaiService.detectDefaultPath();
+      final taiPath = await TaiService.getSavedDbPath() ??
+          await TaiService.detectDefaultPath();
       if (taiPath != null) await TaiService.saveDbPath(taiPath);
       setState(() => _taiDbPath = taiPath ?? '');
     }
   }
 
   Future<void> _pickSemesterDate(bool isStart) async {
-    DateTime initialDate = (isStart ? _semesterStart : _semesterEnd) ?? DateTime.now();
+    DateTime initialDate =
+        (isStart ? _semesterStart : _semesterEnd) ?? DateTime.now();
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
@@ -705,20 +759,27 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {
         if (isStart) {
           _semesterStart = picked;
-          StorageService.saveAppSetting(StorageService.KEY_SEMESTER_START, picked.toIso8601String());
+          StorageService.saveAppSetting(
+              StorageService.KEY_SEMESTER_START, picked.toIso8601String());
         } else {
           _semesterEnd = picked;
-          StorageService.saveAppSetting(StorageService.KEY_SEMESTER_END, picked.toIso8601String());
+          StorageService.saveAppSetting(
+              StorageService.KEY_SEMESTER_END, picked.toIso8601String());
         }
       });
       if (_userId != null) {
         final startMs = _semesterStart != null
-            ? DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day).millisecondsSinceEpoch
+            ? DateTime(_semesterStart!.year, _semesterStart!.month,
+                    _semesterStart!.day)
+                .millisecondsSinceEpoch
             : null;
         final endMs = _semesterEnd != null
-            ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day).millisecondsSinceEpoch
+            ? DateTime(
+                    _semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
+                .millisecondsSinceEpoch
             : null;
-        ApiService.uploadUserSettings(semesterStartMs: startMs, semesterEndMs: endMs);
+        ApiService.uploadUserSettings(
+            semesterStartMs: startMs, semesterEndMs: endMs);
       }
     }
   }
@@ -733,8 +794,7 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => StatefulBuilder(
-            builder: (context, setDialogState) {
+        builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) {
               return AlertDialog(
                 title: const Text("修改密码"),
                 content: SingleChildScrollView(
@@ -742,18 +802,26 @@ class _SettingsPageState extends State<SettingsPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       TextField(
-                        controller: oldPassCtrl, obscureText: true,
-                        decoration: const InputDecoration(labelText: "当前密码", prefixIcon: Icon(Icons.lock_outline)),
+                        controller: oldPassCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                            labelText: "当前密码",
+                            prefixIcon: Icon(Icons.lock_outline)),
                       ),
                       const SizedBox(height: 10),
                       TextField(
-                        controller: newPassCtrl, obscureText: true,
-                        decoration: const InputDecoration(labelText: "新密码", prefixIcon: Icon(Icons.lock)),
+                        controller: newPassCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                            labelText: "新密码", prefixIcon: Icon(Icons.lock)),
                       ),
                       const SizedBox(height: 10),
                       TextField(
-                        controller: confirmPassCtrl, obscureText: true,
-                        decoration: const InputDecoration(labelText: "确认新密码", prefixIcon: Icon(Icons.check_circle_outline)),
+                        controller: confirmPassCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                            labelText: "确认新密码",
+                            prefixIcon: Icon(Icons.check_circle_outline)),
                       ),
                     ],
                   ),
@@ -761,42 +829,49 @@ class _SettingsPageState extends State<SettingsPage> {
                 actions: [
                   TextButton(
                       onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
-                      child: const Text("取消")
-                  ),
+                      child: const Text("取消")),
                   FilledButton(
-                    onPressed: isSubmitting ? null : () async {
-                      if (newPassCtrl.text != confirmPassCtrl.text) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('两次输入的新密码不一致')));
-                        return;
-                      }
-                      if (newPassCtrl.text.isEmpty || oldPassCtrl.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写完整')));
-                        return;
-                      }
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            if (newPassCtrl.text != confirmPassCtrl.text) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('两次输入的新密码不一致')));
+                              return;
+                            }
+                            if (newPassCtrl.text.isEmpty ||
+                                oldPassCtrl.text.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('请填写完整')));
+                              return;
+                            }
 
-                      setDialogState(() => isSubmitting = true);
-                      final res = await ApiService.changePassword(_userId!, oldPassCtrl.text, newPassCtrl.text);
-                      setDialogState(() => isSubmitting = false);
+                            setDialogState(() => isSubmitting = true);
+                            final res = await ApiService.changePassword(
+                                _userId!, oldPassCtrl.text, newPassCtrl.text);
+                            setDialogState(() => isSubmitting = false);
 
-                      if (!context.mounted) return;
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(res['message'] ?? (res['success'] ? '修改成功' : '修改失败')))
-                      );
+                            if (!context.mounted) return;
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text(res['message'] ??
+                                    (res['success'] ? '修改成功' : '修改失败'))));
 
-                      if (res['success']) {
-                        _handleLogout(force: true);
-                      }
-                    },
+                            if (res['success']) {
+                              _handleLogout(force: true);
+                            }
+                          },
                     child: isSubmitting
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
                         : const Text("确认修改"),
                   ),
                 ],
               );
-            }
-        )
-    );
+            }));
   }
 
   void _showHomeSectionManager() async {
@@ -807,15 +882,25 @@ class _SettingsPageState extends State<SettingsPage> {
     List<String>? leftOrder = prefs.getStringList('home_section_order_left');
     List<String>? rightOrder = prefs.getStringList('home_section_order_right');
 
-    final List<String> defaultOrder = ['courses', 'countdowns', 'todos', 'screenTime', 'math', 'pomodoro'];
+    final List<String> defaultOrder = [
+      'courses',
+      'countdowns',
+      'todos',
+      'screenTime',
+      'math',
+      'pomodoro'
+    ];
 
     if (leftOrder == null || rightOrder == null) {
-      List<String> oldOrder = prefs.getStringList('home_section_order') ?? defaultOrder;
+      List<String> oldOrder =
+          prefs.getStringList('home_section_order') ?? defaultOrder;
       leftOrder = [];
       rightOrder = [];
       for (int i = 0; i < oldOrder.length; i++) {
-        if (i % 2 == 0) leftOrder.add(oldOrder[i]);
-        else rightOrder.add(oldOrder[i]);
+        if (i % 2 == 0)
+          leftOrder.add(oldOrder[i]);
+        else
+          rightOrder.add(oldOrder[i]);
       }
     }
 
@@ -828,7 +913,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
     List<String> mobileCombinedOrder = [...leftOrder, ...rightOrder];
 
-    Map<String, bool> visibility = {'courses': true, 'countdowns': true, 'todos': true, 'screenTime': true, 'math': true, 'pomodoro': true};
+    Map<String, bool> visibility = {
+      'courses': true,
+      'countdowns': true,
+      'todos': true,
+      'screenTime': true,
+      'math': true,
+      'pomodoro': true
+    };
     String? visStr = prefs.getString('home_section_visibility');
     if (visStr != null) visibility = Map<String, bool>.from(jsonDecode(visStr));
     for (var key in defaultOrder) visibility.putIfAbsent(key, () => true);
@@ -846,10 +938,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
     showDialog(
         context: context,
-        builder: (ctx) => StatefulBuilder(
-            builder: (context, setDialogState) {
-
-              void moveItem(String item, {String? targetKey, bool? toLeftList}) {
+        builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) {
+              void moveItem(String item,
+                  {String? targetKey, bool? toLeftList}) {
                 setDialogState(() {
                   leftOrder!.remove(item);
                   rightOrder!.remove(item);
@@ -860,8 +951,10 @@ class _SettingsPageState extends State<SettingsPage> {
                       rightOrder!.insert(rightOrder!.indexOf(targetKey), item);
                     }
                   } else if (toLeftList != null) {
-                    if (toLeftList) leftOrder!.add(item);
-                    else rightOrder!.add(item);
+                    if (toLeftList)
+                      leftOrder!.add(item);
+                    else
+                      rightOrder!.add(item);
                   }
                 });
               }
@@ -876,14 +969,28 @@ class _SettingsPageState extends State<SettingsPage> {
                     color: Colors.transparent,
                     child: Container(
                       width: 250,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
-                      child: Text(names[key] ?? key, style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onPrimaryContainer)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primaryContainer
+                              .withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text(names[key] ?? key,
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer)),
                     ),
                   ),
                   childWhenDragging: Opacity(
                     opacity: 0.3,
-                    child: CheckboxListTile(title: Text(names[key] ?? key), value: visibility[key], onChanged: null),
+                    child: CheckboxListTile(
+                        title: Text(names[key] ?? key),
+                        value: visibility[key],
+                        onChanged: null),
                   ),
                   child: DragTarget<String>(
                       onWillAccept: (data) => data != key,
@@ -891,18 +998,27 @@ class _SettingsPageState extends State<SettingsPage> {
                       builder: (context, candidateData, rejectedData) {
                         return Container(
                           decoration: BoxDecoration(
-                            border: candidateData.isNotEmpty ? Border(top: BorderSide(color: Theme.of(context).colorScheme.primary, width: 3)) : null,
+                            border: candidateData.isNotEmpty
+                                ? Border(
+                                    top: BorderSide(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        width: 3))
+                                : null,
                           ),
                           child: CheckboxListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: Text(names[key] ?? key, style: const TextStyle(fontSize: 14)),
+                            title: Text(names[key] ?? key,
+                                style: const TextStyle(fontSize: 14)),
                             value: visibility[key],
-                            secondary: const Icon(Icons.drag_indicator, color: Colors.grey, size: 20),
-                            onChanged: (val) => setDialogState(() => visibility[key] = val ?? true),
+                            secondary: const Icon(Icons.drag_indicator,
+                                color: Colors.grey, size: 20),
+                            onChanged: (val) => setDialogState(
+                                () => visibility[key] = val ?? true),
                           ),
                         );
-                      }
-                  ),
+                      }),
                 );
               }
 
@@ -916,23 +1032,31 @@ class _SettingsPageState extends State<SettingsPage> {
                           margin: const EdgeInsets.symmetric(horizontal: 4),
                           padding: const EdgeInsets.only(bottom: 60),
                           decoration: BoxDecoration(
-                            color: candidateData.isNotEmpty ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1) : Colors.transparent,
+                            color: candidateData.isNotEmpty
+                                ? Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer
+                                    .withOpacity(0.1)
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                            border:
+                                Border.all(color: Colors.grey.withOpacity(0.2)),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Padding(
                                 padding: const EdgeInsets.all(8.0),
-                                child: Text(isLeft ? "屏幕左栏" : "屏幕右栏", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                                child: Text(isLeft ? "屏幕左栏" : "屏幕右栏",
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey)),
                               ),
                               ...items.map((key) => buildDraggableItem(key)),
                             ],
                           ),
                         );
-                      }
-                  ),
+                      }),
                 );
               }
 
@@ -947,47 +1071,54 @@ class _SettingsPageState extends State<SettingsPage> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12.0),
                         child: Text(
-                            isTablet ? "长按模块，可跨越左右栏进行拖拽。\n勾选控制该模块是否在首页展示。" : "长按右侧把手拖拽改变顺序，勾选控制是否展示。",
-                            style: const TextStyle(color: Colors.grey, fontSize: 13)
-                        ),
+                            isTablet
+                                ? "长按模块，可跨越左右栏进行拖拽。\n勾选控制该模块是否在首页展示。"
+                                : "长按右侧把手拖拽改变顺序，勾选控制是否展示。",
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 13)),
                       ),
                       Expanded(
                         child: isTablet
                             ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            buildDragColumn(leftOrder!, true),
-                            buildDragColumn(rightOrder!, false),
-                          ],
-                        )
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  buildDragColumn(leftOrder!, true),
+                                  buildDragColumn(rightOrder!, false),
+                                ],
+                              )
                             : ReorderableListView(
-                          shrinkWrap: true,
-                          onReorder: (oldIndex, newIndex) {
-                            setDialogState(() {
-                              if (newIndex > oldIndex) newIndex -= 1;
-                              final item = mobileCombinedOrder.removeAt(oldIndex);
-                              mobileCombinedOrder.insert(newIndex, item);
-                            });
-                          },
-                          children: mobileCombinedOrder.map((key) {
-                            return CheckboxListTile(
-                              key: Key(key),
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(names[key] ?? key),
-                              value: visibility[key] ?? true,
-                              secondary: const Icon(Icons.drag_handle, color: Colors.grey),
-                              onChanged: (val) {
-                                setDialogState(() => visibility[key] = val ?? true);
-                              },
-                            );
-                          }).toList(),
-                        ),
+                                shrinkWrap: true,
+                                onReorder: (oldIndex, newIndex) {
+                                  setDialogState(() {
+                                    if (newIndex > oldIndex) newIndex -= 1;
+                                    final item =
+                                        mobileCombinedOrder.removeAt(oldIndex);
+                                    mobileCombinedOrder.insert(newIndex, item);
+                                  });
+                                },
+                                children: mobileCombinedOrder.map((key) {
+                                  return CheckboxListTile(
+                                    key: Key(key),
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(names[key] ?? key),
+                                    value: visibility[key] ?? true,
+                                    secondary: const Icon(Icons.drag_handle,
+                                        color: Colors.grey),
+                                    onChanged: (val) {
+                                      setDialogState(
+                                          () => visibility[key] = val ?? true);
+                                    },
+                                  );
+                                }).toList(),
+                              ),
                       ),
                     ],
                   ),
                 ),
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text("取消")),
                   FilledButton(
                     onPressed: () {
                       if (!isTablet) {
@@ -995,37 +1126,45 @@ class _SettingsPageState extends State<SettingsPage> {
                         rightOrder!.clear();
                         int mid = (mobileCombinedOrder.length / 2).ceil();
                         for (int i = 0; i < mobileCombinedOrder.length; i++) {
-                          if (i < mid) leftOrder!.add(mobileCombinedOrder[i]);
-                          else rightOrder!.add(mobileCombinedOrder[i]);
+                          if (i < mid)
+                            leftOrder!.add(mobileCombinedOrder[i]);
+                          else
+                            rightOrder!.add(mobileCombinedOrder[i]);
                         }
                       }
 
-                      prefs.setStringList('home_section_order_left', leftOrder!);
-                      prefs.setStringList('home_section_order_right', rightOrder!);
-                      prefs.setString('home_section_visibility', jsonEncode(visibility));
+                      prefs.setStringList(
+                          'home_section_order_left', leftOrder!);
+                      prefs.setStringList(
+                          'home_section_order_right', rightOrder!);
+                      prefs.setString(
+                          'home_section_visibility', jsonEncode(visibility));
                       Navigator.pop(ctx);
-                      ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text('已保存，请返回主页查看更新')));
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(content: Text('已保存，请返回主页查看更新')));
                     },
                     child: const Text("保存并应用"),
                   )
                 ],
               );
-            }
-        )
-    );
+            }));
   }
 
   Future<void> _checkAndOpenLiveUpdates() async {
     try {
-      final bool hasPermission = await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
+      final bool hasPermission =
+          await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
       if (!hasPermission) {
         setState(() => _liveUpdatesStatus = "权限未开启，尝试跳转设置...");
-        final bool opened = await platform.invokeMethod('openLiveUpdatesSettings') ?? false;
+        final bool opened =
+            await platform.invokeMethod('openLiveUpdatesSettings') ?? false;
 
         if (opened) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('请在设置中打开"推广的通知/实时更新"权限'), duration: Duration(seconds: 3)),
+            const SnackBar(
+                content: Text('请在设置中打开"推广的通知/实时更新"权限'),
+                duration: Duration(seconds: 3)),
           );
         } else {
           setState(() => _liveUpdatesStatus = "跳转失败，设备可能不是 Android 16+");
@@ -1073,7 +1212,8 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (ctx) {
         dialogContext = ctx;
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Row(
             children: [
               const CircularProgressIndicator(),
@@ -1121,29 +1261,38 @@ class _SettingsPageState extends State<SettingsPage> {
         if (_semesterStart == null) {
           statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
           await Future.delayed(const Duration(seconds: 2));
-          if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
+          if (dialogContext != null && dialogContext!.mounted)
+            Navigator.pop(dialogContext!);
           return;
         }
-        success = await CourseService.importXidianScheduleFromIcs(content, _semesterStart!);
-      } else if (['mhtml', 'html', 'htm'].contains(ext) || content.contains('quoted-printable') || content.toLowerCase().contains('<html')) {
+        success = await CourseService.importXidianScheduleFromIcs(
+            content, _semesterStart!);
+      } else if (['mhtml', 'html', 'htm'].contains(ext) ||
+          content.contains('quoted-printable') ||
+          content.toLowerCase().contains('<html')) {
         sourceName = "厦门大学";
         statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
 
         if (_semesterStart == null) {
           statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
           await Future.delayed(const Duration(seconds: 2));
-          if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
+          if (dialogContext != null && dialogContext!.mounted)
+            Navigator.pop(dialogContext!);
           return;
         }
-        success = await CourseService.importXmuScheduleFromHtml(content, _semesterStart!);
-      } else if (['json', 'txt'].contains(ext) || content.trim().startsWith('[') || content.trim().startsWith('{')) {
+        success = await CourseService.importXmuScheduleFromHtml(
+            content, _semesterStart!);
+      } else if (['json', 'txt'].contains(ext) ||
+          content.trim().startsWith('[') ||
+          content.trim().startsWith('{')) {
         sourceName = "聚在工大";
         statusNotifier.value = "识别到: $sourceName\n正在导入...";
         success = await CourseService.importScheduleFromJson(content);
       } else {
         statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
         await Future.delayed(const Duration(seconds: 2));
-        if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
+        if (dialogContext != null && dialogContext!.mounted)
+          Navigator.pop(dialogContext!);
         return;
       }
 
@@ -1160,7 +1309,6 @@ class _SettingsPageState extends State<SettingsPage> {
           Navigator.pop(dialogContext!);
         }
       }
-
     } catch (e) {
       debugPrint("处理智能导入时崩溃: $e");
       statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
@@ -1173,7 +1321,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _testCourseNotification() async {
     final dashboardData = await CourseService.getDashboardCourses();
-    List<CourseItem> courses = (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
+    List<CourseItem> courses =
+        (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
     CourseItem? testCourse;
     if (courses.isNotEmpty) {
@@ -1189,15 +1338,18 @@ class _SettingsPageState extends State<SettingsPage> {
       NotificationService.showCourseLiveActivity(
         courseName: testCourse.courseName,
         room: testCourse.roomName,
-        timeStr: '${testCourse.formattedStartTime} - ${testCourse.formattedEndTime}',
+        timeStr:
+            '${testCourse.formattedStartTime} - ${testCourse.formattedEndTime}',
         teacher: testCourse.teacherName,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 已发送测试实时通知，请查看状态栏')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('✅ 已发送测试实时通知，请查看状态栏')));
       }
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 尚未导入课表数据，请先在"课程设置"中导入')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('❌ 尚未导入课表数据，请先在"课程设置"中导入')));
       }
     }
   }
@@ -1218,8 +1370,12 @@ class _SettingsPageState extends State<SettingsPage> {
           '这将重置本地同步记录，从云端拉取所有最新数据。\n\n本地未同步的数据会先上传，再合并云端数据。\n\n是否继续？',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认')),
         ],
       ),
     );
@@ -1227,7 +1383,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('🔄 正在全量同步...'), duration: Duration(seconds: 10)),
+      const SnackBar(
+          content: Text('🔄 正在全量同步...'), duration: Duration(seconds: 10)),
     );
 
     try {
@@ -1267,21 +1424,21 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     bool confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("上传课表到云端"),
-        content: const Text(
-            "这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text("取消")),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text("上传")),
-        ],
-      ),
-    ) ?? false;
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("上传课表到云端"),
+            content: const Text("这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text("取消")),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text("上传")),
+            ],
+          ),
+        ) ??
+        false;
 
     if (!confirm) return;
 
@@ -1295,12 +1452,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (result['success'] == true) {
       final startMs = _semesterStart != null
-          ? DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day).millisecondsSinceEpoch
+          ? DateTime(_semesterStart!.year, _semesterStart!.month,
+                  _semesterStart!.day)
+              .millisecondsSinceEpoch
           : null;
       final endMs = _semesterEnd != null
-          ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day).millisecondsSinceEpoch
+          ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
+              .millisecondsSinceEpoch
           : null;
-      await ApiService.uploadUserSettings(semesterStartMs: startMs, semesterEndMs: endMs);
+      await ApiService.uploadUserSettings(
+          semesterStartMs: startMs, semesterEndMs: endMs);
     }
 
     if (!mounted) return;
@@ -1336,8 +1497,12 @@ class _SettingsPageState extends State<SettingsPage> {
         title: const Text('从云端获取课表'),
         content: const Text('这将用云端课表数据覆盖本地课表。\n\n本地已有的课表数据将被替换。\n\n是否继续？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('获取')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('获取')),
         ],
       ),
     );
@@ -1369,7 +1534,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
         final courses = data.map<CourseItem>((c) {
           final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
-          final int weekday  = (c['weekday']   as num?)?.toInt() ?? 1;
+          final int weekday = (c['weekday'] as num?)?.toInt() ?? 1;
 
           final DateTime courseDate = semesterMonday
               .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
@@ -1377,14 +1542,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
           return CourseItem(
             courseName: c['course_name'] ?? '',
-            roomName:   c['room_name']   ?? '',
-            teacherName:c['teacher_name']?? '',
-            startTime:  (c['start_time'] as num?)?.toInt() ?? 0,
-            endTime:    (c['end_time']   as num?)?.toInt() ?? 0,
-            weekday:    weekday,
-            weekIndex:  weekIndex,
+            roomName: c['room_name'] ?? '',
+            teacherName: c['teacher_name'] ?? '',
+            startTime: (c['start_time'] as num?)?.toInt() ?? 0,
+            endTime: (c['end_time'] as num?)?.toInt() ?? 0,
+            weekday: weekday,
+            weekIndex: weekIndex,
             lessonType: c['lesson_type'] ?? '',
-            date:       dateStr,
+            date: dateStr,
           );
         }).toList();
 
@@ -1459,26 +1624,33 @@ class _SettingsPageState extends State<SettingsPage> {
     bool confirm = force;
     if (!force) {
       confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text("退出账号"),
-          content: const Text("确定要退出当前账号吗？"),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text("退出"),
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text("退出账号"),
+              content: const Text("确定要退出当前账号吗？"),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text("取消")),
+                FilledButton(
+                  style:
+                      FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text("退出"),
+                ),
+              ],
             ),
-          ],
-        ),
-      ) ?? false;
+          ) ??
+          false;
     }
 
     if (confirm) {
       await StorageService.clearLoginSession();
       if (mounted) {
-        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+        Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (route) => false);
       }
     }
   }
@@ -1489,11 +1661,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final allGranted = _permissionDefs.every((def) {
       final status = _permissionStatuses[def['key'] as String];
-      return status == PermissionStatus.granted || status == PermissionStatus.limited;
+      return status == PermissionStatus.granted ||
+          status == PermissionStatus.limited;
     });
     final undoneCount = _permissionDefs.where((d) {
       final s = _permissionStatuses[d['key'] as String];
-      return s != null && s != PermissionStatus.granted && s != PermissionStatus.limited;
+      return s != null &&
+          s != PermissionStatus.granted &&
+          s != PermissionStatus.limited;
     }).length;
 
     return Column(
@@ -1504,11 +1679,15 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Row(
             children: [
               const Text('权限管理',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey)),
               const SizedBox(width: 8),
               if (_permissionStatuses.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: allGranted
                         ? Colors.green.withOpacity(0.12)
@@ -1530,8 +1709,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   padding: const EdgeInsets.all(4.0),
                   child: _isCheckingPermissions
                       ? const SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.refresh, size: 18, color: Colors.grey),
                 ),
               ),
@@ -1540,7 +1720,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(
             children: [
               for (int i = 0; i < _permissionDefs.length; i++) ...[
@@ -1555,26 +1736,29 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildPermissionTile(Map<String, dynamic> def) {
-    final String key    = def['key']    as String;
-    final String label  = def['label']  as String;
-    final String desc   = def['desc']   as String;
-    final IconData icon = def['icon']   as IconData;
-    final Color color   = def['color']  as Color;
+    final String key = def['key'] as String;
+    final String label = def['label'] as String;
+    final String desc = def['desc'] as String;
+    final IconData icon = def['icon'] as IconData;
+    final Color color = def['color'] as Color;
     final bool critical = def['critical'] as bool;
 
     final PermissionStatus? status = _permissionStatuses[key];
-    final bool granted = status == PermissionStatus.granted || status == PermissionStatus.limited;
-    final bool denied  = status != null && !granted;
+    final bool granted = status == PermissionStatus.granted ||
+        status == PermissionStatus.limited;
+    final bool denied = status != null && !granted;
 
     Widget statusIcon;
     if (_isCheckingPermissions && status == null) {
       statusIcon = const SizedBox(
-          width: 18, height: 18,
+          width: 18,
+          height: 18,
           child: CircularProgressIndicator(strokeWidth: 2));
     } else if (status == null) {
       statusIcon = const Icon(Icons.help_outline, size: 20, color: Colors.grey);
     } else if (granted) {
-      statusIcon = const Icon(Icons.check_circle, size: 20, color: Colors.green);
+      statusIcon =
+          const Icon(Icons.check_circle, size: 20, color: Colors.green);
     } else {
       statusIcon = Icon(
         critical ? Icons.error : Icons.warning_amber_rounded,
@@ -1644,11 +1828,16 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          child: Text(title,
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey)),
         ),
         Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(children: children),
         ),
       ],
@@ -1659,15 +1848,19 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildAccountSection() {
     return _buildSection('账户管理', [
       ListTile(
-        leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primaryContainer, child: const Icon(Icons.person)),
-        title: Text(_username, style: const TextStyle(fontWeight: FontWeight.bold)),
+        leading: CircleAvatar(
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+            child: const Icon(Icons.person)),
+        title: Text(_username,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(_userId != null ? "UID: $_userId" : "离线模式"),
         trailing: const Icon(Icons.edit_square, size: 20, color: Colors.grey),
         onTap: _showChangePasswordDialog,
       ),
       const Divider(height: 1, indent: 56),
       Padding(
-        padding: const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
+        padding:
+            const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1676,30 +1869,36 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 const Text("账户等级", style: TextStyle(fontSize: 14)),
                 _isLoadingStatus
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2))
                     : Text(
-                  _userTier.toUpperCase(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: _userTier.toLowerCase() == 'pro' || _userTier.toLowerCase() == 'admin'
-                        ? Colors.orangeAccent
-                        : Colors.grey,
-                  ),
-                ),
+                        _userTier.toUpperCase(),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: _userTier.toLowerCase() == 'pro' ||
+                                  _userTier.toLowerCase() == 'admin'
+                              ? Colors.orangeAccent
+                              : Colors.grey,
+                        ),
+                      ),
               ],
             ),
             const SizedBox(height: 12),
-            const Text("今日同步额度", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const Text("今日同步额度",
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 6),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: _syncProgress,
                 minHeight: 6,
-                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                    _syncProgress > 0.9 ? Colors.redAccent : Theme.of(context).colorScheme.primary
-                ),
+                backgroundColor:
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(_syncProgress > 0.9
+                    ? Colors.redAccent
+                    : Theme.of(context).colorScheme.primary),
               ),
             ),
           ],
@@ -1756,7 +1955,8 @@ class _SettingsPageState extends State<SettingsPage> {
           onChanged: (val) {
             if (val != null) {
               setState(() => _noCourseBehavior = val);
-              SharedPreferences.getInstance().then((prefs) => prefs.setString('no_course_behavior', val));
+              SharedPreferences.getInstance()
+                  .then((prefs) => prefs.setString('no_course_behavior', val));
             }
           },
         ),
@@ -1773,19 +1973,24 @@ class _SettingsPageState extends State<SettingsPage> {
         value: _semesterEnabled,
         onChanged: (val) {
           setState(() => _semesterEnabled = val);
-          StorageService.saveAppSetting(StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+          StorageService.saveAppSetting(
+              StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
         },
       ),
       ListTile(
         contentPadding: const EdgeInsets.only(left: 56, right: 16),
         title: const Text('开学日期'),
-        trailing: Text(_semesterStart == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
+        trailing: Text(_semesterStart == null
+            ? "未设置"
+            : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
         onTap: () => _pickSemesterDate(true),
       ),
       ListTile(
         contentPadding: const EdgeInsets.only(left: 56, right: 16),
         title: const Text('放假日期'),
-        trailing: Text(_semesterEnd == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
+        trailing: Text(_semesterEnd == null
+            ? "未设置"
+            : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
         onTap: () => _pickSemesterDate(false),
       ),
       const Divider(height: 1, indent: 56),
@@ -1824,7 +2029,8 @@ class _SettingsPageState extends State<SettingsPage> {
           onChanged: (val) {
             if (val != null) {
               setState(() => _syncInterval = val);
-              StorageService.saveAppSetting(StorageService.KEY_SYNC_INTERVAL, val);
+              StorageService.saveAppSetting(
+                  StorageService.KEY_SYNC_INTERVAL, val);
             }
           },
         ),
@@ -1869,15 +2075,18 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         const Divider(height: 1, indent: 56),
         SwitchListTile(
-          secondary: const Icon(Icons.picture_in_picture_alt_outlined, color: Colors.indigo),
+          secondary: const Icon(Icons.picture_in_picture_alt_outlined,
+              color: Colors.indigo),
           title: const Text('番茄钟悬浮窗'),
           subtitle: const Text('专注/跨端观察时显示桌面悬浮倒计时'),
           value: _floatWindowEnabled,
-          onChanged: Platform.isWindows ? (val) async {
-            setState(() => _floatWindowEnabled = val);
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('float_window_enabled', val);
-          } : null,
+          onChanged: Platform.isWindows
+              ? (val) async {
+                  setState(() => _floatWindowEnabled = val);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('float_window_enabled', val);
+                }
+              : null,
         ),
       ],
     ]);
@@ -1885,60 +2094,82 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ─── 构建高级设置 Section ────────────────────────────────────────
   Widget _buildAdvancedSection() {
+    if (!Platform.isAndroid) return const SizedBox.shrink();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Text('高级设置', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          child: Text('高级设置',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey)),
         ),
         Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            leading: const Icon(Icons.notification_important_outlined, color: Colors.amber),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            leading: const Icon(Icons.notification_important_outlined,
+                color: Colors.amber),
             title: const Text('测试课程实时通知'),
             subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
-            trailing: TextButton(onPressed: _testCourseNotification, child: const Text("发送测试")),
+            trailing: TextButton(
+                onPressed: _testCourseNotification, child: const Text("发送测试")),
           ),
         ),
         const SizedBox(height: 12),
         Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            leading: const CircleAvatar(backgroundColor: Colors.teal, child: Icon(Icons.notifications_active, color: Colors.white)),
-            title: const Text('Android 16 实时活动', style: TextStyle(fontWeight: FontWeight.w600)),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            leading: const CircleAvatar(
+                backgroundColor: Colors.teal,
+                child: Icon(Icons.notifications_active, color: Colors.white)),
+            title: const Text('Android 16 实时活动',
+                style: TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Padding(
                 padding: const EdgeInsets.only(top: 4.0),
-                child: Text(_liveUpdatesStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))
-            ),
+                child: Text(_liveUpdatesStatus,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13))),
             trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20))),
                 onPressed: _checkAndOpenLiveUpdates,
-                child: const Text('去开启')
-            ),
+                child: const Text('去开启')),
           ),
         ),
         const SizedBox(height: 12),
         Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            leading: const CircleAvatar(backgroundColor: Colors.deepPurpleAccent, child: Icon(Icons.smart_button, color: Colors.white)),
-            title: const Text('小米超级岛支持', style: TextStyle(fontWeight: FontWeight.w600)),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            leading: const CircleAvatar(
+                backgroundColor: Colors.deepPurpleAccent,
+                child: Icon(Icons.smart_button, color: Colors.white)),
+            title: const Text('小米超级岛支持',
+                style: TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Padding(
                 padding: const EdgeInsets.only(top: 4.0),
-                child: Text(_islandStatus, style: TextStyle(color: Colors.grey[600], fontSize: 13))
-            ),
+                child: Text(_islandStatus,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13))),
             trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20))),
                 onPressed: _checkIslandSupport,
-                child: const Text('检测')
-            ),
+                child: const Text('检测')),
           ),
         ),
       ],
@@ -1957,7 +2188,8 @@ class _SettingsPageState extends State<SettingsPage> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const FeatureGuideScreen(isManualReview: true),
+              builder: (context) =>
+                  const FeatureGuideScreen(isManualReview: true),
             ),
           );
         },
@@ -1967,19 +2199,27 @@ class _SettingsPageState extends State<SettingsPage> {
         leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
         title: const Text('深度清理缓存与冗余'),
         subtitle: const Text('包含更新残留包与深度图片缓存'),
-        trailing: Text(_cacheSizeStr, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+        trailing: Text(_cacheSizeStr,
+            style: const TextStyle(
+                color: Colors.grey, fontWeight: FontWeight.bold)),
         onTap: () async {
           bool confirm = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text("深度清理空间"),
-                content: Text("检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK/EXE) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响"),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("清理")),
-              ],
-            ),
-          ) ?? false;
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text("深度清理空间"),
+                  content: Text(
+                      "检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK/EXE) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响"),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text("取消")),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text("清理")),
+                  ],
+                ),
+              ) ??
+              false;
 
           if (confirm) {
             _clearCache();
@@ -1999,7 +2239,10 @@ class _SettingsPageState extends State<SettingsPage> {
         leading: const Icon(Icons.system_update, color: Colors.green),
         title: const Text('检查新版本'),
         trailing: _isCheckingUpdate
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.chevron_right),
         onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
       ),
