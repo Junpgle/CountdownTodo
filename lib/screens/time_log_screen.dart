@@ -91,6 +91,25 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<PomodoroTag>    _tags         = [];
   List<PomodoroRecord> _allPomodoros = [];
 
+  // 新增：打开编辑面板
+  void _editTimeLog(TimeLogItem log) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _LogEntrySheet(
+        initialStart: DateTime.fromMillisecondsSinceEpoch(log.startTime), // 占位，会被 existingLog 覆盖
+        initialEnd: DateTime.fromMillisecondsSinceEpoch(log.endTime),
+        tags: _tags,
+        existingLog: log, // 传入需要编辑的记录
+        onSave: (updatedLog) {
+          Navigator.pop(context);
+          _addLog(updatedLog); // 调用已有的保存逻辑进行覆盖
+        },
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -354,18 +373,35 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   const SizedBox(width: 10),
                   Expanded(child: _InfoCard(label: '时长', value: '${dur}min', sub: '手动补录')),
                 ]),
-                const SizedBox(height: 20),
-                SizedBox(width: double.infinity, height: 46,
+                // 👉 替换这里：将单个“删除”按钮拆分为左右排布的“编辑”和“删除”
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context); // 先关闭详情面板
+                        _editTimeLog(log);      // 打开编辑面板
+                      },
+                      icon: const Icon(Icons.edit_note, size: 18),
+                      label: const Text('编辑记录', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: _TC.text(context),
+                          side: BorderSide(color: _TC.divider(context)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () { Navigator.pop(context); _deleteLog(log.id); },
                       icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('删除此记录',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      label: const Text('删除记录', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                       style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red,
                           side: BorderSide(color: Colors.red.withOpacity(0.4)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                    )),
+                    ),
+                  ),
+                ]),
               ]),
         ));
   }
@@ -778,37 +814,13 @@ class _DayGridView extends StatefulWidget {
 }
 
 class _DayGridViewState extends State<_DayGridView> {
-  final ScrollController _scroll = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToNow());
-  }
-
-  void _scrollToNow() {
-    if (!_scroll.hasClients) return;
-    final now     = DateTime.now();
-    final isToday = DateFormat('yyyyMMdd').format(now) ==
-        DateFormat('yyyyMMdd').format(widget.date);
-    if (!isToday) return;
-    const totalH = kRowH * kTotalRows;
-    final frac   = (now.hour + now.minute / 60.0) / 24.0;
-    final offset = (totalH * frac - _scroll.position.viewportDimension * 0.4)
-        .clamp(0.0, totalH - _scroll.position.viewportDimension);
-    _scroll.animateTo(offset,
-        duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
-  }
-
-  @override
-  void dispose() { _scroll.dispose(); super.dispose(); }
+  // 移除了 ScrollController 和 _scrollToNow，因为一屏显示不再需要滚动
 
   @override
   Widget build(BuildContext context) {
     final ds     = _dayStart(widget.date).millisecondsSinceEpoch;
     final de     = ds + 86400000;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = Theme.of(context).colorScheme.primary;
 
     final dLogs = widget.logs.where((l) => l.endTime > ds && l.startTime < de).toList();
     final dPoms = widget.pomodoros.where((p) {
@@ -832,46 +844,35 @@ class _DayGridViewState extends State<_DayGridView> {
       // ── 顶部汇总栏 ──────────────────────────────────
       _buildSummary(context, totalMin, logMin, pomMin, tagMinMap),
 
-      // ── 网格主体 ────────────────────────────────────
-      // 布局：左侧时间轴固定，右侧10格平铺屏宽，纵向滚动
+      // ── 网格主体（自适应剩余空间）─────────────────────
       Expanded(child: LayoutBuilder(builder: (ctx, constraints) {
-        // 列宽 = 剩余宽度 / 10格，直接填满屏幕，不需要横向滚动
         final gridAreaW = constraints.maxWidth - kTimeAxisW;
-        final colW      = gridAreaW / kColsPerH; // 每格宽度
+        final colW      = gridAreaW / kColsPerH; // 每列宽度
+        final rowH      = constraints.maxHeight / kTotalRows; // 动态计算每行高度
 
         return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // ── 左侧时间标签（固定，用 NeverScrollable 同步纵向滚动）──
+          // ── 左侧时间标签 ──
           SizedBox(
             width: kTimeAxisW,
-            child: SingleChildScrollView(
-              controller: _scroll,
-              physics: const NeverScrollableScrollPhysics(),
-              child: _TimeLabels(isDark: isDark),
-            ),
+            height: constraints.maxHeight,
+            child: _TimeLabels(isDark: isDark, rowH: rowH),
           ),
 
-          // ── 右侧网格区（仅纵向滚动，横向撑满）──────
+          // ── 右侧网格区 ──
           Expanded(
-            child: Scrollbar(
-              controller: _scroll,
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                controller: _scroll,
-                scrollDirection: Axis.vertical,
-                child: SizedBox(
-                  width: gridAreaW,
-                  height: kRowH * kTotalRows,
-                  child: _GridCanvas(
-                    colW: colW,
-                    rowW: gridAreaW,
-                    dayStartMs: ds,
-                    dLogs: dLogs, dPoms: dPoms, tags: widget.tags,
-                    isDark: isDark,
-                    onPomodoroTap: widget.onPomodoroTap,
-                    onTimeLogTap: widget.onTimeLogTap,
-                    date: widget.date,
-                  ),
-                ),
+            child: SizedBox(
+              width: gridAreaW,
+              height: constraints.maxHeight,
+              child: _GridCanvas(
+                colW: colW,
+                rowW: gridAreaW,
+                rowH: rowH,
+                dayStartMs: ds,
+                dLogs: dLogs, dPoms: dPoms, tags: widget.tags,
+                isDark: isDark,
+                onPomodoroTap: widget.onPomodoroTap,
+                onTimeLogTap: widget.onTimeLogTap,
+                date: widget.date,
               ),
             ),
           ),
@@ -880,6 +881,7 @@ class _DayGridViewState extends State<_DayGridView> {
     ]);
   }
 
+  // _buildSummary 和 _miniPill 方法保持不变...
   Widget _buildSummary(BuildContext ctx, int total, int logMin, int pomMin,
       Map<String, int> tagMinMap) {
     final accent = Theme.of(ctx).colorScheme.primary;
@@ -938,20 +940,21 @@ class _DayGridViewState extends State<_DayGridView> {
 // ══════════════════════════════════════════════════════════
 class _TimeLabels extends StatelessWidget {
   final bool isDark;
-  const _TimeLabels({required this.isDark});
+  final double rowH;
+  const _TimeLabels({required this.isDark, required this.rowH});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: kTimeAxisW,
-      height: kRowH * kTotalRows,
+      height: rowH * kTotalRows,
       child: Stack(
         children: List.generate(kTotalRows, (h) {
           return Positioned(
-            top: h * kRowH,
+            top: h * rowH,
             left: 0, right: 0,
             child: SizedBox(
-              height: kRowH,
+              height: rowH,
               child: Align(
                 alignment: Alignment.topRight,
                 child: Padding(
@@ -978,7 +981,7 @@ class _TimeLabels extends StatelessWidget {
 // 网格 Canvas：背景 + 事件
 // ══════════════════════════════════════════════════════════
 class _GridCanvas extends StatelessWidget {
-  final double colW, rowW;
+  final double colW, rowW, rowH;
   final int dayStartMs;
   final List<TimeLogItem> dLogs;
   final List<PomodoroRecord> dPoms;
@@ -989,7 +992,7 @@ class _GridCanvas extends StatelessWidget {
   final void Function(TimeLogItem) onTimeLogTap;
 
   const _GridCanvas({
-    required this.colW, required this.rowW, required this.dayStartMs,
+    required this.colW, required this.rowW, required this.rowH, required this.dayStartMs,
     required this.dLogs, required this.dPoms, required this.tags,
     required this.isDark, required this.date,
     required this.onPomodoroTap, required this.onTimeLogTap});
@@ -999,14 +1002,13 @@ class _GridCanvas extends StatelessWidget {
     final now     = DateTime.now();
     final isToday = DateFormat('yyyyMMdd').format(now) ==
         DateFormat('yyyyMMdd').format(date);
-    // 当前时刻所在列（0-based）
     final nowTotalMin = isToday ? now.hour * 60 + now.minute : -1;
 
     return Stack(children: [
       // 1. 背景网格
       CustomPaint(
-        size: Size(rowW, kRowH * kTotalRows),
-        painter: _GridBgPainter(colW: colW, isDark: isDark),
+        size: Size(rowW, rowH * kTotalRows),
+        painter: _GridBgPainter(colW: colW, rowH: rowH, isDark: isDark),
       ),
 
       // 2. 当前时刻竖线
@@ -1054,28 +1056,22 @@ class _GridCanvas extends StatelessWidget {
   }
 
   Widget _buildNowLine(int nowTotalMin) {
-    // 当前分钟在一行（小时）内的偏移列
-    // nowTotalMin = 全天总分钟数，x = (分钟数 mod 60 / kMinsPerCol) * colW
-    // 但我们要画一条贯穿当前小时行的竖线
     final nowHour   = nowTotalMin ~/ 60;
     final minInHour = nowTotalMin % 60;
-    final x = (minInHour / kMinsPerCol) * colW; // 在本行内的像素 x
-    final y = nowHour * kRowH;                  // 本行顶部 y
+    final x = (minInHour / kMinsPerCol) * colW;
+    final y = nowHour * rowH;
 
     return Stack(children: [
-      // 横线：当前小时行的整行横线（淡红）
       Positioned(
         top: y, left: 0, right: 0, height: 1.0,
         child: Container(color: Colors.redAccent.withOpacity(0.20)),
       ),
-      // 竖线：当前分钟所在列的竖线，仅在当前行内
       Positioned(
-        top: y, left: x, width: 1.5, height: kRowH,
+        top: y, left: x, width: 1.5, height: rowH,
         child: Container(color: Colors.redAccent.withOpacity(0.80)),
       ),
-      // 红点
       Positioned(
-        top: y + kRowH / 2 - 3,
+        top: y + rowH / 2 - 3,
         left: x - 3,
         child: Container(
           width: 6, height: 6,
@@ -1089,14 +1085,6 @@ class _GridCanvas extends StatelessWidget {
     ]);
   }
 
-  /// 把一个事件按小时行拆分，每段返回一个 Positioned Widget
-  ///
-  /// 坐标系：
-  ///   行 row  = 小时 (0-23)         → top = row * kRowH
-  ///   列 col  = 行内格 (0-9)        → left = col * colW
-  ///   每格代表 kMinsPerCol(6) 分钟
-  ///
-  /// 事件可能跨多行（多个小时），每行独立渲染一段。
   List<Widget> _buildEventSegments({
     required int    startMs,
     required int    endMs,
@@ -1111,59 +1099,45 @@ class _GridCanvas extends StatelessWidget {
   }) {
     if (endMs <= startMs) return [];
 
-    // 相对当天开始的秒数 → 精确到秒，避免毫秒舍入误差
-    final startSec = (startMs - dayStartMs) / 1000.0; // 秒
+    final startSec = (startMs - dayStartMs) / 1000.0;
     final endSec   = (endMs   - dayStartMs) / 1000.0;
-
-    // 对应的精确分钟（浮点）
     final startMinF = startSec / 60.0;
     final endMinF   = endSec   / 60.0;
-
     final totalDurMin = ((endMs - startMs) / 60000).round();
-
     final List<Widget> segments = [];
 
-    // 从起始行逐行渲染
-    int row = startMinF ~/ 60; // 起始小时
+    int row = startMinF ~/ 60;
 
     while (row < kTotalRows) {
-      // 本行覆盖的分钟范围 [rowStartMin, rowEndMin)
       final rowStartMin = row * 60.0;
       final rowEndMin   = rowStartMin + 60.0;
-
-      // 事件在本行内的分钟范围（裁剪到本行）
       final segStartMin = startMinF.clamp(rowStartMin, rowEndMin);
       final segEndMin   = endMinF.clamp(rowStartMin, rowEndMin);
 
       if (segEndMin <= segStartMin) {
-        if (endMinF <= rowStartMin) break; // 事件已完全在之前的行
+        if (endMinF <= rowStartMin) break;
         row++;
         continue;
       }
 
-      // 本行内的列坐标（浮点，精确到格）
-      final colStart = (segStartMin - rowStartMin) / kMinsPerCol; // 起始列（含小数）
-      final colEnd   = (segEndMin   - rowStartMin) / kMinsPerCol; // 结束列（含小数）
+      final colStart = (segStartMin - rowStartMin) / kMinsPerCol;
+      final colEnd   = (segEndMin   - rowStartMin) / kMinsPerCol;
 
       final left  = colStart * colW;
       final width = (colEnd - colStart) * colW;
-
-      // 太窄了就给最小宽度（至少1px）
       final renderW = width.clamp(1.0, double.infinity);
 
       final isFirst = row == (startMinF ~/ 60);
       final isLast  = endMinF <= rowEndMin;
-
-      // 文字显示条件：首段 + 宽度足够
       final canText  = isFirst && renderW >= 28;
       final showDur  = isFirst && renderW >= 70;
       final showIcon = isFirst && renderW >= 22;
 
       segments.add(Positioned(
-        top:    row * kRowH + 1,
+        top:    row * rowH + 1,
         left:   left + 1,
         width:  renderW - 2,
-        height: kRowH - 2,
+        height: rowH - 2,
         child: GestureDetector(
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
@@ -1235,62 +1209,54 @@ class _GridCanvas extends StatelessWidget {
     return segments;
   }
 }
-
 // ══════════════════════════════════════════════════════════
 // 网格背景 Painter  (24行 × 10列 = 240格，每格6分钟)
 // ══════════════════════════════════════════════════════════
 class _GridBgPainter extends CustomPainter {
   final double colW;
+  final double rowH;
   final bool   isDark;
-  const _GridBgPainter({required this.colW, required this.isDark});
+  const _GridBgPainter({required this.colW, required this.rowH, required this.isDark});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // ── 行线（每小时一行）────────────────────────────
-    final rowMajor = Paint()  // 每6小时加粗
+    final rowMajor = Paint()
       ..color = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFCCCCCC)
       ..strokeWidth = 0.9;
-    final rowNormal = Paint() // 普通小时线
+    final rowNormal = Paint()
       ..color = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFE8E8E8)
       ..strokeWidth = 0.5;
 
     for (int r = 0; r <= kTotalRows; r++) {
-      final y = r * kRowH;
+      final y = r * rowH;
       canvas.drawLine(
         Offset(0, y), Offset(size.width, y),
         r % 6 == 0 ? rowMajor : rowNormal,
       );
     }
 
-    // ── 列线（每行10格，格宽 colW）───────────────────
-    // 格索引规律（每行10格，6min/格）：
-    //   c % 10 == 0  → 整点（最粗）
-    //   c % 5 == 0   → 30min（中粗）
-    //   其余         → 普通格线（细）
     final colHour = Paint()
       ..color = isDark ? const Color(0xFF383838) : const Color(0xFFBBBBBB)
       ..strokeWidth = 0.9;
-    final colHalf = Paint()   // 30min
+    final colHalf = Paint()
       ..color = isDark ? const Color(0xFF252525) : const Color(0xFFDCDCDC)
       ..strokeWidth = 0.5;
-    final colCell = Paint()   // 6min 格
+    final colCell = Paint()
       ..color = isDark ? const Color(0xFF181818) : const Color(0xFFF0F0F0)
       ..strokeWidth = 0.3;
 
     for (int c = 0; c <= kTotalCols; c++) {
       final x = c * colW;
       final Paint p;
-      if      (c % kColsPerH == 0) p = colHour;  // 整点
-      else if (c % 5         == 0) p = colHalf;  // 30min（第5格）
+      if      (c % kColsPerH == 0) p = colHour;
+      else if (c % 5         == 0) p = colHalf;
       else                         p = colCell;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
     }
 
-    // ── 时间标注（每行内：整点 + 30min）─────────────
     for (int h = 0; h < kTotalRows; h++) {
-      final rowTop = h * kRowH;
+      final rowTop = h * rowH;
 
-      // 整点标注（在本行最左侧）
       _drawLabel(
         canvas,
         '${h.toString().padLeft(2, '0')}:00',
@@ -1300,7 +1266,6 @@ class _GridBgPainter extends CustomPainter {
         bold: true,
       );
 
-      // 30min 标注（第5格处）
       if (colW >= 14) {
         _drawLabel(
           canvas,
@@ -1332,7 +1297,7 @@ class _GridBgPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GridBgPainter o) =>
-      o.isDark != isDark || o.colW != colW;
+      o.isDark != isDark || o.colW != colW || o.rowH != rowH;
 }
 
 // ══════════════════════════════════════════════════════════

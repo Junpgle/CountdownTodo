@@ -486,8 +486,10 @@ class _DayGridPainter extends CustomPainter {
 class _LogEntrySheet extends StatefulWidget {
   final DateTime initialStart, initialEnd; final String? initialTagId;
   final List<PomodoroTag> tags; final void Function(TimeLogItem) onSave;
+  final TimeLogItem? existingLog; // 👉 1. 新增：传入已有记录用于编辑
+
   const _LogEntrySheet({required this.initialStart, required this.initialEnd,
-    this.initialTagId, required this.tags, required this.onSave});
+    this.initialTagId, required this.tags, required this.onSave, this.existingLog});
   @override State<_LogEntrySheet> createState() => _LogEntrySheetState();
 }
 
@@ -497,11 +499,20 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
 
   @override void initState() {
     super.initState();
-    _start = widget.initialStart; _end = widget.initialEnd;
-    _tagId = widget.initialTagId;
-    final tag = widget.tags.cast<PomodoroTag?>()
-        .firstWhere((t) => t?.uuid == _tagId, orElse: () => null);
-    _tc = TextEditingController(text: tag?.name ?? '');
+    // 👉 2. 修改：判断是新增还是编辑模式
+    if (widget.existingLog != null) {
+      final log = widget.existingLog!;
+      _start = DateTime.fromMillisecondsSinceEpoch(log.startTime);
+      _end = DateTime.fromMillisecondsSinceEpoch(log.endTime);
+      _tagId = log.tagUuids.isNotEmpty ? log.tagUuids.first : null;
+      _tc = TextEditingController(text: log.title);
+    } else {
+      _start = widget.initialStart; _end = widget.initialEnd;
+      _tagId = widget.initialTagId;
+      final tag = widget.tags.cast<PomodoroTag?>()
+          .firstWhere((t) => t?.uuid == _tagId, orElse: () => null);
+      _tc = TextEditingController(text: tag?.name ?? '');
+    }
   }
   @override void dispose() { _tc.dispose(); super.dispose(); }
 
@@ -542,14 +553,31 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
           const SnackBar(content: Text('结束时间必须晚于开始时间')));
       return;
     }
+
     final tag = widget.tags.cast<PomodoroTag?>()
         .firstWhere((t) => t?.uuid == _tagId, orElse: () => null);
-    widget.onSave(TimeLogItem(
+
+    // 1. 构造新的或修改后的记录
+    final log = TimeLogItem(
+      id: widget.existingLog?.id, // 🚀 继承原 ID，若为 null 则自动生成新的 UUID
       title: _tc.text.isNotEmpty ? _tc.text : (tag?.name ?? '未命名补录'),
       tagUuids: _tagId != null ? [_tagId!] : [],
       startTime: _start.millisecondsSinceEpoch,
       endTime: _end.millisecondsSinceEpoch,
-    ));
+      // 🚀 核心：必须继承旧记录的同步元数据，防止被重置
+      remark: widget.existingLog?.remark,
+      version: widget.existingLog?.version ?? 1,
+      createdAt: widget.existingLog?.createdAt,
+      deviceId: widget.existingLog?.deviceId,
+    );
+
+    // 2. 🚀 核心：如果是编辑模式，必须标记为已修改，触发版本号 version++ 和 updatedAt 更新
+    if (widget.existingLog != null) {
+      log.markAsChanged();
+    }
+
+    // 3. 回调保存
+    widget.onSave(log);
   }
 
   @override Widget build(BuildContext context) {
@@ -563,8 +591,9 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
       child: Column(mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Text('补录事件', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700,
-                  color: _TC.text(context))),
+              // 👉 4. 修改：动态标题
+              Text(widget.existingLog != null ? '编辑记录' : '补录事件',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: _TC.text(context))),
               const Spacer(),
               Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
@@ -661,24 +690,62 @@ class _TimePickerCard extends StatelessWidget {
 // ══════════════════════════════════════════════════════════
 // 标签详情面板
 // ══════════════════════════════════════════════════════════
-class _TagDetailSheet extends StatelessWidget {
+// ══════════════════════════════════════════════════════════
+// 标签详情面板 (修改为 StatefulWidget 以支持趋势图切换)
+// ══════════════════════════════════════════════════════════
+class _TagDetailSheet extends StatefulWidget {
   final PomodoroTag tag; final List<TimeLogItem> logs;
   final List<PomodoroRecord> pomodoros; final void Function(String) onDelete;
   const _TagDetailSheet({required this.tag, required this.logs,
     this.pomodoros = const [], required this.onDelete});
 
+  @override
+  State<_TagDetailSheet> createState() => _TagDetailSheetState();
+}
+
+class _TagRecord {
+  final bool isPomodoro; final String title, id;
+  final int startTime, endTime, durationMin; final bool isCompleted;
+  const _TagRecord({required this.isPomodoro, required this.title,
+    required this.startTime, required this.endTime, required this.durationMin,
+    required this.id, this.isCompleted = false});
+}
+
+class _TagDetailSheetState extends State<_TagDetailSheet> {
+  int _chartType = 0; // 0: 时长, 1: 开始时间, 2: 结束时间
+
+  Widget _buildChartTab(String title, int index, Color color) {
+    final isSel = _chartType == index;
+    return GestureDetector(
+      onTap: () => setState(() => _chartType = index),
+      child: Container(
+        margin: const EdgeInsets.only(left: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSel ? color.withOpacity(0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(title, style: TextStyle(
+          fontSize: 11,
+          color: isSel ? color : _TC.textSub(context),
+          fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
+        )),
+      ),
+    );
+  }
+
   @override Widget build(BuildContext context) {
-    final tagLogs = logs.where((l) => l.tagUuids.contains(tag.uuid)).toList();
-    final tagPoms = pomodoros.where((p) => p.tagUuids.contains(tag.uuid)).toList();
+    final tagLogs = widget.logs.where((l) => l.tagUuids.contains(widget.tag.uuid)).toList();
+    final tagPoms = widget.pomodoros.where((p) => p.tagUuids.contains(widget.tag.uuid)).toList();
     final allRecs = <_TagRecord>[
       ...tagLogs.map((l) => _TagRecord(isPomodoro: false,
-          title: l.title.isNotEmpty ? l.title : tag.name,
+          title: l.title.isNotEmpty ? l.title : widget.tag.name,
           startTime: l.startTime, endTime: l.endTime,
           durationMin: (l.endTime - l.startTime) ~/ 60000, id: l.id)),
       ...tagPoms.map((p) {
         final end = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
         return _TagRecord(isPomodoro: true,
-            title: (p.todoTitle?.isNotEmpty ?? false) ? p.todoTitle! : tag.name,
+            title: (p.todoTitle?.isNotEmpty ?? false) ? p.todoTitle! : widget.tag.name,
             startTime: p.startTime, endTime: end,
             durationMin: (end - p.startTime) ~/ 60000,
             id: p.uuid, isCompleted: p.isCompleted ?? false);
@@ -688,8 +755,25 @@ class _TagDetailSheet extends StatelessWidget {
     final totalMin = allRecs.fold(0, (s, r) => s + r.durationMin);
     final avgMin   = allRecs.isEmpty ? 0 : totalMin ~/ allRecs.length;
     final maxMin   = allRecs.isEmpty ? 0 : allRecs.map((r) => r.durationMin).reduce(max);
-    final c        = hexColor(tag.color);
-    final chart    = allRecs.reversed.take(14).toList();
+    final c        = hexColor(widget.tag.color);
+
+    // 取最近最多30条数据用于绘制图表，方便演示横向滑动
+    final chartRecs = allRecs.reversed.take(30).toList();
+
+    // 动态生成图表数据和标签格式化器
+    List<int> chartData = [];
+    String Function(int) formatLabel;
+
+    if (_chartType == 0) {
+      chartData = chartRecs.map((r) => r.durationMin).toList();
+      formatLabel = (v) => '${v}m';
+    } else {
+      chartData = chartRecs.map((r) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(_chartType == 1 ? r.startTime : r.endTime);
+        return dt.hour * 60 + dt.minute; // 转化为当天已过的分钟数
+      }).toList();
+      formatLabel = (v) => '${(v ~/ 60).toString().padLeft(2, '0')}:${(v % 60).toString().padLeft(2, '0')}';
+    }
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -703,7 +787,7 @@ class _TagDetailSheet extends StatelessWidget {
                   decoration: BoxDecoration(color: c, shape: BoxShape.circle,
                       boxShadow: [BoxShadow(color: c, blurRadius: 8)])),
               const SizedBox(width: 10),
-              Text(tag.name, style: TextStyle(fontSize: 20,
+              Text(widget.tag.name, style: TextStyle(fontSize: 20,
                   fontWeight: FontWeight.w700, color: _TC.text(context))),
               const Spacer(),
               Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -723,15 +807,27 @@ class _TagDetailSheet extends StatelessWidget {
               const SizedBox(width: 10),
               _StatCard(label: '最长一次', value: '${maxMin}min', color: c),
             ]),
-            const SizedBox(height: 20),
-            Text('DURATION TREND', style: TextStyle(fontSize: 9,
-                color: _TC.textHint(context), letterSpacing: 2)),
-            const SizedBox(height: 8),
-            if (chart.length >= 2)
-              _MiniLineChart(data: chart.map((r) => r.durationMin).toList(),
-                  color: c, height: 80)
-            else Text('数据采集中...',
-                style: TextStyle(fontSize: 11, color: _TC.textHint(context))),
+            const SizedBox(height: 16),
+
+            // 👉 新增的切换 Tab
+            Row(children: [
+              Text('TRENDS', style: TextStyle(fontSize: 9, color: _TC.textHint(context), letterSpacing: 2, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              _buildChartTab('时长', 0, c),
+              _buildChartTab('开始时间', 1, c),
+              _buildChartTab('结束时间', 2, c),
+            ]),
+            const SizedBox(height: 10),
+
+            // 👉 修改图表：传入格式化器，调高尺寸为 110 预留文字空间
+            if (chartRecs.length >= 2)
+              _MiniLineChart(data: chartData, color: c, height: 110, formatLabel: formatLabel)
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: Text('数据采集中...', style: TextStyle(fontSize: 11, color: _TC.textHint(context)))),
+              ),
+
             const SizedBox(height: 16),
             Text('RECENT RECORDS', style: TextStyle(fontSize: 9,
                 color: _TC.textHint(context), letterSpacing: 2)),
@@ -770,7 +866,7 @@ class _TagDetailSheet extends StatelessWidget {
                           if (!r.isPomodoro)
                             IconButton(icon: Icon(Icons.delete_outline,
                                 color: Colors.red.withOpacity(0.55), size: 18),
-                                onPressed: () => onDelete(r.id),
+                                onPressed: () => widget.onDelete(r.id),
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints())
                           else const SizedBox(width: 40),
@@ -783,41 +879,91 @@ class _TagDetailSheet extends StatelessWidget {
   }
 }
 
-class _TagRecord {
-  final bool isPomodoro; final String title, id;
-  final int startTime, endTime, durationMin; final bool isCompleted;
-  const _TagRecord({required this.isPomodoro, required this.title,
-    required this.startTime, required this.endTime, required this.durationMin,
-    required this.id, this.isCompleted = false});
-}
-
+// ══════════════════════════════════════════════════════════
+// 迷你折线图容器 (修改：支持自适应宽度与左右滑动)
+// ══════════════════════════════════════════════════════════
 class _MiniLineChart extends StatelessWidget {
   final List<int> data; final Color color; final double height;
-  const _MiniLineChart({required this.data, required this.color, this.height = 80});
-  @override Widget build(BuildContext context) => SizedBox(height: height,
-      child: CustomPaint(painter: _LineChartPainter(data: data, color: color)));
+  final String Function(int) formatLabel;
+  const _MiniLineChart({required this.data, required this.color, this.height = 110, required this.formatLabel});
+
+  @override Widget build(BuildContext context) {
+    // 屏幕可用宽度 (减去面板两侧的20+20 padding)
+    final screenWidth = MediaQuery.of(context).size.width - 40;
+    // 动态计算所需宽度：每个数据点分配 50 逻辑像素，保证不挤在一起
+    final requiredWidth = max(screenWidth, data.length * 50.0);
+
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: SizedBox(
+          width: requiredWidth,
+          height: height,
+          child: CustomPaint(
+              painter: _LineChartPainter(data: data, color: color, formatLabel: formatLabel)
+          ),
+        ),
+      ),
+    );
+  }
 }
 
+// ══════════════════════════════════════════════════════════
+// 折线图画笔 (修改：上方带文本标签、平整状态兼容处理)
+// ══════════════════════════════════════════════════════════
 class _LineChartPainter extends CustomPainter {
   final List<int> data; final Color color;
-  _LineChartPainter({required this.data, required this.color});
+  final String Function(int) formatLabel;
+
+  _LineChartPainter({required this.data, required this.color, required this.formatLabel});
+
   @override void paint(Canvas canvas, Size size) {
     if (data.length < 2) return;
     final minV = data.reduce(min).toDouble();
     final maxV = data.reduce(max).toDouble();
     final range = (maxV - minV) < 1 ? 1.0 : maxV - minV;
+
+    // 如果全是一样的数据，就画在中间垂直居中
+    double calcY(int v) {
+      if (maxV == minV) return size.height / 2;
+      // 预留顶部 24px (给标签文字), 底部 12px 的空间
+      return size.height - 12 - ((v - minV) / range) * (size.height - 36);
+    }
+
     final pts = List.generate(data.length, (i) => Offset(
-        (i / (data.length - 1)) * (size.width - 20) + 10,
-        size.height - 10 - ((data[i] - minV) / range) * (size.height - 20)));
+        (i / (data.length - 1)) * (size.width - 30) + 15, // 两侧预留 15px 边距
+        calcY(data[i])));
+
     final path = Path()..moveTo(pts[0].dx, pts[0].dy);
     for (int i = 1; i < pts.length; i++) path.lineTo(pts[i].dx, pts[i].dy);
-    canvas.drawPath(path, Paint()..color = color..strokeWidth = 2
+
+    // 绘制连线
+    canvas.drawPath(path, Paint()..color = color..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round);
-    for (final p in pts) {
-      canvas.drawCircle(p, 4, Paint()..color = color.withOpacity(0.15)
-        ..style = PaintingStyle.stroke..strokeWidth = 2);
+
+    // 绘制点位和文本标签
+    for (int i = 0; i < pts.length; i++) {
+      final p = pts[i];
+      canvas.drawCircle(p, 5, Paint()..color = color.withOpacity(0.2)
+        ..style = PaintingStyle.fill);
       canvas.drawCircle(p, 3, Paint()..color = color);
+
+      // 绘制具体的数值/时间文本
+      final text = formatLabel(data[i]);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w600),
+        ),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+
+      // 标签绘制在节点的正上方 18 像素处
+      tp.paint(canvas, Offset(p.dx - tp.width / 2, p.dy - 18));
     }
   }
   @override bool shouldRepaint(covariant _LineChartPainter o) => true;

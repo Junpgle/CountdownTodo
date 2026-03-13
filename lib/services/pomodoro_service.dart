@@ -361,10 +361,60 @@ class PomodoroService {
     } catch (_) { return []; }
   }
 
-  /// 保存标签（包含已删除的 tombstone，以便 Delta Sync 能删除云端）
-  static Future<void> saveTags(List<PomodoroTag> tags) async {
+  /// 保存标签（自动检测丢失的项并转化为墓碑，防止云端同步时复活）
+  static Future<void> saveTags(List<PomodoroTag> tagsToSave) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyTags, jsonEncode(tags.map((t) => t.toJson()).toList()));
+    final s = prefs.getString(_keyTags);
+
+    List<PomodoroTag> allLocal = [];
+    if (s != null) {
+      try {
+        allLocal = (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
+      } catch (_) {}
+    }
+
+    // 将本次要保存的活动标签存入 Map
+    final Map<String, PomodoroTag> newMap = {for (var t in tagsToSave) t.uuid: t};
+
+    // 遍历本地全量历史数据，找回被“硬删除”的项和原有的墓碑
+    for (var old in allLocal) {
+      if (!newMap.containsKey(old.uuid)) {
+        if (!old.isDeleted) {
+          // 💡 核心修复：原来是正常的，现在不见了，说明在 UI 里被删了。
+          // 我们给它打上墓碑标记，而不是彻底扔掉。
+          old.isDeleted = true;
+          old.updatedAt = DateTime.now().millisecondsSinceEpoch;
+          old.version += 1;
+        }
+        // 把墓碑塞回 Map 中一起保存
+        newMap[old.uuid] = old;
+      }
+    }
+
+    await prefs.setString(_keyTags, jsonEncode(newMap.values.map((t) => t.toJson()).toList()));
+  }
+
+  /// 软删除一个标签（打上 tombstone 标记），以便同步时告诉云端删除
+  static Future<void> deleteTag(String uuid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final s = prefs.getString(_keyTags);
+    if (s == null) return;
+
+    final allTags = (jsonDecode(s) as List)
+        .map((e) => PomodoroTag.fromJson(e))
+        .toList();
+
+    final idx = allTags.indexWhere((t) => t.uuid == uuid);
+    if (idx != -1 && !allTags[idx].isDeleted) {
+      allTags[idx].isDeleted = true;
+      allTags[idx].updatedAt = DateTime.now().millisecondsSinceEpoch;
+      allTags[idx].version += 1;
+
+      await prefs.setString(_keyTags, jsonEncode(allTags.map((t) => t.toJson()).toList()));
+
+      // 立即触发一次云端同步，让云端也跟着删掉
+      syncTagsToCloud().catchError((_) {});
+    }
   }
 
   static Future<void> syncTagsToCloud() async {
