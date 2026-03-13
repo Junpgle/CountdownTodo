@@ -7,309 +7,85 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <!-- 顶栏区域：极简风格 -->
+    <!-- 顶栏区域：Tab 导航 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingBottom="12dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📝"
-            android:textSize="14sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="待办清单"
-            android:textColor="#111827"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.05" />
+        android:paddingBottom="12dp"
+        android:weightSum="4">
+        <TextView android:id="@+id/tab_todo" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="待办" android:textColor="#111827" android:textSize="14sp" android:textStyle="bold" />
+        <TextView android:id="@+id/tab_course" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="课程" android:textColor="#9CA3AF" android:textSize="14sp" />
+        <TextView android:id="@+id/tab_countdown" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="倒数" android:textColor="#9CA3AF" android:textSize="14sp" />
+        <TextView android:id="@+id/tab_timelog" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="专注" android:textColor="#9CA3AF" android:textSize="14sp" />
     </LinearLayout>
 
-    <!-- 列表区域 -->
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:layout_weight="1">
 
-        <!-- 第1条 -->
-        <LinearLayout
-            android:id="@+id/todo_layout_1"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingVertical="5dp">
-            <ImageView
-                android:id="@+id/todo_checkbox_1"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@drawable/widget_checkbox_empty" />
-            <TextView
-                android:id="@+id/todo_text_1"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="全天候命"
-                android:textColor="#1F2937"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/todo_due_1"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+        <!-- Page 0: 待办清单 -->
+        <LinearLayout android:id="@+id/page_todos" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+            <!-- 槽位 1-8 -->
+            <LinearLayout android:id="@+id/todo_layout_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingVertical="5dp" android:visibility="gone"><ImageView android:id="@+id/todo_checkbox_1" android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/widget_checkbox_empty" /><TextView android:id="@+id/todo_text_1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:ellipsize="end" android:maxLines="1" android:textColor="#1F2937" android:textSize="13sp" /><TextView android:id="@+id/todo_due_1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" /></LinearLayout>
+            <LinearLayout android:id="@+id/todo_layout_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingVertical="5dp" android:visibility="gone"><ImageView android:id="@+id/todo_checkbox_2" android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/widget_checkbox_empty" /><TextView android:id="@+id/todo_text_2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:ellipsize="end" android:maxLines="1" android:textColor="#1F2937" android:textSize="13sp" /><TextView android:id="@+id/todo_due_2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" /></LinearLayout>
+            <LinearLayout android:id="@+id/todo_layout_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingVertical="5dp" android:visibility="gone"><ImageView android:id="@+id/todo_checkbox_3" android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/widget_checkbox_empty" /><TextView android:id="@+id/todo_text_3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:ellipsize="end" android:maxLines="1" android:textColor="#1F2937" android:textSize="13sp" /><TextView android:id="@+id/todo_due_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" /></LinearLayout>
+            <LinearLayout android:id="@+id/todo_layout_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingVertical="5dp" android:visibility="gone"><ImageView android:id="@+id/todo_checkbox_4" android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/widget_checkbox_empty" /><TextView android:id="@+id/todo_text_4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:ellipsize="end" android:maxLines="1" android:textColor="#1F2937" android:textSize="13sp" /><TextView android:id="@+id/todo_due_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" /></LinearLayout>
+            <LinearLayout android:id="@+id/todo_layout_5" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingVertical="5dp" android:visibility="gone"><ImageView android:id="@+id/todo_checkbox_5" android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/widget_checkbox_empty" /><TextView android:id="@+id/todo_text_5" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:ellipsize="end" android:maxLines="1" android:textColor="#1F2937" android:textSize="13sp" /><TextView android:id="@+id/todo_due_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" /></LinearLayout>
+            <LinearLayout android:id="@+id/todo_layout_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingVertical="5dp" android:visibility="gone"><ImageView android:id="@+id/todo_checkbox_6" android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/widget_checkbox_empty" /><TextView android:id="@+id/todo_text_6" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:ellipsize="end" android:maxLines="1" android:textColor="#1F2937" android:textSize="13sp" /><TextView android:id="@+id/todo_due_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" /></LinearLayout>
+            <LinearLayout android:id="@+id/todo_layout_7" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingVertical="5dp" android:visibility="gone"><ImageView android:id="@+id/todo_checkbox_7" android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/widget_checkbox_empty" /><TextView android:id="@+id/todo_text_7" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:ellipsize="end" android:maxLines="1" android:textColor="#1F2937" android:textSize="13sp" /><TextView android:id="@+id/todo_due_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" /></LinearLayout>
+            <LinearLayout android:id="@+id/todo_layout_8" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingVertical="5dp" android:visibility="gone"><ImageView android:id="@+id/todo_checkbox_8" android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/widget_checkbox_empty" /><TextView android:id="@+id/todo_text_8" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:ellipsize="end" android:maxLines="1" android:textColor="#1F2937" android:textSize="13sp" /><TextView android:id="@+id/todo_due_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" /></LinearLayout>
         </LinearLayout>
 
-        <!-- 第2条 -->
-        <LinearLayout
-            android:id="@+id/todo_layout_2"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingVertical="5dp"
-            android:visibility="gone">
-            <ImageView
-                android:id="@+id/todo_checkbox_2"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@drawable/widget_checkbox_empty" />
-            <TextView
-                android:id="@+id/todo_text_2"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#1F2937"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/todo_due_2"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+        <!-- Page 1: 课程提醒 (4行专业排版) -->
+        <LinearLayout android:id="@+id/page_courses" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone">
+            <LinearLayout android:id="@+id/course_empty_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="近期暂无课程" android:textColor="#6B7280" android:textSize="14sp" android:textStyle="bold"/>
+            </LinearLayout>
+
+            <!-- 课程槽位 1-8 -->
+            <LinearLayout android:id="@+id/course_layout_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="8dp" android:visibility="gone">
+                <TextView android:id="@+id/course_date_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/>
+                <TextView android:id="@+id/course_name_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/>
+                <TextView android:id="@+id/course_time_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="1dp"/>
+                <TextView android:id="@+id/course_room_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/course_layout_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="8dp" android:visibility="gone"><TextView android:id="@+id/course_date_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/><TextView android:id="@+id/course_name_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/><TextView android:id="@+id/course_time_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="1dp"/><TextView android:id="@+id/course_room_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" /></LinearLayout>
+            <LinearLayout android:id="@+id/course_layout_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="8dp" android:visibility="gone"><TextView android:id="@+id/course_date_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/><TextView android:id="@+id/course_name_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/><TextView android:id="@+id/course_time_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="1dp"/><TextView android:id="@+id/course_room_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" /></LinearLayout>
+            <LinearLayout android:id="@+id/course_layout_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="8dp" android:visibility="gone"><TextView android:id="@+id/course_date_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/><TextView android:id="@+id/course_name_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/><TextView android:id="@+id/course_time_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="1dp"/><TextView android:id="@+id/course_room_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" /></LinearLayout>
+            <LinearLayout android:id="@+id/course_layout_5" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="8dp" android:visibility="gone"><TextView android:id="@+id/course_date_5" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/><TextView android:id="@+id/course_name_5" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/><TextView android:id="@+id/course_time_5" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="1dp"/><TextView android:id="@+id/course_room_5" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" /></LinearLayout>
+            <LinearLayout android:id="@+id/course_layout_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="8dp" android:visibility="gone"><TextView android:id="@+id/course_date_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/><TextView android:id="@+id/course_name_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/><TextView android:id="@+id/course_time_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="1dp"/><TextView android:id="@+id/course_room_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" /></LinearLayout>
+            <LinearLayout android:id="@+id/course_layout_7" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="8dp" android:visibility="gone"><TextView android:id="@+id/course_date_7" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/><TextView android:id="@+id/course_name_7" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/><TextView android:id="@+id/course_time_7" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="1dp"/><TextView android:id="@+id/course_room_7" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" /></LinearLayout>
+            <LinearLayout android:id="@+id/course_layout_8" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="8dp" android:visibility="gone"><TextView android:id="@+id/course_date_8" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/><TextView android:id="@+id/course_name_8" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/><TextView android:id="@+id/course_time_8" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="1dp"/><TextView android:id="@+id/course_room_8" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" /></LinearLayout>
         </LinearLayout>
 
-        <!-- 第3条 -->
-        <LinearLayout
-            android:id="@+id/todo_layout_3"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingVertical="5dp"
-            android:visibility="gone">
-            <ImageView
-                android:id="@+id/todo_checkbox_3"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@drawable/widget_checkbox_empty" />
-            <TextView
-                android:id="@+id/todo_text_3"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#1F2937"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/todo_due_3"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+        <!-- Page 2: 倒数日 -->
+        <LinearLayout android:id="@+id/page_countdowns" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone">
+            <LinearLayout android:id="@+id/cd_empty_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="暂无目标倒数" android:textColor="#9CA3AF" android:textSize="13sp"/></LinearLayout>
+            <LinearLayout android:id="@+id/cd_layout_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/cd_title_1" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/cd_days_1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="14sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/cd_layout_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/cd_title_2" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/cd_days_2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="14sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/cd_layout_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/cd_title_3" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/cd_days_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="14sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/cd_layout_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/cd_title_4" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/cd_days_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="14sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/cd_layout_5" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/cd_title_5" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/cd_days_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="14sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/cd_layout_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/cd_title_6" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/cd_days_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="14sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/cd_layout_7" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/cd_title_7" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/cd_days_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="14sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/cd_layout_8" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/cd_title_8" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/cd_days_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="14sp" android:textStyle="bold"/></LinearLayout>
         </LinearLayout>
 
-        <!-- 第4条 -->
-        <LinearLayout
-            android:id="@+id/todo_layout_4"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingVertical="5dp"
-            android:visibility="gone">
-            <ImageView
-                android:id="@+id/todo_checkbox_4"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@drawable/widget_checkbox_empty" />
-            <TextView
-                android:id="@+id/todo_text_4"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#1F2937"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/todo_due_4"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+        <!-- Page 3: 专注记录 -->
+        <LinearLayout android:id="@+id/page_timelogs" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone">
+            <TextView android:id="@+id/tl_total" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="今日专注: 0 分钟" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginBottom="4dp" android:textStyle="bold"/>
+            <LinearLayout android:id="@+id/tl_empty_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="暂无专注记录" android:textColor="#9CA3AF" android:textSize="13sp"/></LinearLayout>
+            <LinearLayout android:id="@+id/tl_layout_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/tl_title_1" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/tl_time_1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="13sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/tl_layout_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/tl_title_2" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/tl_time_2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="13sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/tl_layout_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/tl_title_3" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/tl_time_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="13sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/tl_layout_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/tl_title_4" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/tl_time_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="13sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/tl_layout_5" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/tl_title_5" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/tl_time_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="13sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/tl_layout_6" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/tl_title_6" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/tl_time_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="13sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/tl_layout_7" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/tl_title_7" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/tl_time_7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="13sp" android:textStyle="bold"/></LinearLayout>
+            <LinearLayout android:id="@+id/tl_layout_8" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="6dp" android:visibility="gone"><TextView android:id="@+id/tl_title_8" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/><TextView android:id="@+id/tl_time_8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="13sp" android:textStyle="bold"/></LinearLayout>
         </LinearLayout>
 
-        <!-- 第5条 -->
-        <LinearLayout
-            android:id="@+id/todo_layout_5"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingVertical="5dp"
-            android:visibility="gone">
-            <ImageView
-                android:id="@+id/todo_checkbox_5"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@drawable/widget_checkbox_empty" />
-            <TextView
-                android:id="@+id/todo_text_5"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#1F2937"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/todo_due_5"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- 第6条 -->
-        <LinearLayout
-            android:id="@+id/todo_layout_6"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingVertical="5dp"
-            android:visibility="gone">
-            <ImageView
-                android:id="@+id/todo_checkbox_6"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@drawable/widget_checkbox_empty" />
-            <TextView
-                android:id="@+id/todo_text_6"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#1F2937"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/todo_due_6"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- 第7条 -->
-        <LinearLayout
-            android:id="@+id/todo_layout_7"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingVertical="5dp"
-            android:visibility="gone">
-            <ImageView
-                android:id="@+id/todo_checkbox_7"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@drawable/widget_checkbox_empty" />
-            <TextView
-                android:id="@+id/todo_text_7"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#1F2937"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/todo_due_7"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <!-- 第8条 -->
-        <LinearLayout
-            android:id="@+id/todo_layout_8"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingVertical="5dp"
-            android:visibility="gone">
-            <ImageView
-                android:id="@+id/todo_checkbox_8"
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@drawable/widget_checkbox_empty" />
-            <TextView
-                android:id="@+id/todo_text_8"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="10dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#1F2937"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/todo_due_8"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-        </LinearLayout>
-
-    </LinearLayout>
+    </FrameLayout>
 </LinearLayout>
