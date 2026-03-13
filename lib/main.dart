@@ -10,9 +10,22 @@ import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
 import 'screens/feature_guide_screen.dart';
 import 'storage_service.dart';
+import 'services/api_service.dart';
+
+// 全局绕过 SSL 证书校验，修复 Cloudflare D1 旧服务器 HandshakeException
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+  }
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
+  HttpOverrides.global = MyHttpOverrides();
 
   // 立刻运行 App，让引擎画出第一帧，彻底消除黑屏
   runApp(const MyApp());
@@ -40,6 +53,10 @@ class _MyAppState extends State<MyApp> {
   Future<void> _initializeApp() async {
     // 0. 读取主题偏好
     await StorageService.initTheme();
+
+    // Initialize server choice
+    String serverChoice = await StorageService.getServerChoice();
+    ApiService.setServerChoice(serverChoice);
 
     // 1. 读取登录状态
     final user = await StorageService.getLoginSession();

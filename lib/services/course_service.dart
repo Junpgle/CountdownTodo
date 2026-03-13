@@ -72,7 +72,7 @@ class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
 
   // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
-  static Future<void> _saveCourses(List<CourseItem> courses) async {
+  static Future<void> saveCourses(List<CourseItem> courses) async {
     final prefs = await SharedPreferences.getInstance();
     // 统一转换为标准的 List<Map> JSON 字符串，极大地提升后续读取效率
     final String encodedData = jsonEncode(courses.map((c) => c.toJson()).toList());
@@ -93,7 +93,7 @@ class CourseService {
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
-      await _saveCourses(parsedCourses);
+      await saveCourses(parsedCourses);
       return true;
     } catch (e) {
       print("解析工大课表出错: $e");
@@ -108,7 +108,7 @@ class CourseService {
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
-      await _saveCourses(parsedCourses);
+      await saveCourses(parsedCourses);
       return true;
     } catch (e) {
       print("解析厦大课表出错: $e");
@@ -123,7 +123,7 @@ class CourseService {
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
-      await _saveCourses(parsedCourses);
+      await saveCourses(parsedCourses);
       return true;
     } catch (e) {
       print("解析西电课表出错: $e");

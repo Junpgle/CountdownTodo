@@ -41,6 +41,7 @@ class StorageService {
   static const String KEY_SEMESTER_END = "semester_end_date";
 
   static const String KEY_TIME_LOGS = "user_time_logs";
+  static const String KEY_SERVER_CHOICE = "app_server_choice";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -134,6 +135,11 @@ class StorageService {
       'min_num2': 0, 'max_num2': 50,
       'max_result': 100,
     };
+  }
+
+  static Future<void> savePomodoroTags(String username, List<Map<String, dynamic>> tags) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("pomodoro_tags_$username", jsonEncode(tags));
   }
 
   // ==========================================
@@ -658,6 +664,17 @@ class StorageService {
   static Future<String> getThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(KEY_THEME_MODE) ?? 'system';
+  }
+
+  static Future<void> saveServerChoice(String choice) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(KEY_SERVER_CHOICE, choice);
+    ApiService.setServerChoice(choice);
+  }
+
+  static Future<String> getServerChoice() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(KEY_SERVER_CHOICE) ?? 'cloudflare';
   }
 
   static Future<bool> getSemesterEnabled() async {

@@ -17,6 +17,7 @@ import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
+import '../services/migration_service.dart';
 import 'login_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -57,6 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _syncInterval = 0;
   String _themeMode = 'system';
   String _noCourseBehavior = 'keep';
+  String _serverChoice = 'cloudflare';
 
   // 学期进度状态
   bool _semesterEnabled = false;
@@ -715,6 +717,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final prefs = await SharedPreferences.getInstance();
     int interval = await StorageService.getSyncInterval();
     String theme = await StorageService.getThemeMode();
+    String serverUrlChoice = await StorageService.getServerChoice();
 
     bool sEnabled = await StorageService.getSemesterEnabled();
     DateTime? sStart = await StorageService.getSemesterStart();
@@ -728,6 +731,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _userId = prefs.getInt('current_user_id');
       _syncInterval = interval;
       _themeMode = theme;
+      _serverChoice = serverUrlChoice;
       _semesterEnabled = sEnabled;
       _semesterStart = sStart;
       _semesterEnd = sEnd;
@@ -2037,6 +2041,29 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       const Divider(height: 1, indent: 56),
       ListTile(
+        leading: const Icon(Icons.cloud_queue),
+        title: const Text('云端数据接口线路'),
+        subtitle: const Text('建议不要改动此处，除非你知道自己在做什么'),
+        trailing: DropdownButton<String>(
+          value: _serverChoice,
+          underline: const SizedBox(),
+          items: const [
+            DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare (推荐)')),
+            DropdownMenuItem(value: 'aliyun', child: Text('阿里云ECS (不安全)')),
+          ],
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _serverChoice = val);
+              StorageService.saveServerChoice(val);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已切换线路，后续同步将使用新接口')),
+              );
+            }
+          },
+        ),
+      ),
+      const Divider(height: 1, indent: 56),
+      ListTile(
         leading: const Icon(Icons.palette_outlined),
         title: const Text('深色模式/主题'),
         trailing: DropdownButton<String>(
@@ -2094,14 +2121,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ─── 构建高级设置 Section ────────────────────────────────────────
   Widget _buildAdvancedSection() {
-    if (!Platform.isAndroid) return const SizedBox.shrink();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Text('高级设置',
+          child: Text('高级设置与数据迁移',
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -2114,65 +2139,184 @@ class _SettingsPageState extends State<SettingsPage> {
           child: ListTile(
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            leading: const Icon(Icons.notification_important_outlined,
-                color: Colors.amber),
-            title: const Text('测试课程实时通知'),
-            subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
-            trailing: TextButton(
-                onPressed: _testCourseNotification, child: const Text("发送测试")),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             leading: const CircleAvatar(
-                backgroundColor: Colors.teal,
-                child: Icon(Icons.notifications_active, color: Colors.white)),
-            title: const Text('Android 16 实时活动',
+                backgroundColor: Colors.blueAccent,
+                child: Icon(Icons.rocket_launch, color: Colors.white)),
+            title: const Text('从 Cloudflare 后端一键全量迁移',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Padding(
                 padding: const EdgeInsets.only(top: 4.0),
-                child: Text(_liveUpdatesStatus,
+                child: Text('自动将 D1 上您的整套账户(密码)、待办、番茄钟打包移植至当前阿里云节点，实现无缝搬家。',
                     style: TextStyle(color: Colors.grey[600], fontSize: 13))),
             trailing: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20))),
-                onPressed: _checkAndOpenLiveUpdates,
-                child: const Text('去开启')),
+                onPressed: _showMigrationDialog,
+                child: const Text('开始')),
           ),
         ),
         const SizedBox(height: 12),
-        Card(
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            leading: const CircleAvatar(
-                backgroundColor: Colors.deepPurpleAccent,
-                child: Icon(Icons.smart_button, color: Colors.white)),
-            title: const Text('小米超级岛支持',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Text(_islandStatus,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13))),
-            trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20))),
-                onPressed: _checkIslandSupport,
-                child: const Text('检测')),
+        if (Platform.isAndroid) ...[
+          Card(
+            elevation: 2,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              leading: const Icon(Icons.notification_important_outlined,
+                  color: Colors.amber),
+              title: const Text('测试课程实时通知'),
+              subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
+              trailing: TextButton(
+                  onPressed: _testCourseNotification, child: const Text("发送测试")),
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          Card(
+            elevation: 2,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              leading: const CircleAvatar(
+                  backgroundColor: Colors.teal,
+                  child: Icon(Icons.notifications_active, color: Colors.white)),
+              title: const Text('Android 16 实时活动',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(_liveUpdatesStatus,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+              trailing: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20))),
+                  onPressed: _checkAndOpenLiveUpdates,
+                  child: const Text('去开启')),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            elevation: 2,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              leading: const CircleAvatar(
+                  backgroundColor: Colors.deepPurpleAccent,
+                  child: Icon(Icons.smart_button, color: Colors.white)),
+              title: const Text('小米超级岛支持',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(_islandStatus,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+              trailing: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20))),
+                  onPressed: _checkIslandSupport,
+                  child: const Text('检测')),
+            ),
+          ),
+        ],
       ],
+    );
+  }
+
+  // ─── 一键迁移弹窗逻辑 ──────────────────────────────────────
+  Future<void> _showMigrationDialog() async {
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    bool isMigrating = false;
+    String statusText = "";
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text("一键全量账号与数据迁移"),
+            content: isMigrating
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 20),
+                    Text(statusText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center),
+                  ],
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('请输入您最初在 Cloudflare 服务器上注册用的邮箱与密码。系统会自动验证拉取，随后向阿里云注入您的配置。', style: TextStyle(fontSize: 13)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: emailCtrl,
+                      decoration: const InputDecoration(labelText: '旧账号邮箱', border: OutlineInputBorder()),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: passCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: '旧账号密码', border: OutlineInputBorder()),
+                    ),
+                  ],
+                ),
+            actions: isMigrating
+                ? null
+                : [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+                    FilledButton(
+                      onPressed: () async {
+                        if (emailCtrl.text.isEmpty || passCtrl.text.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('不能留空哦')));
+                          return;
+                        }
+                        
+                        setDialogState(() {
+                          isMigrating = true;
+                          statusText = "准备中...";
+                        });
+
+                        try {
+                          await MigrationService.runMigration(
+                            context: context,
+                            oldUrl: ApiService.cloudflareUrl,  // D1 URL
+                            newUrl: ApiService.aliyunUrl, // ECS URL
+                            email: emailCtrl.text,
+                            password: passCtrl.text,
+                            onProgress: (msg) {
+                              setDialogState(() => statusText = msg);
+                            }
+                          );
+
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 迁移大成功！您的所有数据和账户已落户阿里云。')));
+                            _fetchAccountStatus(); // Refresh credentials visually
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            isMigrating = false;
+                            statusText = "";
+                          });
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ 迁移失败: $e')));
+                          }
+                        }
+                      },
+                      child: const Text("验证并开始迁移")
+                    ),
+                  ],
+          );
+        }
+      ),
     );
   }
 

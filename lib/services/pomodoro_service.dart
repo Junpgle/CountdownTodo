@@ -480,12 +480,13 @@ class PomodoroService {
   /// 从云端增量拉取专注记录（LWW 合并），返回是否有新增/变更
   static Future<bool> syncRecordsFromCloud({int? fromMs}) async {
     try {
-      // 默认拉取最近 30 天
-      final from = fromMs ?? (DateTime.now().subtract(const Duration(days: 30)).millisecondsSinceEpoch);
-      final remoteList = await ApiService.fetchPomodoroRecords(fromMs: from);
-      if (remoteList.isEmpty) return false;
+      final todayStart = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+      final recordsRaw = await ApiService.fetchPomodoroSessions(
+        fromMs: todayStart.millisecondsSinceEpoch,
+      );
+      if (recordsRaw.isEmpty) return false;
 
-      final remoteRecords = remoteList
+      final remoteRecords = recordsRaw
           .map((e) => PomodoroRecord.fromJson(e as Map<String, dynamic>))
           .toList();
 
