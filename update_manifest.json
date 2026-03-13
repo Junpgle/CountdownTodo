@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "1.9.8",
+  "version_name": "2.0.2",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 1.9.8",
-    "description": "【新增】首次启动权限引导【优化】时间日志部分显示逻辑",
+    "title": "版本更新 2.0.2",
+    "description": "【新增】时间日志支持编辑\n【新增】时间日志-日视图\n【新增】阿里云服务器，支持全缝数据迁移\n",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe"
   },
@@ -19,6 +19,14 @@
   },
   "changelog_history": [
     {
+      "version_name": "2.0.2",
+      "date": "2026-03-13",
+      "items": [
+        "【新增】时间日志支持编辑",
+        "【新增】时间日志-日视图",
+        "【新增】阿里云服务器，支持全缝数据迁移"
+      ]
+    },{
       "version_name": "1.9.8",
       "date": "2026-03-12",
       "items": [
