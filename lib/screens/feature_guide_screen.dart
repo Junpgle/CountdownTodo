@@ -93,7 +93,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _buildAndroidFeaturePage1,
         _buildAndroidFeaturePage2,
         _buildAndroidFeaturePage3,
-        _buildAndroidWidgetGuidePage, // ← 新增：桌面小部件引导
+        _buildAndroidWidgetGuidePage, // ← 桌面小部件引导
         _buildGlobalCourseSetupPage,
         _buildGlobalThemeSetupPage,
       ];
@@ -630,11 +630,45 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               icon: Icons.widgets_outlined,
               iconColor: Colors.indigo,
               title: '桌面小部件',
-              subtitle: '无需打开应用，直接在桌面查看今日课程、待办任务与番茄钟状态。长按桌面即可快速添加。',
+              subtitle: '无需打开应用，直接在桌面查看今日课程、待办任务与番茄钟状态。',
             ),
             _buildMediaAsset('assets/guide_media/android_widget_guide.mp4'),
             const SizedBox(height: 20),
-            // 步骤说明卡片
+
+            // 🚀 一键添加到桌面按钮 (Android 8.0+)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () async {
+                  try {
+                    // 调用 MethodChannel (对应 MainActivity.kt 中的 requestPinWidget)
+                    final result = await platform.invokeMethod('requestPinWidget');
+                    if (result == false && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('您的系统/启动器不支持一键添加，请按下方步骤手动添加')),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('自动添加失败，请手动添加')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.add_to_home_screen_rounded),
+                label: const Text('一键添加到桌面', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: Colors.indigo,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // 手动步骤说明卡片
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -651,7 +685,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                     Icon(Icons.touch_app_outlined,
                         size: 16, color: Colors.indigo.withValues(alpha: 0.8)),
                     const SizedBox(width: 6),
-                    Text('添加步骤',
+                    Text('若一键添加失败，可手动添加',
                         style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,

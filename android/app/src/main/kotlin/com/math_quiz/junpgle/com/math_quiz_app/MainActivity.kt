@@ -2,7 +2,9 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.app.*
 import android.app.usage.UsageStatsManager
+import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -119,6 +121,30 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
     }
 
+    // 🚀 新增：一键将小部件固定到桌面的方法 (Android 8.0+)
+    private fun addWidgetToHome(): Boolean {
+        val appWidgetManager = AppWidgetManager.getInstance(this)
+        val myWidget = ComponentName(this, TodoWidgetProvider::class.java)
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                // 创建成功添加后的回调 PendingIntent
+                val successCallback = PendingIntent.getActivity(
+                    this,
+                    0,
+                    Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                appWidgetManager.requestPinAppWidget(myWidget, null, successCallback)
+                true
+            } else {
+                false // 桌面启动器不支持
+            }
+        } else {
+            false // Android 版本低于 8.0
+        }
+    }
+
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -151,6 +177,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     nm.cancel(COURSE_NOTIFICATION_ID)          // 📚 清除课程独立通知
                     nm.cancel(POMODORO_NOTIFICATION_ID)        // 🍅 清除番茄钟独立通知
                     result.success(null)
+                }
+
+                // 🚀 响应 Flutter 的添加小部件请求
+                "requestPinWidget" -> {
+                    val success = addWidgetToHome()
+                    result.success(success)
                 }
 
                 // 让 Flutter 端可以请求 Shizuku 授权
@@ -227,7 +259,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 /**
                  * Flutter 端调用示例：
                  * await _channel.invokeMethod('scheduleReminders', {
-                 *   'remindersJson': '[{"triggerAtMs":1234567890000,"title":"上课啦","text":"数学","notifId":30001}]'
+                 * 'remindersJson': '[{"triggerAtMs":1234567890000,"title":"上课啦","text":"数学","notifId":30001}]'
                  * });
                  * 此方法将 JSON 写入 SharedPreferences，然后启动 ReminderService 注册 Alarm。
                  */
