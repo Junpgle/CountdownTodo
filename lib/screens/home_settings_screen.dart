@@ -2051,13 +2051,28 @@ class _SettingsPageState extends State<SettingsPage> {
             DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare (推荐)')),
             DropdownMenuItem(value: 'aliyun', child: Text('阿里云ECS (不安全)')),
           ],
-          onChanged: (val) {
-            if (val != null) {
-              setState(() => _serverChoice = val);
-              StorageService.saveServerChoice(val);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已切换线路，后续同步将使用新接口')),
-              );
+          onChanged: (val) async {
+            if (val != null && val != _serverChoice) {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('切换服务器'),
+                  content: const Text('不同服务器的登录凭证不互通，切换后需要重新登录。\n\n确定要切换吗？'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('切换并重新登录')),
+                  ],
+                ),
+              ) ?? false;
+
+              if (confirm && mounted) {
+                await StorageService.saveServerChoice(val);
+                await StorageService.clearLoginSession();
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
             }
           },
         ),
@@ -2338,6 +2353,7 @@ class _SettingsPageState extends State<SettingsPage> {
           );
         },
       ),
+      if (!Platform.isWindows) ...[
       const Divider(height: 1, indent: 56),
       ListTile(
         leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
@@ -2378,7 +2394,7 @@ class _SettingsPageState extends State<SettingsPage> {
         trailing: const Icon(Icons.chevron_right),
         onTap: _showStorageAnalysis,
       ),
-      const Divider(height: 1, indent: 56),
+      ],
       ListTile(
         leading: const Icon(Icons.system_update, color: Colors.green),
         title: const Text('检查新版本'),

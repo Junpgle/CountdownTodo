@@ -6,8 +6,7 @@ import 'package:http/io_client.dart';
 class ApiService {
   static String baseUrl = "https://mathquiz.junpgle.me";
   static const String cloudflareUrl = 'https://mathquiz.junpgle.me';
-  static const String aliyunUrl =
-      'http://101.200.13.100:8082'; // Replace with actual ECS IP
+  static const String aliyunUrl = 'http://101.200.13.100:8082';
   static String? _baseUrlOverride;
 
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
@@ -499,7 +498,7 @@ class ApiService {
     int? semesterEnd,
   }) async {
     final response = await _client.post(
-      Uri.parse('$_effectiveBaseUrl/api/migrate_register_explicit'),
+      Uri.parse('$_effectiveBaseUrl/api/migrate_register'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'email': email,

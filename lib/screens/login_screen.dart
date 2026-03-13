@@ -24,11 +24,25 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isRegisterMode = false;
   bool _awaitingVerification = false;
   String? _legacyLocalUser;
+  String _serverChoice = 'cloudflare';
 
   @override
   void initState() {
     super.initState();
     _checkLocalLegacyAccount();
+    _loadServerChoice();
+  }
+
+  void _loadServerChoice() async {
+    final choice = await StorageService.getServerChoice();
+    if (mounted) setState(() => _serverChoice = choice);
+  }
+
+  void _onServerChoiceChanged(String? val) async {
+    if (val == null) return;
+    setState(() => _serverChoice = val);
+    ApiService.setServerChoice(val);
+    await StorageService.saveServerChoice(val);
   }
 
   @override
@@ -382,6 +396,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextButton(
                         onPressed: _toggleMode,
                         child: Text(_isRegisterMode ? "已有云端账号？去登录" : "新用户注册"),
+                      ),
+                      const SizedBox(height: 30),
+                      const Divider(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.cloud_queue, size: 18, color: Colors.grey),
+                          const SizedBox(width: 6),
+                          const Text('服务器: ', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          DropdownButton<String>(
+                            value: _serverChoice,
+                            underline: const SizedBox(),
+                            style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13),
+                            items: const [
+                              DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare (推荐)')),
+                              DropdownMenuItem(value: 'aliyun', child: Text('阿里云ECS')),
+                            ],
+                            onChanged: _onServerChoiceChanged,
+                          ),
+                        ],
                       ),
                     ],
                   )

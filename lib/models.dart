@@ -242,8 +242,8 @@ class CountdownItem {
       id: parsedId,
       title: json['title'] ?? '',
       // 🚀 修复：正确解析 targetDate（可能是毫秒时间戳或 ISO 字符串）
-      // null/0 均视为无效，fallback 到明天（避免把 target_time=0 的旧脏数据当成今日倒计时）
-      targetDate: _parseDateField(json['target_time'] ?? json['targetDate']) ??
+      // 兼容所有字段名：target_time(客户端), target_date(新服务器DB列名), targetDate(旧格式)
+      targetDate: _parseDateField(json['target_time'] ?? json['target_date'] ?? json['targetDate']) ??
           DateTime.now().add(const Duration(days: 1)),
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true || json['isDeleted'] == true,
       version: json['version'] ?? 1,
