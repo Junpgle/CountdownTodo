@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 极浅的高级白，避免纯白刺眼 -->
+    <solid android:color="#FCFCFC" />
+    <!-- 20dp 的大圆角，贴合现代系统的圆润感 -->
+    <corners android:radius="20dp" />
+    <!-- 添加一条极其轻微的边框，增加层次感 -->
+    <stroke android:width="1dp" android:color="#E5E7EB" />
+</shape>

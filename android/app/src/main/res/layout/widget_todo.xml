@@ -3,116 +3,312 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg_white"
+    android:background="@drawable/widget_bg_modern"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="16dp">
 
-    <!-- 标题区域 -->
+    <!-- 顶栏区域：极简风格 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingBottom="8dp">
-
-        <!-- 图标 (你可以替换为实际的黄色铅笔图标资源) -->
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:background="@drawable/widget_icon_bg"
-            android:padding="4dp"
-            android:src="@android:drawable/ic_menu_edit"
-            app:tint="@android:color/white"
-            xmlns:app="http://schemas.android.com/apk/res-auto" />
+        android:paddingBottom="12dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:text="📝"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
             android:text="待办清单"
-            android:textColor="#FFB300"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textColor="#111827"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.05" />
     </LinearLayout>
 
-    <!-- 列表区域 (移除背景，不再有红框) -->
+    <!-- 列表区域 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:orientation="vertical"
-        android:padding="8dp">
+        android:orientation="vertical">
 
-        <!-- 第一条待办 -->
+        <!-- 第1条 -->
         <LinearLayout
             android:id="@+id/todo_layout_1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingVertical="4dp">
+            android:paddingVertical="5dp">
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:id="@+id/todo_checkbox_1"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:src="@drawable/widget_checkbox_empty" />
             <TextView
                 android:id="@+id/todo_text_1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="全天候命"
+                android:textColor="#1F2937"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/todo_due_1"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="暂无待办"
-                android:textColor="#333333"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
 
-        <!-- 第二条待办 -->
+        <!-- 第2条 -->
         <LinearLayout
             android:id="@+id/todo_layout_2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingVertical="4dp"
+            android:paddingVertical="5dp"
             android:visibility="gone">
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:id="@+id/todo_checkbox_2"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:src="@drawable/widget_checkbox_empty" />
             <TextView
                 android:id="@+id/todo_text_2"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#1F2937"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/todo_due_2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#333333"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
 
-        <!-- 第三条待办 -->
+        <!-- 第3条 -->
         <LinearLayout
             android:id="@+id/todo_layout_3"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingVertical="4dp"
+            android:paddingVertical="5dp"
             android:visibility="gone">
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:id="@+id/todo_checkbox_3"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:src="@drawable/widget_checkbox_empty" />
             <TextView
                 android:id="@+id/todo_text_3"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#1F2937"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/todo_due_3"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 第4条 -->
+        <LinearLayout
+            android:id="@+id/todo_layout_4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="5dp"
+            android:visibility="gone">
+            <ImageView
+                android:id="@+id/todo_checkbox_4"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/widget_checkbox_empty" />
+            <TextView
+                android:id="@+id/todo_text_4"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="#333333"
-                android:textSize="12sp" />
+                android:textColor="#1F2937"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/todo_due_4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 第5条 -->
+        <LinearLayout
+            android:id="@+id/todo_layout_5"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="5dp"
+            android:visibility="gone">
+            <ImageView
+                android:id="@+id/todo_checkbox_5"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/widget_checkbox_empty" />
+            <TextView
+                android:id="@+id/todo_text_5"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#1F2937"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/todo_due_5"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 第6条 -->
+        <LinearLayout
+            android:id="@+id/todo_layout_6"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="5dp"
+            android:visibility="gone">
+            <ImageView
+                android:id="@+id/todo_checkbox_6"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/widget_checkbox_empty" />
+            <TextView
+                android:id="@+id/todo_text_6"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#1F2937"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/todo_due_6"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 第7条 -->
+        <LinearLayout
+            android:id="@+id/todo_layout_7"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="5dp"
+            android:visibility="gone">
+            <ImageView
+                android:id="@+id/todo_checkbox_7"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/widget_checkbox_empty" />
+            <TextView
+                android:id="@+id/todo_text_7"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#1F2937"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/todo_due_7"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 第8条 -->
+        <LinearLayout
+            android:id="@+id/todo_layout_8"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="5dp"
+            android:visibility="gone">
+            <ImageView
+                android:id="@+id/todo_checkbox_8"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/widget_checkbox_empty" />
+            <TextView
+                android:id="@+id/todo_text_8"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#1F2937"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/todo_due_8"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
 
     </LinearLayout>

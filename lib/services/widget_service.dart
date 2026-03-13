@@ -27,7 +27,6 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
         for (var t in todos) {
           if (t.id == id) {
             t.isDone = !t.isDone;
-            // 🚀 修复：采用最新的版本提升函数替换直接修改 lastUpdated
             t.markAsChanged();
             changed = true;
             break;
@@ -49,9 +48,9 @@ class WidgetService {
   static const String androidWidgetName = 'TodoWidgetProvider';
   static bool _initialized = false;
 
-  // 必须在 App 启动时调用，以注册这个后台监听器
+  static const int maxWidgetItems = 8; // 最大渲染数量
+
   static Future<void> init() async {
-    // 🚀 桌面端拦截：Windows/macOS 不支持安卓/iOS的桌面小组件
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     if (_initialized) return;
@@ -63,68 +62,83 @@ class WidgetService {
     }
   }
 
-  static Future<void> updateTodoWidget(List<TodoItem> todos) async {
-    // 🚀 桌面端拦截
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+  // 🚀 智能日期推断文本
+  static String _getDueDateLabel(DateTime? dueDate) {
+    if (dueDate == null) return '';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final diffDays = dueDay.difference(today).inDays;
 
-    // --- 提取并排序最紧急的待办 ---
+    if (diffDays < 0) {
+      return '已逾期';
+    } else if (diffDays == 0) {
+      return '今天 ${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}';
+    } else if (diffDays == 1) {
+      return '明天';
+    } else {
+      return '$diffDays天后';
+    }
+  }
+
+  static Future<void> updateTodoWidget(List<TodoItem> todos) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
 
     // 1. 我们只想要展示未完成且未被逻辑删除的待办
     List<TodoItem> pendingTodos = todos.where((t) => !t.isDone && !t.isDeleted).toList();
 
+    // 2. 🚀 完全采用主页的轻重缓急分组逻辑：以往(逾期) -> 今日 -> 未来
     DateTime now = DateTime.now();
-    DateTime todayStart = DateTime(now.year, now.month, now.day);
-    DateTime todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    DateTime today = DateTime(now.year, now.month, now.day);
 
-    // 辅助函数：判断待办是否与今天相关 (创建在今天 或 截止在今天，甚至跨越今天)
-    bool isTodayRelevant(TodoItem todo) {
-      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
-      if (todo.dueDate != null) {
-        DateTime dueDateStart = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
-        // 🚀 修复：将 createdAt int 转为 DateTime 做比较
-        if (!todayEnd.isBefore(DateTime(cDate.year, cDate.month, cDate.day)) &&
-            !todayStart.isAfter(dueDateStart)) {
-          return true;
+    List<TodoItem> pastTodos = [];
+    List<TodoItem> todayTodos = [];
+    List<TodoItem> futureTodos = [];
+
+    for (final t in pendingTodos) {
+      if (t.dueDate != null) {
+        DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+        if (d.isBefore(today)) {
+          pastTodos.add(t);
+        } else if (d.isAfter(today)) {
+          futureTodos.add(t);
+        } else {
+          todayTodos.add(t);
         }
       } else {
-        // 如果没有截止时间，只看是不是今天创建的
-        if (cDate.year == now.year && cDate.month == now.month && cDate.day == now.day) {
-          return true;
-        }
+        // 与主页保持一致，没有明确截止时间的统一放在“今日待办”
+        todayTodos.add(t);
       }
-      return false;
     }
 
-    // 2. 自定义排序逻辑
-    pendingTodos.sort((a, b) {
-      bool aToday = isTodayRelevant(a);
-      bool bToday = isTodayRelevant(b);
+    // 组内排序规则：优先按截止时间排序(最紧急的在前)，如果没有截止时间则按创建时间排
+    int startMs(TodoItem t) => t.createdDate ?? t.createdAt;
 
-      // 第一优先级：今天相关的排在前面
-      if (aToday && !bToday) return -1;
-      if (!aToday && bToday) return 1;
-
-      // 如果同为今天相关，或者同不为今天相关，则继续按截止时间排序
+    int compareUrgency(TodoItem a, TodoItem b) {
+      // 都有明确时间的，早的排在前面
       if (a.dueDate != null && b.dueDate != null) {
         return a.dueDate!.compareTo(b.dueDate!);
       }
+      // 有明确时间的比没有时间的排在前面（更有压迫感）
       if (a.dueDate != null && b.dueDate == null) return -1;
       if (a.dueDate == null && b.dueDate != null) return 1;
+      // 都没有时间，按创建先后排
+      return startMs(a).compareTo(startMs(b));
+    }
 
-      // 都没有截止日期：按创建时间 (int) 排序，数字小的（早的）在前
-      return a.createdAt.compareTo(b.createdAt);
-    });
+    pastTodos.sort(compareUrgency);
+    todayTodos.sort(compareUrgency);
+    futureTodos.sort(compareUrgency);
 
-    // 3. 截取前 3 条作为要在小部件显示的项
-    final displayTodos = pendingTodos.take(3).toList();
-    // ---------------------------------
+    // 3. 严格拼接：逾期最前，今日次之，未来最后
+    final displayTodos = [...pastTodos, ...todayTodos, ...futureTodos].take(maxWidgetItems).toList();
 
-    // 清空旧数据（标题、是否完成、ID）
-    for (int i = 1; i <= 3; i++) {
+    // 清空旧数据
+    for (int i = 1; i <= maxWidgetItems; i++) {
       await HomeWidget.saveWidgetData<String>('todo_$i', '');
       await HomeWidget.saveWidgetData<bool>('todo_${i}_done', false);
       await HomeWidget.saveWidgetData<String>('todo_${i}_id', '');
+      await HomeWidget.saveWidgetData<String>('todo_${i}_due', '');
     }
 
     // 写入新数据
@@ -133,6 +147,7 @@ class WidgetService {
       await HomeWidget.saveWidgetData<String>('todo_${i + 1}', todo.title);
       await HomeWidget.saveWidgetData<bool>('todo_${i + 1}_done', todo.isDone);
       await HomeWidget.saveWidgetData<String>('todo_${i + 1}_id', todo.id);
+      await HomeWidget.saveWidgetData<String>('todo_${i + 1}_due', _getDueDateLabel(todo.dueDate));
     }
 
     // 触发 Android 原生刷新
