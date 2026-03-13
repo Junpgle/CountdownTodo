@@ -96,8 +96,28 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             localPrefs.edit().putInt("current_widget_tab", 1).putString("last_auto_course_id", urgentCourseId).apply()
         }
 
+        // 🚀 动态嗅探系统深色模式
+        val isDarkMode = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+        // 🚀 深浅色调色板
+        val primaryTextColor = android.graphics.Color.parseColor(if (isDarkMode) "#F3F4F6" else "#1F2937")
+        val secondaryTextColor = android.graphics.Color.parseColor(if (isDarkMode) "#9CA3AF" else "#6B7280")
+        val tabActiveColor = android.graphics.Color.parseColor(if (isDarkMode) "#F9FAFB" else "#111827")
+        val tabInactiveColor = android.graphics.Color.parseColor(if (isDarkMode) "#6B7280" else "#9CA3AF")
+        val redColor = android.graphics.Color.parseColor(if (isDarkMode) "#F87171" else "#EF4444")
+        val greenColor = android.graphics.Color.parseColor(if (isDarkMode) "#34D399" else "#10B981")
+        val blueColor = android.graphics.Color.parseColor(if (isDarkMode) "#60A5FA" else "#3B82F6")
+        val yellowColor = android.graphics.Color.parseColor(if (isDarkMode) "#FBBF24" else "#F59E0B")
+        val bgColor = android.graphics.Color.parseColor(if (isDarkMode) "#1E1E1E" else "#FFFFFF")
+
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_todo)
+
+            // 🚀 为底层背景图片涂色，实现自动深色背景变换
+            val bgImageId = context.resources.getIdentifier("widget_bg_image", "id", context.packageName)
+            if (bgImageId != 0) {
+                views.setInt(bgImageId, "setColorFilter", bgColor)
+            }
 
             // Tabs 颜色与交互
             views.setOnClickPendingIntent(R.id.tab_todo, getTabIntent(context, 0, appWidgetIds))
@@ -105,12 +125,10 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             views.setOnClickPendingIntent(R.id.tab_countdown, getTabIntent(context, 2, appWidgetIds))
             views.setOnClickPendingIntent(R.id.tab_timelog, getTabIntent(context, 3, appWidgetIds))
 
-            val activeColor = android.graphics.Color.parseColor("#111827")
-            val inactiveColor = android.graphics.Color.parseColor("#9CA3AF")
-            views.setTextColor(R.id.tab_todo, if (currentTab == 0) activeColor else inactiveColor)
-            views.setTextColor(R.id.tab_course, if (currentTab == 1) activeColor else inactiveColor)
-            views.setTextColor(R.id.tab_countdown, if (currentTab == 2) activeColor else inactiveColor)
-            views.setTextColor(R.id.tab_timelog, if (currentTab == 3) activeColor else inactiveColor)
+            views.setTextColor(R.id.tab_todo, if (currentTab == 0) tabActiveColor else tabInactiveColor)
+            views.setTextColor(R.id.tab_course, if (currentTab == 1) tabActiveColor else tabInactiveColor)
+            views.setTextColor(R.id.tab_countdown, if (currentTab == 2) tabActiveColor else tabInactiveColor)
+            views.setTextColor(R.id.tab_timelog, if (currentTab == 3) tabActiveColor else tabInactiveColor)
 
             views.setViewVisibility(R.id.page_todos, if (currentTab == 0) View.VISIBLE else View.GONE)
             views.setViewVisibility(R.id.page_courses, if (currentTab == 1) View.VISIBLE else View.GONE)
@@ -124,7 +142,7 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             val maxTodoSlots = minOf(maxOf(1, (minHeight - 75) / 34), 8)
             val maxCourseSlots = minOf(maxOf(1, (minHeight - 75) / 80), 8)
 
-            // 1. 渲染待办 (修复截止时间显示)
+            // 1. 渲染待办 (Page 0)
             for (i in 1..8) {
                 val layoutId = context.resources.getIdentifier("todo_layout_$i", "id", context.packageName)
                 if (layoutId == 0) continue
@@ -136,12 +154,16 @@ class TodoWidgetProvider : HomeWidgetProvider() {
                 val isDone = widgetData.getBoolean("todo_${i}_done", false)
                 views.setCharSequence(textId, "setText", getHtmlSpanned(if (isDone) "<s>$title</s>" else title))
 
+                // 🚀 设置待办文本颜色
+                if (textId != 0) {
+                    views.setTextColor(textId, if (isDone) secondaryTextColor else primaryTextColor)
+                }
+
                 // 复选框状态
                 val checkboxId = context.resources.getIdentifier("todo_checkbox_$i", "id", context.packageName)
                 val checkedResId = context.resources.getIdentifier(if (isDone) "widget_checkbox_checked" else "widget_checkbox_empty", "drawable", context.packageName)
                 if (checkedResId != 0) views.setImageViewResource(checkboxId, checkedResId)
 
-                // 复选框点击
                 val id = widgetData.getString("todo_${i}_id", "")
                 if (!id.isNullOrEmpty()) {
                     val clickIntent = Intent(context, TodoWidgetProvider::class.java).apply {
@@ -152,21 +174,21 @@ class TodoWidgetProvider : HomeWidgetProvider() {
                     views.setOnClickPendingIntent(checkboxId, PendingIntent.getBroadcast(context, i * 100, clickIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
                 }
 
-                // 🚀 RESTORED: 截止时间显示逻辑
                 val dueId = context.resources.getIdentifier("todo_due_$i", "id", context.packageName)
                 val dueText = widgetData.getString("todo_${i}_due", "")
                 if (!dueText.isNullOrEmpty() && !isDone) {
                     views.setViewVisibility(dueId, View.VISIBLE)
                     views.setTextViewText(dueId, dueText)
-                    if (dueText.contains("逾期")) views.setTextColor(dueId, android.graphics.Color.parseColor("#EF4444"))
-                    else if (dueText.contains("今天")) views.setTextColor(dueId, android.graphics.Color.parseColor("#F59E0B"))
-                    else views.setTextColor(dueId, android.graphics.Color.parseColor("#10B981"))
+                    // 🚀 动态截止时间颜色
+                    if (dueText.contains("逾期")) views.setTextColor(dueId, redColor)
+                    else if (dueText.contains("今天")) views.setTextColor(dueId, yellowColor)
+                    else views.setTextColor(dueId, greenColor)
                 } else {
                     views.setViewVisibility(dueId, View.GONE)
                 }
             }
 
-            // 2. 课程提醒 (Page 1) - 四行排版
+            // 2. 课程提醒 (Page 1)
             var hasCourse = false
             for (i in 1..8) {
                 val layoutId = context.resources.getIdentifier("course_layout_$i", "id", context.packageName)
@@ -181,50 +203,98 @@ class TodoWidgetProvider : HomeWidgetProvider() {
                 val timeId = context.resources.getIdentifier("course_time_$i", "id", context.packageName)
                 val roomId = context.resources.getIdentifier("course_room_$i", "id", context.packageName)
 
-                if (dateId != 0) views.setCharSequence(dateId, "setText", getHtmlSpanned(widgetData.getString("course_date_$i", "")))
-                if (nameId != 0) views.setCharSequence(nameId, "setText", getHtmlSpanned(cName))
-                if (timeId != 0) views.setTextViewText(timeId, widgetData.getString("course_time_$i", ""))
-                if (roomId != 0) views.setTextViewText(roomId, widgetData.getString("course_room_$i", ""))
-
+                // 🚀 动态着色所有行
+                if (dateId != 0) {
+                    views.setCharSequence(dateId, "setText", getHtmlSpanned(widgetData.getString("course_date_$i", "")))
+                    views.setTextColor(dateId, secondaryTextColor)
+                }
                 if (nameId != 0) {
+                    views.setCharSequence(nameId, "setText", getHtmlSpanned(cName))
                     val cId = widgetData.getString("course_id_$i", "") ?: ""
-                    views.setTextColor(nameId, android.graphics.Color.parseColor(if (cId == urgentCourseId && urgentCourseId.isNotEmpty()) "#EF4444" else "#1F2937"))
+                    views.setTextColor(nameId, if (cId == urgentCourseId && urgentCourseId.isNotEmpty()) redColor else primaryTextColor)
+                }
+                if (timeId != 0) {
+                    views.setTextViewText(timeId, widgetData.getString("course_time_$i", ""))
+                    views.setTextColor(timeId, secondaryTextColor)
+                }
+                if (roomId != 0) {
+                    views.setTextViewText(roomId, widgetData.getString("course_room_$i", ""))
+                    views.setTextColor(roomId, secondaryTextColor)
                 }
             }
-            views.setViewVisibility(R.id.course_empty_layout, if (hasCourse) View.GONE else View.VISIBLE)
 
-            // 3. 倒数日 & 4. 专注 (逻辑复用 maxTodoSlots)
+            // 🚀 空状态文字变色
+            val courseEmptyId = context.resources.getIdentifier("course_empty_layout", "id", context.packageName)
+            val courseEmptyTextId = context.resources.getIdentifier("course_empty_text", "id", context.packageName)
+            if (courseEmptyId != 0) views.setViewVisibility(courseEmptyId, if (hasCourse) View.GONE else View.VISIBLE)
+            if (courseEmptyTextId != 0) views.setTextColor(courseEmptyTextId, secondaryTextColor)
+
+            // 3. 倒数日
             var hasCd = false
             for (i in 1..8) {
                 val layoutId = context.resources.getIdentifier("cd_layout_$i", "id", context.packageName)
                 if (layoutId == 0) continue
                 val title = widgetData.getString("cd_title_$i", "")
                 if (title.isNullOrEmpty() || i > maxTodoSlots) { views.setViewVisibility(layoutId, View.GONE); continue }
+
                 hasCd = true
                 views.setViewVisibility(layoutId, View.VISIBLE)
                 val titleId = context.resources.getIdentifier("cd_title_$i", "id", context.packageName)
                 val daysId = context.resources.getIdentifier("cd_days_$i", "id", context.packageName)
-                if (titleId != 0) views.setCharSequence(titleId, "setText", getHtmlSpanned(title))
-                if (daysId != 0) views.setTextViewText(daysId, widgetData.getString("cd_days_$i", ""))
-            }
-            views.setViewVisibility(R.id.cd_empty_layout, if (hasCd) View.GONE else View.VISIBLE)
 
-            val tlTotalText = widgetData.getString("tl_total", "今日专注: 0 分钟")
-            views.setTextViewText(R.id.tl_total, tlTotalText)
+                // 🚀 动态着色
+                if (titleId != 0) {
+                    views.setCharSequence(titleId, "setText", getHtmlSpanned(title))
+                    views.setTextColor(titleId, primaryTextColor)
+                }
+                if (daysId != 0) {
+                    views.setTextViewText(daysId, widgetData.getString("cd_days_$i", ""))
+                    views.setTextColor(daysId, blueColor)
+                }
+            }
+
+            // 🚀 空状态文字变色
+            val cdEmptyId = context.resources.getIdentifier("cd_empty_layout", "id", context.packageName)
+            val cdEmptyTextId = context.resources.getIdentifier("cd_empty_text", "id", context.packageName)
+            if (cdEmptyId != 0) views.setViewVisibility(cdEmptyId, if (hasCd) View.GONE else View.VISIBLE)
+            if (cdEmptyTextId != 0) views.setTextColor(cdEmptyTextId, secondaryTextColor)
+
+            // 4. 专注记录
+            val tlTotalId = context.resources.getIdentifier("tl_total", "id", context.packageName)
+            if (tlTotalId != 0) {
+                val tlTotalText = widgetData.getString("tl_total", "今日专注: 0 分钟")
+                views.setTextViewText(tlTotalId, tlTotalText)
+                views.setTextColor(tlTotalId, secondaryTextColor) // 🚀 动态着色
+            }
+
             var hasTl = false
             for (i in 1..8) {
                 val layoutId = context.resources.getIdentifier("tl_layout_$i", "id", context.packageName)
                 if (layoutId == 0) continue
                 val title = widgetData.getString("tl_title_$i", "")
                 if (title.isNullOrEmpty() || i > maxTodoSlots) { views.setViewVisibility(layoutId, View.GONE); continue }
+
                 hasTl = true
                 views.setViewVisibility(layoutId, View.VISIBLE)
                 val titleId = context.resources.getIdentifier("tl_title_$i", "id", context.packageName)
                 val timeId = context.resources.getIdentifier("tl_time_$i", "id", context.packageName)
-                if (titleId != 0) views.setTextViewText(titleId, title)
-                if (timeId != 0) views.setTextViewText(timeId, widgetData.getString("tl_time_$i", ""))
+
+                // 🚀 动态着色
+                if (titleId != 0) {
+                    views.setTextViewText(titleId, title)
+                    views.setTextColor(titleId, primaryTextColor)
+                }
+                if (timeId != 0) {
+                    views.setTextViewText(timeId, widgetData.getString("tl_time_$i", ""))
+                    views.setTextColor(timeId, greenColor)
+                }
             }
-            views.setViewVisibility(R.id.tl_empty_layout, if (hasTl) View.GONE else View.VISIBLE)
+
+            // 🚀 空状态文字变色
+            val tlEmptyId = context.resources.getIdentifier("tl_empty_layout", "id", context.packageName)
+            val tlEmptyTextId = context.resources.getIdentifier("tl_empty_text", "id", context.packageName)
+            if (tlEmptyId != 0) views.setViewVisibility(tlEmptyId, if (hasTl) View.GONE else View.VISIBLE)
+            if (tlEmptyTextId != 0) views.setTextColor(tlEmptyTextId, secondaryTextColor)
 
             // 全局跳转
             val appIntent = Intent(context, MainActivity::class.java)
