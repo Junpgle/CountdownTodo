@@ -481,12 +481,12 @@ class _DayGridPainter extends CustomPainter {
 }
 
 // ══════════════════════════════════════════════════════════
-// 补录详情面板
+// 补录详情面板 (兼容新增和编辑模式)
 // ══════════════════════════════════════════════════════════
 class _LogEntrySheet extends StatefulWidget {
   final DateTime initialStart, initialEnd; final String? initialTagId;
   final List<PomodoroTag> tags; final void Function(TimeLogItem) onSave;
-  final TimeLogItem? existingLog; // 👉 1. 新增：传入已有记录用于编辑
+  final TimeLogItem? existingLog;
 
   const _LogEntrySheet({required this.initialStart, required this.initialEnd,
     this.initialTagId, required this.tags, required this.onSave, this.existingLog});
@@ -499,7 +499,6 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
 
   @override void initState() {
     super.initState();
-    // 👉 2. 修改：判断是新增还是编辑模式
     if (widget.existingLog != null) {
       final log = widget.existingLog!;
       _start = DateTime.fromMillisecondsSinceEpoch(log.startTime);
@@ -557,26 +556,22 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
     final tag = widget.tags.cast<PomodoroTag?>()
         .firstWhere((t) => t?.uuid == _tagId, orElse: () => null);
 
-    // 1. 构造新的或修改后的记录
     final log = TimeLogItem(
-      id: widget.existingLog?.id, // 🚀 继承原 ID，若为 null 则自动生成新的 UUID
+      id: widget.existingLog?.id,
       title: _tc.text.isNotEmpty ? _tc.text : (tag?.name ?? '未命名补录'),
       tagUuids: _tagId != null ? [_tagId!] : [],
       startTime: _start.millisecondsSinceEpoch,
       endTime: _end.millisecondsSinceEpoch,
-      // 🚀 核心：必须继承旧记录的同步元数据，防止被重置
       remark: widget.existingLog?.remark,
       version: widget.existingLog?.version ?? 1,
       createdAt: widget.existingLog?.createdAt,
       deviceId: widget.existingLog?.deviceId,
     );
 
-    // 2. 🚀 核心：如果是编辑模式，必须标记为已修改，触发版本号 version++ 和 updatedAt 更新
     if (widget.existingLog != null) {
       log.markAsChanged();
     }
 
-    // 3. 回调保存
     widget.onSave(log);
   }
 
@@ -591,7 +586,6 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
       child: Column(mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              // 👉 4. 修改：动态标题
               Text(widget.existingLog != null ? '编辑记录' : '补录事件',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: _TC.text(context))),
               const Spacer(),
@@ -688,11 +682,17 @@ class _TimePickerCard extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════
-// 标签详情面板
+// 标签详情面板相关 (模型、图表容器、图表画笔)
 // ══════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════
-// 标签详情面板 (修改为 StatefulWidget 以支持趋势图切换)
-// ══════════════════════════════════════════════════════════
+
+class _TagRecord {
+  final bool isPomodoro; final String title, id;
+  final int startTime, endTime, durationMin; final bool isCompleted;
+  const _TagRecord({required this.isPomodoro, required this.title,
+    required this.startTime, required this.endTime, required this.durationMin,
+    required this.id, this.isCompleted = false});
+}
+
 class _TagDetailSheet extends StatefulWidget {
   final PomodoroTag tag; final List<TimeLogItem> logs;
   final List<PomodoroRecord> pomodoros; final void Function(String) onDelete;
@@ -701,14 +701,6 @@ class _TagDetailSheet extends StatefulWidget {
 
   @override
   State<_TagDetailSheet> createState() => _TagDetailSheetState();
-}
-
-class _TagRecord {
-  final bool isPomodoro; final String title, id;
-  final int startTime, endTime, durationMin; final bool isCompleted;
-  const _TagRecord({required this.isPomodoro, required this.title,
-    required this.startTime, required this.endTime, required this.durationMin,
-    required this.id, this.isCompleted = false});
 }
 
 class _TagDetailSheetState extends State<_TagDetailSheet> {
@@ -775,6 +767,12 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
       formatLabel = (v) => '${(v ~/ 60).toString().padLeft(2, '0')}:${(v % 60).toString().padLeft(2, '0')}';
     }
 
+    // 生成底部 X 轴的日期标签 (MM/dd)
+    final xLabels = chartRecs.map((r) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(r.startTime);
+      return DateFormat('MM/dd').format(dt);
+    }).toList();
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       decoration: BoxDecoration(color: _TC.card(context),
@@ -809,7 +807,6 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
             ]),
             const SizedBox(height: 16),
 
-            // 👉 新增的切换 Tab
             Row(children: [
               Text('TRENDS', style: TextStyle(fontSize: 9, color: _TC.textHint(context), letterSpacing: 2, fontWeight: FontWeight.w700)),
               const Spacer(),
@@ -819,9 +816,14 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
             ]),
             const SizedBox(height: 10),
 
-            // 👉 修改图表：传入格式化器，调高尺寸为 110 预留文字空间
             if (chartRecs.length >= 2)
-              _MiniLineChart(data: chartData, color: c, height: 110, formatLabel: formatLabel)
+              _MiniLineChart(
+                  data: chartData,
+                  xLabels: xLabels,
+                  color: c,
+                  height: 120,
+                  formatLabel: formatLabel
+              )
             else
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
@@ -879,19 +881,20 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
   }
 }
 
-// ══════════════════════════════════════════════════════════
-// 迷你折线图容器 (修改：支持自适应宽度与左右滑动)
-// ══════════════════════════════════════════════════════════
 class _MiniLineChart extends StatelessWidget {
-  final List<int> data; final Color color; final double height;
+  final List<int> data; final List<String> xLabels;
+  final Color color; final double height;
   final String Function(int) formatLabel;
-  const _MiniLineChart({required this.data, required this.color, this.height = 110, required this.formatLabel});
+
+  const _MiniLineChart({
+    required this.data, required this.xLabels,
+    required this.color, this.height = 120, required this.formatLabel
+  });
 
   @override Widget build(BuildContext context) {
-    // 屏幕可用宽度 (减去面板两侧的20+20 padding)
     final screenWidth = MediaQuery.of(context).size.width - 40;
-    // 动态计算所需宽度：每个数据点分配 50 逻辑像素，保证不挤在一起
-    final requiredWidth = max(screenWidth, data.length * 50.0);
+    // 为每个节点分配 55 逻辑像素，保证底部的日期不会相互挤压重叠
+    final requiredWidth = max(screenWidth, data.length * 55.0);
 
     return SizedBox(
       height: height,
@@ -903,7 +906,7 @@ class _MiniLineChart extends StatelessWidget {
           width: requiredWidth,
           height: height,
           child: CustomPaint(
-              painter: _LineChartPainter(data: data, color: color, formatLabel: formatLabel)
+              painter: _LineChartPainter(data: data, xLabels: xLabels, color: color, formatLabel: formatLabel)
           ),
         ),
       ),
@@ -911,14 +914,12 @@ class _MiniLineChart extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════
-// 折线图画笔 (修改：上方带文本标签、平整状态兼容处理)
-// ══════════════════════════════════════════════════════════
 class _LineChartPainter extends CustomPainter {
-  final List<int> data; final Color color;
+  final List<int> data; final List<String> xLabels;
+  final Color color;
   final String Function(int) formatLabel;
 
-  _LineChartPainter({required this.data, required this.color, required this.formatLabel});
+  _LineChartPainter({required this.data, required this.xLabels, required this.color, required this.formatLabel});
 
   @override void paint(Canvas canvas, Size size) {
     if (data.length < 2) return;
@@ -926,33 +927,30 @@ class _LineChartPainter extends CustomPainter {
     final maxV = data.reduce(max).toDouble();
     final range = (maxV - minV) < 1 ? 1.0 : maxV - minV;
 
-    // 如果全是一样的数据，就画在中间垂直居中
     double calcY(int v) {
       if (maxV == minV) return size.height / 2;
-      // 预留顶部 24px (给标签文字), 底部 12px 的空间
-      return size.height - 12 - ((v - minV) / range) * (size.height - 36);
+      // 顶部预留24，底部预留28(容纳日期)
+      return size.height - 28 - ((v - minV) / range) * (size.height - 52);
     }
 
     final pts = List.generate(data.length, (i) => Offset(
-        (i / (data.length - 1)) * (size.width - 30) + 15, // 两侧预留 15px 边距
+        (i / (data.length - 1)) * (size.width - 30) + 15,
         calcY(data[i])));
 
     final path = Path()..moveTo(pts[0].dx, pts[0].dy);
     for (int i = 1; i < pts.length; i++) path.lineTo(pts[i].dx, pts[i].dy);
 
-    // 绘制连线
     canvas.drawPath(path, Paint()..color = color..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round);
 
-    // 绘制点位和文本标签
     for (int i = 0; i < pts.length; i++) {
       final p = pts[i];
       canvas.drawCircle(p, 5, Paint()..color = color.withOpacity(0.2)
         ..style = PaintingStyle.fill);
       canvas.drawCircle(p, 3, Paint()..color = color);
 
-      // 绘制具体的数值/时间文本
+      // 画上方数值标签
       final text = formatLabel(data[i]);
       final tp = TextPainter(
         text: TextSpan(
@@ -961,14 +959,28 @@ class _LineChartPainter extends CustomPainter {
         ),
         textDirection: ui.TextDirection.ltr,
       )..layout();
-
-      // 标签绘制在节点的正上方 18 像素处
       tp.paint(canvas, Offset(p.dx - tp.width / 2, p.dy - 18));
+
+      // 画底部的日期标签
+      if (i < xLabels.length) {
+        final dateText = xLabels[i];
+        final dateTp = TextPainter(
+          text: TextSpan(
+            text: dateText,
+            style: TextStyle(fontSize: 9, color: color.withOpacity(0.55), fontWeight: FontWeight.w500),
+          ),
+          textDirection: ui.TextDirection.ltr,
+        )..layout();
+        dateTp.paint(canvas, Offset(p.dx - dateTp.width / 2, size.height - 14));
+      }
     }
   }
   @override bool shouldRepaint(covariant _LineChartPainter o) => true;
 }
 
+// ══════════════════════════════════════════════════════════
+// 信息展示小组件
+// ══════════════════════════════════════════════════════════
 class _StatCard extends StatelessWidget {
   final String label, value; final Color color;
   const _StatCard({required this.label, required this.value, required this.color});
