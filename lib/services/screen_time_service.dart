@@ -78,18 +78,21 @@ class ScreenTimeService {
         debugPrint("Android 屏幕时间同步流程完成 (经由 syncData)");
 
       } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        final dbPath = await TaiService.getSavedDbPath();
-        if (dbPath == null || dbPath.isEmpty) return;
+        // 1. 从 Tai 数据库读取原始数据
+        final List<Map<String, dynamic>> apps = await TaiService
+            .getTodayStats();
+        if (apps.isEmpty) return;
 
-        // 桌面端 Tai 的同步逻辑
-        await TaiService.syncToCloud(userId);
+        // 2. 立即存入本地缓存（确保本地先看到数据）
+        // 这也会更新本地的时间戳，让随后的 syncData 识别到这是今日数据
+        await StorageService.saveScreenTimeCache(apps);
 
-        // 同步完成后，从云端拉取最新的“已分类”结果更新本地缓存
-        String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-        var cloudStats = await ApiService.fetchScreenTime(userId, today);
-        if (cloudStats.isNotEmpty) {
-          await StorageService.saveScreenTimeCache(cloudStats);
-          debugPrint("桌面端屏幕时间已从云端反哺本地缓存");
+        // 3. 统一调用 syncData 进行增量同步
+        // syncData 内部会使用正确的设备名： "windows (PC)"
+        String? username = await StorageService.getLoginSession();
+        if (username != null) {
+          await StorageService.syncData(username);
+          debugPrint("桌面端通过统一接口同步完成");
         }
       }
     } catch (e) {

@@ -78,34 +78,43 @@ class TaiService {
     }
   }
 
-  /// 同步今日数据到云端
-  static Future<bool> syncToCloud(int userId) async {
+  // 在 TaiService 类中增加/修改这个方法
+  static Future<List<Map<String, dynamic>>> getTodayStats() async {
     final dbPath = await getSavedDbPath();
-    if (dbPath == null || dbPath.isEmpty) {
-      debugPrint('Tai 数据库路径未设置');
-      return false;
-    }
+    if (dbPath == null || dbPath.isEmpty) return [];
 
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final apps = await readDailyStats(dbPath: dbPath, date: today);
-    if (apps.isEmpty) return false;
-
-    final ok = await ApiService.uploadScreenTime(
-      userId: userId,
-      deviceName: 'Windows-PC',  // 可进一步读取真实机器名
-      date: today,
-      apps: apps,
-    );
-
-    if (ok) {
-      final cloudStats = await ApiService.fetchScreenTime(userId, today);
-      await StorageService.saveScreenTimeCache(cloudStats);
-      await StorageService.updateLastScreenTimeSync();
-      debugPrint('Tai 屏幕时间同步完成，共 ${apps.length} 条应用数据');
-    }
-
-    return ok;
+    return await readDailyStats(dbPath: dbPath, date: today);
   }
+
+  /// 同步今日数据到云端
+  // static Future<bool> syncToCloud(int userId) async {
+  //   final dbPath = await getSavedDbPath();
+  //   if (dbPath == null || dbPath.isEmpty) {
+  //     debugPrint('Tai 数据库路径未设置');
+  //     return false;
+  //   }
+  //
+  //   final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  //   final apps = await readDailyStats(dbPath: dbPath, date: today);
+  //   if (apps.isEmpty) return false;
+  //
+  //   final ok = await ApiService.uploadScreenTime(
+  //     userId: userId,
+  //     deviceName: 'Windows-PC',  // 可进一步读取真实机器名
+  //     date: today,
+  //     apps: apps,
+  //   );
+  //
+  //   if (ok) {
+  //     final cloudStats = await ApiService.fetchScreenTime(userId, today);
+  //     await StorageService.saveScreenTimeCache(cloudStats);
+  //     await StorageService.updateLastScreenTimeSync();
+  //     debugPrint('Tai 屏幕时间同步完成，共 ${apps.length} 条应用数据');
+  //   }
+  //
+  //   return ok;
+  // }
 
   static Future<String?> detectDefaultPath() async {
     if (!Platform.isWindows) return null;
