@@ -785,6 +785,35 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
+  void _showTokenExpiredDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("登录已失效"),
+        content: const Text("由于您的 Token 无效，请重新登录以同步数据。"),
+        actions: [
+          FilledButton(
+            onPressed: () async {
+              // 1. 清理本地所有登录相关的持久化数据
+              // 假设你的 StorageService 有清理方法，或者直接操作 prefs
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('current_user_id');
+              await prefs.remove('logged_in_username'); // 顺便清理用户名
+
+              if (!mounted) return;
+
+              // 2. 彻底关闭弹窗并切断路由栈，回到登录页
+              Navigator.of(ctx).pop();
+              Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+            },
+            child: const Text("重新登录"),
+          ),
+        ],
+      ),
+    );
+  }
+
   // 🚀 核心重构：渲染主页时，绝对不能将 isDeleted 的数据加载到视图层！
   Future<void> _loadAllData() async {
     final allCountdowns = await StorageService.getCountdowns(widget.username);
@@ -889,6 +918,13 @@ class _HomeDashboardState extends State<HomeDashboard>
       debugPrint("Sync Error: $e");
       if (mounted && !silent) {
         String msg = e.toString();
+
+        // 🚀 核心逻辑：拦截无效 Token
+        if (msg.contains("无效的token") || msg.contains("INVALID_TOKEN") || msg.contains("401")) {
+          _showTokenExpiredDialog(); // 调用弹窗函数
+          return; // 拦截后续的 SnackBar 提示
+        }
+
         if (msg.contains("LIMIT_EXCEEDED:")) {
           msg = msg.split("LIMIT_EXCEEDED:").last;
         } else {

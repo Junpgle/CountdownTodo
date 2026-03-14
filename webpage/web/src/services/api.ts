@@ -54,6 +54,16 @@ getToken: (): string | null => localStorage.getItem('cdt_token'),
       headers,
     });
 
+    if (res.status === 401) {
+      this.clearAuthAndData();
+      // 触发页面重载或强制跳转到根路径（LandingPage/AuthScreen）
+      // 这里的逻辑会让 App.tsx 的 useEffect 重新检查 token 并置空 user
+      window.location.hash = ''; 
+      window.location.search = '';
+      window.location.reload(); 
+      throw new Error('未授权，请重新登录');
+    }
+
     const data = await res.json() as Record<string, unknown>;
     if (!res.ok) {
       const errMsg = (data.error ?? data.message ?? '请求失败') as string;

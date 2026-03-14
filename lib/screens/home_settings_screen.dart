@@ -2272,7 +2272,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ListTile(
         leading: const Icon(Icons.cloud_queue),
         title: const Text('云端数据接口线路'),
-        subtitle: const Text('建议不要改动此处，除非你知道自己在做什么'),
+        subtitle: const Text('切换服务器后需要重新登录，且不同服务器的登录状态不互通'),
         trailing: DropdownButton<String>(
           value: _serverChoice,
           underline: const SizedBox(),

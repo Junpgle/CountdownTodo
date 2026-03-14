@@ -125,7 +125,7 @@ class _MyAppState extends State<MyApp> {
         }
 
         return MaterialApp(
-          title: '效率 & 数学',
+          title: 'CountDownTodo',
           debugShowCheckedModeBanner: false,
 
           // 绑定动态主题模式
@@ -158,6 +158,12 @@ class _MyAppState extends State<MyApp> {
             Locale('zh', 'CN'),
             Locale('en', 'US'),
           ],
+
+          // 🚀 添加这一段
+          routes: {
+            '/login': (context) => const LoginScreen(),
+            '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
+          },
 
           // 路由控制：加载中 → 升级引导 → 主页/登录
           // 若有进行中的番茄钟，先进主页，再由主页自动 push 番茄钟（保留返回栈）
