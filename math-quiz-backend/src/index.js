@@ -1,7 +1,7 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
- * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题 + 修复清空日期的 null 覆盖 Bug
- * [新增] 支持 time_logs (时间日志) 的增量同步
+ * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题
+ * [新增] 支持 S2S (Server to Server) 智能安全合并，动态映射双端不一致的 User ID
  */
 
 const SYNC_LIMITS = {
@@ -12,7 +12,7 @@ const SYNC_LIMITS = {
 
 // 🛡️ 鉴权：生成 HMAC 签名 Token
 async function signToken(userId, env) {
-  const secret = env.API_SECRET || "math_quiz_default_secret_key_2026_super_safe";
+  const secret = env.API_SECRET;
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(userId.toString()));
@@ -35,8 +35,7 @@ async function requireAuth(request, env) {
   return null;
 }
 
-// 🕐 统一时间规范（v2 - 简洁版）
-// 规范：所有时间字段存储和传输均使用 UTC 毫秒时间戳 (number)。
+// 🕐 统一时间规范
 function normalizeToMs(val) {
   if (val === null || val === undefined) return 0;
   if (typeof val === 'number') return Math.floor(val);
@@ -44,20 +43,16 @@ function normalizeToMs(val) {
     const trimmed = val.trim();
     if (!trimmed) return 0;
 
-    // 🚀 修复：使用 Number() 直接转换，完美兼容 "1741276800000.0" 等 D1 数据库格式化现象
     const n = Number(trimmed);
     if (!isNaN(n)) return Math.floor(n);
 
-    // 再尝试 ISO 8601 字符串
     const d = new Date(trimmed);
     if (!isNaN(d.getTime())) return d.getTime();
   }
   return 0;
 }
 
-// 🌍 时区工具：获取东八区（北京时间）的当前日期 YYYY-MM-DD
 function getChinaDateStr(nowMs) {
-  // 加上 8 小时的毫秒数 (8 * 60 * 60 * 1000 = 28800000)
   const d = new Date(nowMs + 28800000);
   return d.toISOString().split('T')[0];
 }
@@ -70,7 +65,7 @@ export default {
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-      "Access-Control-Allow-Headers": "Content-Type, x-user-id, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, x-user-id, Authorization, x-admin-secret",
     };
 
     if (request.method === "OPTIONS") return new Response("OK", { headers: corsHeaders });
@@ -85,7 +80,6 @@ export default {
       if (!env.math_quiz_db) throw new Error(`数据库绑定失败！`);
       const DB = env.math_quiz_db;
 
-      // 🛡️ 全局提取当前请求的真实受信任用户 ID
       const authUserId = await requireAuth(request, env);
 
       // --------------------------
@@ -175,14 +169,13 @@ export default {
       }
 
       // --------------------------
-      // 模块 A-2: 账户状态查询 (User Status)
+      // 模块 A-2: 账户状态查询
       // --------------------------
       if (url.pathname === "/api/user/status" && request.method === "GET") {
         const userIdStr = url.searchParams.get("user_id");
         if (!userIdStr) return errorResponse("缺少 user_id 参数", 400);
 
         const userId = parseInt(userIdStr, 10);
-
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(userId).first();
         if (!userRow) return errorResponse("用户不存在", 404);
 
@@ -201,7 +194,7 @@ export default {
       }
 
       // --------------------------
-      // 模块 B: 排行榜 (Leaderboard)
+      // 模块 B: 排行榜
       // --------------------------
       if (url.pathname === "/api/leaderboard" && request.method === "GET") {
         const { results } = await DB.prepare("SELECT username, score, duration, played_at FROM leaderboard ORDER BY score DESC, duration ASC LIMIT 50").all();
@@ -228,7 +221,6 @@ export default {
         const { user_id, last_sync_time = 0, device_id, screen_time } = payload;
         const todos = payload.todos || payload.todos_changes || payload.todosChanges || [];
         const countdowns = payload.countdowns || payload.countdowns_changes || payload.countdownsChanges || [];
-        // 🚀 新增：提取 time logs 数据
         const timeLogs = payload.time_logs_changes || payload.timeLogsChanges || [];
 
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
@@ -244,7 +236,7 @@ export default {
 
         const batchStatements = [];
 
-        // ── 检查 todos 表是否已有扩展列 ──
+        // 1. 处理 Todos
         const todoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
         const todoColNames = new Set(todoColumns.results.map(r => r.name));
         const hasRecurrence       = todoColNames.has('recurrence');
@@ -252,7 +244,6 @@ export default {
         const hasRecurrenceEnd    = todoColNames.has('recurrence_end_date');
         const hasRemark           = todoColNames.has('remark');
 
-        // 1. 处理 Todos
         if (Array.isArray(todos)) {
           for (const t of todos) {
             const tUuid = String(t.uuid ?? t.id ?? t._id);
@@ -374,7 +365,6 @@ export default {
           for (const c of countdowns) {
             const cUuid = String(c.uuid ?? c.id ?? c._id);
             const cTitle = String(c.title ?? "");
-
             const hasTargetTime = 'target_time' in c || 'targetTime' in c || 'targetDate' in c;
             let cTargetTime = null;
             if (hasTargetTime) {
@@ -404,11 +394,8 @@ export default {
               ).bind(cUuid, authUserId, cTitle, cTargetTime, cIsDeleted, cCreatedAt, now, cVersion, device_id));
             } else {
               const finalTargetTime   = hasTargetTime ? cTargetTime : (existing.target_time ?? null);
-              const existingCreatedAt = normalizeToMs(existing.created_at) || cCreatedAt;
-              const finalCreatedAt    = Math.min(cCreatedAt, existingCreatedAt) || existingCreatedAt;
-              const existingUpdatedAtMs = normalizeToMs(existing.updated_at);
-
-              if (cVersion > (existing.version || 0) || cUpdatedAtClient > existingUpdatedAtMs || !existing.uuid) {
+              const finalCreatedAt    = Math.min(cCreatedAt, normalizeToMs(existing.created_at) || cCreatedAt);
+              if (cVersion > (existing.version || 0) || cUpdatedAtClient > normalizeToMs(existing.updated_at) || !existing.uuid) {
                 batchStatements.push(DB.prepare(
                   `UPDATE countdowns SET uuid=?, title=?, target_time=?, is_deleted=?, created_at=?, updated_at=?, version=?, device_id=? WHERE id=?`
                 ).bind(cUuid, cTitle, finalTargetTime, cIsDeleted, finalCreatedAt, now, cVersion, device_id, existing.id));
@@ -417,27 +404,21 @@ export default {
           }
         }
 
-        // 🚀 3. 处理 Time Logs (时间日志)
+        // 3. 处理 Time Logs
         if (Array.isArray(timeLogs)) {
           for (const l of timeLogs) {
             const lUuid = String(l.uuid ?? l.id ?? l._id);
             const lTitle = String(l.title ?? "");
-            // TagUuids 处理：客户端传过来的是数组，我们要存成 JSON String
             const lTagUuids = JSON.stringify(l.tag_uuids ?? l.tagUuids ?? []);
-
             const lStartTime = normalizeToMs(l.start_time ?? l.startTime) || now;
             const lEndTime = normalizeToMs(l.end_time ?? l.endTime) || now;
             const lRemark = l.remark != null ? String(l.remark) : null;
-
             const lIsDeleted = (l.is_deleted ?? l.isDeleted) ? 1 : 0;
             const lUpdatedAtClient = normalizeToMs(l.updated_at ?? l.updatedAt ?? now);
             const lVersion = parseInt(l.version || 1, 10);
             const lCreatedAt = normalizeToMs(l.created_at ?? l.createdAt) || now;
 
-            // 🔴 修改 1：去掉了不存在的 id 列，确保 SELECT 的是 uuid
-            let existing = await DB.prepare(
-              "SELECT uuid, version, created_at, updated_at FROM time_logs WHERE uuid = ? AND user_id = ?"
-            ).bind(lUuid, authUserId).first();
+            let existing = await DB.prepare("SELECT uuid, version, created_at, updated_at FROM time_logs WHERE uuid = ? AND user_id = ?").bind(lUuid, authUserId).first();
 
             if (!existing) {
               batchStatements.push(DB.prepare(
@@ -445,14 +426,8 @@ export default {
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
               ).bind(lUuid, authUserId, lTitle, lTagUuids, lStartTime, lEndTime, lRemark, lIsDeleted, lCreatedAt, now, lVersion, device_id));
             } else {
-              const existingCreatedAt = normalizeToMs(existing.created_at) || lCreatedAt;
-              const finalCreatedAt = Math.min(lCreatedAt, existingCreatedAt) || existingCreatedAt;
-              const existingUpdatedAtMs = normalizeToMs(existing.updated_at);
-
-              // LWW 冲突解决机制
-              if (lVersion > (existing.version || 0) || lUpdatedAtClient > existingUpdatedAtMs || !existing.uuid) {
-                // 🔴 修改 2：将 WHERE id=? 改为了 WHERE uuid=?
-                // 🔴 修改 3：bind 的最后一个参数从 existing.id 改为了 existing.uuid
+              const finalCreatedAt = Math.min(lCreatedAt, normalizeToMs(existing.created_at) || lCreatedAt);
+              if (lVersion > (existing.version || 0) || lUpdatedAtClient > normalizeToMs(existing.updated_at) || !existing.uuid) {
                 batchStatements.push(DB.prepare(
                   `UPDATE time_logs SET title=?, tag_uuids=?, start_time=?, end_time=?, remark=?, is_deleted=?, created_at=?, updated_at=?, version=?, device_id=? WHERE uuid=?`
                 ).bind(lTitle, lTagUuids, lStartTime, lEndTime, lRemark, lIsDeleted, finalCreatedAt, now, lVersion, device_id, existing.uuid));
@@ -473,41 +448,23 @@ export default {
           });
         }
 
-        // 统一提交当前批次执行的所有数据库变更
         if (batchStatements.length > 0) await DB.batch(batchStatements);
 
-        // ==========================================
-        // 5. 拉取最终的增量数据下发给客户端
-        // ==========================================
-        let serverTodosRaw;
-        let serverCountdownsRaw;
-        let serverTimeLogsRaw;
+        // 5. 拉取最终的增量数据
+        let serverTodosRaw, serverCountdownsRaw, serverTimeLogsRaw;
 
         if (last_sync_time === 0) {
-          // 全量同步
           serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE user_id = ?`).bind(authUserId).all();
           serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE user_id = ?`).bind(authUserId).all();
           serverTimeLogsRaw = await DB.prepare(`SELECT * FROM time_logs WHERE user_id = ?`).bind(authUserId).all();
         } else {
-          // 增量同步：排除本设备刚刚自己提交的数据
-          serverTodosRaw = await DB.prepare(`
-            SELECT * FROM todos WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
-          `).bind(authUserId, device_id).all();
-
-          serverCountdownsRaw = await DB.prepare(`
-            SELECT * FROM countdowns WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
-          `).bind(authUserId, device_id).all();
-
-          serverTimeLogsRaw = await DB.prepare(`
-            SELECT * FROM time_logs WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)
-          `).bind(authUserId, device_id).all();
+          serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
+          serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
+          serverTimeLogsRaw = await DB.prepare(`SELECT * FROM time_logs WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
         }
 
         const normalizeTimestamp = (val) => normalizeToMs(val);
-        const nullableTimestamp = (val) => {
-          const ms = normalizeToMs(val);
-          return ms > 0 ? ms : null;
-        };
+        const nullableTimestamp = (val) => { const ms = normalizeToMs(val); return ms > 0 ? ms : null; };
 
         const filteredTodos = serverTodosRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
         const filteredCountdowns = serverCountdownsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
@@ -516,67 +473,20 @@ export default {
         const mappedTodos = filteredTodos.map(row => {
             const idStr = row.uuid || String(row.id);
             return {
-              id: idStr,
-              uuid: idStr,
-              content: row.content,
-              is_completed: row.is_completed,
-              is_deleted: row.is_deleted,
-              version: row.version,
-              device_id: row.device_id,
-              created_at:   normalizeTimestamp(row.created_at),
-              updated_at:   normalizeTimestamp(row.updated_at),
-              created_date: nullableTimestamp(row.created_date),
-              due_date:     nullableTimestamp(row.due_date),
-              recurrence:         row.recurrence         ?? 0,
-              customIntervalDays: row.custom_interval_days ?? null,
-              recurrenceEndDate:  nullableTimestamp(row.recurrence_end_date),
-              recurrence_end_date:nullableTimestamp(row.recurrence_end_date),
-              remark: row.remark ?? null,
+              id: idStr, uuid: idStr, content: row.content, is_completed: row.is_completed, is_deleted: row.is_deleted, version: row.version, device_id: row.device_id,
+              created_at: normalizeTimestamp(row.created_at), updated_at: normalizeTimestamp(row.updated_at), created_date: nullableTimestamp(row.created_date), due_date: nullableTimestamp(row.due_date), recurrence: row.recurrence ?? 0, customIntervalDays: row.custom_interval_days ?? null, recurrenceEndDate: nullableTimestamp(row.recurrence_end_date), recurrence_end_date: nullableTimestamp(row.recurrence_end_date), remark: row.remark ?? null,
             };
         });
 
         const mappedCountdowns = filteredCountdowns.map(row => {
              const idStr = row.uuid || String(row.id);
-             return {
-               id: idStr,
-               uuid: idStr,
-               title: row.title,
-               is_deleted: row.is_deleted,
-               version: row.version,
-               device_id: row.device_id,
-               created_at:  normalizeTimestamp(row.created_at),
-               updated_at:  normalizeTimestamp(row.updated_at),
-               target_time: nullableTimestamp(row.target_time),
-             };
+             return { id: idStr, uuid: idStr, title: row.title, is_deleted: row.is_deleted, version: row.version, device_id: row.device_id, created_at: normalizeTimestamp(row.created_at), updated_at: normalizeTimestamp(row.updated_at), target_time: nullableTimestamp(row.target_time) };
         });
 
-        // 🚀 格式化返回给客户端的时间日志增量数据
         const mappedTimeLogs = filteredTimeLogs.map(row => {
-             // 1. 彻底移除 row.id 引用
              const idStr = row.uuid;
-
-             // 2. 安全解析 JSON
-             let parsedTags = [];
-             try {
-               parsedTags = JSON.parse(row.tag_uuids || '[]');
-             } catch (e) {
-               console.error(`解析 tag_uuids 失败 [uuid: ${idStr}]:`, e);
-             }
-
-             return {
-               id: idStr,
-               uuid: idStr,
-               title: row.title,
-               tag_uuids: parsedTags,
-               start_time: normalizeTimestamp(row.start_time),
-               end_time: normalizeTimestamp(row.end_time),
-               remark: row.remark ?? null,
-               is_deleted: row.is_deleted,
-               version: row.version,
-               device_id: row.device_id,
-               created_at: normalizeTimestamp(row.created_at),
-               updated_at: normalizeTimestamp(row.updated_at),
-             };
+             let parsedTags = []; try { parsedTags = JSON.parse(row.tag_uuids || '[]'); } catch (e) { }
+             return { id: idStr, uuid: idStr, title: row.title, tag_uuids: parsedTags, start_time: normalizeTimestamp(row.start_time), end_time: normalizeTimestamp(row.end_time), remark: row.remark ?? null, is_deleted: row.is_deleted, version: row.version, device_id: row.device_id, created_at: normalizeTimestamp(row.created_at), updated_at: normalizeTimestamp(row.updated_at) };
         });
 
         const userRow = await DB.prepare("SELECT tier FROM users WHERE id = ?").bind(authUserId).first();
@@ -589,14 +499,14 @@ export default {
           success: true,
           server_todos: mappedTodos,
           server_countdowns: mappedCountdowns,
-          server_time_logs: mappedTimeLogs, // 🚀 添加在返回值中
+          server_time_logs: mappedTimeLogs,
           new_sync_time: now,
           status: { tier, sync_count: record ? record.sync_count : 1, sync_limit: syncLimit }
         });
       }
 
       // --------------------------
-      // 模块 D: 屏幕使用时间 (Screen Time)
+      // 模块 D: 屏幕使用时间
       // --------------------------
       if (url.pathname === "/api/screen_time" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
@@ -619,8 +529,7 @@ export default {
 
       if (url.pathname === "/api/screen_time" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const userIdStr = url.searchParams.get("user_id");
-        const userId = parseInt(userIdStr, 10); // 🚀 统一修复 Get 请求
+        const userId = parseInt(url.searchParams.get("user_id"), 10);
         const date = url.searchParams.get("date");
         if (authUserId !== userId) return errorResponse("越权访问被拒绝", 403);
 
@@ -635,15 +544,13 @@ export default {
       }
 
       // --------------------------
-      // 模块 E: 课程表 (Courses)
+      // 模块 E: 课程表 & 用户设置
       // --------------------------
       if (url.pathname === "/api/courses" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const userIdStr = url.searchParams.get("user_id");
-        const userId = parseInt(userIdStr, 10); // 🚀 统一修复 Get 请求
+        const userId = parseInt(url.searchParams.get("user_id"), 10);
         const semester = url.searchParams.get("semester") || "default";
-        if (authUserId !== userId) return errorResponse("越权访问被拒绝", 403);
-
+        if (authUserId !== userId) return errorResponse("越权", 403);
         const { results } = await DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND semester = ? AND is_deleted = 0 ORDER BY week_index, weekday, start_time`).bind(userId, semester).all();
         return jsonResponse(results);
       }
@@ -651,32 +558,23 @@ export default {
       if (url.pathname === "/api/courses" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
         const { user_id, courses, semester = "default" } = await request.json();
-        if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
-
+        if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权", 403);
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError && limitError !== 'IGNORE') return errorResponse(limitError, 429);
 
         const batchStatements = [DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?").bind(user_id, semester)];
         for (const c of courses) {
-          batchStatements.push(DB.prepare(`INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(user_id, semester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, now, now));
+          batchStatements.push(DB.prepare(`INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(user_id, semester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, 0, now, now));
         }
-
         if (batchStatements.length > 0) await DB.batch(batchStatements);
         return jsonResponse({ success: true });
       }
 
-      // --------------------------
-      // 模块 E2: 用户设置 (User Settings) - 开学/放假时间同步
-      // --------------------------
       if (url.pathname === "/api/settings" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const row = await DB.prepare("SELECT semester_start, semester_end FROM users WHERE id = ?").bind(authUserId).first();
-        return jsonResponse({
-          success: true,
-          semester_start: row ? (row.semester_start ?? null) : null,
-          semester_end: row ? (row.semester_end ?? null) : null,
-        });
+        return jsonResponse({ success: true, semester_start: row?.semester_start ?? null, semester_end: row?.semester_end ?? null });
       }
 
       if (url.pathname === "/api/settings" && request.method === "POST") {
@@ -684,123 +582,19 @@ export default {
         const body = await request.json();
         const semStart = body.semester_start != null ? normalizeToMs(body.semester_start) : null;
         const semEnd = body.semester_end != null ? normalizeToMs(body.semester_end) : null;
-        await DB.prepare("UPDATE users SET semester_start = ?, semester_end = ? WHERE id = ?")
-          .bind(semStart, semEnd, authUserId).run();
+        await DB.prepare("UPDATE users SET semester_start = ?, semester_end = ? WHERE id = ?").bind(semStart, semEnd, authUserId).run();
         return jsonResponse({ success: true });
       }
 
       // --------------------------
-      // 模块 F: 数据库迁移
+      // 模块 H/I/J: 番茄钟
       // --------------------------
-      if (url.pathname === "/api/admin/migrate" && request.method === "POST") {
-        if (!authUserId) return errorResponse("未授权", 401);
-        if (authUserId !== 1) return errorResponse("仅管理员可执行迁移", 403);
-
-        const migrations = [
-          `ALTER TABLE todos ADD COLUMN recurrence INTEGER DEFAULT 0`,
-          `ALTER TABLE todos ADD COLUMN custom_interval_days INTEGER`,
-          `ALTER TABLE todos ADD COLUMN recurrence_end_date INTEGER`,
-          `ALTER TABLE sync_limits ADD COLUMN last_sync_time INTEGER DEFAULT 0`,
-          `ALTER TABLE users ADD COLUMN semester_start INTEGER`,
-          `ALTER TABLE users ADD COLUMN semester_end INTEGER`
-        ];
-
-        const results = [];
-        for (const sql of migrations) {
-          try {
-            await DB.prepare(sql).run();
-            results.push({ sql, status: 'ok' });
-          } catch (e) {
-            const isDup = e.message && (e.message.includes('duplicate') || e.message.includes('already exists'));
-            results.push({ sql, status: isDup ? 'already_exists' : `error: ${e.message}` });
-          }
-        }
-        return jsonResponse({ success: true, results });
-      }
-
-      // --------------------------
-      // 模块 G: 历史数据修复
-      // --------------------------
-      if (url.pathname === "/api/admin/fix_timestamps" && request.method === "POST") {
-        if (!authUserId) return errorResponse("未授权", 401);
-        if (authUserId !== 1) return errorResponse("仅管理员可执行修复", 403);
-
-        const allTodos = await DB.prepare("SELECT id, created_at, updated_at, due_date, created_date FROM todos").all();
-        let todoFixed = 0;
-        const todoBatch = [];
-        for (const row of allTodos.results) {
-          const newCreatedAt  = normalizeToMs(row.created_at);
-          const newUpdatedAt  = normalizeToMs(row.updated_at);
-          const newDueDate    = normalizeToMs(row.due_date)    || null;
-          const newCreatedDate= normalizeToMs(row.created_date)|| null;
-
-          const changed =
-            String(newCreatedAt)   !== String(row.created_at)  ||
-            String(newUpdatedAt)   !== String(row.updated_at)  ||
-            String(newDueDate)     !== String(row.due_date)    ||
-            String(newCreatedDate) !== String(row.created_date);
-
-          if (changed) {
-            todoBatch.push(
-              DB.prepare(
-                "UPDATE todos SET created_at=?, updated_at=?, due_date=?, created_date=? WHERE id=?"
-              ).bind(newCreatedAt, newUpdatedAt, newDueDate, newCreatedDate, row.id)
-            );
-            todoFixed++;
-          }
-        }
-
-        const allCds = await DB.prepare("SELECT id, created_at, updated_at, target_time FROM countdowns").all();
-        let cdFixed = 0;
-        const cdBatch = [];
-        for (const row of allCds.results) {
-          const newCreatedAt = normalizeToMs(row.created_at);
-          const newUpdatedAt = normalizeToMs(row.updated_at);
-          const newTargetTime= normalizeToMs(row.target_time) || null;
-
-          const changed =
-            String(newCreatedAt)  !== String(row.created_at) ||
-            String(newUpdatedAt)  !== String(row.updated_at) ||
-            String(newTargetTime) !== String(row.target_time);
-
-          if (changed) {
-            cdBatch.push(
-              DB.prepare(
-                "UPDATE countdowns SET created_at=?, updated_at=?, target_time=? WHERE id=?"
-              ).bind(newCreatedAt, newUpdatedAt, newTargetTime, row.id)
-            );
-            cdFixed++;
-          }
-        }
-
-        const allBatch = [...todoBatch, ...cdBatch];
-        for (let i = 0; i < allBatch.length; i += 100) {
-          await DB.batch(allBatch.slice(i, i + 100));
-        }
-
-        return jsonResponse({
-          success: true,
-          todos_fixed: todoFixed,
-          countdowns_fixed: cdFixed,
-          total_todos: allTodos.results.length,
-          total_countdowns: allCds.results.length,
-        });
-      }
-
-      // --------------------------
-      // 模块 H: 番茄钟标签 (pomodoro_tags)
-      // --------------------------
-
-      // 拉取用户标签
       if (url.pathname === "/api/pomodoro/tags" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const { results } = await DB.prepare(
-          "SELECT uuid, name, color, is_deleted, version, created_at, updated_at FROM pomodoro_tags WHERE user_id = ? ORDER BY created_at ASC"
-        ).bind(authUserId).all();
+        const { results } = await DB.prepare("SELECT uuid, name, color, is_deleted, version, created_at, updated_at FROM pomodoro_tags WHERE user_id = ? ORDER BY created_at ASC").bind(authUserId).all();
         return jsonResponse(results);
       }
 
-      // Delta Sync 上传标签
       if (url.pathname === "/api/pomodoro/tags" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
         const { tags } = await request.json();
@@ -810,201 +604,348 @@ export default {
         for (const tag of tags) {
           const uuid = String(tag.uuid ?? '');
           if (!uuid) continue;
-          const name      = String(tag.name ?? '');
-          const color     = String(tag.color ?? '#607D8B');
+          const name = String(tag.name ?? '');
+          const color = String(tag.color ?? '#607D8B');
           const isDeleted = (tag.is_deleted ?? tag.isDeleted) ? 1 : 0;
-          const version   = parseInt(tag.version ?? 1, 10);
+          const version = parseInt(tag.version ?? 1, 10);
           const createdAt = normalizeToMs(tag.created_at ?? tag.createdAt) || now;
           const updatedAt = normalizeToMs(tag.updated_at ?? tag.updatedAt) || now;
 
-          const existing = await DB.prepare(
-            "SELECT version, updated_at FROM pomodoro_tags WHERE uuid = ? AND user_id = ?"
-          ).bind(uuid, authUserId).first();
-
+          const existing = await DB.prepare("SELECT version, updated_at FROM pomodoro_tags WHERE uuid = ? AND user_id = ?").bind(uuid, authUserId).first();
           if (!existing) {
-            batch.push(DB.prepare(
-              "INSERT INTO pomodoro_tags (uuid, user_id, name, color, is_deleted, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)"
-            ).bind(uuid, authUserId, name, color, isDeleted, version, createdAt, updatedAt));
+            batch.push(DB.prepare("INSERT INTO pomodoro_tags (uuid, user_id, name, color, is_deleted, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)").bind(uuid, authUserId, name, color, isDeleted, version, createdAt, updatedAt));
           } else if (version > (existing.version || 0) || updatedAt > normalizeToMs(existing.updated_at)) {
-            batch.push(DB.prepare(
-              "UPDATE pomodoro_tags SET name=?, color=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?"
-            ).bind(name, color, isDeleted, version, updatedAt, uuid, authUserId));
+            batch.push(DB.prepare("UPDATE pomodoro_tags SET name=?, color=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?").bind(name, color, isDeleted, version, updatedAt, uuid, authUserId));
           }
         }
         if (batch.length > 0) await DB.batch(batch);
-        // 返回最新标签（含已删除，供客户端 LWW 合并）
-        const { results } = await DB.prepare(
-          "SELECT uuid, name, color, is_deleted, version, created_at, updated_at FROM pomodoro_tags WHERE user_id = ? ORDER BY created_at ASC"
-        ).bind(authUserId).all();
+        const { results } = await DB.prepare("SELECT uuid, name, color, is_deleted, version, created_at, updated_at FROM pomodoro_tags WHERE user_id = ? ORDER BY created_at ASC").bind(authUserId).all();
         return jsonResponse({ success: true, tags: results });
       }
 
-      // --------------------------
-      // 模块 I: 番茄钟记录 (pomodoro_records)
-      // --------------------------
-
-      // 查询当前是否有其他设备正在专注（5分钟内有未结束的记录）
       if (url.pathname === "/api/pomodoro/active" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const deviceId = url.searchParams.get("device_id") || "";
         const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-        // 查询 5 分钟内开始、尚未结束（end_time IS NULL）、非本设备的记录
-        const row = await DB.prepare(`
-          SELECT uuid, todo_uuid, start_time, planned_duration, device_id
-          FROM pomodoro_records
-          WHERE user_id = ?
-            AND is_deleted = 0
-            AND end_time IS NULL
-            AND start_time >= ?
-            AND (device_id IS NULL OR device_id != ?)
-          ORDER BY start_time DESC
-          LIMIT 1
-        `).bind(authUserId, fiveMinAgo, deviceId).first();
+        const row = await DB.prepare(`SELECT uuid, todo_uuid, start_time, planned_duration, device_id FROM pomodoro_records WHERE user_id = ? AND is_deleted = 0 AND end_time IS NULL AND start_time >= ? AND (device_id IS NULL OR device_id != ?) ORDER BY start_time DESC LIMIT 1`).bind(authUserId, fiveMinAgo, deviceId).first();
         if (!row) return jsonResponse({ active: false });
         return jsonResponse({ active: true, record: row });
       }
 
-      // 上传专注记录
       if (url.pathname === "/api/pomodoro/records" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
         const body = await request.json();
-        // 支持单条 { record: {...} } 或批量 { records: [...] }
-        const records = Array.isArray(body.records) ? body.records
-                      : (body.record ? [body.record] : []);
+        const records = Array.isArray(body.records) ? body.records : (body.record ? [body.record] : []);
         if (records.length === 0) return errorResponse("records 为空");
         const now = Date.now();
         const batch = [];
 
         for (const r of records) {
-          const uuid            = String(r.uuid ?? '');
+          const uuid = String(r.uuid ?? '');
           if (!uuid) continue;
-          const todoUuid        = r.todo_uuid  ? String(r.todo_uuid)  : null;
-          const startTime       = normalizeToMs(r.start_time)  || now;
-          const endTime         = r.end_time != null ? (normalizeToMs(r.end_time) || null) : null;
+          const todoUuid = r.todo_uuid ? String(r.todo_uuid) : null;
+          const startTime = normalizeToMs(r.start_time) || now;
+          const endTime = r.end_time != null ? (normalizeToMs(r.end_time) || null) : null;
           const plannedDuration = typeof r.planned_duration === 'number' ? r.planned_duration : parseInt(r.planned_duration || 25*60, 10);
-          const actualDuration  = r.actual_duration != null ? parseInt(r.actual_duration, 10) : null;
-          const status          = ['completed','interrupted','switched'].includes(r.status) ? r.status : 'completed';
-          const deviceId        = r.device_id  ? String(r.device_id)  : null;
-          const isDeleted       = (r.is_deleted ?? r.isDeleted) ? 1 : 0;
-          const version         = parseInt(r.version ?? 1, 10);
-          const createdAt       = normalizeToMs(r.created_at ?? r.createdAt) || now;
-          const updatedAt       = normalizeToMs(r.updated_at ?? r.updatedAt) || now;
-          const tagUuidsArr     = Array.isArray(r.tag_uuids) ? r.tag_uuids.map(String) : [];
+          const actualDuration = r.actual_duration != null ? parseInt(r.actual_duration, 10) : null;
+          const status = ['completed','interrupted','switched'].includes(r.status) ? r.status : 'completed';
+          const deviceId = r.device_id ? String(r.device_id) : null;
+          const isDeleted = (r.is_deleted ?? r.isDeleted) ? 1 : 0;
+          const version = parseInt(r.version ?? 1, 10);
+          const createdAt = normalizeToMs(r.created_at ?? r.createdAt) || now;
+          const updatedAt = normalizeToMs(r.updated_at ?? r.updatedAt) || now;
+          const tagUuidsArr = Array.isArray(r.tag_uuids) ? r.tag_uuids.map(String) : [];
 
-          const existing = await DB.prepare(
-            "SELECT version, updated_at FROM pomodoro_records WHERE uuid = ? AND user_id = ?"
-          ).bind(uuid, authUserId).first();
-
+          const existing = await DB.prepare("SELECT version, updated_at FROM pomodoro_records WHERE uuid = ? AND user_id = ?").bind(uuid, authUserId).first();
           if (!existing) {
-            batch.push(DB.prepare(`
-              INSERT INTO pomodoro_records
-                (uuid, user_id, todo_uuid, start_time, end_time, planned_duration, actual_duration, status, device_id, is_deleted, version, created_at, updated_at)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-            `).bind(uuid, authUserId, todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, createdAt, updatedAt));
+            batch.push(DB.prepare(`INSERT INTO pomodoro_records (uuid, user_id, todo_uuid, start_time, end_time, planned_duration, actual_duration, status, device_id, is_deleted, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(uuid, authUserId, todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, createdAt, updatedAt));
           } else if (version > (existing.version || 0) || updatedAt > normalizeToMs(existing.updated_at)) {
-            batch.push(DB.prepare(`
-              UPDATE pomodoro_records SET
-                todo_uuid=?, start_time=?, end_time=?, planned_duration=?, actual_duration=?,
-                status=?, device_id=?, is_deleted=?, version=?, updated_at=?
-              WHERE uuid=? AND user_id=?
-            `).bind(todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, updatedAt, uuid, authUserId));
+            batch.push(DB.prepare(`UPDATE pomodoro_records SET todo_uuid=?, start_time=?, end_time=?, planned_duration=?, actual_duration=?, status=?, device_id=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?`).bind(todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, updatedAt, uuid, authUserId));
           }
 
-          // 写入 todo_tags 关联
-          // todoUuid 非空 → 用 todoUuid 作键；自由专注 → 用 record uuid 作键
           if (tagUuidsArr.length > 0) {
             const tagsKey = todoUuid || uuid;
             for (const tagUuid of tagUuidsArr) {
-              batch.push(DB.prepare(
-                "INSERT OR REPLACE INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at) VALUES (?,?,0,?)"
-              ).bind(tagsKey, tagUuid, now));
+              batch.push(DB.prepare("INSERT OR REPLACE INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at) VALUES (?,?,0,?)").bind(tagsKey, tagUuid, now));
             }
           }
         }
-
         if (batch.length > 0) await DB.batch(batch);
         return jsonResponse({ success: true });
       }
 
-      // 拉取专注记录（按时间范围），通过 todo_uuid JOIN todo_tags 附带标签
       if (url.pathname === "/api/pomodoro/records" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const fromMs = parseInt(url.searchParams.get("from") || "0", 10);
-        const toMs   = parseInt(url.searchParams.get("to")   || String(Date.now()), 10);
-
-        // 一次 SQL 聚合标签：LEFT JOIN todo_tags + todos，支持 todo_uuid 和 record uuid 两种键
+        const toMs = parseInt(url.searchParams.get("to") || String(Date.now()), 10);
         const { results } = await DB.prepare(`
-          SELECT r.*,
-            t.content AS todo_title,
-            GROUP_CONCAT(tt.tag_uuid) AS tag_uuids_concat
-          FROM pomodoro_records r
-          LEFT JOIN todos t ON r.todo_uuid = t.uuid
-          LEFT JOIN todo_tags tt
-            ON COALESCE(r.todo_uuid, r.uuid) = tt.todo_uuid AND tt.is_deleted = 0
-          WHERE r.user_id = ? AND r.is_deleted = 0
-            AND r.start_time >= ? AND r.start_time <= ?
-          GROUP BY r.uuid
-          ORDER BY r.start_time DESC
+          SELECT r.*, t.content AS todo_title, GROUP_CONCAT(tt.tag_uuid) AS tag_uuids_concat
+          FROM pomodoro_records r LEFT JOIN todos t ON r.todo_uuid = t.uuid LEFT JOIN todo_tags tt ON COALESCE(r.todo_uuid, r.uuid) = tt.todo_uuid AND tt.is_deleted = 0
+          WHERE r.user_id = ? AND r.is_deleted = 0 AND r.start_time >= ? AND r.start_time <= ? GROUP BY r.uuid ORDER BY r.start_time DESC
         `).bind(authUserId, fromMs, toMs).all();
 
-        // 把 GROUP_CONCAT 结果拆成数组
         const enriched = results.map(r => ({
-          ...r,
-          tag_uuids: r.tag_uuids_concat
-            ? r.tag_uuids_concat.split(',').filter(Boolean)
-            : [],
-          tag_uuids_concat: undefined, // 不暴露内部字段
+          ...r, tag_uuids: r.tag_uuids_concat ? r.tag_uuids_concat.split(',').filter(Boolean) : [], tag_uuids_concat: undefined,
         }));
-
         return jsonResponse(enriched);
       }
-
-      // --------------------------
-      // 模块 J: 番茄钟设置同步 (pomodoro_settings)
-      // --------------------------
 
       if (url.pathname === "/api/pomodoro/settings" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
         const { default_focus_duration, default_rest_duration, default_loop_count } = await request.json();
-        const now = Date.now();
-        await DB.prepare(`
-          INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, updated_at)
-          VALUES (?,?,?,?,?)
-          ON CONFLICT(user_id) DO UPDATE SET
-            default_focus_duration = excluded.default_focus_duration,
-            default_rest_duration  = excluded.default_rest_duration,
-            default_loop_count     = excluded.default_loop_count,
-            updated_at             = excluded.updated_at
-        `).bind(authUserId, default_focus_duration ?? 1500, default_rest_duration ?? 300, default_loop_count ?? 4, now).run();
+        await DB.prepare(`INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET default_focus_duration = excluded.default_focus_duration, default_rest_duration  = excluded.default_rest_duration, default_loop_count = excluded.default_loop_count, updated_at = excluded.updated_at`).bind(authUserId, default_focus_duration ?? 1500, default_rest_duration ?? 300, default_loop_count ?? 4, Date.now()).run();
         return jsonResponse({ success: true });
       }
 
       if (url.pathname === "/api/pomodoro/settings" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const row = await DB.prepare(
-          "SELECT * FROM pomodoro_settings WHERE user_id = ?"
-        ).bind(authUserId).first();
-        return jsonResponse(row ?? {
-          user_id: authUserId,
-          default_focus_duration: 1500,
-          default_rest_duration: 300,
-          default_loop_count: 4,
-        });
+        const row = await DB.prepare("SELECT * FROM pomodoro_settings WHERE user_id = ?").bind(authUserId).first();
+        return jsonResponse(row ?? { user_id: authUserId, default_focus_duration: 1500, default_rest_duration: 300, default_loop_count: 4 });
       }
 
-      return errorResponse("API Endpoint Not Found", 404);
+      // --------------------------
+      // 🚀 模块 K: 服务器间底层安全合并 (S2S Merge Sync)
+      // --------------------------
+      if (url.pathname === "/api/admin/s2s_receive_merge" && request.method === "POST") {
+        const adminSecret = request.headers.get("x-admin-secret");
+        if (adminSecret !== (env.API_SECRET)) {
+          return errorResponse("S2S 验证失败：非法访问", 401);
+        }
 
-    } catch (e) {
-      return errorResponse(`Server Error: ${e.message}`, 500);
-    }
-  },
+        const body = await request.json();
+        const batchStatements = [];
+        let syncedRecords = 0;
+        const userIdMap = {}; // 核心映射表：阿里云 user_id -> Cloudflare user_id
+
+        // 1. 智能合并 Users 表 (依据 Email 进行精准身份对齐)
+        if (body.users && body.users.length > 0) {
+          for (const u of body.users) {
+            const existing = await DB.prepare("SELECT id FROM users WHERE email = ?").bind(u.email).first();
+            if (existing) {
+              userIdMap[u.id] = existing.id;
+              // 更新此用户的其他常规信息，绝不改变 ID 和 Email
+              await DB.prepare(`UPDATE users SET username=?, password_hash=?, tier=?, avatar_url=?, semester_start=?, semester_end=? WHERE id=?`)
+                .bind(u.username, u.password_hash, u.tier, u.avatar_url, u.semester_start, u.semester_end, existing.id).run();
+              syncedRecords++;
+            } else {
+              // 插入全新用户，利用 RETURNING id 获取 D1 数据库自增产生的新真实 ID
+              const result = await DB.prepare(`INSERT INTO users (username, email, password_hash, tier, avatar_url, semester_start, semester_end, created_at) VALUES (?,?,?,?,?,?,?,?) RETURNING id`)
+                .bind(u.username, u.email, u.password_hash, u.tier, u.avatar_url, u.semester_start, u.semester_end, u.created_at).first();
+              if (result && result.id) {
+                userIdMap[u.id] = result.id;
+                syncedRecords++;
+              }
+            }
+          }
+        }
+
+        // 用于将外键自动转换到云端合法 ID 上的工具函数
+        const getMappedUserId = (oldId) => userIdMap[oldId] || oldId;
+
+        // 2. 合并 Todos (利用 ON CONFLICT DO UPDATE 搭配 WHERE LWW最后写入者胜)
+        if (body.todos && body.todos.length > 0) {
+          body.todos.forEach(t => {
+            if (!t.uuid) return;
+            batchStatements.push(DB.prepare(`
+              INSERT INTO todos (uuid, user_id, content, is_completed, is_deleted, version, device_id, created_at, updated_at, due_date, created_date, recurrence, custom_interval_days, recurrence_end_date, remark)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(uuid) DO UPDATE SET
+                content=excluded.content, is_completed=excluded.is_completed, is_deleted=excluded.is_deleted, version=excluded.version, device_id=excluded.device_id, updated_at=excluded.updated_at, due_date=excluded.due_date, created_date=excluded.created_date, recurrence=excluded.recurrence, custom_interval_days=excluded.custom_interval_days, recurrence_end_date=excluded.recurrence_end_date, remark=excluded.remark
+              WHERE excluded.updated_at > todos.updated_at OR (excluded.updated_at = todos.updated_at AND excluded.version > todos.version)
+            `).bind(t.uuid, getMappedUserId(t.user_id), t.content, t.is_completed, t.is_deleted, t.version, t.device_id, t.created_at, t.updated_at, t.due_date, t.created_date, t.recurrence, t.custom_interval_days, t.recurrence_end_date, t.remark));
+          });
+        }
+
+        // 3. 合并 Countdowns
+        if (body.countdowns && body.countdowns.length > 0) {
+          body.countdowns.forEach(c => {
+            if (!c.uuid) return;
+            batchStatements.push(DB.prepare(`
+              INSERT INTO countdowns (uuid, user_id, title, target_time, is_deleted, version, device_id, created_at, updated_at)
+              VALUES (?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(uuid) DO UPDATE SET
+                title=excluded.title, target_time=excluded.target_time, is_deleted=excluded.is_deleted, version=excluded.version, device_id=excluded.device_id, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > countdowns.updated_at OR (excluded.updated_at = countdowns.updated_at AND excluded.version > countdowns.version)
+            `).bind(c.uuid, getMappedUserId(c.user_id), c.title, c.target_time, c.is_deleted, c.version, c.device_id, c.created_at, c.updated_at));
+          });
+        }
+
+        // 4. 合并 Time Logs
+        if (body.time_logs && body.time_logs.length > 0) {
+          body.time_logs.forEach(l => {
+            if (!l.uuid) return;
+            batchStatements.push(DB.prepare(`
+              INSERT INTO time_logs (uuid, user_id, title, tag_uuids, start_time, end_time, remark, is_deleted, version, device_id, created_at, updated_at)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(uuid) DO UPDATE SET
+                title=excluded.title, tag_uuids=excluded.tag_uuids, start_time=excluded.start_time, end_time=excluded.end_time, remark=excluded.remark, is_deleted=excluded.is_deleted, version=excluded.version, device_id=excluded.device_id, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > time_logs.updated_at OR (excluded.updated_at = time_logs.updated_at AND excluded.version > time_logs.version)
+            `).bind(l.uuid, getMappedUserId(l.user_id), l.title, l.tag_uuids, l.start_time, l.end_time, l.remark, l.is_deleted, l.version, l.device_id, l.created_at, l.updated_at));
+          });
+        }
+
+        // 5. 合并 Pomodoro Tags
+        if (body.pomodoro_tags && body.pomodoro_tags.length > 0) {
+          body.pomodoro_tags.forEach(p => {
+            if (!p.uuid) return;
+            batchStatements.push(DB.prepare(`
+              INSERT INTO pomodoro_tags (uuid, user_id, name, color, is_deleted, version, created_at, updated_at)
+              VALUES (?,?,?,?,?,?,?,?)
+              ON CONFLICT(uuid) DO UPDATE SET
+                name=excluded.name, color=excluded.color, is_deleted=excluded.is_deleted, version=excluded.version, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > pomodoro_tags.updated_at OR (excluded.updated_at = pomodoro_tags.updated_at AND excluded.version > pomodoro_tags.version)
+            `).bind(p.uuid, getMappedUserId(p.user_id), p.name, p.color, p.is_deleted, p.version, p.created_at, p.updated_at));
+          });
+        }
+
+        // 6. 合并 Pomodoro Records
+        if (body.pomodoro_records && body.pomodoro_records.length > 0) {
+          body.pomodoro_records.forEach(p => {
+            if (!p.uuid) return;
+            batchStatements.push(DB.prepare(`
+              INSERT INTO pomodoro_records (uuid, user_id, todo_uuid, start_time, end_time, planned_duration, actual_duration, status, device_id, is_deleted, version, created_at, updated_at)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(uuid) DO UPDATE SET
+                todo_uuid=excluded.todo_uuid, start_time=excluded.start_time, end_time=excluded.end_time, planned_duration=excluded.planned_duration, actual_duration=excluded.actual_duration, status=excluded.status, device_id=excluded.device_id, is_deleted=excluded.is_deleted, version=excluded.version, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > pomodoro_records.updated_at OR (excluded.updated_at = pomodoro_records.updated_at AND excluded.version > pomodoro_records.version)
+            `).bind(p.uuid, getMappedUserId(p.user_id), p.todo_uuid, p.start_time, p.end_time, p.planned_duration, p.actual_duration, p.status, p.device_id, p.is_deleted, p.version, p.created_at, p.updated_at));
+          });
+        }
+
+        // 7. 合并 Pomodoro Settings
+        if (body.pomodoro_settings && body.pomodoro_settings.length > 0) {
+          body.pomodoro_settings.forEach(p => {
+            batchStatements.push(DB.prepare(`
+              INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, updated_at)
+              VALUES (?,?,?,?,?)
+              ON CONFLICT(user_id) DO UPDATE SET
+                default_focus_duration=excluded.default_focus_duration, default_rest_duration=excluded.default_rest_duration, default_loop_count=excluded.default_loop_count, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > pomodoro_settings.updated_at
+            `).bind(getMappedUserId(p.user_id), p.default_focus_duration, p.default_rest_duration, p.default_loop_count, p.updated_at));
+          });
+        }
+
+        // 8. 合并 Tags
+        if (body.todo_tags && body.todo_tags.length > 0) {
+          body.todo_tags.forEach(t => {
+            batchStatements.push(DB.prepare(`
+              INSERT INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at)
+              VALUES (?,?,?,?)
+              ON CONFLICT(todo_uuid, tag_uuid) DO UPDATE SET
+                is_deleted=excluded.is_deleted, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > todo_tags.updated_at
+            `).bind(t.todo_uuid, t.tag_uuid, t.is_deleted, t.updated_at));
+          });
+        }
+
+        // 9. 合并 Screen Time Logs (多主键复合唯一限制下的自动覆盖)
+        if (body.screen_time_logs && body.screen_time_logs.length > 0) {
+          body.screen_time_logs.forEach(s => {
+            batchStatements.push(DB.prepare(`
+              INSERT INTO screen_time_logs (user_id, device_name, record_date, app_name, duration, updated_at)
+              VALUES (?,?,?,?,?,?)
+              ON CONFLICT(user_id, device_name, record_date, app_name) DO UPDATE SET
+                duration=excluded.duration, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > screen_time_logs.updated_at
+            `).bind(getMappedUserId(s.user_id), s.device_name, s.record_date, s.app_name, s.duration, s.updated_at));
+          });
+        }
+
+        // 10. 合并 App Name Mappings
+        if (body.app_name_mappings && body.app_name_mappings.length > 0) {
+          body.app_name_mappings.forEach(a => {
+            batchStatements.push(DB.prepare(`
+              INSERT INTO app_name_mappings (package_name, mapped_name, category)
+              VALUES (?,?,?)
+              ON CONFLICT(package_name) DO UPDATE SET
+                mapped_name=excluded.mapped_name, category=excluded.category
+            `).bind(a.package_name, a.mapped_name, a.category));
+          });
+        }
+
+        // 11. 谨慎合并 Courses：检测是否存在重复的记录，不存在才插入
+        if (body.courses && body.courses.length > 0) {
+          for (const c of body.courses) {
+             const mappedId = getMappedUserId(c.user_id);
+             const existing = await DB.prepare("SELECT id FROM courses WHERE user_id=? AND semester=? AND course_name=? AND weekday=? AND start_time=?").bind(mappedId, c.semester, c.course_name, c.weekday, c.start_time).first();
+             if (!existing) {
+               batchStatements.push(DB.prepare(`
+                 INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, is_deleted, created_at, updated_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+               `).bind(mappedId, c.semester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, c.is_deleted, c.created_at, c.updated_at));
+             } else if (c.updated_at) {
+               batchStatements.push(DB.prepare(`
+                 UPDATE courses SET room_name=?, teacher_name=?, end_time=?, week_index=?, lesson_type=?, is_deleted=?, updated_at=?
+                 WHERE id=? AND ? > updated_at
+               `).bind(c.room_name, c.teacher_name, c.end_time, c.week_index, c.lesson_type, c.is_deleted, c.updated_at, existing.id, c.updated_at));
+             }
+          }
+        }
+
+        // 12. 谨慎合并 Leaderboard：防止重复生成积分历史
+        if (body.leaderboard && body.leaderboard.length > 0) {
+           for (const l of body.leaderboard) {
+              const mappedId = getMappedUserId(l.user_id);
+              const existing = await DB.prepare("SELECT id FROM leaderboard WHERE user_id=? AND score=? AND duration=? AND played_at=?").bind(mappedId, l.score, l.duration, l.played_at).first();
+              if (!existing) {
+                 batchStatements.push(DB.prepare(`INSERT INTO leaderboard (user_id, username, score, duration, played_at) VALUES (?,?,?,?,?)`).bind(mappedId, l.username, l.score, l.duration, l.played_at));
+              }
+           }
+        }
+
+        // 统一提交批处理，单次最多执行 100 条 (Cloudflare 限制)
+        syncedRecords += batchStatements.length;
+        if (batchStatements.length > 0) {
+          for (let i = 0; i < batchStatements.length; i += 100) {
+            await DB.batch(batchStatements.slice(i, i + 100));
+          }
+        }
+
+        return jsonResponse({ success: true, synced_records: syncedRecords, message: "Smart Merge Complete" });
+      }
+
+	if (url.pathname === "/api/admin/s2s_export" && request.method === "GET") {
+	  const adminSecret = request.headers.get("x-admin-secret");
+	  if (adminSecret !== (env.API_SECRET) {
+		return errorResponse("S2S 验证失败：非法访问", 401);
+	  }
+
+	  try {
+		// 获取所有表的全量数据
+		const payload = {
+			users: (await DB.prepare("SELECT * FROM users").all()).results,
+			todos: (await DB.prepare("SELECT * FROM todos").all()).results,
+			countdowns: (await DB.prepare("SELECT * FROM countdowns").all()).results,
+			time_logs: (await DB.prepare("SELECT * FROM time_logs").all()).results,
+			courses: (await DB.prepare("SELECT * FROM courses").all()).results,
+			pomodoro_tags: (await DB.prepare("SELECT * FROM pomodoro_tags").all()).results,
+			pomodoro_records: (await DB.prepare("SELECT * FROM pomodoro_records").all()).results,
+			pomodoro_settings: (await DB.prepare("SELECT * FROM pomodoro_settings").all()).results,
+			todo_tags: (await DB.prepare("SELECT * FROM todo_tags").all()).results,
+			screen_time_logs: (await DB.prepare("SELECT * FROM screen_time_logs").all()).results,
+			leaderboard: (await DB.prepare("SELECT * FROM leaderboard").all()).results,
+			app_name_mappings: (await DB.prepare("SELECT * FROM app_name_mappings").all()).results
+		};
+		return jsonResponse({ success: true, data: payload });
+	  } catch (e) {
+		return errorResponse(`导出失败: ${e.message}`, 500);
+	  }
+	}
+
+	return errorResponse("API Endpoint Not Found", 404);
+
+  } catch (e) {
+	return errorResponse(`Server Error: ${e.message}`, 500);
+  }
+},
 };
 
+
+
 /**
- * 🚀 同步频率检查与防抖核心逻辑 (引入防崩降级策略)
+ * 🚀 同步频率检查与防抖核心逻辑
  */
 async function enforceSyncLimit(rawUserId, DB, now) {
-  // 🚀 防御性编程：无论是谁调用，只要丢进来的 user_id，一律强转为整型！
   const userId = parseInt(rawUserId, 10);
   const today = getChinaDateStr(now);
 
@@ -1017,7 +958,6 @@ async function enforceSyncLimit(rawUserId, DB, now) {
 
     if (!record) {
       try {
-        // 🚀 核心修复：使用 INSERT OR REPLACE 解决 user_id 存在 UNIQUE 约束导致的跨日报错问题，并兼顾并发安全
         await DB.prepare("INSERT OR REPLACE INTO sync_limits (user_id, sync_date, sync_count, last_sync_time) VALUES (?, ?, ?, ?)").bind(userId, today, 1, now).run();
       } catch (err) {
         await DB.prepare("INSERT OR REPLACE INTO sync_limits (user_id, sync_date, sync_count) VALUES (?, ?, ?)").bind(userId, today, 1).run();
