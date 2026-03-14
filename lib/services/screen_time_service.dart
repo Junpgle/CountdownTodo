@@ -59,33 +59,31 @@ class ScreenTimeService {
       String? username = await StorageService.getLoginSession();
       if (username == null) return;
 
-      // 1. 获取本机数据并存入本地缓存（准备推送）
+      // 1. 获取本机干干净净的数据，存入【专用上传缓存】
       if (Platform.isAndroid) {
         if (!(await checkPermission())) return;
         final List<dynamic>? stats = await _channel.invokeMethod('getScreenTimeData');
         if (stats != null && stats.isNotEmpty) {
-          await StorageService.saveScreenTimeCache(stats);
+          await StorageService.saveLocalScreenTime(stats); // 🚀 改用新的方法
         }
       } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         final List<Map<String, dynamic>> apps = await TaiService.getTodayStats();
         if (apps.isNotEmpty) {
-          await StorageService.saveScreenTimeCache(apps);
+          await StorageService.saveLocalScreenTime(apps); // 🚀 改用新的方法
         }
       }
 
-      // 2. 将本机数据推送到云端（云端会自动完成多端合并）
+      // 2. 将本机纯净数据推送到云端
       await StorageService.syncData(username);
       debugPrint("📤 本机屏幕时间已推送到云端");
 
-      // ==========================================
-      // 🚀 核心修复：强制向云端索要多端聚合后的“完美数据”！
-      // ==========================================
+      // 3. 强制向云端索要多端聚合后的“完美总表”
       String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       List<dynamic> cloudStats = await ApiService.fetchScreenTime(userId, today);
 
       if (cloudStats.isNotEmpty) {
-        // 3. 用云端返回的、包含正确设备名（Xiaomi/PC）的数据，彻底覆盖本地旧缓存！
-        await StorageService.saveScreenTimeCache(cloudStats);
+        // 4. 用云端总表覆盖【UI显示缓存】
+        await StorageService.saveScreenTimeCache(cloudStats); // 🚀 只有这里用旧方法
         debugPrint("📥 成功拉取云端聚合数据，准备刷新 UI！");
       }
 

@@ -34,6 +34,8 @@ class StorageService {
   static const String KEY_TIME_LOGS = "user_time_logs";
   static const String KEY_SERVER_CHOICE = "app_server_choice";
 
+  static const String KEY_LOCAL_SCREEN_TIME = "local_screen_time_pending_upload";
+
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
@@ -519,6 +521,22 @@ class StorageService {
   // ==========================================
   // 屏幕时间与应用映射
   // ==========================================
+  static Future<void> saveLocalScreenTime(List<dynamic> stats) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(KEY_LOCAL_SCREEN_TIME, jsonEncode(stats));
+  }
+
+  static Future<List<dynamic>> getLocalScreenTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? jsonStr = prefs.getString(KEY_LOCAL_SCREEN_TIME);
+    if (jsonStr != null) {
+      try {
+        return jsonDecode(jsonStr);
+      } catch (_) {}
+    }
+    return [];
+  }
+
   static Future<void> saveScreenTimeCache(List<dynamic> stats) async {
     if (stats.isEmpty) return;
 
@@ -723,7 +741,7 @@ class StorageService {
             lastUpdateDate.month == now.month &&
             lastUpdateDate.day == now.day) {
 
-          List<dynamic> localScreenStats = await getScreenTimeCache();
+          List<dynamic> localScreenStats = await getLocalScreenTime();
           if (localScreenStats.isNotEmpty) {
             screenPayload = {
               'device_name': friendlyName,

@@ -12,6 +12,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 import '../storage_service.dart';
 import 'package:intl/intl.dart';
+import '../services/api_service.dart';
 
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
 class FeatureGuideScreen extends StatefulWidget {
@@ -43,6 +44,8 @@ class FeatureGuideScreen extends StatefulWidget {
 class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  // 标记是否为首次安装（用于决定引导结束后是否设置默认服务器）
+  bool _isFirstLaunch = false;
   static const platform =
   MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   static const screenTimeChannel =
@@ -89,6 +92,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     // 如果之前没有记录过版本号，则是首次安装；如果 isManualReview 为 true，则是用户在设置中主动要求查看
     final isFirstLaunch = shownVersion == null || shownVersion.isEmpty;
+    // 保存到 state，供 _done 使用
+    _isFirstLaunch = isFirstLaunch;
 
     List<Widget Function()> pages = [];
 
@@ -232,6 +237,16 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       await FeatureGuideScreen.markShown();
     }
     if (!mounted) return;
+
+    // 如果是首次启动并且不是手动查看引导，且将要跳转到登录页，则把默认服务器切换为阿里云
+    if (!widget.isManualReview && _isFirstLaunch) {
+      // 只有在未传入已登录用户的情况下我们修改登录页的默认服务器
+      final username = widget.loggedInUser;
+      if (username == null || username.isEmpty) {
+        await StorageService.saveServerChoice('aliyun');
+        ApiService.setServerChoice('aliyun');
+      }
+    }
 
     if (widget.isManualReview) {
       Navigator.pop(context);
@@ -1291,3 +1306,4 @@ class _AssetVideoPlayerState extends State<AssetVideoPlayer> {
     }
   }
 }
+
