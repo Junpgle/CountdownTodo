@@ -1,11 +1,556 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart'; // 新增 UUID 用于老数据迁移
+import 'package:uuid/uuid.dart';
 import '../services/api_service.dart';
 import '../storage_service.dart';
 import 'home_dashboard.dart';
 
+// ─────────────────────────────────────────────
+//  Adaptive color tokens
+//  Usage: final t = _T(context);  t.bg / t.primary / …
+// ─────────────────────────────────────────────
+class _T {
+  _T(BuildContext context)
+      : _dark = Theme.of(context).brightness == Brightness.dark;
+
+  final bool _dark;
+
+  // ── Scaffolding ──
+  Color get bg      => _dark ? const Color(0xFF0D0D1C) : const Color(0xFFF2F2FA);
+  Color get surface => _dark ? const Color(0xFF13131F) : const Color(0xFFFFFFFF);
+  Color get card    => _dark ? const Color(0xFF1A1A2A) : const Color(0xFFFFFFFF);
+
+  // ── Borders ──
+  Color get border      => _dark ? const Color(0x1AFFFFFF) : const Color(0x22000000);
+  Color get borderFocus => const Color(0x806C63FF);
+
+  // ── Brand (same in both modes) ──
+  static const primary   = Color(0xFF6C63FF);
+  static const primaryLt = Color(0xFF8B85FF);
+  static const accent    = Color(0xFFFF6B9D);
+  static const success   = Color(0xFF4CAF50);
+
+  // ── Text ──
+  Color get textPri  => _dark ? const Color(0xFFFFFFFF) : const Color(0xFF1A1A2E);
+  Color get textSec  => _dark ? const Color(0x99FFFFFF) : const Color(0xFF5A5A7A);
+  Color get textHint => _dark ? const Color(0x55FFFFFF) : const Color(0xFFAAAAAA);
+
+  // ── Inputs ──
+  Color get inputBg  => _dark ? const Color(0x0DFFFFFF) : const Color(0xFFF8F8FF);
+  Color get inputBgF => _dark ? const Color(0x126C63FF) : const Color(0xFFEEECFF);
+  Color get inputBd  => _dark ? const Color(0x1AFFFFFF) : const Color(0xFFDDDDEE);
+
+  // ── Amber / legacy banner ──
+  Color get amber   => _dark ? const Color(0xFFFFB74D) : const Color(0xFF7A5200);
+  Color get amberBg => _dark ? const Color(0x1AFFB74D) : const Color(0xFFFFF8E1);
+  Color get amberBd => _dark ? const Color(0x40FFB74D) : const Color(0xFFFFCC80);
+  Color get amberEm => _dark ? const Color(0xFFFFE082) : const Color(0xFF9A6500);
+
+  // ── Wide-left panel ──
+  List<Color> get leftGrad =>
+      _dark ? const [Color(0xFF140E38), Color(0xFF0F0A2E)]
+          : const [Color(0xFF6C63FF), Color(0xFF9C8FFF)];
+  Color get leftTextSec   => _dark ? const Color(0x99FFFFFF) : const Color(0xCCFFFFFF);
+  Color get leftFeatureBg => _dark ? const Color(0x286C63FF) : const Color(0x33FFFFFF);
+  Color get leftFeatureBd => _dark ? const Color(0x446C63FF) : const Color(0x55FFFFFF);
+
+  // ── Tab switcher ──
+  Color get tabActiveBg   => _dark ? const Color(0x406C63FF) : const Color(0xFFEEECFF);
+  Color get tabActiveBd   => _dark ? const Color(0x666C63FF) : const Color(0xFF6C63FF);
+  Color get tabActiveText => _dark ? const Color(0xFFB8B3FF) : const Color(0xFF4A43D4);
+
+  // ── Misc ──
+  Color get otpBg       => _dark ? const Color(0x126C63FF) : const Color(0xFFEEECFF);
+  Color get verifyIconBg=> _dark ? const Color(0x286C63FF) : const Color(0xFFEEECFF);
+  Color get verifyIconBd=> _dark ? const Color(0x446C63FF) : const Color(0xFF9C8FFF);
+  Color get dropdownBg  => _dark ? const Color(0xFF1A1A2A) : const Color(0xFFFFFFFF);
+}
+
+// ─────────────────────────────────────────────
+//  Background orb painter  (repaints on theme switch)
+// ─────────────────────────────────────────────
+class _OrbPainter extends CustomPainter {
+  const _OrbPainter({required this.dark});
+  final bool dark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final a1 = dark ? 0.20 : 0.10;
+    final a2 = dark ? 0.12 : 0.07;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.88, size.height * 0.10),
+      240,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [_T.primary.withOpacity(a1), Colors.transparent],
+        ).createShader(Rect.fromCircle(
+            center: Offset(size.width * 0.88, size.height * 0.10),
+            radius: 240)),
+    );
+
+    canvas.drawCircle(
+      Offset(size.width * 0.08, size.height * 0.80),
+      200,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [_T.accent.withOpacity(a2), Colors.transparent],
+        ).createShader(Rect.fromCircle(
+            center: Offset(size.width * 0.08, size.height * 0.80),
+            radius: 200)),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_OrbPainter old) => old.dark != dark;
+}
+
+// ─────────────────────────────────────────────
+//  Reusable labelled text field
+// ─────────────────────────────────────────────
+class _Field extends StatelessWidget {
+  const _Field({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.icon,
+    this.obscure     = false,
+    this.enabled     = true,
+    this.keyboardType,
+    this.textAlign,
+    this.style,
+    this.maxLength,
+  });
+
+  final TextEditingController controller;
+  final String      label;
+  final String      hint;
+  final IconData    icon;
+  final bool        obscure;
+  final bool        enabled;
+  final TextInputType? keyboardType;
+  final TextAlign?  textAlign;
+  final TextStyle?  style;
+  final int?        maxLength;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _T(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            fontSize: 10.5, fontWeight: FontWeight.w600,
+            letterSpacing: 0.9, color: t.textHint,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller:   controller,
+          obscureText:  obscure,
+          enabled:      enabled,
+          keyboardType: keyboardType,
+          textAlign:    textAlign ?? TextAlign.start,
+          style: style ?? TextStyle(
+            fontSize: 15, color: t.textPri, fontWeight: FontWeight.w400,
+          ),
+          maxLength: maxLength,
+          buildCounter: maxLength != null
+              ? (_, {required currentLength, required isFocused, maxLength}) => null
+              : null,
+          decoration: InputDecoration(
+            hintText:   hint,
+            hintStyle:  TextStyle(color: t.textHint, fontSize: 15),
+            prefixIcon: Icon(icon, size: 18, color: t.textHint),
+            filled:     true,
+            fillColor:  t.inputBg,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: t.inputBd, width: 1),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: t.borderFocus, width: 1.5),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: t.border.withOpacity(0.4), width: 1),
+            ),
+            contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Primary gradient button
+// ─────────────────────────────────────────────
+class _PrimaryBtn extends StatelessWidget {
+  const _PrimaryBtn({
+    required this.label,
+    required this.onPressed,
+    this.isAccent = false,
+  });
+  final String        label;
+  final VoidCallback  onPressed;
+  final bool          isAccent;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = isAccent
+        ? [_T.accent, const Color(0xFFFF8F6B)]
+        : [_T.primary, _T.primaryLt];
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: colors,
+            begin: Alignment.centerLeft,
+            end:   Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color:      colors.first.withOpacity(0.35),
+              blurRadius: 18,
+              offset:     const Offset(0, 7),
+            ),
+          ],
+        ),
+        child: ElevatedButton(
+          onPressed: onPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            shadowColor:     Colors.transparent,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w600,
+              color: Colors.white, letterSpacing: 0.3,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Brand logo
+// ─────────────────────────────────────────────
+class _BrandLogo extends StatelessWidget {
+  const _BrandLogo({this.size = 52});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [_T.primary, _T.accent],
+          begin: Alignment.topLeft,
+          end:   Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(size * 0.28),
+        boxShadow: [
+          BoxShadow(
+            color: _T.primary.withOpacity(0.38),
+            blurRadius: 18, offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Icon(Icons.bolt_rounded, color: Colors.white, size: size * 0.52),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Tab switcher  (登录 / 注册)
+// ─────────────────────────────────────────────
+class _TabSwitcher extends StatelessWidget {
+  const _TabSwitcher({required this.isRegister, required this.onToggle});
+  final bool         isRegister;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _T(context);
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: t.inputBg,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: t.border, width: 1),
+      ),
+      child: Row(children: [
+        _tab(context, t, '登录', !isRegister),
+        _tab(context, t, '注册',  isRegister),
+      ]),
+    );
+  }
+
+  Widget _tab(BuildContext context, _T t, String label, bool active) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: active ? null : onToggle,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            color: active ? t.tabActiveBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: active
+                ? Border.all(color: t.tabActiveBd, width: 1)
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13.5, fontWeight: FontWeight.w500,
+              color: active ? t.tabActiveText : t.textHint,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Server selector
+// ─────────────────────────────────────────────
+class _ServerSelector extends StatelessWidget {
+  const _ServerSelector({required this.value, required this.onChanged});
+  final String              value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _T(context);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 7, height: 7,
+          decoration: const BoxDecoration(
+              color: _T.success, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 7),
+        Text('服务器：',
+            style: TextStyle(fontSize: 12, color: t.textHint)),
+        DropdownButton<String>(
+          value: value,
+          underline: const SizedBox(),
+          dropdownColor: t.dropdownBg,
+          icon: Icon(Icons.keyboard_arrow_down_rounded,
+              size: 16, color: t.textHint),
+          style: const TextStyle(
+              color: _T.primaryLt, fontSize: 12, fontWeight: FontWeight.w500),
+          items: [
+            DropdownMenuItem(
+                value: 'cloudflare',
+                child: Text('Cloudflare（推荐）',
+                    style: TextStyle(color: _T.primaryLt))),
+            DropdownMenuItem(
+                value: 'aliyun',
+                child: Text('阿里云 ECS',
+                    style: TextStyle(color: t.textSec))),
+          ],
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Legacy-data migration banner
+// ─────────────────────────────────────────────
+class _LegacyBanner extends StatelessWidget {
+  const _LegacyBanner({required this.username});
+  final String username;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _T(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: t.amberBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: t.amberBd, width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 3),
+            width: 8, height: 8,
+            decoration: BoxDecoration(color: t.amber, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(fontSize: 12.5, color: t.amber, height: 1.55),
+                children: [
+                  const TextSpan(text: '检测到本地存档 '),
+                  TextSpan(
+                    text: username,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: t.amberEm),
+                  ),
+                  const TextSpan(text: '，注册后将自动迁移数据至云端'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  6-digit OTP input
+// ─────────────────────────────────────────────
+class _OtpInput extends StatelessWidget {
+  const _OtpInput({required this.controller});
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _T(context);
+    return TextField(
+      controller:   controller,
+      keyboardType: TextInputType.number,
+      textAlign:    TextAlign.center,
+      maxLength:    6,
+      style: TextStyle(
+        fontSize: 28, fontWeight: FontWeight.w600,
+        color: t.textPri, letterSpacing: 12,
+      ),
+      buildCounter:
+          (_, {required currentLength, required isFocused, maxLength}) => null,
+      decoration: InputDecoration(
+        hintText:  '——————',
+        hintStyle: TextStyle(fontSize: 20, color: t.textHint, letterSpacing: 10),
+        filled:    true,
+        fillColor: t.otpBg,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: t.borderFocus, width: 1.5),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: _T.primaryLt, width: 2),
+        ),
+        contentPadding:
+        const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Wide-screen left decorative panel
+// ─────────────────────────────────────────────
+class _WideLeftPanel extends StatelessWidget {
+  const _WideLeftPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _T(context);
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: t.leftGrad,
+          begin: Alignment.topRight,
+          end:   Alignment.bottomLeft,
+        ),
+      ),
+      padding: const EdgeInsets.all(48),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _BrandLogo(size: 56),
+          const SizedBox(height: 36),
+          const Text(
+            '专注你的\n每一天',
+            style: TextStyle(
+              fontSize: 30, fontWeight: FontWeight.w700,
+              color: Colors.white, height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            '待办、倒计时、番茄钟，\n多端实时同步，让效率触手可及。',
+            style: TextStyle(
+              fontSize: 14, color: t.leftTextSec, height: 1.7,
+            ),
+          ),
+          const Spacer(),
+          ...[
+            (Icons.timer_outlined,      '番茄钟跨设备实时感知'),
+            (Icons.event_outlined,      '倒计时 & 重要日提醒'),
+            (Icons.cloud_sync_outlined, '增量同步，流量低消耗'),
+          ].map((e) => Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Row(children: [
+              Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color:        t.leftFeatureBg,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: t.leftFeatureBd, width: 1),
+                ),
+                child: Icon(e.$1, size: 16, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Text(e.$2,
+                  style: TextStyle(
+                      fontSize: 13.5, color: t.leftTextSec)),
+            ]),
+          )),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Shared loading spinner
+// ─────────────────────────────────────────────
+class _Spinner extends StatelessWidget {
+  const _Spinner();
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: SizedBox(
+      width: 32, height: 32,
+      child: CircularProgressIndicator(
+          strokeWidth: 2.5, color: _T.primaryLt),
+    ),
+  );
+}
+
+// ─────────────────────────────────────────────
+//  LoginScreen
+// ─────────────────────────────────────────────
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -13,25 +558,47 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _userController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passController = TextEditingController();
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
 
-  final TextEditingController _codeController = TextEditingController();
+  final _userCtrl  = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl  = TextEditingController();
+  final _codeCtrl  = TextEditingController();
 
-  bool _isLoading = false;
-  bool _isRegisterMode = false;
-  bool _awaitingVerification = false;
+  bool    _isLoading            = false;
+  bool    _isRegisterMode       = false;
+  bool    _awaitingVerification = false;
   String? _legacyLocalUser;
-  String _serverChoice = 'aliyun';
+  String  _serverChoice         = 'cloudflare';
+
+  late final AnimationController _fadeCtrl;
+  late final Animation<double>   _fadeAnim;
+
+  // ── Lifecycle ────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _fadeCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 480));
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+    _fadeCtrl.forward();
     _checkLocalLegacyAccount();
     _loadServerChoice();
   }
+
+  @override
+  void dispose() {
+    _fadeCtrl.dispose();
+    _userCtrl.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Persistence helpers ──────────────────────
 
   void _loadServerChoice() async {
     final choice = await StorageService.getServerChoice();
@@ -45,106 +612,97 @@ class _LoginScreenState extends State<LoginScreen> {
     await StorageService.saveServerChoice(val);
   }
 
-  @override
-  void dispose() {
-    _userController.dispose();
-    _emailController.dispose();
-    _passController.dispose();
-    _codeController.dispose();
-    super.dispose();
-  }
-
   void _checkLocalLegacyAccount() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? legacyUser = prefs.getString('login_session');
-
+    final prefs      = await SharedPreferences.getInstance();
+    final legacyUser = prefs.getString('login_session');
     if (legacyUser != null && legacyUser.isNotEmpty) {
       setState(() {
         _legacyLocalUser = legacyUser;
-        _userController.text = legacyUser;
-        _isRegisterMode = true;
+        _userCtrl.text   = legacyUser;
+        _isRegisterMode  = true;
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('检测到本地存档，注册后自动同步数据'),
-            duration: Duration(seconds: 4),
-          ),
-        );
+            const SnackBar(content: Text('检测到本地存档，注册后自动同步数据')));
       }
     }
   }
 
-  // 🚀 核心重构：将原本的单次调用替换为组装成 Delta Sync 数据包批量上传
-  Future<void> _syncLocalDataToCloud(int targetUserId, String currentUsername) async {
-    final String sourceUsername = _legacyLocalUser ?? currentUsername;
-    print("同步老旧存档数据: $sourceUsername -> ID: $targetUserId");
+  // ── Data migration ───────────────────────────
 
+  Future<void> _syncLocalDataToCloud(
+      int targetUserId, String currentUsername) async {
+    final sourceUsername = _legacyLocalUser ?? currentUsername;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final String deviceId = prefs.getString('app_device_uuid') ?? const Uuid().v4();
+      final prefs    = await SharedPreferences.getInstance();
+      final deviceId =
+          prefs.getString('app_device_uuid') ?? const Uuid().v4();
 
-      int localScore = prefs.getInt('${sourceUsername}_best_score') ?? 0;
-      int localDuration = prefs.getInt('${sourceUsername}_best_duration') ?? 0;
+      final localScore =
+          prefs.getInt('${sourceUsername}_best_score') ?? 0;
+      final localDuration =
+          prefs.getInt('${sourceUsername}_best_duration') ?? 0;
       if (localScore > 0) {
         await ApiService.uploadScore(
-          userId: targetUserId,
+          userId:   targetUserId,
           username: currentUsername,
-          score: localScore,
+          score:    localScore,
           duration: localDuration > 0 ? localDuration : 60,
         );
       }
 
-      List<Map<String, dynamic>> dirtyTodos = [];
+      List<Map<String, dynamic>> dirtyTodos      = [];
       List<Map<String, dynamic>> dirtyCountdowns = [];
 
-      // 提取老待办并组装成增量同步包
-      String? todosJson = prefs.getString('todos_$sourceUsername') ?? prefs.getString('todos');
+      final todosJson = prefs.getString('todos_$sourceUsername') ??
+          prefs.getString('todos');
       if (todosJson != null) {
         try {
-          List<dynamic> localTodos = jsonDecode(todosJson);
-          for (var item in localTodos) {
-            String content = item['title'] ?? item['content'] ?? '';
-            bool isDone = item['isDone'] ?? item['isCompleted'] ?? false;
+          for (var item in jsonDecode(todosJson) as List) {
+            final content =
+            (item['title'] ?? item['content'] ?? '') as String;
+            final isDone =
+            (item['isDone'] ?? item['isCompleted'] ?? false) as bool;
             if (content.isNotEmpty && !isDone) {
-              int nowMs = DateTime.now().millisecondsSinceEpoch;
+              final nowMs = DateTime.now().millisecondsSinceEpoch;
               dirtyTodos.add({
-                'id': const Uuid().v4(),
-                'content': content,
-                'is_completed': isDone ? 1 : 0,
-                'is_deleted': 0,
-                'version': 1,
-                'updated_at': nowMs,
-                'created_at': nowMs,
-                'device_id': deviceId
+                'id':           const Uuid().v4(),
+                'content':      content,
+                'is_completed': 0,
+                'is_deleted':   0,
+                'version':      1,
+                'updated_at':   nowMs,
+                'created_at':   nowMs,
+                'device_id':    deviceId,
               });
             }
           }
         } catch (_) {}
       }
 
-      // 提取老倒计时并组装成增量同步包
-      String? countdownsJson = prefs.getString('countdowns_$sourceUsername') ?? prefs.getString('countdowns');
+      final countdownsJson =
+          prefs.getString('countdowns_$sourceUsername') ??
+              prefs.getString('countdowns');
       if (countdownsJson != null) {
         try {
-          List<dynamic> localCountdowns = jsonDecode(countdownsJson);
-          for (var item in localCountdowns) {
-            String title = item['title'] ?? '';
-            String dateStr = item['date'] ?? item['targetTime'] ?? '';
+          for (var item in jsonDecode(countdownsJson) as List) {
+            final title   = (item['title'] ?? '') as String;
+            final dateStr =
+            (item['date'] ?? item['targetTime'] ?? '') as String;
             if (title.isNotEmpty && dateStr.isNotEmpty) {
-              DateTime? targetTime = DateTime.tryParse(dateStr);
-              if (targetTime != null && targetTime.isAfter(DateTime.now())) {
-                int nowMs = DateTime.now().millisecondsSinceEpoch;
+              final targetTime = DateTime.tryParse(dateStr);
+              if (targetTime != null &&
+                  targetTime.isAfter(DateTime.now())) {
+                final nowMs = DateTime.now().millisecondsSinceEpoch;
                 dirtyCountdowns.add({
-                  'id': const Uuid().v4(),
-                  'title': title,
+                  'id':          const Uuid().v4(),
+                  'title':       title,
                   'target_time': targetTime.millisecondsSinceEpoch,
-                  'is_deleted': 0,
-                  'version': 1,
-                  'updated_at': nowMs,
-                  'created_at': nowMs,
-                  'device_id': deviceId
+                  'is_deleted':  0,
+                  'version':     1,
+                  'updated_at':  nowMs,
+                  'created_at':  nowMs,
+                  'device_id':   deviceId,
                 });
               }
             }
@@ -152,278 +710,323 @@ class _LoginScreenState extends State<LoginScreen> {
         } catch (_) {}
       }
 
-      // 如果有数据，直接发往 Delta Sync 接口完成上传
       if (dirtyTodos.isNotEmpty || dirtyCountdowns.isNotEmpty) {
         await ApiService.postDeltaSync(
-          userId: targetUserId,
-          lastSyncTime: 0,
-          deviceId: deviceId,
-          todosChanges: dirtyTodos,
+          userId:            targetUserId,
+          lastSyncTime:      0,
+          deviceId:          deviceId,
+          todosChanges:      dirtyTodos,
           countdownsChanges: dirtyCountdowns,
         );
       }
-
     } catch (e) {
-      print("老数据迁移错误: $e");
+      debugPrint('老数据迁移错误: $e');
     }
   }
 
-  void _handleLogin() async {
-    String email = _emailController.text.trim();
-    String pass = _passController.text.trim();
+  // ── Auth actions ─────────────────────────────
 
-    if (email.isEmpty || pass.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入邮箱和密码')));
-      return;
-    }
+  void _handleLogin() async {
+    final email = _emailCtrl.text.trim();
+    final pass  = _passCtrl.text.trim();
+    if (email.isEmpty || pass.isEmpty) { _snack('请输入邮箱和密码'); return; }
 
     setState(() => _isLoading = true);
-    var result = await ApiService.login(email, pass);
-
+    final result = await ApiService.login(email, pass);
     if (!mounted) return;
 
     if (result['success'] == true) {
-      final user = result['user'];
-      final String token = result['token'] ?? '';
-
-      await StorageService.saveLoginSession(user['username'], token: token);
+      final user  = result['user'] as Map<String, dynamic>;
+      final token = (result['token'] ?? '') as String;
+      await StorageService.saveLoginSession(
+          user['username'] as String, token: token);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('current_user_id', user['id']);
-
+      await prefs.setInt('current_user_id', user['id'] as int);
       if (_legacyLocalUser != null) {
-        await _syncLocalDataToCloud(user['id'], user['username']);
+        await _syncLocalDataToCloud(
+            user['id'] as int, user['username'] as String);
       }
-
-      _finalizeLoginAndNavigate(user['username']);
+      _finalizeLoginAndNavigate(user['username'] as String);
     } else {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('登录失败：${result['message']}')));
+      _snack('登录失败：${result['message']}');
     }
   }
 
   void _handleRegister() async {
-    String user = _userController.text.trim();
-    String email = _emailController.text.trim();
-    String pass = _passController.text.trim();
-
     if (!_awaitingVerification) {
-      if (user.isEmpty || email.isEmpty || pass.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写完整注册信息')));
+      if (_userCtrl.text.trim().isEmpty ||
+          _emailCtrl.text.trim().isEmpty ||
+          _passCtrl.text.trim().isEmpty) {
+        _snack('请填写完整注册信息');
         return;
       }
     } else {
-      if (_codeController.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入邮箱收到的验证码')));
+      if (_codeCtrl.text.trim().isEmpty) {
+        _snack('请输入邮箱收到的验证码');
         return;
       }
     }
 
     setState(() => _isLoading = true);
-
-    var regResult = await ApiService.register(
-        user,
-        email,
-        pass,
-        code: _awaitingVerification ? _codeController.text.trim() : null
+    final regResult = await ApiService.register(
+      _userCtrl.text.trim(),
+      _emailCtrl.text.trim(),
+      _passCtrl.text.trim(),
+      code: _awaitingVerification ? _codeCtrl.text.trim() : null,
     );
-
     if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (regResult['success'] == true) {
       if (regResult['require_verify'] == true) {
-        setState(() {
-          _awaitingVerification = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('验证码已发送至邮箱，请查收并输入')),
+        setState(() => _awaitingVerification = true);
+        _snack('验证码已发送至邮箱，请查收并输入');
+      } else {
+        _performAutoLoginAfterRegister(
+          _emailCtrl.text.trim(),
+          _passCtrl.text.trim(),
+          _userCtrl.text.trim(),
         );
       }
-      else {
-        _performAutoLoginAfterRegister(email, pass, user);
-      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(regResult['message'] ?? '操作失败')),
-      );
+      _snack(regResult['message'] ?? '操作失败');
     }
   }
 
-  void _performAutoLoginAfterRegister(String email, String pass, String username) async {
+  void _performAutoLoginAfterRegister(
+      String email, String pass, String username) async {
     setState(() => _isLoading = true);
-    var loginResult = await ApiService.login(email, pass);
+    final loginResult = await ApiService.login(email, pass);
+    if (!mounted) return;
 
     if (loginResult['success'] == true) {
-      final userInfo = loginResult['user'];
-      final String token = loginResult['token'] ?? '';
-
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('注册成功，正在同步数据...')));
-
+      final userInfo = loginResult['user'] as Map<String, dynamic>;
+      final token    = (loginResult['token'] ?? '') as String;
+      _snack('注册成功，正在同步数据…');
       await StorageService.saveLoginSession(username, token: token);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('current_user_id', userInfo['id']);
-
-      await _syncLocalDataToCloud(userInfo['id'], username);
-
+      await prefs.setInt('current_user_id', userInfo['id'] as int);
+      await _syncLocalDataToCloud(userInfo['id'] as int, username);
       _finalizeLoginAndNavigate(username);
     } else {
-      setState(() { _isLoading = false; _awaitingVerification = false; _isRegisterMode = false; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('注册成功，请手动登录')));
+      setState(() {
+        _isLoading            = false;
+        _awaitingVerification = false;
+        _isRegisterMode       = false;
+      });
+      _snack('注册成功，请手动登录');
     }
   }
 
   void _finalizeLoginAndNavigate(String username) {
     if (!mounted) return;
     setState(() => _isLoading = false);
-
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => HomeDashboard(username: username)),
+      MaterialPageRoute(builder: (_) => HomeDashboard(username: username)),
     );
   }
 
   void _toggleMode() {
+    _fadeCtrl..reset()..forward();
     setState(() {
-      _isRegisterMode = !_isRegisterMode;
+      _isRegisterMode       = !_isRegisterMode;
       _awaitingVerification = false;
-      _codeController.clear();
+      _codeCtrl.clear();
     });
   }
 
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ── Build ────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    final t = _T(context);
     return Scaffold(
-      appBar: AppBar(title: Text(_isRegisterMode ? (_awaitingVerification ? '输入验证码' : '注册并同步') : '登录')),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                  _awaitingVerification ? Icons.mark_email_read : Icons.cloud_upload,
-                  size: 80,
-                  color: Theme.of(context).colorScheme.primary
-              ),
-              const SizedBox(height: 20),
+      backgroundColor: t.bg,
+      body: Stack(children: [
+        Positioned.fill(
+          child: CustomPaint(painter: _OrbPainter(dark: t._dark)),
+        ),
+        SafeArea(
+          child: LayoutBuilder(builder: (ctx, constraints) {
+            return constraints.maxWidth >= 768
+                ? _buildWideLayout()
+                : _buildNarrowLayout();
+          }),
+        ),
+      ]),
+    );
+  }
 
-              Text(
-                  _awaitingVerification
-                      ? "验证邮箱"
-                      : (_isRegisterMode ? "账号升级" : "欢迎回来"),
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)
-              ),
-
-              const SizedBox(height: 10),
-              if (_legacyLocalUser != null && !_awaitingVerification && _isRegisterMode)
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(8)),
-                  child: Text("本地存档: $_legacyLocalUser\n注册后自动同步", textAlign: TextAlign.center, style: TextStyle(color: Colors.amber.shade900, fontSize: 12)),
-                ),
-
-              if (_awaitingVerification) ...[
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Text("我们向您的邮箱发送了一封包含验证码的邮件，请在下方输入：", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _codeController,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 24, letterSpacing: 5),
-                  decoration: const InputDecoration(
-                    hintText: '6位验证码',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 30),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: FilledButton(
-                    onPressed: _handleRegister,
-                    child: const Text("验证并完成注册"),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                TextButton(
-                  onPressed: () => setState(() => _awaitingVerification = false),
-                  child: const Text("返回修改邮箱"),
-                ),
-              ]
-              else ...[
-                if (_isRegisterMode) ...[
-                  TextField(
-                    controller: _userController,
-                    decoration: const InputDecoration(labelText: '设置用户名', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person)),
-                  ),
-                  const SizedBox(height: 15),
-                ],
-
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: '邮箱', border: OutlineInputBorder(), prefixIcon: Icon(Icons.email)),
-                  enabled: !_awaitingVerification,
-                ),
-                const SizedBox(height: 15),
-
-                TextField(
-                  controller: _passController,
-                  decoration: const InputDecoration(labelText: '密码', border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock)),
-                  obscureText: true,
-                  enabled: !_awaitingVerification,
-                ),
-                const SizedBox(height: 30),
-
-                if (_isLoading)
-                  const CircularProgressIndicator()
-                else
-                  Column(
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: FilledButton(
-                          onPressed: _isRegisterMode ? _handleRegister : _handleLogin,
-                          child: Text(_isRegisterMode ? "获取验证码" : "登录"),
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      TextButton(
-                        onPressed: _toggleMode,
-                        child: Text(_isRegisterMode ? "已有云端账号？去登录" : "新用户注册"),
-                      ),
-                      const SizedBox(height: 30),
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.cloud_queue, size: 18, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          const Text('服务器: ', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                          DropdownButton<String>(
-                            value: _serverChoice,
-                            underline: const SizedBox(),
-                            style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13),
-                            items: const [
-                              DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare (推荐)')),
-                              DropdownMenuItem(value: 'aliyun', child: Text('阿里云ECS')),
-                            ],
-                            onChanged: _onServerChoiceChanged,
-                          ),
-                        ],
-                      ),
-                    ],
-                  )
-              ],
-            ],
+  Widget _buildWideLayout() {
+    return Row(children: [
+      const Expanded(child: _WideLeftPanel()),
+      Expanded(
+        child: Center(
+          child: SingleChildScrollView(
+            padding:
+            const EdgeInsets.symmetric(horizontal: 56, vertical: 40),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: FadeTransition(
+                  opacity: _fadeAnim, child: _buildFormContent()),
+            ),
           ),
         ),
       ),
+    ]);
+  }
+
+  Widget _buildNarrowLayout() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: FadeTransition(
+        opacity: _fadeAnim,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            const _BrandLogo(),
+            const SizedBox(height: 28),
+            _buildFormContent(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormContent() =>
+      _awaitingVerification ? _buildVerifyView() : _buildMainForm();
+
+  // ── Main form ────────────────────────────────
+
+  Widget _buildMainForm() {
+    final t = _T(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _isRegisterMode ? '账号升级' : '欢迎回来',
+          style: TextStyle(
+              fontSize: 26, fontWeight: FontWeight.w700, color: t.textPri),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _isRegisterMode ? '注册云账号，解锁多端同步' : '登录以同步你的全部数据',
+          style: TextStyle(fontSize: 14, color: t.textSec),
+        ),
+        const SizedBox(height: 28),
+
+        if (_legacyLocalUser != null && _isRegisterMode) ...[
+          _LegacyBanner(username: _legacyLocalUser!),
+          const SizedBox(height: 20),
+        ],
+
+        _TabSwitcher(isRegister: _isRegisterMode, onToggle: _toggleMode),
+        const SizedBox(height: 24),
+
+        if (_isRegisterMode) ...[
+          _Field(
+            controller: _userCtrl,
+            label: '用户名', hint: '设置你的用户名',
+            icon: Icons.person_outline_rounded,
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        _Field(
+          controller: _emailCtrl,
+          label: '邮箱', hint: '输入邮箱地址',
+          icon: Icons.mail_outline_rounded,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 16),
+
+        _Field(
+          controller: _passCtrl,
+          label: '密码', hint: _isRegisterMode ? '设置密码' : '输入密码',
+          icon: Icons.lock_outline_rounded,
+          obscure: true,
+        ),
+        const SizedBox(height: 28),
+
+        if (_isLoading)
+          const _Spinner()
+        else
+          _PrimaryBtn(
+            label:     _isRegisterMode ? '获取验证码' : '登录',
+            onPressed: _isRegisterMode ? _handleRegister : _handleLogin,
+            isAccent:  _isRegisterMode,
+          ),
+
+        const SizedBox(height: 28),
+        _ServerSelector(value: _serverChoice, onChanged: _onServerChoiceChanged),
+      ],
+    );
+  }
+
+  // ── Verify view (6-digit OTP) ────────────────
+
+  Widget _buildVerifyView() {
+    final t = _T(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 52, height: 52,
+          decoration: BoxDecoration(
+            color:        t.verifyIconBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: t.verifyIconBd, width: 1),
+          ),
+          child: const Icon(Icons.mark_email_read_outlined,
+              color: _T.primaryLt, size: 26),
+        ),
+        const SizedBox(height: 20),
+
+        Text(
+          '验证邮箱',
+          style: TextStyle(
+              fontSize: 26, fontWeight: FontWeight.w700, color: t.textPri),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '验证码已发送至你的邮箱，\n请在下方输入 6 位验证码',
+          style: TextStyle(fontSize: 14, color: t.textSec, height: 1.6),
+        ),
+        const SizedBox(height: 32),
+
+        _OtpInput(controller: _codeCtrl),
+        const SizedBox(height: 28),
+
+        if (_isLoading)
+          const _Spinner()
+        else
+          _PrimaryBtn(
+            label:     '验证并完成注册',
+            onPressed: _handleRegister,
+          ),
+
+        const SizedBox(height: 18),
+        Center(
+          child: TextButton(
+            onPressed: () => setState(() => _awaitingVerification = false),
+            child: const Text(
+              '← 返回修改邮箱',
+              style: TextStyle(
+                  fontSize: 13, color: _T.primaryLt,
+                  fontWeight: FontWeight.w500),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

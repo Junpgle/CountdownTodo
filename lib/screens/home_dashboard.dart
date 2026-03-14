@@ -914,17 +914,26 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
         if (hasChanges) _loadAllData(); // _loadAllData 内部会重新 scheduleAll
       }
+      // ... 前面代码保持不变
     } catch (e) {
       debugPrint("Sync Error: $e");
-      if (mounted && !silent) {
-        String msg = e.toString();
+      String msg = e.toString();
 
-        // 🚀 核心逻辑：拦截无效 Token
-        if (msg.contains("无效的token") || msg.contains("INVALID_TOKEN") || msg.contains("401")) {
-          _showTokenExpiredDialog(); // 调用弹窗函数
-          return; // 拦截后续的 SnackBar 提示
+      // 🚀 核心修复 1：Token 检查必须移出 !silent 判断
+      // 无论是否是“静默同步”，只要登录失效，就必须强制弹窗
+      if (msg.contains("无效的token") ||
+          msg.contains("无效的Token") || // 适配你日志中的大写 T
+          msg.contains("INVALID_TOKEN") ||
+          msg.contains("401")) {
+
+        if (mounted) {
+          _showTokenExpiredDialog();
         }
+        return; // 拦截后续所有提示
+      }
 
+      // 只有非静默同步（手动点击）时，才显示普通的错误 SnackBar
+      if (mounted && !silent) {
         if (msg.contains("LIMIT_EXCEEDED:")) {
           msg = msg.split("LIMIT_EXCEEDED:").last;
         } else {
