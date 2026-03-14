@@ -1074,52 +1074,113 @@ class _WeekColPainter extends CustomPainter {
           ..color = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE5E5E5)
           ..strokeWidth = 0.5);
 
-    void block(int start, int end, Color c, bool isPom) {
+    // ★ 改动：block() 增加 title 参数，并绘制文字
+    void block(int start, int end, Color c, bool isPom, String title) {
       final rs = max(start, dayStartMs);
       final re = min(end, de);
       final top = (rs - dayStartMs) / 3600000 * hourH;
       final bot = (re - dayStartMs) / 3600000 * hourH;
       if (bot <= top + 1) return;
+
+      // 左侧彩色竖条
       canvas.drawRRect(
           RRect.fromRectAndRadius(Rect.fromLTRB(0, top + 0.5, 3, bot - 0.5),
               const Radius.circular(2)),
           Paint()..color = c.withOpacity(0.9));
+
+      // 填色背景
       canvas.drawRRect(
           RRect.fromRectAndRadius(
               Rect.fromLTRB(3, top + 0.5, size.width - 1, bot - 0.5),
               const Radius.circular(3)),
           Paint()..color = c.withOpacity(isPom ? 0.22 : 0.35));
+
+      // ★ 绘制任务名称
+      final blockH = bot - top;
+      final blockW = size.width - 6; // 左侧3px条 + 右侧1px边距
+
+      if (blockH >= 10 && blockW >= 8) {
+        if (blockH >= 18) {
+          // 高度足够：横向单行文字
+          final tp = TextPainter(
+            text: TextSpan(
+              text: title,
+              style: TextStyle(
+                fontSize: (blockH * 0.28).clamp(7.0, 10.0),
+                color: c.withOpacity(0.95),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            textDirection: ui.TextDirection.ltr,
+            maxLines: 1,
+            ellipsis: '…',
+          )..layout(maxWidth: blockW - 4);
+          tp.paint(canvas, Offset(5, top + (blockH - tp.height) / 2));
+        } else {
+          // 高度不足但宽度够：竖向文字（旋转90°）
+          final tp = TextPainter(
+            text: TextSpan(
+              text: title,
+              style: TextStyle(
+                fontSize: 7.0,
+                color: c.withOpacity(0.85),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            textDirection: ui.TextDirection.ltr,
+            maxLines: 1,
+            ellipsis: '…',
+          )..layout(maxWidth: blockH - 2);
+
+          canvas.save();
+          canvas.translate(5 + tp.height, top + 1);
+          canvas.rotate(pi / 2);
+          tp.paint(canvas, Offset.zero);
+          canvas.restore();
+        }
+      }
     }
 
+    // 画番茄钟（★ 传入 title）
     for (final p in dayPoms) {
       final pe = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
       Color c = Colors.redAccent.withOpacity(0.45);
+      String title = '专注';
       if (p.tagUuids.isNotEmpty) {
         final t = tags.cast<PomodoroTag?>().firstWhere(
-            (t) => p.tagUuids.contains(t?.uuid),
+                (t) => p.tagUuids.contains(t?.uuid),
             orElse: () => null);
-        if (t != null) c = hexColor(t.color, opacity: 0.45);
+        if (t != null) {
+          c = hexColor(t.color, opacity: 0.45);
+          title = t.name;
+        }
       }
-      block(p.startTime, pe, c, true);
+      block(p.startTime, pe, c, true, title);
     }
+
+    // 画补录日志（★ 传入 title）
     for (final l in dayLogs) {
       Color c = const Color(0xFF3B82F6).withOpacity(0.45);
+      String title = l.title.isNotEmpty ? l.title : '补录';
       if (l.tagUuids.isNotEmpty) {
         final t = tags.cast<PomodoroTag?>().firstWhere(
-            (t) => l.tagUuids.contains(t?.uuid),
+                (t) => l.tagUuids.contains(t?.uuid),
             orElse: () => null);
-        if (t != null) c = hexColor(t.color, opacity: 0.45);
+        if (t != null) {
+          c = hexColor(t.color, opacity: 0.45);
+          if (title == '补录') title = t.name;
+        }
       }
-      block(l.startTime, l.endTime, c, false);
+      block(l.startTime, l.endTime, c, false, title);
     }
   }
 
   @override
   bool shouldRepaint(covariant _WeekColPainter o) =>
       o.isDark != isDark ||
-      o.hourH != hourH ||
-      o.dayLogs.length != dayLogs.length ||
-      o.dayPoms.length != dayPoms.length;
+          o.hourH != hourH ||
+          o.dayLogs.length != dayLogs.length ||
+          o.dayPoms.length != dayPoms.length;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1180,6 +1241,7 @@ class _DayGridViewState extends State<_DayGridView> {
       Expanded(child: LayoutBuilder(builder: (ctx, constraints) {
         final gridAreaW = constraints.maxWidth - kTimeAxisW;
         final colW = gridAreaW / kColsPerH;
+        debugPrint('colW=$colW  gridAreaW=$gridAreaW');
         final rowH = constraints.maxHeight / kTotalRows;
 
         return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1362,47 +1424,42 @@ class _GridCanvas extends StatelessWidget {
         painter: _GridBgPainter(colW: colW, rowH: rowH, isDark: isDark),
       ),
       if (nowTotalMin >= 0) _buildNowLine(nowTotalMin),
+      // 番茄钟
       ...dPoms.expand((pom) {
-        final pe =
-            pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
+        final pe = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
         PomodoroTag? tag;
         if (pom.tagUuids.isNotEmpty)
           tag = tags.cast<PomodoroTag?>().firstWhere(
-              (t) => pom.tagUuids.contains(t?.uuid),
-              orElse: () => null);
+                  (t) => pom.tagUuids.contains(t?.uuid), orElse: () => null);
         final base = tag != null ? hexColor(tag.color) : Colors.redAccent;
         final title = tag?.name ?? '专注';
-        return _buildEventSegments(
+        return _buildEventBlocks(
           startMs: max(pom.startTime, dayStartMs),
           endMs: min(pe, dayStartMs + 86400000),
           dayStartMs: dayStartMs,
-          colW: colW,
-          isDark: isDark,
+          colW: colW, rowW: rowW, rowH: rowH,
           fillColor: base.withOpacity(isDark ? 0.30 : 0.22),
           barColor: base,
-          isPom: true,
           title: title,
           onTap: () => onPomodoroTap(pom),
         );
       }),
+
+      // 补录日志
       ...dLogs.expand((log) {
         PomodoroTag? tag;
         if (log.tagUuids.isNotEmpty)
           tag = tags.cast<PomodoroTag?>().firstWhere(
-              (t) => log.tagUuids.contains(t?.uuid),
-              orElse: () => null);
-        final base =
-            tag != null ? hexColor(tag.color) : const Color(0xFF3B82F6);
+                  (t) => log.tagUuids.contains(t?.uuid), orElse: () => null);
+        final base = tag != null ? hexColor(tag.color) : const Color(0xFF3B82F6);
         final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
-        return _buildEventSegments(
+        return _buildEventBlocks(
           startMs: max(log.startTime, dayStartMs),
           endMs: min(log.endTime, dayStartMs + 86400000),
           dayStartMs: dayStartMs,
-          colW: colW,
-          isDark: isDark,
+          colW: colW, rowW: rowW, rowH: rowH,
           fillColor: base.withOpacity(isDark ? 0.26 : 0.18),
           barColor: base,
-          isPom: false,
           title: title,
           onTap: () => onTimeLogTap(log),
         );
@@ -1449,34 +1506,32 @@ class _GridCanvas extends StatelessWidget {
     ]);
   }
 
-  List<Widget> _buildEventSegments({
+  List<Widget> _buildEventBlocks({
     required int startMs,
     required int endMs,
     required int dayStartMs,
     required double colW,
-    required bool isDark,
+    required double rowW,
+    required double rowH,
     required Color fillColor,
     required Color barColor,
-    required bool isPom,
     required String title,
     required VoidCallback onTap,
   }) {
     if (endMs <= startMs) return [];
 
-    final startSec = (startMs - dayStartMs) / 1000.0;
-    final endSec = (endMs - dayStartMs) / 1000.0;
-    final startMinF = startSec / 60.0;
-    final endMinF = endSec / 60.0;
-    final totalDurMin = ((endMs - startMs) / 60000).round();
-    final List<Widget> segments = [];
+    final startMinF = (startMs - dayStartMs) / 60000.0;
+    final endMinF   = (endMs   - dayStartMs) / 60000.0;
+    final List<Widget> result = [];
 
     int row = startMinF ~/ 60;
+    bool isFirst = true;
 
     while (row < kTotalRows) {
       final rowStartMin = row * 60.0;
-      final rowEndMin = rowStartMin + 60.0;
+      final rowEndMin   = rowStartMin + 60.0;
       final segStartMin = startMinF.clamp(rowStartMin, rowEndMin);
-      final segEndMin = endMinF.clamp(rowStartMin, rowEndMin);
+      final segEndMin   = endMinF.clamp(rowStartMin, rowEndMin);
 
       if (segEndMin <= segStartMin) {
         if (endMinF <= rowStartMin) break;
@@ -1485,93 +1540,77 @@ class _GridCanvas extends StatelessWidget {
       }
 
       final colStart = (segStartMin - rowStartMin) / kMinsPerCol;
-      final colEnd = (segEndMin - rowStartMin) / kMinsPerCol;
+      final colEnd   = (segEndMin   - rowStartMin) / kMinsPerCol;
+      final left     = colStart * colW;
+      final width    = (colEnd - colStart) * colW;
+      final renderW  = width.clamp(1.0, double.infinity);
+      final isLast   = endMinF <= rowEndMin;
 
-      final left = colStart * colW;
-      final width = (colEnd - colStart) * colW;
-      final renderW = width.clamp(1.0, double.infinity);
-
-      final isFirst = row == (startMinF ~/ 60);
-      final isLast = endMinF <= rowEndMin;
-      final canText = isFirst && renderW >= 28;
-      final showDur = isFirst && renderW >= 70;
-      final showIcon = isFirst && renderW >= 22;
-
-      segments.add(Positioned(
-        top: row * rowH + 1,
-        left: left + 1,
-        width: renderW - 2,
+      // ── 色块背景（每一行都画）──────────────────────────
+      result.add(Positioned(
+        top:    row * rowH + 1,
+        left:   left + 1,
+        width:  renderW - 2,
         height: rowH - 2,
         child: GestureDetector(
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
           child: Container(
-            clipBehavior: Clip.hardEdge,
             decoration: BoxDecoration(
               color: fillColor,
               border: Border(
-                left: BorderSide(color: barColor, width: 2.5),
-                top: isFirst
-                    ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0)
-                    : BorderSide.none,
-                bottom: isLast
-                    ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0)
-                    : BorderSide.none,
-                right: isLast && colEnd < kColsPerH
+                left:   BorderSide(color: barColor, width: 2.5),
+                top:    isFirst ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0) : BorderSide.none,
+                bottom: isLast  ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0) : BorderSide.none,
+                right:  isLast && colEnd < kColsPerH
                     ? BorderSide(color: barColor.withOpacity(0.25), width: 1.0)
                     : BorderSide.none,
               ),
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(isFirst ? 3 : 0),
-                bottomLeft: Radius.circular(isLast ? 3 : 0),
-                topRight: Radius.circular(isFirst && isLast ? 3 : 0),
+                topLeft:     Radius.circular(isFirst ? 3 : 0),
+                bottomLeft:  Radius.circular(isLast  ? 3 : 0),
+                topRight:    Radius.circular(isFirst && isLast ? 3 : 0),
                 bottomRight: Radius.circular(isFirst && isLast ? 3 : 0),
               ),
             ),
-            padding: const EdgeInsets.only(left: 4, right: 3, top: 1),
-            child: canText
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      if (isPom && showIcon)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 2),
-                          child: Icon(Icons.timer_outlined,
-                              size: 9, color: barColor),
-                        ),
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: barColor,
-                            fontWeight: FontWeight.w700,
-                            height: 1.1,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                      if (showDur)
-                        Text(
-                          '${totalDurMin}m',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: barColor.withOpacity(0.65),
-                          ),
-                        ),
-                    ],
-                  )
-                : null,
           ),
         ),
       ));
 
+      // ── 文字：只在第一行，横跨整行宽度（从 left+3 到行末）──
+      if (isFirst) {
+        result.add(Positioned(
+          top:   row * rowH + 1,
+          left:  left + 3,          // 紧贴左边彩条右侧
+          right: 2,                 // 贴到行右边，让文字尽量展开
+          height: rowH - 2,
+          child: GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.translucent,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: barColor,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ),
+        ));
+      }
+
       if (isLast) break;
+      isFirst = false;
       row++;
     }
 
-    return segments;
+    return result;
   }
 }
 
