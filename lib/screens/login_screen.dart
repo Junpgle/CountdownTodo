@@ -24,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isRegisterMode = false;
   bool _awaitingVerification = false;
   String? _legacyLocalUser;
-  String _serverChoice = 'cloudflare';
+  String _serverChoice = 'aliyun';
 
   @override
   void initState() {

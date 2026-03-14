@@ -58,7 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _syncInterval = 0;
   String _themeMode = 'system';
   String _noCourseBehavior = 'keep';
-  String _serverChoice = 'cloudflare';
+  String _serverChoice = 'aliyun';
 
   // 学期进度状态
   bool _semesterEnabled = false;
@@ -2277,8 +2277,8 @@ class _SettingsPageState extends State<SettingsPage> {
           value: _serverChoice,
           underline: const SizedBox(),
           items: const [
-            DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare (推荐)')),
-            DropdownMenuItem(value: 'aliyun', child: Text('阿里云ECS (不安全)')),
+            DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare (更安全)')),
+            DropdownMenuItem(value: 'aliyun', child: Text('阿里云ECS (更快)')),
           ],
           onChanged: (val) async {
             if (val != null && val != _serverChoice) {

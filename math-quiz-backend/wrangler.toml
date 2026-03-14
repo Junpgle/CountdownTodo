@@ -2,7 +2,13 @@ name = "math-quiz-backend"
 main = "src/index.js"
 compatibility_date = "2024-02-07"
 
+routes = [
+	{ pattern = "mathquiz.junpgle.me", custom_domain = true }
+]
+
 [[d1_databases]]
 binding = "math_quiz_db"
 database_name = "math-quiz-db"
 "database_id" = "3a89a343-770c-40ed-a599-e3288176f29c"
+
+

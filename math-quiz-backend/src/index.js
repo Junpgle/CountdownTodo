@@ -906,7 +906,7 @@ export default {
 
 	if (url.pathname === "/api/admin/s2s_export" && request.method === "GET") {
 	  const adminSecret = request.headers.get("x-admin-secret");
-	  if (adminSecret !== (env.API_SECRET) {
+	  if (adminSecret !== (env.API_SECRET)) {
 		return errorResponse("S2S 验证失败：非法访问", 401);
 	  }
 
