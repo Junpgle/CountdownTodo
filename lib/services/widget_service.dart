@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
+import 'pomodoro_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> widgetBackgroundCallback(Uri? uri) async {
@@ -181,25 +182,154 @@ class WidgetService {
       await HomeWidget.saveWidgetData('cd_days_${i + 1}', diff == 0 ? "就在今天" : "还有 $diff 天");
     }
 
-    // 4. 专注日志
-    List<TimeLogItem> logs = await StorageService.getTimeLogs(username);
-    logs = logs.where((l) {
-      if (l.isDeleted) return false;
-      final d = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
-      return d.year == today.year && d.month == today.month && d.day == today.day;
-    }).toList();
-    int totalMins = logs.fold(0, (sum, l) => sum + (l.endTime - l.startTime) ~/ 60000);
-    await HomeWidget.saveWidgetData('tl_total', '今日总专注: $totalMins 分钟');
-    logs.sort((a, b) => b.startTime.compareTo(a.startTime));
-    for (int i = 1; i <= maxWidgetItems; i++) {
-      await HomeWidget.saveWidgetData('tl_title_$i', '');
-      await HomeWidget.saveWidgetData('tl_time_$i', '');
+    // 4. 专注日志 —— 合并番茄钟记录与时间日志（优先本地数据）
+    try {
+      // 获取本地时间日志与本地番茄钟记录（今日）
+      List<TimeLogItem> tlogs = await StorageService.getTimeLogs(username);
+      List<PomodoroRecord> poms = [];
+      try {
+        poms = await PomodoroService.getTodayRecords();
+      } catch (e) {
+        print('Widget Pomodoro fetch error: $e');
+      }
+
+      // 过滤出今日且未删除的 time logs
+      final filteredTimeLogs = tlogs.where((l) {
+        if (l.isDeleted) return false;
+        try {
+          final d = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
+          return d.year == today.year && d.month == today.month && d.day == today.day;
+        } catch (_) { return false; }
+      }).toList();
+
+      // 过滤出今日且未删除的 pomodoro 记录
+      final filteredPoms = poms.where((p) => !p.isDeleted).where((p) {
+        try {
+          final d = DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true).toLocal();
+          return d.year == today.year && d.month == today.month && d.day == today.day;
+        } catch (_) { return false; }
+      }).toList();
+
+      // 合并为统一结构
+      final List<Map<String, dynamic>> merged = [];
+
+      for (final l in filteredTimeLogs) {
+        if (l.endTime <= l.startTime) continue; // 忽略无效
+        merged.add({
+          'kind': 'timelog',
+          'title': (l.title.isNotEmpty ? l.title : (l.tagUuids.isNotEmpty ? '专注任务' : '补录')),
+          'start': l.startTime,
+          'end': l.endTime,
+          'minutes': ((l.endTime - l.startTime) ~/ 60000),
+        });
+      }
+
+      for (final p in filteredPoms) {
+        int start = p.startTime;
+        int end = p.endTime ?? (p.startTime + (p.actualDuration != null ? p.actualDuration! * 1000 : p.plannedDuration * 1000));
+        if (end <= start) continue;
+        final title = (p.todoTitle != null && p.todoTitle!.isNotEmpty) ? p.todoTitle! : '专注任务';
+        merged.add({
+          'kind': 'pomodoro',
+          'title': title,
+          'start': start,
+          'end': end,
+          'minutes': ((end - start) ~/ 60000),
+        });
+      }
+
+      // 按开始时间降序（最近的在前）排序
+      merged.sort((a, b) => b['start'].compareTo(a['start']));
+
+      final totalMins = merged.fold<int>(0, (s, e) => s + (e['minutes'] as int));
+      await HomeWidget.saveWidgetData('tl_total', '今日总专注: $totalMins 分钟');
+
+      // === 按标签统计分钟数（合并 Pomodoro 与 TimeLog） ===
+      // 读取本地标签映射（uuid -> name）
+      Map<String, String> tagNameByUuid = {};
+      try {
+        final allTags = await PomodoroService.getTags();
+        for (var t in allTags) tagNameByUuid[t.uuid] = t.name;
+      } catch (_) {}
+
+      final Map<String, double> tagMinutes = {}; // 使用 double 以便均分
+      const String untaggedKey = '未分类';
+
+      // 遍历原始 filteredTimeLogs（timelog）和 filteredPoms（pomodoro）来统计标签分钟
+      // 为此我们再利用 merged 中的信息，但需要原始记录的 tag uuid 列表
+      // 先处理 time logs
+      for (final l in filteredTimeLogs) {
+        final mins = ((l.endTime - l.startTime) ~/ 60000).toDouble();
+        final tags = l.tagUuids;
+        if (tags.isEmpty) {
+          tagMinutes[untaggedKey] = (tagMinutes[untaggedKey] ?? 0) + mins;
+        } else {
+          final per = mins / tags.length;
+          for (final tu in tags) {
+            final name = tagNameByUuid[tu] ?? tu;
+            tagMinutes[name] = (tagMinutes[name] ?? 0) + per;
+          }
+        }
+      }
+
+      // 处理 pomodoro 记录
+      for (final p in filteredPoms) {
+        final start = p.startTime;
+        final end = p.endTime ?? (p.startTime + (p.actualDuration != null ? p.actualDuration! * 1000 : p.plannedDuration * 1000));
+        final mins = ((end - start) ~/ 60000).toDouble();
+        final tags = p.tagUuids;
+        if (tags.isEmpty) {
+          tagMinutes[untaggedKey] = (tagMinutes[untaggedKey] ?? 0) + mins;
+        } else {
+          final per = mins / tags.length;
+          for (final tu in tags) {
+            final name = tagNameByUuid[tu] ?? tu;
+            tagMinutes[name] = (tagMinutes[name] ?? 0) + per;
+          }
+        }
+      }
+
+      // 转换为列表并按分钟数降序排序
+      final tagEntries = tagMinutes.entries.map((e) => MapEntry(e.key, e.value)).toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      // 写入 widget：清空旧的 tag 键
+      for (int i = 1; i <= maxWidgetItems; i++) {
+        await HomeWidget.saveWidgetData('tl_tag_name_$i', '');
+        await HomeWidget.saveWidgetData('tl_tag_mins_$i', '');
+      }
+      // 写入 tag 数量（字符串形式，widget 层解析即可）
+      await HomeWidget.saveWidgetData('tl_tag_count', '${tagEntries.length}');
+      for (int i = 0; i < tagEntries.length && i < maxWidgetItems; i++) {
+        final name = tagEntries[i].key;
+        final mins = tagEntries[i].value.round();
+        await HomeWidget.saveWidgetData('tl_tag_name_${i + 1}', name);
+        await HomeWidget.saveWidgetData('tl_tag_mins_${i + 1}', '${mins}分');
+      }
+
+      // 清空条目
+      for (int i = 1; i <= maxWidgetItems; i++) {
+        await HomeWidget.saveWidgetData('tl_title_$i', '');
+        await HomeWidget.saveWidgetData('tl_time_$i', '');
+      }
+
+      for (int i = 0; i < merged.length && i < maxWidgetItems; i++) {
+        final it = merged[i];
+        final displayTitle = (it['title'] as String).isNotEmpty ? it['title'] : '专注任务';
+        final mins = it['minutes'] as int;
+        await HomeWidget.saveWidgetData('tl_title_${i + 1}', displayTitle);
+        await HomeWidget.saveWidgetData('tl_time_${i + 1}', '${mins}分钟');
+      }
+    } catch (e) {
+      print('Widget focus merge error: $e');
+      // 兜底：确保键存在
+      await HomeWidget.saveWidgetData('tl_total', '今日总专注: 0 分钟');
+      for (int i = 1; i <= maxWidgetItems; i++) {
+        await HomeWidget.saveWidgetData('tl_title_$i', '');
+        await HomeWidget.saveWidgetData('tl_time_$i', '');
+      }
     }
-    for (int i = 0; i < logs.length && i < maxWidgetItems; i++) {
-      final log = logs[i];
-      await HomeWidget.saveWidgetData('tl_title_${i + 1}', log.title.isNotEmpty ? log.title : '专注任务');
-      await HomeWidget.saveWidgetData('tl_time_${i + 1}', '${(log.endTime - log.startTime) ~/ 60000}分钟');
-    }
+
     await HomeWidget.updateWidget(androidName: androidWidgetName);
   }
 

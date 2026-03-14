@@ -267,34 +267,37 @@ class TodoWidgetProvider : HomeWidgetProvider() {
                 views.setTextColor(tlTotalId, secondaryTextColor) // 🚀 动态着色
             }
 
-            var hasTl = false
+            // === 专注标签统计（tl_tag_*） ===
+            // 读取标签数量，按键名 tl_tag_name_1..N 与 tl_tag_mins_1..N 渲染
+            val tagCountStr = widgetData.getString("tl_tag_count", "0") ?: "0"
+            val tagCount = try { Integer.parseInt(tagCountStr) } catch (e: Exception) { 0 }
+            var hasTags = false
             for (i in 1..8) {
-                val layoutId = context.resources.getIdentifier("tl_layout_$i", "id", context.packageName)
-                if (layoutId == 0) continue
-                val title = widgetData.getString("tl_title_$i", "")
-                if (title.isNullOrEmpty() || i > maxTodoSlots) { views.setViewVisibility(layoutId, View.GONE); continue }
+                val tagLayoutId = context.resources.getIdentifier("tl_tag_layout_$i", "id", context.packageName)
+                if (tagLayoutId == 0) continue
+                val tagName = widgetData.getString("tl_tag_name_$i", "")
+                val tagMins = widgetData.getString("tl_tag_mins_$i", "")
+                if (tagName.isNullOrEmpty() || i > tagCount) { views.setViewVisibility(tagLayoutId, View.GONE); continue }
 
-                hasTl = true
-                views.setViewVisibility(layoutId, View.VISIBLE)
-                val titleId = context.resources.getIdentifier("tl_title_$i", "id", context.packageName)
-                val timeId = context.resources.getIdentifier("tl_time_$i", "id", context.packageName)
-
-                // 🚀 动态着色
-                if (titleId != 0) {
-                    views.setTextViewText(titleId, title)
-                    views.setTextColor(titleId, primaryTextColor)
+                hasTags = true
+                views.setViewVisibility(tagLayoutId, View.VISIBLE)
+                val tagNameId = context.resources.getIdentifier("tl_tag_name_$i", "id", context.packageName)
+                val tagMinsId = context.resources.getIdentifier("tl_tag_mins_$i", "id", context.packageName)
+                if (tagNameId != 0) {
+                    views.setTextViewText(tagNameId, tagName)
+                    views.setTextColor(tagNameId, primaryTextColor)
                 }
-                if (timeId != 0) {
-                    views.setTextViewText(timeId, widgetData.getString("tl_time_$i", ""))
-                    views.setTextColor(timeId, greenColor)
+                if (tagMinsId != 0) {
+                    views.setTextViewText(tagMinsId, tagMins)
+                    views.setTextColor(tagMinsId, greenColor)
                 }
             }
 
-            // 🚀 空状态文字变色
-            val tlEmptyId = context.resources.getIdentifier("tl_empty_layout", "id", context.packageName)
-            val tlEmptyTextId = context.resources.getIdentifier("tl_empty_text", "id", context.packageName)
-            if (tlEmptyId != 0) views.setViewVisibility(tlEmptyId, if (hasTl) View.GONE else View.VISIBLE)
-            if (tlEmptyTextId != 0) views.setTextColor(tlEmptyTextId, secondaryTextColor)
+            // 当没有标签统计时，隐藏可能存在的标签容器占位
+            val tlTagEmptyId = context.resources.getIdentifier("tl_tag_empty_layout", "id", context.packageName)
+            val tlTagEmptyTextId = context.resources.getIdentifier("tl_tag_empty_text", "id", context.packageName)
+            if (tlTagEmptyId != 0) views.setViewVisibility(tlTagEmptyId, if (hasTags) View.GONE else View.VISIBLE)
+            if (tlTagEmptyTextId != 0) views.setTextColor(tlTagEmptyTextId, secondaryTextColor)
 
             // 全局跳转
             val appIntent = Intent(context, MainActivity::class.java)
