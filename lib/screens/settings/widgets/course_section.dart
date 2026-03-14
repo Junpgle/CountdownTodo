@@ -166,11 +166,12 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: colorScheme.surfaceVariant.withOpacity(0.3),
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: const Text('学校适配申请', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
-        backgroundColor: Colors.transparent,
+        backgroundColor: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
       ),
       body: SingleChildScrollView(
@@ -268,7 +269,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                       ),
                       const SizedBox(width: 16),
                       _buildContactCard(
-                          '官方 QQ',
+                          '开发者 QQ',
                           '674155783',
                           Icons.chat_bubble_rounded,
                           Colors.indigo,
