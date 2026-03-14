@@ -48,7 +48,7 @@ class CourseSection extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.file_upload_outlined, color: Colors.indigo),
                 title: const Text('智能导入本地课表'),
-                subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电)'),
+                subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电/HUEL)'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: onSmartImport,
               ),

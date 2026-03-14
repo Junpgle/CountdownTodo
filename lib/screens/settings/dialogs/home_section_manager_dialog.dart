@@ -51,10 +51,11 @@ class _HomeSectionManagerDialogState extends State<HomeSectionManagerDialog> {
       leftOrder = [];
       rightOrder = [];
       for (int i = 0; i < oldOrder.length; i++) {
-        if (i % 2 == 0)
+        if (i % 2 == 0) {
           leftOrder!.add(oldOrder[i]);
-        else
+        } else {
           rightOrder!.add(oldOrder[i]);
+        }
       }
     }
 

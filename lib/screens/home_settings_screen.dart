@@ -1,18 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'dart:io';
-import 'dart:math';
-import 'dart:convert';
-import 'dart:ui';
-import 'dart:isolate';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:io';
+import 'dart:ui';
+import 'dart:convert';
+import 'dart:isolate';
 import '../services/tai_service.dart';
-
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
@@ -36,8 +33,12 @@ import 'settings/widgets/system_section.dart';
 // 引入拆分的弹窗组件
 import 'settings/dialogs/change_password_dialog.dart';
 import 'settings/dialogs/home_section_manager_dialog.dart';
-import 'settings/dialogs/zf_time_config_dialog.dart';
 import 'settings/dialogs/migration_dialog.dart';
+
+// 引入逻辑处理器
+import 'settings/handlers/course_import_handler.dart';
+import 'settings/handlers/permission_handler.dart';
+import 'settings/handlers/storage_management_handler.dart';
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
@@ -65,6 +66,11 @@ class _SettingsPageState extends State<SettingsPage> {
   String _taiDbPath = '';
   bool _floatWindowEnabled = true;
 
+  // 逻辑处理器
+  late CourseImportHandler _courseImportHandler;
+  late PermissionHandler _permissionHandler;
+  late StorageManagementHandler _storageManagementHandler;
+
   // 用户与偏好设置状态
   String _username = "加载中...";
   int? _userId;
@@ -78,185 +84,59 @@ class _SettingsPageState extends State<SettingsPage> {
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  // 缓存大小状态
-  String _cacheSizeStr = "计算中...";
-
   // 账户状态：等级与同步额度
   String _userTier = "加载中...";
   double _syncProgress = 0.0;
   bool _isLoadingStatus = true;
 
-  // 权限状态：key → PermissionStatus（null 表示还未检查）
+  // 处理器状态代理
+  String _cacheSizeStr = "计算中...";
   final Map<String, PermissionStatus?> _permissionStatuses = {};
   bool _isCheckingPermissions = false;
 
-  // 所有应用权限的元数据定义
-  static const List<Map<String, dynamic>> _permissionDefs = [
-    {
-      'key': 'notification',
-      'label': '通知',
-      'desc': '课程提醒、待办闹钟、下载进度推送',
-      'icon': Icons.notifications_outlined,
-      'color': Colors.blue,
-      'critical': true,
-    },
-    {
-      'key': 'storage',
-      'label': '存储读写',
-      'desc': '导入课表文件、下载版本更新安装包',
-      'icon': Icons.folder_outlined,
-      'color': Colors.orange,
-      'critical': false,
-    },
-    {
-      'key': 'usage_stats',
-      'label': '应用使用情况',
-      'desc': '屏幕时间统计功能（统计各 App 使用时长）',
-      'icon': Icons.bar_chart_outlined,
-      'color': Colors.purple,
-      'critical': false,
-    },
-    {
-      'key': 'request_install',
-      'label': '安装未知来源应用',
-      'desc': '允许应用内直接安装版本更新包',
-      'icon': Icons.install_mobile_outlined,
-      'color': Colors.teal,
-      'critical': false,
-    },
-    {
-      'key': 'exact_alarm',
-      'label': '精确提醒',
-      'desc': '保活核心权限：App 被杀后仍能在准确时刻推送待办/课程提醒',
-      'icon': Icons.alarm_outlined,
-      'color': Colors.red,
-      'critical': true,
-    },
-  ];
-
-  Future<void> _checkAllPermissions() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
-    setState(() => _isCheckingPermissions = true);
-
-    final Map<String, PermissionStatus> results = {};
-
-    // 通知权限
-    results['notification'] = await Permission.notification.status;
-
-    // 存储权限（Android 13+ 用 photos/videos，低版本用 storage）
-    if (Platform.isAndroid) {
-      final storageStatus = await Permission.storage.status;
-      final manageStatus = await Permission.manageExternalStorage.status;
-      results['storage'] = (storageStatus.isGranted || manageStatus.isGranted)
-          ? PermissionStatus.granted
-          : storageStatus;
-    } else {
-      results['storage'] = await Permission.storage.status;
-    }
-
-    // 应用使用情况（Android only，通过 MethodChannel 检查）
-    if (Platform.isAndroid) {
-      try {
-        final bool hasUsage =
-            await platform.invokeMethod('checkUsageStatsPermission') ?? false;
-        results['usage_stats'] =
-        hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
-      } catch (_) {
-        results['usage_stats'] = PermissionStatus.denied;
-      }
-    } else {
-      results['usage_stats'] = PermissionStatus.granted;
-    }
-
-    // 安装未知来源
-    if (Platform.isAndroid) {
-      results['request_install'] =
-      await Permission.requestInstallPackages.status;
-    } else {
-      results['request_install'] = PermissionStatus.granted;
-    }
-
-    // 精确闹钟（Android 12+ 需要用户在设置里单独授权）
-    if (Platform.isAndroid) {
-      try {
-        final bool granted = await const MethodChannel(
-            'com.math_quiz.junpgle.com.math_quiz_app/notifications')
-            .invokeMethod<bool>('checkExactAlarmPermission') ??
-            true;
-        results['exact_alarm'] =
-        granted ? PermissionStatus.granted : PermissionStatus.denied;
-      } catch (_) {
-        results['exact_alarm'] = PermissionStatus.granted;
-      }
-    } else {
-      results['exact_alarm'] = PermissionStatus.granted;
-    }
-
-    if (mounted) {
-      setState(() {
-        for (final entry in results.entries) {
-          _permissionStatuses[entry.key] = entry.value;
-        }
-        _isCheckingPermissions = false;
-      });
-    }
-  }
-
-  Future<void> _requestOrOpenPermission(String key) async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
-
-    switch (key) {
-      case 'notification':
-        final status = await Permission.notification.request();
-        if (status.isPermanentlyDenied) await openAppSettings();
-        break;
-      case 'storage':
-        if (Platform.isAndroid) {
-          final status = await Permission.manageExternalStorage.request();
-          if (status.isPermanentlyDenied || status.isDenied) {
-            await openAppSettings();
-          }
-        } else {
-          final status = await Permission.storage.request();
-          if (status.isPermanentlyDenied) await openAppSettings();
-        }
-        break;
-      case 'usage_stats':
-        try {
-          final bool opened =
-              await platform.invokeMethod('openUsageStatsSettings') ?? false;
-          if (!opened) await openAppSettings();
-        } catch (_) {
-          await openAppSettings();
-        }
-        break;
-      case 'request_install':
-        final status = await Permission.requestInstallPackages.request();
-        if (status.isPermanentlyDenied || status.isDenied)
-          await openAppSettings();
-        break;
-      case 'exact_alarm':
-        try {
-          await const MethodChannel(
-              'com.math_quiz.junpgle.com.math_quiz_app/notifications')
-              .invokeMethod('openExactAlarmSettings');
-        } catch (_) {
-          await openAppSettings();
-        }
-        break;
-    }
-
-    await Future.delayed(const Duration(milliseconds: 500));
-    await _checkAllPermissions();
-  }
 
   @override
   void initState() {
     super.initState();
-    _loadSettings().then((_) => _fetchAccountStatus());
+    _courseImportHandler = CourseImportHandler(
+      context: context,
+      semesterStart: _semesterStart,
+      onRescheduleReminders: _rescheduleReminders,
+      showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+    );
+    _permissionHandler = PermissionHandler(
+      context: context,
+      platform: platform,
+      onUpdateChecking: (val) => setState(() => _isCheckingPermissions = val),
+      onUpdateStatuses: (results) {
+        setState(() {
+          for (final entry in results.entries) {
+            _permissionStatuses[entry.key] = entry.value;
+          }
+        });
+      },
+    );
+    _storageManagementHandler = StorageManagementHandler(
+      context: context,
+      onUpdateCacheSize: (val) => setState(() => _cacheSizeStr = val),
+      showLoading: (msg) => _showLoadingDialog(context, msg),
+      closeLoading: () => _closeLoadingDialog(context),
+      showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+    );
+
+    _loadSettings().then((_) {
+      _fetchAccountStatus();
+      // 在加载完设置后同步更新 handler 的 semesterStart
+      _courseImportHandler = CourseImportHandler(
+        context: context,
+        semesterStart: _semesterStart,
+        onRescheduleReminders: _rescheduleReminders,
+        showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+      );
+    });
     _setupDownloadListener();
-    _calculateCacheSize();
-    _checkAllPermissions();
+    _storageManagementHandler.calculateCacheSize();
+    _permissionHandler.checkAllPermissions();
   }
 
   @override
@@ -345,350 +225,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  String _formatSize(double size) {
-    if (size <= 0) return "0 B";
-    const List<String> suffixes = ["B", "KB", "MB", "GB", "TB"];
-    int i = (log(size) / log(1024)).floor();
-    return '${(size / pow(1024, i)).toStringAsFixed(2)} ${suffixes[i]}';
-  }
-
-  Future<void> _calculateCacheSize() async {
-    try {
-      double size = 0;
-
-      final tempDir = await getTemporaryDirectory();
-      size += await _getTotalSizeOfFilesInDir(tempDir);
-
-      final supportDir = await getApplicationSupportDirectory();
-      size += await _getTotalSizeOfFilesInDir(supportDir);
-
-      final docDir = await getApplicationDocumentsDirectory();
-      size += await _getPackageSizeInDir(docDir);
-
-      if (Platform.isAndroid) {
-        final extDir = await getExternalStorageDirectory();
-        if (extDir != null) {
-          size += await _getPackageSizeInDir(extDir);
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _cacheSizeStr = _formatSize(size);
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _cacheSizeStr = "未知");
-    }
-  }
-
-  Future<double> _getTotalSizeOfFilesInDir(FileSystemEntity file) async {
-    if (file is File) {
-      try {
-        return (await file.length()).toDouble();
-      } catch (_) {
-        return 0;
-      }
-    }
-    if (file is Directory) {
-      double total = 0;
-      try {
-        await for (final child in file.list()) {
-          total += await _getTotalSizeOfFilesInDir(child);
-        }
-      } catch (e) {}
-      return total;
-    }
-    return 0;
-  }
-
-  Future<double> _getPackageSizeInDir(Directory dir) async {
-    double total = 0;
-    if (dir.existsSync()) {
-      try {
-        await for (var child in dir.list(recursive: true)) {
-          if (child is File) {
-            String name = child.path.toLowerCase();
-            if (name.endsWith('.apk') || name.endsWith('.exe')) {
-              total += await child.length();
-            }
-          }
-        }
-      } catch (e) {}
-    }
-    return total;
-  }
-
-  Future<void> _clearCache() async {
-    _showLoadingDialog(context, "正在深度清理缓存...");
-
-    try {
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-
-      final tempDir = await getTemporaryDirectory();
-      await _deleteDirectoryContents(tempDir);
-
-      final supportDir = await getApplicationSupportDirectory();
-      await _deleteDirectoryContents(supportDir);
-
-      final docDir = await getApplicationDocumentsDirectory();
-      await _deletePackageFilesInDir(docDir);
-
-      if (Platform.isAndroid) {
-        final extDir = await getExternalStorageDirectory();
-        if (extDir != null) await _deletePackageFilesInDir(extDir);
-      }
-
-      try {
-        final tasks = await FlutterDownloader.loadTasks();
-        if (tasks != null) {
-          for (var task in tasks) {
-            await FlutterDownloader.remove(
-                taskId: task.taskId, shouldDeleteContent: true);
-          }
-        }
-      } catch (e) {}
-    } catch (e) {
-      debugPrint("深度清理缓存失败: $e");
-    } finally {
-      if (mounted) {
-        _closeLoadingDialog(context);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('✅ 深度清理完成，设备空间已大幅释放！')));
-        await _calculateCacheSize();
-      }
-    }
-  }
-
-  Future<void> _deleteDirectoryContents(Directory dir) async {
-    if (dir.existsSync()) {
-      try {
-        await for (var child in dir.list()) {
-          try {
-            await child.delete(recursive: true);
-          } catch (e) {}
-        }
-      } catch (e) {}
-    }
-  }
-
-  Future<void> _deletePackageFilesInDir(Directory dir) async {
-    if (dir.existsSync()) {
-      try {
-        await for (var child in dir.list(recursive: true)) {
-          if (child is File) {
-            String name = child.path.toLowerCase();
-            if (name.endsWith('.apk') || name.endsWith('.exe')) {
-              try {
-                await child.delete();
-              } catch (e) {}
-            }
-          }
-        }
-      } catch (e) {}
-    }
-  }
-
-  Future<void> _showStorageAnalysis() async {
-    _showLoadingDialog(context, "正在分析存储空间...");
-
-    List<Map<String, dynamic>> allFiles = [];
-    Map<String, double> dirSizes = {
-      '沙盒真实根目录 (App Root)': 0,
-      '外部存储 (External)': 0,
-    };
-
-    Future<void> scanDirectory(Directory? dir, String dirName) async {
-      if (dir == null || !dir.existsSync()) return;
-      try {
-        double totalSize = 0;
-        await for (var entity in dir.list(recursive: true, followLinks: false)) {
-          if (entity is File) {
-            try {
-              final size = await entity.length();
-              totalSize += size;
-              if (size > 50 * 1024) {
-                allFiles.add({
-                  'path': entity.path,
-                  'size': size,
-                  'file': entity,
-                });
-              }
-            } catch (e) {}
-          }
-        }
-        dirSizes[dirName] = totalSize;
-      } catch (e) {}
-    }
-
-    try {
-      final docDir = await getApplicationDocumentsDirectory();
-      final rootDir = docDir.parent;
-
-      await scanDirectory(rootDir, '沙盒真实根目录 (App Root)');
-
-      if (Platform.isAndroid) {
-        final extDir = await getExternalStorageDirectory();
-        if (extDir != null) await scanDirectory(extDir, '外部存储 (External)');
-      }
-
-      allFiles.sort((a, b) => b['size'].compareTo(a['size']));
-      final topFiles = allFiles.take(100).toList();
-
-      if (mounted) {
-        _closeLoadingDialog(context);
-        _showFilesDialog(topFiles, dirSizes);
-      }
-    } catch (e) {
-      if (mounted) {
-        _closeLoadingDialog(context);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('扫描失败: $e')));
-      }
-    }
-  }
-
-  void _showFilesDialog(
-      List<Map<String, dynamic>> topFiles, Map<String, double> dirSizes) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('空间占用深度分析', style: TextStyle(fontSize: 18)),
-              contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              content: SizedBox(
-                width: double.maxFinite,
-                height: MediaQuery.of(context).size.height * 0.7,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("📁 目录总览:",
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    ...dirSizes.entries.map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(e.key, style: const TextStyle(fontSize: 13)),
-                          Text(_formatSize(e.value),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13)),
-                        ],
-                      ),
-                    )),
-                    const Divider(height: 24),
-                    const Text("📄 Top 100 大文件 (点击垃圾桶可直删):",
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: topFiles.isEmpty
-                          ? const Center(child: Text("未发现大于 50KB 的文件"))
-                          : ListView.separated(
-                        itemCount: topFiles.length,
-                        separatorBuilder: (_, __) =>
-                        const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final fileInfo = topFiles[index];
-                          final path = fileInfo['path'] as String;
-                          final size = fileInfo['size'] as int;
-                          final fileName = path.split('/').last;
-                          final File file = fileInfo['file'] as File;
-
-                          bool isCore = path.contains('flutter_assets') ||
-                              path.endsWith('.db') ||
-                              path.contains('shared_prefs') ||
-                              path.contains('databases');
-
-                          return ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: Icon(
-                                  isCore
-                                      ? Icons.warning_amber_rounded
-                                      : Icons.insert_drive_file,
-                                  color: isCore
-                                      ? Colors.orange
-                                      : Colors.grey),
-                              title: Text(
-                                fileName,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                    color: isCore ? Colors.orange : null),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Text(path,
-                                  style: const TextStyle(
-                                      fontSize: 10, color: Colors.grey),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis),
-                              trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(_formatSize(size.toDouble()),
-                                        style: const TextStyle(
-                                            color: Colors.redAccent,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold)),
-                                          IconButton(
-                                              padding: const EdgeInsets.only(
-                                                  left: 8),
-                                              constraints:
-                                              const BoxConstraints(),
-                                              icon: const Icon(
-                                                  Icons.delete_outline,
-                                                  size: 20),
-                                              onPressed: () async {
-                                                if (isCore) {
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(const SnackBar(
-                                                      content: Text(
-                                                          '⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！')));
-                                                  return;
-                                                }
-                                                try {
-                                                  if (await file.exists()) {
-                                                    await file.delete();
-                                                    setDialogState(() {
-                                                      topFiles.removeAt(index);
-                                                    });
-                                                    ScaffoldMessenger.of(
-                                                        context)
-                                                        .showSnackBar(
-                                                        const SnackBar(
-                                                            content: Text(
-                                                                '✅ 文件已删除')));
-                                                  }
-                                                } catch (e) {
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(SnackBar(
-                                                      content: Text(
-                                                          '删除失败: $e')));
-                                                }
-                                              })
-                                  ]));
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text("关闭")),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
 
   void _setupDownloadListener() {
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -860,186 +396,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<Map<int, Map<String, int>>?> _showZfTimeConfigDialog(
-      BuildContext context) async {
-    return showDialog<Map<int, Map<String, int>>>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const ZfTimeConfigDialog(),
-    );
-  }
 
-  Future<void> _smartImportCourse() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-    );
-
-    if (result == null || result.files.single.path == null) return;
-
-    String filePath = result.files.single.path!;
-    File file = File(filePath);
-
-    ValueNotifier<String> statusNotifier = ValueNotifier("获取课表文件中...");
-    BuildContext? dialogContext;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      useRootNavigator: true,
-      builder: (ctx) {
-        dialogContext = ctx;
-        return AlertDialog(
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Row(
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 20),
-              Expanded(
-                child: ValueListenableBuilder<String>(
-                  valueListenable: statusNotifier,
-                  builder: (context, value, child) {
-                    return Text(
-                      value,
-                      style: const TextStyle(fontSize: 15, height: 1.4),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    try {
-      await Future.delayed(const Duration(milliseconds: 400));
-      statusNotifier.value = "正在智能识别文件类型...";
-
-      String content;
-      String ext = filePath.split('.').last.toLowerCase();
-
-      try {
-        content = await file.readAsString();
-      } catch (e) {
-        List<int> bytes = await file.readAsBytes();
-        content = utf8.decode(bytes, allowMalformed: true);
-      }
-
-      await Future.delayed(const Duration(milliseconds: 400));
-
-      bool success = false;
-      String sourceName = "";
-
-      if (ext == 'ics' || content.contains('BEGIN:VCALENDAR')) {
-        sourceName = "西安电子科技大学";
-        statusNotifier.value = "识别到: $sourceName\n正在导入...";
-
-        if (_semesterStart == null) {
-          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
-          await Future.delayed(const Duration(seconds: 2));
-          if (dialogContext != null && dialogContext!.mounted)
-            Navigator.pop(dialogContext!);
-          return;
-        }
-        success = await CourseService.importXidianScheduleFromIcs(
-            content, _semesterStart!);
-      }
-      // 🚀 重点修改：正方系统适配
-      else if (content.contains('timetable_con') || content.contains('id="table1"')) {
-        sourceName = "正方教务系统";
-
-        // A. 先关闭原本处于“正在识别”状态的加载弹窗
-        if (dialogContext != null && dialogContext!.mounted) {
-          Navigator.pop(dialogContext!);
-        }
-
-        // B. 弹出全新的时间配置表让用户确认（可独立修改开始和结束时间）
-        Map<int, Map<String, int>>? userAdjustedTimes = await _showZfTimeConfigDialog(context);
-
-        if (userAdjustedTimes == null) {
-          return; // 用户取消了配置
-        }
-
-        // C. 重新显示进度弹窗进行导入操作
-        _showLoadingDialog(context, "正在按照校准的时间导入课表...");
-
-        if (_semesterStart == null) {
-          _closeLoadingDialog(context);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ 请先设置开学日期')));
-          return;
-        }
-
-        success = await CourseService.importZfSoftScheduleFromHtml(
-            content,
-            _semesterStart!,
-            customTimes: userAdjustedTimes
-        );
-      }
-      else if (['mhtml', 'html', 'htm'].contains(ext) ||
-          content.contains('quoted-printable') ||
-          content.toLowerCase().contains('<html')) {
-        sourceName = "厦门大学";
-        statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
-
-        if (_semesterStart == null) {
-          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
-          await Future.delayed(const Duration(seconds: 2));
-          if (dialogContext != null && dialogContext!.mounted)
-            Navigator.pop(dialogContext!);
-          return;
-        }
-        success = await CourseService.importXmuScheduleFromHtml(
-            content, _semesterStart!);
-      } else if (['json', 'txt'].contains(ext) ||
-          content.trim().startsWith('[') ||
-          content.trim().startsWith('{')) {
-        sourceName = "聚在工大";
-        statusNotifier.value = "识别到: $sourceName\n正在导入...";
-        success = await CourseService.importScheduleFromJson(content);
-      } else {
-        statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
-        await Future.delayed(const Duration(seconds: 2));
-        if (dialogContext != null && dialogContext!.mounted)
-          Navigator.pop(dialogContext!);
-        return;
-      }
-
-      // 如果是正方教务，导入逻辑已经由 showLoadingDialog 包装，这里需要处理一下 UI 关闭
-      if (sourceName == "正方教务系统") {
-        _closeLoadingDialog(context);
-      }
-
-      if (success) {
-        statusNotifier.value = "✅ $sourceName 导入成功！\n请返回主页查看课表";
-        _rescheduleReminders(); // 🐘 新增：导入成功后立即重新调度闹钟
-        if (sourceName != "正方教务系统") {
-          await Future.delayed(const Duration(milliseconds: 1200));
-          if (dialogContext != null && dialogContext!.mounted) {
-            Navigator.pop(dialogContext!);
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $sourceName 导入成功！')));
-        }
-      } else {
-        statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
-        if (sourceName != "正方教务系统") {
-          await Future.delayed(const Duration(seconds: 2));
-          if (dialogContext != null && dialogContext!.mounted) {
-            Navigator.pop(dialogContext!);
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 导入失败')));
-        }
-      }
-    } catch (e) {
-      debugPrint("处理智能导入时崩溃: $e");
-      statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
-      if (dialogContext != null && dialogContext!.mounted) {
-        Navigator.pop(dialogContext!);
-      }
-    }
-  }
 
   Future<void> _testCourseNotification() async {
     final dashboardData = await CourseService.getDashboardCourses();
@@ -1482,7 +839,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         CourseSection(
           onUploadCourses: _uploadCoursesToCloud,
-          onSmartImport: _smartImportCourse,
+          onSmartImport: _courseImportHandler.smartImportCourse,
           onFetchFromCloud: _fetchCoursesFromCloud,
           noCourseBehavior: _noCourseBehavior,
           onNoCourseBehaviorChanged: (val) {
@@ -1560,11 +917,11 @@ class _SettingsPageState extends State<SettingsPage> {
               : null,
         ),
         PermissionSection(
-          permissionDefs: _permissionDefs,
+          permissionDefs: PermissionHandler.permissionDefs,
           permissionStatuses: _permissionStatuses,
           isCheckingPermissions: _isCheckingPermissions,
-          onCheckAllPermissions: _checkAllPermissions,
-          onRequestOrOpenPermission: _requestOrOpenPermission,
+          onCheckAllPermissions: _permissionHandler.checkAllPermissions,
+          onRequestOrOpenPermission: _permissionHandler.requestOrOpenPermission,
         ),
         AdvancedSection(
           onShowMigrationDialog: _showMigrationDialog,
@@ -1585,8 +942,8 @@ class _SettingsPageState extends State<SettingsPage> {
             );
           },
           cacheSizeStr: _cacheSizeStr,
-          onClearCache: _clearCache,
-          onShowStorageAnalysis: _showStorageAnalysis,
+          onClearCache: _storageManagementHandler.clearCache,
+          onShowStorageAnalysis: _storageManagementHandler.showStorageAnalysis,
           isCheckingUpdate: _isCheckingUpdate,
           onCheckUpdates: _checkUpdatesAndNotices,
           onLogout: () => _handleLogout(force: false),
@@ -1623,7 +980,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 CourseSection(
                   onUploadCourses: _uploadCoursesToCloud,
-                  onSmartImport: _smartImportCourse,
+                  onSmartImport: _courseImportHandler.smartImportCourse,
                   onFetchFromCloud: _fetchCoursesFromCloud,
                   noCourseBehavior: _noCourseBehavior,
                   onNoCourseBehaviorChanged: (val) {
@@ -1713,11 +1070,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       : null,
                 ),
                 PermissionSection(
-                  permissionDefs: _permissionDefs,
+                  permissionDefs: PermissionHandler.permissionDefs,
                   permissionStatuses: _permissionStatuses,
                   isCheckingPermissions: _isCheckingPermissions,
-                  onCheckAllPermissions: _checkAllPermissions,
-                  onRequestOrOpenPermission: _requestOrOpenPermission,
+                  onCheckAllPermissions: _permissionHandler.checkAllPermissions,
+                  onRequestOrOpenPermission: _permissionHandler.requestOrOpenPermission,
                 ),
                 AdvancedSection(
                   onShowMigrationDialog: _showMigrationDialog,
@@ -1738,8 +1095,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     );
                   },
                   cacheSizeStr: _cacheSizeStr,
-                  onClearCache: _clearCache,
-                  onShowStorageAnalysis: _showStorageAnalysis,
+                  onClearCache: _storageManagementHandler.clearCache,
+                  onShowStorageAnalysis: _storageManagementHandler.showStorageAnalysis,
                   isCheckingUpdate: _isCheckingUpdate,
                   onCheckUpdates: _checkUpdatesAndNotices,
                   onLogout: () => _handleLogout(force: false),
