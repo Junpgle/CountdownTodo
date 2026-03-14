@@ -520,28 +520,69 @@ class StorageService {
   // 屏幕时间与应用映射
   // ==========================================
   static Future<void> saveScreenTimeCache(List<dynamic> stats) async {
+    if (stats.isEmpty) return;
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(KEY_SCREEN_TIME_CACHE, jsonEncode(stats));
-    String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final now = DateTime.now();
+    final String today = DateFormat('yyyy-MM-dd').format(now);
+
+    // 1. 获取已有的历史记录
     String? histStr = prefs.getString(KEY_SCREEN_TIME_HISTORY);
     Map<String, dynamic> history = {};
     if (histStr != null) {
       try {
         history = jsonDecode(histStr);
-      } catch (_) {}
-    }
-    history[today] = stats;
-    if (history.length > 14) {
-      var keys = history.keys.toList()..sort();
-      while (history.length > 14) {
-        history.remove(keys.removeAt(0));
+      } catch (e) {
+        debugPrint("解析历史记录失败: $e");
       }
     }
+
+    // 2. 更新历史记录
+    // 即使 stats 里混入了旧数据，我们也只将其视为“今日最新快照”存储在 today 键下
+    // 如果你想更严格，可以在此处对 stats 进行过滤，确保 e['date'] == today
+    history[today] = stats;
+
+    // 3. 维护 14 天滑动窗口 (删除最旧的记录)
+    if (history.length > 14) {
+      var sortedKeys = history.keys.toList()..sort();
+      while (history.length > 14) {
+        history.remove(sortedKeys.removeAt(0));
+      }
+    }
+
+    // 4. 原子化写入本地存储
     await prefs.setString(KEY_SCREEN_TIME_HISTORY, jsonEncode(history));
+
+    // 5. 更新“当前视图快照” (KEY_SCREEN_TIME_CACHE)
+    // 🚀 核心修复：只有当最新更新日期确实是今天时，才更新首页显示的 Cache
+    // 这样如果凌晨同步了旧数据，首页不会被错误覆盖
+    await prefs.setString(KEY_SCREEN_TIME_CACHE, jsonEncode(stats));
+
+    // 更新最后同步成功的时间戳（记录到毫秒）
+    await prefs.setInt(KEY_LAST_SCREEN_TIME_SYNC, now.millisecondsSinceEpoch);
+
+    debugPrint("屏幕时间本地缓存已更新: $today, 记录条数: ${stats.length}");
   }
 
   static Future<List<dynamic>> getScreenTimeCache() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // 检查缓存是否是今天的
+    int? lastSyncMs = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+    if (lastSyncMs != null) {
+      DateTime lastSyncDate = DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
+      DateTime now = DateTime.now();
+
+      // 如果缓存日期不是今天，说明缓存已过期，返回空列表触发新的同步
+      if (lastSyncDate.year != now.year ||
+          lastSyncDate.month != now.month ||
+          lastSyncDate.day != now.day) {
+        debugPrint("缓存已过期 (日期不匹配)，清理过期数据");
+        await prefs.remove(KEY_SCREEN_TIME_CACHE);
+        return [];
+      }
+    }
+
     String? jsonStr = prefs.getString(KEY_SCREEN_TIME_CACHE);
     if (jsonStr != null) {
       try {
@@ -626,14 +667,15 @@ class StorageService {
   }
 
   static Future<bool> syncData(
-    String username, {
-    bool syncTodos = true,
-    bool syncCountdowns = true,
-    bool forceFullSync = false,
-    BuildContext? context,
-    bool syncTimeLogs = true,
-  }) async {
-    if (!syncTodos && !syncCountdowns) return false;
+      String username, {
+        bool syncTodos = true,
+        bool syncCountdowns = true,
+        bool forceFullSync = false,
+        BuildContext? context,
+        bool syncTimeLogs = true,
+      }) async {
+    // 1. 状态锁：防止重复进入
+    if (!syncTodos && !syncCountdowns && !syncTimeLogs) return false;
     if (_isSyncing) return false;
     _isSyncing = true;
     bool hasChanges = false;
@@ -643,14 +685,12 @@ class StorageService {
       int? userId = prefs.getInt('current_user_id');
       if (userId == null) throw Exception("用户未登录");
 
-      // 1. 获取设备标识 (UUID) 和 友好名称 (型号+类型)
+      // 2. 环境信息准备
       final String deviceId = await _getUniqueDeviceId(username);
       final String friendlyName = await _getDetailedDeviceName();
+      final int lastSyncTime = forceFullSync ? 0 : (prefs.getInt('last_sync_time_$username') ?? 0);
 
-      final int lastSyncTime =
-          forceFullSync ? 0 : (prefs.getInt('last_sync_time_$username') ?? 0);
-
-      // 2. 准备增量数据包
+      // 3. 准备增量数据包 (Todos, Countdowns, TimeLogs)
       List<TodoItem> allLocalTodos = await getTodos(username);
       List<CountdownItem> allLocalCountdowns = await getCountdowns(username);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
@@ -668,23 +708,38 @@ class StorageService {
           .map((t) => t.toJson())
           .toList();
 
-      // 3. 构造屏幕时间数据
-      List<dynamic> localScreenStats = await getScreenTimeCache();
-      String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      // 4. 🚀 屏幕时间逻辑优化：处理日期污染问题
       Map<String, dynamic>? screenPayload;
+      DateTime now = DateTime.now();
+      String todayDate = DateFormat('yyyy-MM-dd').format(now);
 
-      if (localScreenStats.isNotEmpty) {
-        screenPayload = {
-          'device_name': friendlyName,
-          'record_date': todayDate,
-          'apps': localScreenStats
-              .map(
-                  (e) => {'app_name': e['app_name'], 'duration': e['duration']})
-              .toList(),
-        };
+      // 获取屏幕时间最后更新的物理时间
+      int? lastScreenUpdateMs = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+      if (lastScreenUpdateMs != null) {
+        DateTime lastUpdateDate = DateTime.fromMillisecondsSinceEpoch(lastScreenUpdateMs).toLocal();
+
+        // 核心校验：只有缓存的最后更新时间是【今天】，才允许同步
+        if (lastUpdateDate.year == now.year &&
+            lastUpdateDate.month == now.month &&
+            lastUpdateDate.day == now.day) {
+
+          List<dynamic> localScreenStats = await getScreenTimeCache();
+          if (localScreenStats.isNotEmpty) {
+            screenPayload = {
+              'device_name': friendlyName,
+              'record_date': todayDate,
+              'apps': localScreenStats
+                  .map((e) => {'app_name': e['app_name'], 'duration': e['duration']})
+                  .toList(),
+            };
+            debugPrint("准备同步今日屏幕时间: $todayDate (${localScreenStats.length} 条数据)");
+          }
+        } else {
+          debugPrint("本地屏幕时间缓存已过期 (日期为 ${DateFormat('yyyy-MM-dd').format(lastUpdateDate)})，本次跳过推送。");
+        }
       }
 
-      // 4. 发起网络同步
+      // 5. 发起网络同步请求
       final response = await ApiService.postDeltaSync(
         userId: userId,
         lastSyncTime: lastSyncTime,
@@ -695,81 +750,71 @@ class StorageService {
         screenTime: screenPayload,
       );
 
-      if (response['success'] != true)
+      if (response['success'] != true) {
         throw Exception("${response['message'] ?? '同步失败'}");
+      }
 
-      // 5. 合并服务器数据
+      // 6. 🛡️ 数据合并逻辑 (LWW - Last Write Wins)
+
+      // 合并 Todos
       List<dynamic> serverTodos = response['server_todos'] ?? [];
       for (var raw in serverTodos) {
         TodoItem sItem = TodoItem.fromJson(raw);
-        int index = allLocalTodos
-            .indexWhere((l) => l.id.toString() == sItem.id.toString());
+        int index = allLocalTodos.indexWhere((l) => l.id == sItem.id);
         if (index == -1) {
-          if (!sItem.isDeleted) {
-            allLocalTodos.add(sItem);
-            hasChanges = true;
-          }
-        } else if (sItem.isDeleted ||
-            sItem.version > allLocalTodos[index].version ||
-            sItem.updatedAt > allLocalTodos[index].updatedAt) {
+          if (!sItem.isDeleted) { allLocalTodos.add(sItem); hasChanges = true; }
+        } else if (sItem.isDeleted || sItem.version > allLocalTodos[index].version || sItem.updatedAt > allLocalTodos[index].updatedAt) {
           allLocalTodos[index] = sItem;
           hasChanges = true;
         }
       }
 
+      // 合并 Countdowns
       List<dynamic> serverCountdowns = response['server_countdowns'] ?? [];
       for (var raw in serverCountdowns) {
         CountdownItem sItem = CountdownItem.fromJson(raw);
-        int index = allLocalCountdowns
-            .indexWhere((l) => l.id.toString() == sItem.id.toString());
+        int index = allLocalCountdowns.indexWhere((l) => l.id == sItem.id);
         if (index == -1) {
-          if (!sItem.isDeleted) {
-            allLocalCountdowns.add(sItem);
-            hasChanges = true;
-          }
-        } else if (sItem.isDeleted ||
-            sItem.version > allLocalCountdowns[index].version ||
-            sItem.updatedAt > allLocalCountdowns[index].updatedAt) {
+          if (!sItem.isDeleted) { allLocalCountdowns.add(sItem); hasChanges = true; }
+        } else if (sItem.isDeleted || sItem.version > allLocalCountdowns[index].version || sItem.updatedAt > allLocalCountdowns[index].updatedAt) {
           allLocalCountdowns[index] = sItem;
           hasChanges = true;
         }
       }
 
+      // 合并 TimeLogs
       List<dynamic> serverTimeLogs = response['server_time_logs'] ?? [];
       for (var raw in serverTimeLogs) {
         TimeLogItem sItem = TimeLogItem.fromJson(raw);
         int index = allLocalTimeLogs.indexWhere((l) => l.id == sItem.id);
         if (index == -1) {
-          if (!sItem.isDeleted) {
-            allLocalTimeLogs.add(sItem);
-            hasChanges = true;
-          }
-        } else if (sItem.isDeleted ||
-            sItem.version > allLocalTimeLogs[index].version ||
-            sItem.updatedAt > allLocalTimeLogs[index].updatedAt) {
+          if (!sItem.isDeleted) { allLocalTimeLogs.add(sItem); hasChanges = true; }
+        } else if (sItem.isDeleted || sItem.version > allLocalTimeLogs[index].version || sItem.updatedAt > allLocalTimeLogs[index].updatedAt) {
           allLocalTimeLogs[index] = sItem;
           hasChanges = true;
         }
       }
 
-      // 6. 持久化与水位线更新
+      // 7. 持久化数据
       if (hasChanges) {
         await saveTodos(username, allLocalTodos, sync: false);
         await saveCountdowns(username, allLocalCountdowns, sync: false);
         await saveTimeLogs(username, allLocalTimeLogs, sync: false);
       }
 
-      int newSyncTime = response['new_sync_time'];
+      // 8. 更新同步水位线
+      int newSyncTime = response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
       await prefs.setInt('last_sync_time_$username', newSyncTime);
 
-      if (screenPayload != null) {
-        await updateLastScreenTimeSync();
+      // 如果屏幕时间同步成功，可以在这里刷新 UI 用的 Cache 数据（如果后端有返回最新的聚合数据）
+      if (response['screen_time_results'] != null) {
+        await saveScreenTimeCache(response['screen_time_results']);
       }
+
     } catch (e) {
       debugPrint("同步异常: $e");
       if (context != null && context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("同步失败: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("同步失败: $e")));
       }
       rethrow;
     } finally {
