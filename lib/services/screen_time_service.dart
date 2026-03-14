@@ -56,45 +56,39 @@ class ScreenTimeService {
     if (kIsWeb) return;
 
     try {
-      // 获取当前用户名（用于 syncData）
       String? username = await StorageService.getLoginSession();
       if (username == null) return;
 
+      // 1. 获取本机数据并存入本地缓存（准备推送）
       if (Platform.isAndroid) {
         if (!(await checkPermission())) return;
-
-        // 1. 从原生层抓取原始数据
         final List<dynamic>? stats = await _channel.invokeMethod('getScreenTimeData');
-        if (stats == null || stats.isEmpty) return;
-
-        // 2. 立即存入本地缓存 (这会更新 KEY_LAST_SCREEN_TIME_SYNC 时间戳)
-        // 这样 StorageService.syncData 就会认为这是“今日最新”数据
-        await StorageService.saveScreenTimeCache(stats);
-
-        // 3. 调用统一的增量同步接口
-        // 它会把刚才存入 cache 的数据通过 screenPayload 发送给后端
-        await StorageService.syncData(username);
-
-        debugPrint("Android 屏幕时间同步流程完成 (经由 syncData)");
-
+        if (stats != null && stats.isNotEmpty) {
+          await StorageService.saveScreenTimeCache(stats);
+        }
       } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        // 1. 从 Tai 数据库读取原始数据
-        final List<Map<String, dynamic>> apps = await TaiService
-            .getTodayStats();
-        if (apps.isEmpty) return;
-
-        // 2. 立即存入本地缓存（确保本地先看到数据）
-        // 这也会更新本地的时间戳，让随后的 syncData 识别到这是今日数据
-        await StorageService.saveScreenTimeCache(apps);
-
-        // 3. 统一调用 syncData 进行增量同步
-        // syncData 内部会使用正确的设备名： "windows (PC)"
-        String? username = await StorageService.getLoginSession();
-        if (username != null) {
-          await StorageService.syncData(username);
-          debugPrint("桌面端通过统一接口同步完成");
+        final List<Map<String, dynamic>> apps = await TaiService.getTodayStats();
+        if (apps.isNotEmpty) {
+          await StorageService.saveScreenTimeCache(apps);
         }
       }
+
+      // 2. 将本机数据推送到云端（云端会自动完成多端合并）
+      await StorageService.syncData(username);
+      debugPrint("📤 本机屏幕时间已推送到云端");
+
+      // ==========================================
+      // 🚀 核心修复：强制向云端索要多端聚合后的“完美数据”！
+      // ==========================================
+      String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      List<dynamic> cloudStats = await ApiService.fetchScreenTime(userId, today);
+
+      if (cloudStats.isNotEmpty) {
+        // 3. 用云端返回的、包含正确设备名（Xiaomi/PC）的数据，彻底覆盖本地旧缓存！
+        await StorageService.saveScreenTimeCache(cloudStats);
+        debugPrint("📥 成功拉取云端聚合数据，准备刷新 UI！");
+      }
+
     } catch (e) {
       debugPrint("屏幕时间后台同步失败: $e");
     }
