@@ -124,15 +124,20 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     }
   }
 
-  // --- 核心过滤与格式化方法 ---
+  // --- 核心过滤与格式化方法 (增强兼容中文设备后缀) ---
   bool _matchesFilter(String deviceName, DeviceFilter filter) {
-    deviceName = deviceName.toLowerCase();
+    String lower = deviceName.toLowerCase();
     switch (filter) {
-      case DeviceFilter.all: return true;
-      case DeviceFilter.pc: return deviceName.contains("windows") || deviceName.contains("pc") || deviceName.contains("lapt");
-      case DeviceFilter.mobile: return deviceName.contains("phone") || deviceName.contains("tablet");
-      case DeviceFilter.phone: return deviceName.contains("phone");
-      case DeviceFilter.tablet: return deviceName.contains("tablet");
+      case DeviceFilter.all:
+        return true;
+      case DeviceFilter.pc:
+        return lower.contains("windows") || lower.contains("pc") || lower.contains("lapt") || lower.contains("mac") || lower.contains("电脑");
+      case DeviceFilter.mobile:
+        return lower.contains("phone") || lower.contains("手机") || lower.contains("tablet") || lower.contains("平板") || lower.contains("ipad") || lower.contains("android") || lower.contains("ios");
+      case DeviceFilter.phone:
+        return lower.contains("phone") || lower.contains("手机") || lower.contains("android") || lower.contains("ios");
+      case DeviceFilter.tablet:
+        return lower.contains("tablet") || lower.contains("平板") || lower.contains("ipad");
     }
   }
 
@@ -167,19 +172,30 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return "${totalSeconds}秒";
   }
 
+  // 🚀 核心修复：优雅呈现设备型号，不吞噬关键名称
   static String simplifyDeviceName(String device) {
-    device = device.toLowerCase();
-    if (device.contains("phone")) return "手机";
-    if (device.contains("tablet")) return "平板";
-    if (device.contains("windows") || device.contains("pc") || device.contains("lapt")) return "电脑";
-    return "未知设备";
+    if (device.isEmpty) return "未知设备";
+
+    // 过滤掉以前系统残留的纯 UUID 数据 (美化 UI)
+    if (RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(device)) {
+      return "未知设备(旧)";
+    }
+
+    String res = device;
+    // 将后端同步过来的英文类型后缀翻译成中文，保留前面的手机型号
+    res = res.replaceAll("(Phone)", "(手机)");
+    res = res.replaceAll("(Tablet)", "(平板)");
+    res = res.replaceAll("(PC)", "(电脑)");
+    res = res.replaceAll("(Desktop)", "(电脑)");
+
+    return res;
   }
 
   static IconData getDeviceIcon(String device) {
-    device = device.toLowerCase();
-    if (device.contains("phone")) return Icons.smartphone;
-    if (device.contains("tablet")) return Icons.tablet_android;
-    if (device.contains("windows") || device.contains("pc") || device.contains("lapt")) return Icons.laptop_windows;
+    String lower = device.toLowerCase();
+    if (lower.contains("phone") || lower.contains("手机") || lower.contains("ios") || lower.contains("android")) return Icons.smartphone;
+    if (lower.contains("tablet") || lower.contains("平板") || lower.contains("ipad")) return Icons.tablet_android;
+    if (lower.contains("windows") || lower.contains("pc") || lower.contains("lapt") || lower.contains("mac") || lower.contains("电脑")) return Icons.laptop_windows;
     return Icons.devices;
   }
 
@@ -245,7 +261,12 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
 
   static Widget buildDeviceBreakdown(Map<String, int> devices, bool isAllFilter) {
     if (!isAllFilter && devices.length == 1) {
-      return Text(simplifyDeviceName(devices.keys.first), style: const TextStyle(fontSize: 10, color: Colors.blueGrey));
+      return Text(
+        simplifyDeviceName(devices.keys.first),
+        style: const TextStyle(fontSize: 10, color: Colors.blueGrey),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
     }
     return Wrap(
       spacing: 6,
@@ -256,9 +277,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           children: [
             Icon(getDeviceIcon(e.key), size: 12, color: Colors.blueGrey),
             const SizedBox(width: 2),
-            Text(
+            Flexible( // 🚀 添加 Flexible 以限制文本在可用空间内，避免越界
+              child: Text(
                 "${simplifyDeviceName(e.key)} ${formatShortHM(e.value)}",
-                style: const TextStyle(fontSize: 10, color: Colors.blueGrey, fontWeight: FontWeight.w600)
+                style: const TextStyle(fontSize: 10, color: Colors.blueGrey, fontWeight: FontWeight.w600),
+                maxLines: 1, // 🚀 限制为单行显示
+                overflow: TextOverflow.ellipsis, // 🚀 超出部分自动展示省略号
+              ),
             ),
           ],
         );

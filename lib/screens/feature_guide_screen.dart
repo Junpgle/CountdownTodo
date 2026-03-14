@@ -74,29 +74,54 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   @override
   void initState() {
     super.initState();
+    // 默认只放第一页（更新日志），防止异步加载前数组越界
+    _pagesBuilder = [_buildChangelogPage];
+
     _loadInfo();
     _checkPermissions();
     _loadGlobalSettings();
-    if (Platform.isWindows) {
-      _pagesBuilder = [
-        _buildChangelogPage,
-        _buildWinFeaturePage1,
-        _buildWinFeaturePage2,
-        _buildTaiSetupPage,
-        _buildGlobalCourseSetupPage,
-        _buildGlobalThemeSetupPage,
-      ];
-      _loadTaiConfig();
-    } else {
-      _pagesBuilder = [
-        _buildChangelogPage,
-        _buildAndroidFeaturePage1,
-        _buildAndroidFeaturePage2,
-        _buildAndroidFeaturePage3,
-        _buildAndroidWidgetGuidePage, // ← 桌面小部件引导
-        _buildGlobalCourseSetupPage,
-        _buildGlobalThemeSetupPage,
-      ];
+    _setupPages(); // 🚀 核心逻辑：判断是首次启动还是仅仅更新
+  }
+
+  Future<void> _setupPages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final shownVersion = prefs.getString(FeatureGuideScreen._guideKey);
+
+    // 如果之前没有记录过版本号，则是首次安装；如果 isManualReview 为 true，则是用户在设置中主动要求查看
+    final isFirstLaunch = shownVersion == null || shownVersion.isEmpty;
+
+    List<Widget Function()> pages = [];
+
+    // 无论如何，第一页永远是更新日志
+    pages.add(_buildChangelogPage);
+
+    // 只有在首次启动，或者用户手动在设置中点击查看引导时，才展示完整特性引导
+    if (isFirstLaunch || widget.isManualReview) {
+      if (Platform.isWindows) {
+        pages.addAll([
+          _buildWinFeaturePage1,
+          _buildWinFeaturePage2,
+          _buildTaiSetupPage,
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ]);
+        _loadTaiConfig();
+      } else {
+        pages.addAll([
+          _buildAndroidFeaturePage1,
+          _buildAndroidFeaturePage2,
+          _buildAndroidFeaturePage3,
+          _buildAndroidWidgetGuidePage, // ← 桌面小部件引导
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ]);
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _pagesBuilder = pages;
+      });
     }
   }
 
@@ -1128,6 +1153,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 
   Widget _buildPageIndicator() {
+    // 🚀 当只有一页时，直接隐藏页面指示器
+    if (_pagesBuilder.length <= 1) return const SizedBox.shrink();
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(_pagesBuilder.length, (i) {
@@ -1171,7 +1199,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildPageIndicator(),
-              const SizedBox(height: 16),
+              if (_pagesBuilder.length > 1) const SizedBox(height: 16),
               Row(
                 children: [
                   if (_currentPage > 0)
@@ -1196,6 +1224,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                       icon: Icon(_currentPage == _pagesBuilder.length - 1
                           ? Icons.check_rounded
                           : Icons.arrow_forward_rounded),
+                      // 🚀 动态判断按钮文字，只有一页时直接显示 "完成体验"
                       label: Text(_currentPage == _pagesBuilder.length - 1
                           ? '完成体验'
                           : '继续探索'),
