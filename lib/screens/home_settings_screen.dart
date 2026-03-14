@@ -29,7 +29,7 @@ import '../services/course_service.dart';
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
   final SendPort? send =
-      IsolateNameServer.lookupPortByName('downloader_send_port');
+  IsolateNameServer.lookupPortByName('downloader_send_port');
   send?.send([id, status, progress]);
 }
 
@@ -42,7 +42,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   static const platform =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   final ReceivePort _port = ReceivePort();
 
   String _shizukuStatus = "点击右侧按钮获取或检查权限";
@@ -147,7 +147,7 @@ class _SettingsPageState extends State<SettingsPage> {
         final bool hasUsage =
             await platform.invokeMethod('checkUsageStatsPermission') ?? false;
         results['usage_stats'] =
-            hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
+        hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
       } catch (_) {
         results['usage_stats'] = PermissionStatus.denied;
       }
@@ -158,7 +158,7 @@ class _SettingsPageState extends State<SettingsPage> {
     // 安装未知来源
     if (Platform.isAndroid) {
       results['request_install'] =
-          await Permission.requestInstallPackages.status;
+      await Permission.requestInstallPackages.status;
     } else {
       results['request_install'] = PermissionStatus.granted;
     }
@@ -167,11 +167,11 @@ class _SettingsPageState extends State<SettingsPage> {
     if (Platform.isAndroid) {
       try {
         final bool granted = await const MethodChannel(
-                    'com.math_quiz.junpgle.com.math_quiz_app/notifications')
-                .invokeMethod<bool>('checkExactAlarmPermission') ??
+            'com.math_quiz.junpgle.com.math_quiz_app/notifications')
+            .invokeMethod<bool>('checkExactAlarmPermission') ??
             true;
         results['exact_alarm'] =
-            granted ? PermissionStatus.granted : PermissionStatus.denied;
+        granted ? PermissionStatus.granted : PermissionStatus.denied;
       } catch (_) {
         results['exact_alarm'] = PermissionStatus.granted;
       }
@@ -225,7 +225,7 @@ class _SettingsPageState extends State<SettingsPage> {
       case 'exact_alarm':
         try {
           await const MethodChannel(
-                  'com.math_quiz.junpgle.com.math_quiz_app/notifications')
+              'com.math_quiz.junpgle.com.math_quiz_app/notifications')
               .invokeMethod('openExactAlarmSettings');
         } catch (_) {
           await openAppSettings();
@@ -275,8 +275,8 @@ class _SettingsPageState extends State<SettingsPage> {
     bool useCache = false;
     if (cachedDataStr != null && lastSyncTime != null) {
       final DateTime lastSync =
-          DateTime.fromMillisecondsSinceEpoch(lastSyncTime, isUtc: true)
-              .toLocal();
+      DateTime.fromMillisecondsSinceEpoch(lastSyncTime, isUtc: true)
+          .toLocal();
       if (DateTime.now().difference(lastSync).inMinutes < 5) {
         useCache = true;
         try {
@@ -404,11 +404,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _clearCache() async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
+    _showLoadingDialog(context, "正在深度清理缓存...");
 
     try {
       PaintingBinding.instance.imageCache.clear();
@@ -441,7 +437,7 @@ class _SettingsPageState extends State<SettingsPage> {
       debugPrint("深度清理缓存失败: $e");
     } finally {
       if (mounted) {
-        Navigator.pop(context);
+        _closeLoadingDialog(context);
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('✅ 深度清理完成，设备空间已大幅释放！')));
         _calculateCacheSize();
@@ -479,11 +475,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _showStorageAnalysis() async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
+    _showLoadingDialog(context, "正在分析存储空间...");
 
     List<Map<String, dynamic>> allFiles = [];
     Map<String, double> dirSizes = {
@@ -529,12 +521,12 @@ class _SettingsPageState extends State<SettingsPage> {
       final topFiles = allFiles.take(100).toList();
 
       if (mounted) {
-        Navigator.pop(context);
+        _closeLoadingDialog(context);
         _showFilesDialog(topFiles, dirSizes);
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context);
+        _closeLoadingDialog(context);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('扫描失败: $e')));
       }
@@ -561,18 +553,18 @@ class _SettingsPageState extends State<SettingsPage> {
                         style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
                     ...dirSizes.entries.map((e) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(e.key, style: const TextStyle(fontSize: 13)),
-                              Text(_formatSize(e.value),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13)),
-                            ],
-                          ),
-                        )),
+                      padding: const EdgeInsets.only(bottom: 4.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(e.key, style: const TextStyle(fontSize: 13)),
+                          Text(_formatSize(e.value),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13)),
+                        ],
+                      ),
+                    )),
                     const Divider(height: 24),
                     const Text("📄 Top 100 大文件 (点击垃圾桶可直删):",
                         style: TextStyle(fontWeight: FontWeight.bold)),
@@ -581,91 +573,91 @@ class _SettingsPageState extends State<SettingsPage> {
                       child: topFiles.isEmpty
                           ? const Center(child: Text("未发现大于 50KB 的文件"))
                           : ListView.separated(
-                              itemCount: topFiles.length,
-                              separatorBuilder: (_, __) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final fileInfo = topFiles[index];
-                                final path = fileInfo['path'] as String;
-                                final size = fileInfo['size'] as int;
-                                final fileName = path.split('/').last;
-                                final File file = fileInfo['file'] as File;
+                        itemCount: topFiles.length,
+                        separatorBuilder: (_, __) =>
+                        const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final fileInfo = topFiles[index];
+                          final path = fileInfo['path'] as String;
+                          final size = fileInfo['size'] as int;
+                          final fileName = path.split('/').last;
+                          final File file = fileInfo['file'] as File;
 
-                                bool isCore = path.contains('flutter_assets') ||
-                                    path.endsWith('.db') ||
-                                    path.contains('shared_prefs') ||
-                                    path.contains('databases');
+                          bool isCore = path.contains('flutter_assets') ||
+                              path.endsWith('.db') ||
+                              path.contains('shared_prefs') ||
+                              path.contains('databases');
 
-                                return ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    leading: Icon(
-                                        isCore
-                                            ? Icons.warning_amber_rounded
-                                            : Icons.insert_drive_file,
-                                        color: isCore
-                                            ? Colors.orange
-                                            : Colors.grey),
-                                    title: Text(
-                                      fileName,
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                          color: isCore ? Colors.orange : null),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text(path,
+                          return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                  isCore
+                                      ? Icons.warning_amber_rounded
+                                      : Icons.insert_drive_file,
+                                  color: isCore
+                                      ? Colors.orange
+                                      : Colors.grey),
+                              title: Text(
+                                fileName,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: isCore ? Colors.orange : null),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(path,
+                                  style: const TextStyle(
+                                      fontSize: 10, color: Colors.grey),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis),
+                              trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(_formatSize(size.toDouble()),
                                         style: const TextStyle(
-                                            fontSize: 10, color: Colors.grey),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis),
-                                    trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(_formatSize(size.toDouble()),
-                                              style: const TextStyle(
-                                                  color: Colors.redAccent,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold)),
-                                          IconButton(
-                                              padding: const EdgeInsets.only(
-                                                  left: 8),
-                                              constraints:
-                                                  const BoxConstraints(),
-                                              icon: const Icon(
-                                                  Icons.delete_outline,
-                                                  size: 20),
-                                              onPressed: () async {
-                                                if (isCore) {
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(const SnackBar(
-                                                          content: Text(
-                                                              '⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！')));
-                                                  return;
-                                                }
-                                                try {
-                                                  if (file.existsSync()) {
-                                                    file.deleteSync();
-                                                    setDialogState(() {
-                                                      topFiles.removeAt(index);
-                                                    });
-                                                    ScaffoldMessenger.of(
-                                                            context)
-                                                        .showSnackBar(
-                                                            const SnackBar(
-                                                                content: Text(
-                                                                    '✅ 文件已删除')));
-                                                  }
-                                                } catch (e) {
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(SnackBar(
-                                                          content: Text(
-                                                              '删除失败: $e')));
-                                                }
-                                              })
-                                        ]));
-                              },
-                            ),
+                                            color: Colors.redAccent,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold)),
+                                    IconButton(
+                                        padding: const EdgeInsets.only(
+                                            left: 8),
+                                        constraints:
+                                        const BoxConstraints(),
+                                        icon: const Icon(
+                                            Icons.delete_outline,
+                                            size: 20),
+                                        onPressed: () async {
+                                          if (isCore) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(const SnackBar(
+                                                content: Text(
+                                                    '⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！')));
+                                            return;
+                                          }
+                                          try {
+                                            if (file.existsSync()) {
+                                              file.deleteSync();
+                                              setDialogState(() {
+                                                topFiles.removeAt(index);
+                                              });
+                                              ScaffoldMessenger.of(
+                                                  context)
+                                                  .showSnackBar(
+                                                  const SnackBar(
+                                                      content: Text(
+                                                          '✅ 文件已删除')));
+                                            }
+                                          } catch (e) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(SnackBar(
+                                                content: Text(
+                                                    '删除失败: $e')));
+                                          }
+                                        })
+                                  ]));
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -774,13 +766,13 @@ class _SettingsPageState extends State<SettingsPage> {
       if (_userId != null) {
         final startMs = _semesterStart != null
             ? DateTime(_semesterStart!.year, _semesterStart!.month,
-                    _semesterStart!.day)
-                .millisecondsSinceEpoch
+            _semesterStart!.day)
+            .millisecondsSinceEpoch
             : null;
         final endMs = _semesterEnd != null
             ? DateTime(
-                    _semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
-                .millisecondsSinceEpoch
+            _semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
+            .millisecondsSinceEpoch
             : null;
         ApiService.uploadUserSettings(
             semesterStartMs: startMs, semesterEndMs: endMs);
@@ -799,83 +791,83 @@ class _SettingsPageState extends State<SettingsPage> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) {
-              return AlertDialog(
-                title: const Text("修改密码"),
-                content: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: oldPassCtrl,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                            labelText: "当前密码",
-                            prefixIcon: Icon(Icons.lock_outline)),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: newPassCtrl,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                            labelText: "新密码", prefixIcon: Icon(Icons.lock)),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: confirmPassCtrl,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                            labelText: "确认新密码",
-                            prefixIcon: Icon(Icons.check_circle_outline)),
-                      ),
-                    ],
+          return AlertDialog(
+            title: const Text("修改密码"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: oldPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                        labelText: "当前密码",
+                        prefixIcon: Icon(Icons.lock_outline)),
                   ),
-                ),
-                actions: [
-                  TextButton(
-                      onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
-                      child: const Text("取消")),
-                  FilledButton(
-                    onPressed: isSubmitting
-                        ? null
-                        : () async {
-                            if (newPassCtrl.text != confirmPassCtrl.text) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('两次输入的新密码不一致')));
-                              return;
-                            }
-                            if (newPassCtrl.text.isEmpty ||
-                                oldPassCtrl.text.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('请填写完整')));
-                              return;
-                            }
-
-                            setDialogState(() => isSubmitting = true);
-                            final res = await ApiService.changePassword(
-                                _userId!, oldPassCtrl.text, newPassCtrl.text);
-                            setDialogState(() => isSubmitting = false);
-
-                            if (!context.mounted) return;
-                            Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text(res['message'] ??
-                                    (res['success'] ? '修改成功' : '修改失败'))));
-
-                            if (res['success']) {
-                              _handleLogout(force: true);
-                            }
-                          },
-                    child: isSubmitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Text("确认修改"),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: newPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                        labelText: "新密码", prefixIcon: Icon(Icons.lock)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: confirmPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                        labelText: "确认新密码",
+                        prefixIcon: Icon(Icons.check_circle_outline)),
                   ),
                 ],
-              );
-            }));
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                  child: const Text("取消")),
+              FilledButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                  if (newPassCtrl.text != confirmPassCtrl.text) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('两次输入的新密码不一致')));
+                    return;
+                  }
+                  if (newPassCtrl.text.isEmpty ||
+                      oldPassCtrl.text.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('请填写完整')));
+                    return;
+                  }
+
+                  setDialogState(() => isSubmitting = true);
+                  final res = await ApiService.changePassword(
+                      _userId!, oldPassCtrl.text, newPassCtrl.text);
+                  setDialogState(() => isSubmitting = false);
+
+                  if (!context.mounted) return;
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(res['message'] ??
+                          (res['success'] ? '修改成功' : '修改失败'))));
+
+                  if (res['success']) {
+                    _handleLogout(force: true);
+                  }
+                },
+                child: isSubmitting
+                    ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                    : const Text("确认修改"),
+              ),
+            ],
+          );
+        }));
   }
 
   void _showHomeSectionManager() async {
@@ -943,215 +935,215 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(
         context: context,
         builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) {
-              void moveItem(String item,
-                  {String? targetKey, bool? toLeftList}) {
-                setDialogState(() {
-                  leftOrder!.remove(item);
-                  rightOrder!.remove(item);
-                  if (targetKey != null) {
-                    if (leftOrder!.contains(targetKey)) {
-                      leftOrder!.insert(leftOrder!.indexOf(targetKey), item);
-                    } else if (rightOrder!.contains(targetKey)) {
-                      rightOrder!.insert(rightOrder!.indexOf(targetKey), item);
-                    }
-                  } else if (toLeftList != null) {
-                    if (toLeftList)
-                      leftOrder!.add(item);
-                    else
-                      rightOrder!.add(item);
-                  }
-                });
+          void moveItem(String item,
+              {String? targetKey, bool? toLeftList}) {
+            setDialogState(() {
+              leftOrder!.remove(item);
+              rightOrder!.remove(item);
+              if (targetKey != null) {
+                if (leftOrder!.contains(targetKey)) {
+                  leftOrder!.insert(leftOrder!.indexOf(targetKey), item);
+                } else if (rightOrder!.contains(targetKey)) {
+                  rightOrder!.insert(rightOrder!.indexOf(targetKey), item);
+                }
+              } else if (toLeftList != null) {
+                if (toLeftList)
+                  leftOrder!.add(item);
+                else
+                  rightOrder!.add(item);
               }
+            });
+          }
 
-              Widget buildDraggableItem(String key) {
-                return LongPressDraggable<String>(
-                  data: key,
-                  delay: const Duration(milliseconds: 200),
-                  feedback: Material(
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.transparent,
-                    child: Container(
-                      width: 250,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
+          Widget buildDraggableItem(String key) {
+            return LongPressDraggable<String>(
+              data: key,
+              delay: const Duration(milliseconds: 200),
+              feedback: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.transparent,
+                child: Container(
+                  width: 250,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer
+                          .withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(8)),
+                  child: Text(names[key] ?? key,
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
                           color: Theme.of(context)
                               .colorScheme
-                              .primaryContainer
-                              .withOpacity(0.9),
-                          borderRadius: BorderRadius.circular(8)),
-                      child: Text(names[key] ?? key,
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onPrimaryContainer)),
+                              .onPrimaryContainer)),
+                ),
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.3,
+                child: CheckboxListTile(
+                    title: Text(names[key] ?? key),
+                    value: visibility[key],
+                    onChanged: null),
+              ),
+              child: DragTarget<String>(
+                  onWillAccept: (data) => data != key,
+                  onAccept: (data) => moveItem(data, targetKey: key),
+                  builder: (context, candidateData, rejectedData) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        border: candidateData.isNotEmpty
+                            ? Border(
+                            top: BorderSide(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary,
+                                width: 3))
+                            : null,
+                      ),
+                      child: CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(names[key] ?? key,
+                            style: const TextStyle(fontSize: 14)),
+                        value: visibility[key],
+                        secondary: const Icon(Icons.drag_indicator,
+                            color: Colors.grey, size: 20),
+                        onChanged: (val) => setDialogState(
+                                () => visibility[key] = val ?? true),
+                      ),
+                    );
+                  }),
+            );
+          }
+
+          Widget buildDragColumn(List<String> items, bool isLeft) {
+            return Expanded(
+              child: DragTarget<String>(
+                  onWillAccept: (data) => true,
+                  onAccept: (data) => moveItem(data, toLeftList: isLeft),
+                  builder: (context, candidateData, rejectedData) {
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.only(bottom: 60),
+                      decoration: BoxDecoration(
+                        color: candidateData.isNotEmpty
+                            ? Theme.of(context)
+                            .colorScheme
+                            .primaryContainer
+                            .withOpacity(0.1)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border:
+                        Border.all(color: Colors.grey.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(isLeft ? "屏幕左栏" : "屏幕右栏",
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey)),
+                          ),
+                          ...items.map((key) => buildDraggableItem(key)),
+                        ],
+                      ),
+                    );
+                  }),
+            );
+          }
+
+          return AlertDialog(
+            title: const Text("首页模块管理"),
+            content: SizedBox(
+              width: isTablet ? 600 : double.maxFinite,
+              height: 400,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: Text(
+                        isTablet
+                            ? "长按模块，可跨越左右栏进行拖拽。\n勾选控制该模块是否在首页展示。"
+                            : "长按右侧把手拖拽改变顺序，勾选控制是否展示。",
+                        style: const TextStyle(
+                            color: Colors.grey, fontSize: 13)),
+                  ),
+                  Expanded(
+                    child: isTablet
+                        ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        buildDragColumn(leftOrder!, true),
+                        buildDragColumn(rightOrder!, false),
+                      ],
+                    )
+                        : ReorderableListView(
+                      shrinkWrap: true,
+                      onReorder: (oldIndex, newIndex) {
+                        setDialogState(() {
+                          if (newIndex > oldIndex) newIndex -= 1;
+                          final item =
+                          mobileCombinedOrder.removeAt(oldIndex);
+                          mobileCombinedOrder.insert(newIndex, item);
+                        });
+                      },
+                      children: mobileCombinedOrder.map((key) {
+                        return CheckboxListTile(
+                          key: Key(key),
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(names[key] ?? key),
+                          value: visibility[key] ?? true,
+                          secondary: const Icon(Icons.drag_handle,
+                              color: Colors.grey),
+                          onChanged: (val) {
+                            setDialogState(
+                                    () => visibility[key] = val ?? true);
+                          },
+                        );
+                      }).toList(),
                     ),
                   ),
-                  childWhenDragging: Opacity(
-                    opacity: 0.3,
-                    child: CheckboxListTile(
-                        title: Text(names[key] ?? key),
-                        value: visibility[key],
-                        onChanged: null),
-                  ),
-                  child: DragTarget<String>(
-                      onWillAccept: (data) => data != key,
-                      onAccept: (data) => moveItem(data, targetKey: key),
-                      builder: (context, candidateData, rejectedData) {
-                        return Container(
-                          decoration: BoxDecoration(
-                            border: candidateData.isNotEmpty
-                                ? Border(
-                                    top: BorderSide(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        width: 3))
-                                : null,
-                          ),
-                          child: CheckboxListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(names[key] ?? key,
-                                style: const TextStyle(fontSize: 14)),
-                            value: visibility[key],
-                            secondary: const Icon(Icons.drag_indicator,
-                                color: Colors.grey, size: 20),
-                            onChanged: (val) => setDialogState(
-                                () => visibility[key] = val ?? true),
-                          ),
-                        );
-                      }),
-                );
-              }
-
-              Widget buildDragColumn(List<String> items, bool isLeft) {
-                return Expanded(
-                  child: DragTarget<String>(
-                      onWillAccept: (data) => true,
-                      onAccept: (data) => moveItem(data, toLeftList: isLeft),
-                      builder: (context, candidateData, rejectedData) {
-                        return Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          padding: const EdgeInsets.only(bottom: 60),
-                          decoration: BoxDecoration(
-                            color: candidateData.isNotEmpty
-                                ? Theme.of(context)
-                                    .colorScheme
-                                    .primaryContainer
-                                    .withOpacity(0.1)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                            border:
-                                Border.all(color: Colors.grey.withOpacity(0.2)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Text(isLeft ? "屏幕左栏" : "屏幕右栏",
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.grey)),
-                              ),
-                              ...items.map((key) => buildDraggableItem(key)),
-                            ],
-                          ),
-                        );
-                      }),
-                );
-              }
-
-              return AlertDialog(
-                title: const Text("首页模块管理"),
-                content: SizedBox(
-                  width: isTablet ? 600 : double.maxFinite,
-                  height: 400,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12.0),
-                        child: Text(
-                            isTablet
-                                ? "长按模块，可跨越左右栏进行拖拽。\n勾选控制该模块是否在首页展示。"
-                                : "长按右侧把手拖拽改变顺序，勾选控制是否展示。",
-                            style: const TextStyle(
-                                color: Colors.grey, fontSize: 13)),
-                      ),
-                      Expanded(
-                        child: isTablet
-                            ? Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  buildDragColumn(leftOrder!, true),
-                                  buildDragColumn(rightOrder!, false),
-                                ],
-                              )
-                            : ReorderableListView(
-                                shrinkWrap: true,
-                                onReorder: (oldIndex, newIndex) {
-                                  setDialogState(() {
-                                    if (newIndex > oldIndex) newIndex -= 1;
-                                    final item =
-                                        mobileCombinedOrder.removeAt(oldIndex);
-                                    mobileCombinedOrder.insert(newIndex, item);
-                                  });
-                                },
-                                children: mobileCombinedOrder.map((key) {
-                                  return CheckboxListTile(
-                                    key: Key(key),
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(names[key] ?? key),
-                                    value: visibility[key] ?? true,
-                                    secondary: const Icon(Icons.drag_handle,
-                                        color: Colors.grey),
-                                    onChanged: (val) {
-                                      setDialogState(
-                                          () => visibility[key] = val ?? true);
-                                    },
-                                  );
-                                }).toList(),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text("取消")),
-                  FilledButton(
-                    onPressed: () {
-                      if (!isTablet) {
-                        leftOrder!.clear();
-                        rightOrder!.clear();
-                        int mid = (mobileCombinedOrder.length / 2).ceil();
-                        for (int i = 0; i < mobileCombinedOrder.length; i++) {
-                          if (i < mid)
-                            leftOrder!.add(mobileCombinedOrder[i]);
-                          else
-                            rightOrder!.add(mobileCombinedOrder[i]);
-                        }
-                      }
-
-                      prefs.setStringList(
-                          'home_section_order_left', leftOrder!);
-                      prefs.setStringList(
-                          'home_section_order_right', rightOrder!);
-                      prefs.setString(
-                          'home_section_visibility', jsonEncode(visibility));
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                          const SnackBar(content: Text('已保存，请返回主页查看更新')));
-                    },
-                    child: const Text("保存并应用"),
-                  )
                 ],
-              );
-            }));
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("取消")),
+              FilledButton(
+                onPressed: () {
+                  if (!isTablet) {
+                    leftOrder!.clear();
+                    rightOrder!.clear();
+                    int mid = (mobileCombinedOrder.length / 2).ceil();
+                    for (int i = 0; i < mobileCombinedOrder.length; i++) {
+                      if (i < mid)
+                        leftOrder!.add(mobileCombinedOrder[i]);
+                      else
+                        rightOrder!.add(mobileCombinedOrder[i]);
+                    }
+                  }
+
+                  prefs.setStringList(
+                      'home_section_order_left', leftOrder!);
+                  prefs.setStringList(
+                      'home_section_order_right', rightOrder!);
+                  prefs.setString(
+                      'home_section_visibility', jsonEncode(visibility));
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                      const SnackBar(content: Text('已保存，请返回主页查看更新')));
+                },
+                child: const Text("保存并应用"),
+              )
+            ],
+          );
+        }));
   }
 
   Future<void> _checkAndOpenLiveUpdates() async {
@@ -1196,6 +1188,158 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  // 🚀 1. 新增：专门用于配置正方教务作息时间的弹窗
+  Future<Map<int, Map<String, int>>?> _showZfTimeConfigDialog(BuildContext context) async {
+    // 默认作息方案 (可以根据国内大多数高校预设)
+    final List<Map<String, int>> tempTimes = [
+      {'sH': 8, 'sM': 0, 'eH': 8, 'eM': 45},    // 第一节 8:00—8:45
+      {'sH': 8, 'sM': 55, 'eH': 9, 'eM': 40},   // 第二节 8:55—9:40
+      {'sH': 9, 'sM': 55, 'eH': 10, 'eM': 40},  // 第三节 9:55—10:40
+      {'sH': 10, 'sM': 50, 'eH': 11, 'eM': 35}, // 第四节 10:50—11:35
+      {'sH': 11, 'sM': 45, 'eH': 12, 'eM': 30}, // 第五节 11:45—12:30
+      {'sH': 13, 'sM': 30, 'eH': 14, 'eM': 15}, // 第六节 13:30—14:15
+      {'sH': 14, 'sM': 25, 'eH': 15, 'eM': 10}, // 第七节 14:25—15:10
+      {'sH': 15, 'sM': 25, 'eH': 16, 'eM': 10}, // 第八节 15:25—16:10
+      {'sH': 16, 'sM': 20, 'eH': 17, 'eM': 5},  // 第九节 16:20—17:05
+      {'sH': 17, 'sM': 15, 'eH': 18, 'eM': 0},  // 第十节 17:15—18:00
+      {'sH': 19, 'sM': 0, 'eH': 19, 'eM': 45},  // 第十一节 19:00—19:45
+      {'sH': 19, 'sM': 50, 'eH': 20, 'eM': 35}, // 第十二节 19:50—20:35
+      {'sH': 20, 'sM': 40, 'eH': 21, 'eM': 25}, // 第十三节 20:40—21:25
+    ];
+
+    return showDialog<Map<int, Map<String, int>>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            // 内部方法：弹出 TimePicker 并更新指定的时间
+            Future<void> pickSingleTime(int index, bool isStart) async {
+              final t = tempTimes[index];
+              final initialTime = isStart
+                  ? TimeOfDay(hour: t['sH']!, minute: t['sM']!)
+                  : TimeOfDay(hour: t['eH']!, minute: t['eM']!);
+
+              final TimeOfDay? picked = await showTimePicker(
+                context: context,
+                initialTime: initialTime,
+                helpText: "设置第 ${index + 1} 节课${isStart ? '开始' : '结束'}时间",
+              );
+
+              if (picked != null) {
+                setDialogState(() {
+                  if (isStart) {
+                    t['sH'] = picked.hour;
+                    t['sM'] = picked.minute;
+                  } else {
+                    t['eH'] = picked.hour;
+                    t['eM'] = picked.minute;
+                  }
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: const Text("配置课表作息时间"),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: Column(
+                  children: [
+                    const Text("正方教务不含时间，请分别设置每节课的开始与结束时刻：",
+                        style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: tempTimes.length,
+                        itemBuilder: (context, index) {
+                          final t = tempTimes[index];
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: ListTile(
+                              dense: true,
+                              leading: CircleAvatar(
+                                  radius: 12,
+                                  child: Text("${index + 1}", style: const TextStyle(fontSize: 10))
+                              ),
+                              title: Row(
+                                children: [
+                                  // 开始时间按钮
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => pickSingleTime(index, true),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          "${t['sH']}:${t['sM']!.toString().padLeft(2, '0')}",
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 8.0),
+                                    child: Text("至", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                  ),
+                                  // 结束时间按钮
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => pickSingleTime(index, false),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          "${t['eH']}:${t['eM']!.toString().padLeft(2, '0')}",
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+                FilledButton(
+                  onPressed: () {
+                    Map<int, Map<String, int>> resultMap = {};
+                    for (int i = 0; i < tempTimes.length; i++) {
+                      final t = tempTimes[i];
+                      resultMap[i + 1] = {
+                        'start': t['sH']! * 100 + t['sM']!,
+                        'end': t['eH']! * 100 + t['eM']!,
+                      };
+                    }
+                    Navigator.pop(ctx, resultMap);
+                  },
+                  child: const Text("确认并导入"),
+                ),
+              ],
+            );
+          }
+      ),
+    );
+  }
+
   Future<void> _smartImportCourse() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.any,
@@ -1217,7 +1361,7 @@ class _SettingsPageState extends State<SettingsPage> {
         dialogContext = ctx;
         return AlertDialog(
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Row(
             children: [
               const CircularProgressIndicator(),
@@ -1271,7 +1415,39 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         success = await CourseService.importXidianScheduleFromIcs(
             content, _semesterStart!);
-      } else if (['mhtml', 'html', 'htm'].contains(ext) ||
+      }
+      // 🚀 重点修改：正方系统适配
+      else if (content.contains('timetable_con') || content.contains('id="table1"')) {
+        sourceName = "正方教务系统";
+
+        // A. 先关闭原本处于“正在识别”状态的加载弹窗
+        if (dialogContext != null && dialogContext!.mounted) {
+          Navigator.pop(dialogContext!);
+        }
+
+        // B. 弹出全新的时间配置表让用户确认（可独立修改开始和结束时间）
+        Map<int, Map<String, int>>? userAdjustedTimes = await _showZfTimeConfigDialog(context);
+
+        if (userAdjustedTimes == null) {
+          return; // 用户取消了配置
+        }
+
+        // C. 重新显示进度弹窗进行导入操作
+        _showLoadingDialog(context, "正在按照校准的时间导入课表...");
+
+        if (_semesterStart == null) {
+          _closeLoadingDialog(context);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ 请先设置开学日期')));
+          return;
+        }
+
+        success = await CourseService.importZfSoftScheduleFromHtml(
+            content,
+            _semesterStart!,
+            customTimes: userAdjustedTimes
+        );
+      }
+      else if (['mhtml', 'html', 'htm'].contains(ext) ||
           content.contains('quoted-printable') ||
           content.toLowerCase().contains('<html')) {
         sourceName = "厦门大学";
@@ -1300,23 +1476,35 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
 
+      // 如果是正方教务，导入逻辑已经由 showLoadingDialog 包装，这里需要处理一下 UI 关闭
+      if (sourceName == "正方教务系统") {
+        _closeLoadingDialog(context);
+      }
+
       if (success) {
         statusNotifier.value = "✅ $sourceName 导入成功！\n请返回主页查看课表";
-        await Future.delayed(const Duration(milliseconds: 1200));
-        if (dialogContext != null && dialogContext!.mounted) {
-          Navigator.pop(dialogContext!);
+        if (sourceName != "正方教务系统") {
+          await Future.delayed(const Duration(milliseconds: 1200));
+          if (dialogContext != null && dialogContext!.mounted) {
+            Navigator.pop(dialogContext!);
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ $sourceName 导入成功！')));
         }
       } else {
         statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
-        await Future.delayed(const Duration(seconds: 2));
-        if (dialogContext != null && dialogContext!.mounted) {
-          Navigator.pop(dialogContext!);
+        if (sourceName != "正方教务系统") {
+          await Future.delayed(const Duration(seconds: 2));
+          if (dialogContext != null && dialogContext!.mounted) {
+            Navigator.pop(dialogContext!);
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 导入失败')));
         }
       }
     } catch (e) {
       debugPrint("处理智能导入时崩溃: $e");
       statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
-      await Future.delayed(const Duration(seconds: 2));
       if (dialogContext != null && dialogContext!.mounted) {
         Navigator.pop(dialogContext!);
       }
@@ -1343,7 +1531,7 @@ class _SettingsPageState extends State<SettingsPage> {
         courseName: testCourse.courseName,
         room: testCourse.roomName,
         timeStr:
-            '${testCourse.formattedStartTime} - ${testCourse.formattedEndTime}',
+        '${testCourse.formattedStartTime} - ${testCourse.formattedEndTime}',
         teacher: testCourse.teacherName,
       );
       if (mounted) {
@@ -1428,48 +1616,44 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     bool confirm = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text("上传课表到云端"),
-            content: const Text("这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text("取消")),
-              FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text("上传")),
-            ],
-          ),
-        ) ??
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("上传课表到云端"),
+        content: const Text("这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text("取消")),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text("上传")),
+        ],
+      ),
+    ) ??
         false;
 
     if (!confirm) return;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+    _showLoadingDialog(context, "正在同步到云端...");
 
     final result = await CourseService.syncCoursesToCloud(_userId!);
 
     if (result['success'] == true) {
       final startMs = _semesterStart != null
           ? DateTime(_semesterStart!.year, _semesterStart!.month,
-                  _semesterStart!.day)
-              .millisecondsSinceEpoch
+          _semesterStart!.day)
+          .millisecondsSinceEpoch
           : null;
       final endMs = _semesterEnd != null
           ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
-              .millisecondsSinceEpoch
+          .millisecondsSinceEpoch
           : null;
       await ApiService.uploadUserSettings(
           semesterStartMs: startMs, semesterEndMs: endMs);
     }
 
     if (!mounted) return;
-    Navigator.pop(context);
+    _closeLoadingDialog(context);
 
     if (result['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1512,17 +1696,13 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (confirm != true) return;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+    _showLoadingDialog(context, "正在获取云端课表...");
 
     try {
       final List<dynamic> data = await ApiService.fetchCourses(_userId!);
 
       if (!mounted) return;
-      Navigator.pop(context);
+      _closeLoadingDialog(context);
 
       if (data.isNotEmpty) {
         if (_semesterStart == null) {
@@ -1575,7 +1755,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context);
+        _closeLoadingDialog(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ 发生错误: $e')),
         );
@@ -1628,23 +1808,23 @@ class _SettingsPageState extends State<SettingsPage> {
     bool confirm = force;
     if (!force) {
       confirm = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text("退出账号"),
-              content: const Text("确定要退出当前账号吗？"),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text("取消")),
-                FilledButton(
-                  style:
-                      FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text("退出"),
-                ),
-              ],
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("退出账号"),
+          content: const Text("确定要退出当前账号吗？"),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text("取消")),
+            FilledButton(
+              style:
+              FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text("退出"),
             ),
-          ) ??
+          ],
+        ),
+      ) ??
           false;
     }
 
@@ -1654,8 +1834,32 @@ class _SettingsPageState extends State<SettingsPage> {
         Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (_) => const LoginScreen()),
-            (route) => false);
+                (route) => false);
       }
+    }
+  }
+
+  // Helper method to show a persistent loading dialog
+  void _showLoadingDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 20),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper method to close the loading dialog
+  void _closeLoadingDialog(BuildContext context) {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
@@ -1691,7 +1895,7 @@ class _SettingsPageState extends State<SettingsPage> {
               if (_permissionStatuses.isNotEmpty)
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: allGranted
                         ? Colors.green.withOpacity(0.12)
@@ -1713,9 +1917,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   padding: const EdgeInsets.all(4.0),
                   child: _isCheckingPermissions
                       ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.refresh, size: 18, color: Colors.grey),
                 ),
               ),
@@ -1725,7 +1929,7 @@ class _SettingsPageState extends State<SettingsPage> {
         Card(
           elevation: 2,
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(
             children: [
               for (int i = 0; i < _permissionDefs.length; i++) ...[
@@ -1762,7 +1966,7 @@ class _SettingsPageState extends State<SettingsPage> {
       statusIcon = const Icon(Icons.help_outline, size: 20, color: Colors.grey);
     } else if (granted) {
       statusIcon =
-          const Icon(Icons.check_circle, size: 20, color: Colors.green);
+      const Icon(Icons.check_circle, size: 20, color: Colors.green);
     } else {
       statusIcon = Icon(
         critical ? Icons.error : Icons.warning_amber_rounded,
@@ -1841,7 +2045,7 @@ class _SettingsPageState extends State<SettingsPage> {
         Card(
           elevation: 2,
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(children: children),
         ),
       ],
@@ -1864,7 +2068,7 @@ class _SettingsPageState extends State<SettingsPage> {
       const Divider(height: 1, indent: 56),
       Padding(
         padding:
-            const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
+        const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1874,19 +2078,19 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Text("账户等级", style: TextStyle(fontSize: 14)),
                 _isLoadingStatus
                     ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                     : Text(
-                        _userTier.toUpperCase(),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: _userTier.toLowerCase() == 'pro' ||
-                                  _userTier.toLowerCase() == 'admin'
-                              ? Colors.orangeAccent
-                              : Colors.grey,
-                        ),
-                      ),
+                  _userTier.toUpperCase(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _userTier.toLowerCase() == 'pro' ||
+                        _userTier.toLowerCase() == 'admin'
+                        ? Colors.orangeAccent
+                        : Colors.grey,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1899,7 +2103,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 value: _syncProgress,
                 minHeight: 6,
                 backgroundColor:
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                Theme.of(context).colorScheme.surfaceContainerHighest,
                 valueColor: AlwaysStoppedAnimation<Color>(_syncProgress > 0.9
                     ? Colors.redAccent
                     : Theme.of(context).colorScheme.primary),
@@ -2070,7 +2274,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 await StorageService.clearLoginSession();
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
+                      (route) => false,
                 );
               }
             }
@@ -2124,10 +2328,10 @@ class _SettingsPageState extends State<SettingsPage> {
           value: _floatWindowEnabled,
           onChanged: Platform.isWindows
               ? (val) async {
-                  setState(() => _floatWindowEnabled = val);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('float_window_enabled', val);
-                }
+            setState(() => _floatWindowEnabled = val);
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('float_window_enabled', val);
+          }
               : null,
         ),
       ],
@@ -2150,10 +2354,10 @@ class _SettingsPageState extends State<SettingsPage> {
         Card(
           elevation: 2,
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: ListTile(
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             leading: const CircleAvatar(
                 backgroundColor: Colors.blueAccent,
                 child: Icon(Icons.rocket_launch, color: Colors.white)),
@@ -2176,10 +2380,10 @@ class _SettingsPageState extends State<SettingsPage> {
           Card(
             elevation: 2,
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
               contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               leading: const Icon(Icons.notification_important_outlined,
                   color: Colors.amber),
               title: const Text('测试课程实时通知'),
@@ -2192,10 +2396,10 @@ class _SettingsPageState extends State<SettingsPage> {
           Card(
             elevation: 2,
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
               contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               leading: const CircleAvatar(
                   backgroundColor: Colors.teal,
                   child: Icon(Icons.notifications_active, color: Colors.white)),
@@ -2217,10 +2421,10 @@ class _SettingsPageState extends State<SettingsPage> {
           Card(
             elevation: 2,
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
               contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               leading: const CircleAvatar(
                   backgroundColor: Colors.deepPurpleAccent,
                   child: Icon(Icons.smart_button, color: Colors.white)),
@@ -2254,53 +2458,53 @@ class _SettingsPageState extends State<SettingsPage> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text("一键全量账号与数据迁移"),
-            content: isMigrating
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 20),
-                    Text(statusText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center),
-                  ],
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('请输入您最初在 Cloudflare 服务器上注册用的邮箱与密码。系统会自动验证拉取，随后向阿里云注入您的配置。', style: TextStyle(fontSize: 13)),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: emailCtrl,
-                      decoration: const InputDecoration(labelText: '旧账号邮箱', border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: passCtrl,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: '旧账号密码', border: OutlineInputBorder()),
-                    ),
-                  ],
-                ),
-            actions: isMigrating
-                ? null
-                : [
-                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
-                    FilledButton(
-                      onPressed: () async {
-                        if (emailCtrl.text.isEmpty || passCtrl.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('不能留空哦')));
-                          return;
-                        }
-                        
-                        setDialogState(() {
-                          isMigrating = true;
-                          statusText = "准备中...";
-                        });
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text("一键全量账号与数据迁移"),
+              content: isMigrating
+                  ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 20),
+                  Text(statusText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center),
+                ],
+              )
+                  : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('请输入您最初在 Cloudflare 服务器上注册用的邮箱与密码。系统会自动验证拉取，随后向阿里云注入您的配置。', style: TextStyle(fontSize: 13)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(labelText: '旧账号邮箱', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: '旧账号密码', border: OutlineInputBorder()),
+                  ),
+                ],
+              ),
+              actions: isMigrating
+                  ? null
+                  : [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+                FilledButton(
+                    onPressed: () async {
+                      if (emailCtrl.text.isEmpty || passCtrl.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('不能留空哦')));
+                        return;
+                      }
 
-                        try {
-                          await MigrationService.runMigration(
+                      setDialogState(() {
+                        isMigrating = true;
+                        statusText = "准备中...";
+                      });
+
+                      try {
+                        await MigrationService.runMigration(
                             context: context,
                             oldUrl: ApiService.cloudflareUrl,  // D1 URL
                             newUrl: ApiService.aliyunUrl, // ECS URL
@@ -2309,28 +2513,28 @@ class _SettingsPageState extends State<SettingsPage> {
                             onProgress: (msg) {
                               setDialogState(() => statusText = msg);
                             }
-                          );
+                        );
 
-                          if (mounted) {
-                            Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 迁移大成功！您的所有数据和账户已落户阿里云。')));
-                            _fetchAccountStatus(); // Refresh credentials visually
-                          }
-                        } catch (e) {
-                          setDialogState(() {
-                            isMigrating = false;
-                            statusText = "";
-                          });
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ 迁移失败: $e')));
-                          }
+                        if (mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 迁移大成功！您的所有数据和账户已落户阿里云。')));
+                          _fetchAccountStatus(); // Refresh credentials visually
                         }
-                      },
-                      child: const Text("验证并开始迁移")
-                    ),
-                  ],
-          );
-        }
+                      } catch (e) {
+                        setDialogState(() {
+                          isMigrating = false;
+                          statusText = "";
+                        });
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ 迁移失败: $e')));
+                        }
+                      }
+                    },
+                    child: const Text("验证并开始迁移")
+                ),
+              ],
+            );
+          }
       ),
     );
   }
@@ -2348,61 +2552,61 @@ class _SettingsPageState extends State<SettingsPage> {
             context,
             MaterialPageRoute(
               builder: (context) =>
-                  const FeatureGuideScreen(isManualReview: true),
+              const FeatureGuideScreen(isManualReview: true),
             ),
           );
         },
       ),
       if (!Platform.isWindows) ...[
-      const Divider(height: 1, indent: 56),
-      ListTile(
-        leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
-        title: const Text('深度清理缓存与冗余'),
-        subtitle: const Text('包含更新残留包与深度图片缓存'),
-        trailing: Text(_cacheSizeStr,
-            style: const TextStyle(
-                color: Colors.grey, fontWeight: FontWeight.bold)),
-        onTap: () async {
-          bool confirm = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text("深度清理空间"),
-                  content: Text(
-                      "检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK/EXE) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响"),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text("取消")),
-                    FilledButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text("清理")),
-                  ],
-                ),
-              ) ??
-              false;
+        const Divider(height: 1, indent: 56),
+        ListTile(
+          leading: const Icon(Icons.cleaning_services, color: Colors.blueAccent),
+          title: const Text('深度清理缓存与冗余'),
+          subtitle: const Text('包含更新残留包与深度图片缓存'),
+          trailing: Text(_cacheSizeStr,
+              style: const TextStyle(
+                  color: Colors.grey, fontWeight: FontWeight.bold)),
+          onTap: () async {
+            bool confirm = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text("深度清理空间"),
+                content: Text(
+                    "检测到大约 $_cacheSizeStr 可释放空间。\n这会彻底清除你过往下载的版本更新安装包 (APK/EXE) 以及深度的图片缓存，释放大量“用户数据”占用。\n\n(你的本地待办、倒计时与课表数据绝对安全，不受影响"),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text("取消")),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text("清理")),
+                ],
+              ),
+            ) ??
+                false;
 
-          if (confirm) {
-            _clearCache();
-          }
-        },
-      ),
-      const Divider(height: 1, indent: 56),
-      ListTile(
-        leading: const Icon(Icons.data_usage, color: Colors.orange),
-        title: const Text('存储空间深度分析'),
-        subtitle: const Text('找出占用数百MB的隐藏文件'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: _showStorageAnalysis,
-      ),
+            if (confirm) {
+              _clearCache();
+            }
+          },
+        ),
+        const Divider(height: 1, indent: 56),
+        ListTile(
+          leading: const Icon(Icons.data_usage, color: Colors.orange),
+          title: const Text('存储空间深度分析'),
+          subtitle: const Text('找出占用数百MB的隐藏文件'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _showStorageAnalysis,
+        ),
       ],
       ListTile(
         leading: const Icon(Icons.system_update, color: Colors.green),
         title: const Text('检查新版本'),
         trailing: _isCheckingUpdate
             ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2))
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.chevron_right),
         onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
       ),

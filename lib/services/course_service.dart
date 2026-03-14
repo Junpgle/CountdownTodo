@@ -9,6 +9,7 @@ import '../services/api_service.dart';
 import 'hfut_schedule_parser.dart';
 import 'xmu_schedule_parser.dart';
 import 'xidian_schedule_parser.dart'; // 🚀 1. 新增西电解析器引入
+import 'zfsoft_schedule_parser.dart'; // 🚀 新增：引入正方教务系统解析器
 
 class CourseItem {
   final String courseName;
@@ -142,6 +143,30 @@ class CourseService {
     }
   }
 
+  // 🚀 5. 新增：导入正方教务系统课表
+  static Future<bool> importZfSoftScheduleFromHtml(
+      String htmlString,
+      DateTime semesterStart,
+      {Map<int, Map<String, int>>? customTimes} // 🚀 适配：接收用户自定义的作息表
+      ) async {
+    try {
+      // 调用解析器，并传入可能的自定义时间配置
+      List<CourseItem> parsedCourses = ZfSoftScheduleParser.parseHtml(
+        htmlString,
+        semesterStart,
+        customTimes: customTimes,
+      );
+      if (parsedCourses.isEmpty) return false;
+
+      // 保存到本地存储
+      await saveCourses(parsedCourses);
+      return true;
+    } catch (e) {
+      print("解析正方教务课表出错: $e");
+      return false;
+    }
+  }
+
   // ================= 提取与业务逻辑 =================
 
   // 4. 获取所有解析后的课程对象
@@ -154,16 +179,14 @@ class CourseService {
       final decoded = jsonDecode(data);
 
       if (decoded is List) {
-        // 🚀 核心修复：必须显式声明泛型 <CourseItem> 并在 fromJson 前对 Map 强转，
-        // 彻底根除 "List<dynamic> is not a subtype of List<CourseItem>" 导致的静默崩溃！
+        // 🚀 核心修复：必须显式声明泛型 <CourseItem> 并在 fromJson 前对 Map 强转
         return decoded.map<CourseItem>((item) => CourseItem.fromJson(Map<String, dynamic>.from(item))).toList();
       } else {
-        // 无缝兼容旧数据，防止用户更新 App 后课表丢失
+        // 无缝兼容旧数据
         return HfutScheduleParser.parse(data);
       }
     } catch (e) {
       print("读取所有课表时发生崩溃: $e");
-      // 极端情况下的兜底回退
       try {
         return HfutScheduleParser.parse(data);
       } catch (e2) {
@@ -201,7 +224,6 @@ class CourseService {
 
       return {'title': '近期无课', 'courses': <CourseItem>[]};
     } catch (e) {
-      // 🚀 核心修复：即使上面有异常，也安全返回兜底数据，绝不打断主页刷新流程
       print("获取主页课程时发生崩溃: $e");
       return {'title': '近期无课', 'courses': <CourseItem>[]};
     }

@@ -111,6 +111,24 @@ class ExternalShareHandler {
         }
         success = await CourseService.importXidianScheduleFromIcs(content, semStart);
       }
+
+      // 2. 识别 正方教务系统 (关键新增)
+      // 特征：包含 timetable_con 类名或正方特有的 ID 格式
+      else if (content.contains('timetable_con') || content.contains('id="table1"')) {
+        sourceName = "正方教务系统";
+        statusNotifier.value = "识别到: $sourceName\n正在深度解析...";
+
+        DateTime? semStart = await StorageService.getSemesterStart();
+        if (semStart == null) {
+          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
+          await Future.delayed(const Duration(seconds: 2));
+          _closeDialogSafely(dialogContext);
+          return;
+        }
+        // 调用刚才在 CourseService 中新增的方法
+        success = await CourseService.importZfSoftScheduleFromHtml(content, semStart);
+      }
+
       else if (['mhtml', 'html', 'htm'].contains(ext) || content.contains('quoted-printable') || content.toLowerCase().contains('<html')) {
         sourceName = "厦门大学";
         statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
