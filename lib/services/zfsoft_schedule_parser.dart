@@ -18,76 +18,97 @@ class ZfSoftScheduleParser {
     String cleanHtml = _decodeMhtml(htmlString);
     Document document = parser.parse(cleanHtml);
 
-    // 2. 核心逻辑：获取网格视图中的课程节点
-    var courseNodes = document.querySelectorAll('#table1 .timetable_con');
+    // 2. 核心逻辑：获取页面中所有的课程节点块
+    // 🚀 修复：不限表格 ID (适配 kbgrid_table_0, table1 等)，确保能抓取到所有课程
+    var courseNodes = document.querySelectorAll('.timetable_con');
 
-    // 🚀 预处理：确保从学期第一周的周一开始计算日期（彻底解决周次日期偏移问题）
+    // 🚀 预处理：对齐学期周一，确保日期推算不跨周
     DateTime semesterMonday = semesterStartDate.subtract(Duration(days: semesterStartDate.weekday - 1));
 
     for (var node in courseNodes) {
+      // 获取课程名称：兼容 u 和 span 两种标题包装方式
       String? title = node.querySelector('.title')?.text.trim();
       if (title == null || title.isEmpty) continue;
 
+      // 清洗标记
       title = title.replaceAll(RegExp(r'[★●◆]'), '').replaceAll(RegExp(r'^【.*?】'), '').trim();
 
+      // 🚀 核心修复：根据 td 的 ID 或位置识别星期
       int weekday = 1;
+      Element? tdElement;
       Element? current = node.parent;
       while (current != null) {
-        if (current.localName == 'td' && current.id.isNotEmpty) {
-          var idParts = current.id.split('-');
-          if (idParts.isNotEmpty) {
-            weekday = int.tryParse(idParts[0]) ?? 1;
-          }
+        if (current.localName == 'td') {
+          tdElement = current;
           break;
         }
         current = current.parent;
       }
 
-      // 🚀 关键修复：支持一个课程节点内存在多段不同的时间/周次信息
-      List<String> timeSegments = [];
-      String location = '';
-      String teacher = '';
-
-      for (var p in node.querySelectorAll('p')) {
-        var tooltipNode = p.querySelector('[data-toggle="tooltip"]');
-        if (tooltipNode != null) {
-          String tooltipTitle = tooltipNode.attributes['title']?.trim() ?? '';
-          String pText = p.text.trim();
-
-          if (tooltipTitle == '节/周') {
-            timeSegments.add(pText); // 记录所有时间段，防止被覆盖
-          } else if (tooltipTitle == '上课地点') {
-            location = pText;
-          } else if (tooltipTitle.contains('教师')) {
-            teacher = pText;
+      if (tdElement != null) {
+        String tdId = tdElement.id;
+        // 匹配第一个数字，如 "3-1" 匹配 3 (周三)
+        RegExp dayReg = RegExp(r'\d+');
+        var match = dayReg.firstMatch(tdId);
+        if (match != null) {
+          weekday = int.tryParse(match.group(0)!) ?? 1;
+        } else {
+          // 兜底：如果 ID 无数字，根据 cellIndex 计算
+          // 表格通常前两列是时间/节次，所以 index 2 对应周一
+          Element? tr = tdElement.parent;
+          if (tr != null) {
+            int idx = tr.children.indexOf(tdElement);
+            if (idx >= 2) {
+              weekday = idx - 1;
+            }
           }
         }
       }
 
-      // 遍历该课程的所有时间段
+      List<String> timeSegments = [];
+      String location = '';
+      String teacher = '';
+
+      // 提取课程段落中的时间、地点、教师
+      for (var p in node.querySelectorAll('p')) {
+        String pText = p.text.trim();
+        var tooltipNode = p.querySelector('[data-toggle="tooltip"]');
+        String tooltipTitle = tooltipNode?.attributes['title']?.trim() ?? '';
+
+        // 识别时间行：精准排除“周学时”、“总学时”
+        if (tooltipTitle == '节/周' || (pText.contains('节') && pText.contains('('))) {
+          timeSegments.add(pText);
+        } else if (tooltipTitle == '上课地点' || (location.isEmpty && pText.contains(RegExp(r'[教楼室区]')))) {
+          location = pText;
+        } else if (tooltipTitle.contains('教师') || (teacher.isEmpty && pText.length >= 2 && pText.length <= 4)) {
+          teacher = pText;
+        }
+      }
+
+      if (timeSegments.isEmpty) continue;
+
+      // 🚀 日志验证：打印每个课程节点收集到的原始时间段
+      print('[$title] timeSegments: $timeSegments');
+
       for (String timeStr in timeSegments) {
-        // 解析节次：增加对中文括号的支持
+        // 解析节次 (如 1-2节)
         int startJc = 1;
         int endJc = 2;
-        RegExp periodExp = RegExp(r'[(\（](?:周.*?第)?(\d+)-(\d+)[节)\）]');
-        var match = periodExp.firstMatch(timeStr);
-        if (match != null) {
-          startJc = int.tryParse(match.group(1)!) ?? startJc;
-          endJc = int.tryParse(match.group(2)!) ?? endJc;
-        } else {
-          RegExp singlePeriodExp = RegExp(r'[(\（](?:周.*?第)?(\d+)[节)\）]');
-          var singleMatch = singlePeriodExp.firstMatch(timeStr);
-          if (singleMatch != null) {
-            startJc = int.tryParse(singleMatch.group(1)!) ?? startJc;
-            endJc = startJc;
-          }
+        RegExp periodExp = RegExp(r'[(\（](?:周.*?第)?(\d+)(?:-(\d+))?[节)）]');
+        var pMatch = periodExp.firstMatch(timeStr);
+        if (pMatch != null) {
+          startJc = int.tryParse(pMatch.group(1)!) ?? startJc;
+          String? endGroup = pMatch.group(2);
+          endJc = (endGroup != null) ? (int.tryParse(endGroup) ?? startJc) : startJc;
         }
 
-        // 解析周次
+        // 解析周次 (确保能解析 18 周这类单独数字)
         List<int> weeks = _parseZfWeeks(timeStr);
 
+        // 🚀 日志验证：打印解析出的最终周次列表
+        print('[$title] timeStr=$timeStr weeks=$weeks');
+
         for (int week in weeks) {
-          // 使用对齐后的周一进行计算
           DateTime courseDate = semesterMonday.add(Duration(days: (week - 1) * 7 + (weekday - 1)));
           String dateStr = DateFormat('yyyy-MM-dd').format(courseDate);
 
@@ -106,7 +127,14 @@ class ZfSoftScheduleParser {
       }
     }
 
-    return courses;
+    // 全局去重：防止因扫描多个表格导致的课程冲突
+    final seen = <String>{};
+    return courses.where((c) {
+      final key = "${c.date}-${c.startTime}-${c.courseName}";
+      if (seen.contains(key)) return false;
+      seen.add(key);
+      return true;
+    }).toList();
   }
 
   static int _getStartTime(int jc, Map<int, Map<String, int>>? customTimes) {
@@ -131,48 +159,33 @@ class ZfSoftScheduleParser {
     return defaultTimes[jc] ?? 940;
   }
 
-  /// 🚀 增强版周次解析：支持空格、中英文逗号分隔符，支持中文括号
   static List<int> _parseZfWeeks(String rawStr) {
-    // 移除括号内的节次信息，同时兼容中英文括号
-    String weekPart = rawStr.replaceAll(RegExp(r'[(\（](?:周.*?第)?\d+(?:-\d+)?[节)\）]'), '');
-    weekPart = weekPart.replaceAll('周', '');
+    // 移除干扰项：移除包含“节”字的括号内容
+    String content = rawStr.replaceAll(RegExp(r'[(\（][^)\（]*?节[^)\（]*?[)）]'), '');
 
     List<int> weeks = [];
-    if (weekPart.isEmpty) return weeks;
 
-    // 🚀 重点修复：同时支持空格、英文逗号、中文逗号作为分隔符
-    List<String> parts = weekPart.split(RegExp(r'[,，\s]+'));
+    // 正则匹配所有数字组合，识别 1-16, 18 等
+    RegExp weekPattern = RegExp(r'(\d+)(?:-(\d+))?(?:周)?(?:\((单|双)\))?');
+    var matches = weekPattern.allMatches(content);
 
-    for (String p in parts) {
-      if (p.trim().isEmpty) continue;
+    for (var m in matches) {
+      int start = int.parse(m.group(1)!);
+      int? end = m.group(2) != null ? int.parse(m.group(2)!) : null;
+      String? type = m.group(3);
 
-      bool isOdd = p.contains('单');
-      bool isEven = p.contains('双');
-
-      String numPart = p.replaceAll(RegExp(r'[^\d\-]'), '');
-      if (numPart.isEmpty) continue;
-
-      if (numPart.contains('-')) {
-        var bounds = numPart.split('-');
-        if (bounds.length == 2) {
-          int start = int.tryParse(bounds[0]) ?? 0;
-          int end = int.tryParse(bounds[1]) ?? 0;
-          if (start > 0 && end >= start) {
-            for (int i = start; i <= end; i++) {
-              if (isOdd && i % 2 == 0) continue;
-              if (isEven && i % 2 != 0) continue;
-              weeks.add(i);
-            }
-          }
+      if (end != null) {
+        for (int i = start; i <= end; i++) {
+          if (type == '单' && i % 2 == 0) continue;
+          if (type == '双' && i % 2 != 0) continue;
+          weeks.add(i);
         }
       } else {
-        int? w = int.tryParse(numPart);
-        if (w != null) weeks.add(w);
+        weeks.add(start);
       }
     }
-    var uniqueWeeks = weeks.toSet().toList();
-    uniqueWeeks.sort();
-    return uniqueWeeks;
+
+    return weeks.toSet().toList()..sort();
   }
 
   static String _decodeMhtml(String rawString) {

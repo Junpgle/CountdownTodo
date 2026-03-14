@@ -31,8 +31,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
   // 时间轴参数配置
   final double timeColumnWidth = 45.0; // 稍微拓宽左侧，适应更大的时间字体
-  final int startHour = 8;             // 轴起点：早上 8:00
-  final int endHour = 22;              // 轴终点：晚上 22:00
+  final int startHour = 7;             // 轴起点：早上 7:00
+  final int endHour = 23;              // 轴终点：晚上 23:00
 
   @override
   void initState() {
@@ -135,19 +135,133 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
   void _changeWeek(int delta) {
     int newWeek = _currentWeek + delta;
-    if (_availableWeeks.contains(newWeek)) {
+    setState(() {
+      _currentWeek = newWeek;
+      _isLoading = true;
+    });
+    CourseService.getCoursesByWeek(newWeek).then((courses) {
       setState(() {
-        _currentWeek = newWeek;
-        _isLoading = true;
+        _weekCourses = courses;
+        _updateWeekTodos();
+        _isLoading = false;
       });
-      CourseService.getCoursesByWeek(_currentWeek).then((courses) {
-        setState(() {
-          _weekCourses = courses;
-          _updateWeekTodos();
-          _isLoading = false;
-        });
-      });
+    });
+  }
+
+  // 周标签：学期内显示周数，学期外显示日期范围
+  String _getWeekLabel() {
+    if (_semesterMonday == null) return '第 $_currentWeek 周';
+    DateTime monday = _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+    DateTime sunday = monday.add(const Duration(days: 6));
+
+    int maxWeek = _availableWeeks.isNotEmpty ? _availableWeeks.last : 20;
+
+    // 学期范围内显示周数，否则显示日期范围
+    if (_currentWeek >= 1 && _currentWeek <= maxWeek) {
+      return '第 $_currentWeek 周';
+    } else {
+      return '${DateFormat('M/d').format(monday)}-${DateFormat('M/d').format(sunday)}';
     }
+  }
+
+  // 跳转弹窗
+  void _showWeekJumpDialog() {
+    final TextEditingController controller = TextEditingController(text: '$_currentWeek');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('跳转到指定周'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: '周次',
+                border: OutlineInputBorder(),
+                suffixText: '周',
+              ),
+              autofocus: true,
+            ),
+            if (_availableWeeks.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                '有课周次：${_availableWeeks.first}-${_availableWeeks.last}周',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+            // 快捷跳转按钮
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                ActionChip(
+                  label: const Text('本周'),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _jumpToCurrentWeek();
+                  },
+                ),
+                if (_availableWeeks.isNotEmpty)
+                  ActionChip(
+                    label: Text('第${_availableWeeks.first}周'),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _jumpToWeek(_availableWeeks.first);
+                    },
+                  ),
+                if (_availableWeeks.isNotEmpty)
+                  ActionChip(
+                    label: Text('第${_availableWeeks.last}周'),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _jumpToWeek(_availableWeeks.last);
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              int? week = int.tryParse(controller.text.trim());
+              if (week != null && week >= 1) {
+                Navigator.pop(ctx);
+                _jumpToWeek(week);
+              }
+            },
+            child: const Text('跳转'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _jumpToWeek(int week) {
+    setState(() {
+      _currentWeek = week;
+      _isLoading = true;
+    });
+    CourseService.getCoursesByWeek(week).then((courses) {
+      setState(() {
+        _weekCourses = courses;
+        _updateWeekTodos();
+        _isLoading = false;
+      });
+    });
+  }
+
+  void _jumpToCurrentWeek() {
+    if (_semesterMonday == null) return;
+    DateTime now = DateTime.now();
+    int daysDiff = now.difference(_semesterMonday!).inDays;
+    int week = (daysDiff ~/ 7) + 1;
+    if (week < 1) week = 1;
+    _jumpToWeek(week);
   }
 
   DateTime? _getMondayOfCurrentWeek() {
@@ -227,8 +341,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     if (monday == null || _viewMode == 1) return const SizedBox.shrink();
 
     bool hasAnyAllDay = _allDayTodosPerDay.values.any((list) => list.isNotEmpty);
-    if (!hasAnyAllDay) return const SizedBox.shrink();
+    if (!hasAnyAllDay) return const SizedBox.shrink(); // 无待办直接消失，不占高度
 
+    // 以下只在真正有全天待办时才渲染
     return Container(
       padding: EdgeInsets.only(left: timeColumnWidth, bottom: 2),
       color: Theme.of(context).colorScheme.surface,
@@ -239,10 +354,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
           List<TodoItem> dayTodos = _allDayTodosPerDay[weekday] ?? [];
 
           if (dayTodos.isEmpty) {
-            return const Expanded(child: SizedBox(height: 22));
+            return const Expanded(child: SizedBox(height: 22)); // 占位保持对齐
           }
 
-          String text = dayTodos.length == 1 ? dayTodos.first.title : "${dayTodos.length}项全天待办";
+          String text = dayTodos.length == 1
+              ? dayTodos.first.title
+              : "${dayTodos.length}项全天待办";
           bool allDone = dayTodos.every((t) => t.isDone);
 
           return Expanded(
@@ -256,7 +373,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                 decoration: BoxDecoration(
-                  color: allDone ? Colors.green.withOpacity(0.5) : Colors.amber.shade500.withOpacity(0.85),
+                  color: allDone
+                      ? Colors.green.withOpacity(0.5)
+                      : Colors.amber.shade500.withOpacity(0.85),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -574,14 +693,19 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 2. AppBar 里的翻页按钮去掉 null 判断
               IconButton(
                 icon: const Icon(Icons.arrow_back_ios, size: 16),
-                onPressed: _availableWeeks.contains(_currentWeek - 1) ? () => _changeWeek(-1) : null,
+                onPressed: () => _changeWeek(-1), // 去掉 null 判断
               ),
-              Text('第 $_currentWeek 周', style: const TextStyle(fontSize: 14)),
+              Text(
+                // 学期内显示"第X周"，学期外显示日期范围
+                _getWeekLabel(),
+                style: const TextStyle(fontSize: 14),
+              ),
               IconButton(
                 icon: const Icon(Icons.arrow_forward_ios, size: 16),
-                onPressed: _availableWeeks.contains(_currentWeek + 1) ? () => _changeWeek(1) : null,
+                onPressed: () => _changeWeek(1),
               ),
             ],
           ),
