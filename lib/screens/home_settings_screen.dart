@@ -1696,18 +1696,43 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (confirm != true) return;
 
-    _showLoadingDialog(context, "正在获取云端课表...");
+    _showLoadingDialog(context, "正在获取云端数据...");
 
     try {
-      final List<dynamic> data = await ApiService.fetchCourses(_userId!);
+      // 🚀 1. 并发拉取：同时获取【学期设置】和【课表数据】
+      final userSettingsFuture = ApiService.fetchUserSettings();
+      final coursesFuture = ApiService.fetchCourses(_userId!);
+
+      final results = await Future.wait([userSettingsFuture, coursesFuture]);
+      final Map<String, dynamic>? userSettings = results[0] as Map<String, dynamic>?;
+      final List<dynamic> data = results[1] as List<dynamic>;
 
       if (!mounted) return;
+
+      // 🚀 2. 如果云端有学期设置，优先同步并覆盖到本地
+      if (userSettings != null) {
+        final prefs = await SharedPreferences.getInstance();
+
+        if (userSettings['semester_start'] != null) {
+          _semesterStart = DateTime.fromMillisecondsSinceEpoch(userSettings['semester_start']);
+          await prefs.setString(StorageService.KEY_SEMESTER_START, _semesterStart!.toIso8601String());
+        }
+        if (userSettings['semester_end'] != null) {
+          _semesterEnd = DateTime.fromMillisecondsSinceEpoch(userSettings['semester_end']);
+          await prefs.setString(StorageService.KEY_SEMESTER_END, _semesterEnd!.toIso8601String());
+        }
+
+        // 刷新页面状态，让 UI 立刻响应云端拉取下来的新日期
+        setState(() {});
+      }
+
       _closeLoadingDialog(context);
 
       if (data.isNotEmpty) {
+        // 🚀 3. 再次校验：如果同步了设置后，_semesterStart 依然为空（说明云端和本地都没配过），再进行拦截
         if (_semesterStart == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('⚠️ 请先在学期设置中配置开学日期')),
+            const SnackBar(content: Text('⚠️ 云端与本地均未配置开学日期，无法计算课表具体日期')),
           );
           return;
         }
@@ -1745,12 +1770,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('✅ 已从云端同步 ${courses.length} 条课程数据')),
+            SnackBar(content: Text('✅ 成功从云端同步 ${courses.length} 条课程与学期设置')),
           );
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ 获取失败，请检查网络或云端暂无数据')),
+          const SnackBar(content: Text('❌ 获取失败，云端暂无课表数据')),
         );
       }
     } catch (e) {
