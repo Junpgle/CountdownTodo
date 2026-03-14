@@ -245,8 +245,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           if (p != null) setState(() => _focusedDate = p);
         },
         child: Text(
-            DateFormat('MM月dd日').format(_focusedDate) +
-                (_dayMode == _DayMode.edit ? ' · 补录' : ''),
+            DateFormat('MM月dd日').format(_focusedDate),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
       IconButton(
@@ -261,16 +260,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<Widget> _buildActions() {
     final acts = <Widget>[];
     if (_view == _ViewMode.day) {
-      acts.add(TextButton(
-        onPressed: () => setState(() => _dayMode =
-            _dayMode == _DayMode.view ? _DayMode.edit : _DayMode.view),
-        child: Text(_dayMode == _DayMode.view ? '补录' : '查看',
-            style: TextStyle(
-                fontSize: 13,
-                color: _dayMode == _DayMode.view
-                    ? Theme.of(context).colorScheme.primary
-                    : _TC.textSub(context))),
-      ));
+      // 只保留标签管理，不再有切换图标
       if (_dayMode == _DayMode.edit)
         acts.add(IconButton(
             icon: const Icon(Icons.label_outline, size: 20),
@@ -709,47 +699,53 @@ class _WeekView extends StatelessWidget {
   }
 
   Widget _buildTopBar(BuildContext ctx, int todayMin) => Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        color: _TC.topBar(ctx),
-        child: Row(children: [
-          Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                  color: const Color(0xFF22C55E).withOpacity(0.12),
-                  border: Border.all(
-                      color: const Color(0xFF22C55E).withOpacity(0.35)),
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text('今日 ${todayMin}min',
-                  style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF4ADE80),
-                      fontWeight: FontWeight.w600))),
-          const Spacer(),
-          _TinyButton(label: '标签管理', onTap: onManageTags),
-          const SizedBox(width: 8),
-          _TinyButton(label: '+ 补录', onTap: onAddLog, primary: true),
-          const SizedBox(width: 8),
-          Builder(
-              builder: (bCtx) => ElevatedButton(
-                    style:
-                        ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                    onPressed: () async {
-                      await StorageService.resetSyncTime(username);
-                      await StorageService.syncData(username,
-                          forceFullSync: true,
-                          syncTodos: true,
-                          syncCountdowns: true,
-                          syncTimeLogs: true);
-                      if (bCtx.mounted)
-                        ScaffoldMessenger.of(bCtx).showSnackBar(const SnackBar(
-                            content: Text('🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面'),
-                            duration: Duration(seconds: 4)));
-                    },
-                    child: const Text('🚑 一键恢复',
-                        style: TextStyle(color: Colors.white, fontSize: 12)),
-                  )),
-        ]),
-      );
+    padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+    color: _TC.topBar(ctx),
+    child: Row(children: [
+      // 今日统计
+      _TopBarChip(
+        label: '今日 ${todayMin}min',
+        color: const Color(0xFF22C55E),
+        ctx: ctx,
+      ),
+      const Spacer(),
+      _TopBarChip(
+        label: '标签',
+        icon: Icons.label_outline,
+        color: _TC.textSub(ctx).withOpacity(0.8),
+        ctx: ctx,
+        onTap: onManageTags,
+      ),
+      const SizedBox(width: 6),
+      _TopBarChip(
+        label: '补录',
+        icon: Icons.edit_calendar_outlined,
+        color: Theme.of(ctx).colorScheme.primary,
+        ctx: ctx,
+        onTap: onAddLog,
+        filled: true,
+      ),
+      const SizedBox(width: 6),
+      Builder(builder: (bCtx) => _TopBarChip(
+        label: '恢复',
+        icon: Icons.cloud_download_outlined,
+        color: const Color(0xFF22C55E),
+        ctx: ctx,
+        onTap: () async {
+          await StorageService.resetSyncTime(username);
+          await StorageService.syncData(username,
+              forceFullSync: true,
+              syncTodos: true,
+              syncCountdowns: true,
+              syncTimeLogs: true);
+          if (bCtx.mounted)
+            ScaffoldMessenger.of(bCtx).showSnackBar(const SnackBar(
+                content: Text('🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面'),
+                duration: Duration(seconds: 4)));
+        },
+      )),
+    ]),
+  );
 
   Widget _buildGrid(BuildContext ctx, List<DateTime> days, double availW) {
     const totalW = kWeekTimeW + kWeekDayW * 7;

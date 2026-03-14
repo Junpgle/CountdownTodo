@@ -39,9 +39,7 @@ class _DayViewState extends State<_DayView> {
   int get _se => _dragStart!=null&&_dragEnd!=null ? max(_dragStart!,_dragEnd!) : 0;
   int get _durMin => _dragStart!=null ? (_se-_ss+1)*_minutesPerBlock : 0;
 
-  DateTime get _gridStart => widget.crossDay
-      ? _dayStart(widget.date.subtract(const Duration(days: 1)))
-      : _dayStart(widget.date);
+  DateTime get _gridStart => _dayStart(widget.date);
 
   int? _getIndex(Offset pos, double width, double hourH) {
     final bw  = width / _bpr;
@@ -219,22 +217,11 @@ class _DayViewState extends State<_DayView> {
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
     color: _TC.topBar(context),
     child: Row(children: [
-      Text('从昨晚开始', style: TextStyle(fontSize: 11, color: _TC.textSub(context))),
-      Transform.scale(scale: 0.78, alignment: Alignment.centerLeft,
-          child: Switch(value: widget.crossDay, onChanged: widget.onCrossDayChanged,
-              activeColor: Theme.of(context).colorScheme.primary,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap)),
-      if (widget.crossDay) ...[
-        const SizedBox(width: 2),
-        Text(
-            '${DateFormat('MM/dd').format(_gridStart)} → ${DateFormat('MM/dd').format(widget.date)}',
-            style: TextStyle(fontSize: 10, color: _TC.textHint(context))),
-      ],
-      const Spacer(),
+      const SizedBox(width: 8),
+      // 已补录数量
       if (dLogN > 0) GestureDetector(
           onTap: _showDayLogList,
           child: Container(
-              margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                   color: const Color(0xFF3B82F6).withOpacity(0.1),
@@ -247,23 +234,33 @@ class _DayViewState extends State<_DayView> {
                     style: const TextStyle(fontSize: 10, color: Color(0xFF60A5FA),
                         fontWeight: FontWeight.w600)),
               ]))),
-      ...[5, 10, 15, 30].map((m) => Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: GestureDetector(
-              onTap: () => setState(() { _minutesPerBlock = m; _dragStart = null; }),
-              child: AnimatedContainer(duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: _minutesPerBlock == m
-                          ? Theme.of(context).colorScheme.primary
-                          : _TC.btnBg(context),
-                      border: Border.all(color: _minutesPerBlock == m
-                          ? Theme.of(context).colorScheme.primary
-                          : _TC.btnBorder(context)),
-                      borderRadius: BorderRadius.circular(6)),
-                  child: Text('${m}分', style: TextStyle(fontSize: 10,
-                      color: _minutesPerBlock == m ? Colors.white : _TC.textSub(context),
-                      fontWeight: FontWeight.w600)))))),
+      // 退出补录
+      GestureDetector(
+        onTap: widget.onBack,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.08),
+            border: Border.all(color: Colors.red.withOpacity(0.30)),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.close, size: 12, color: Colors.red.withOpacity(0.8)),
+            const SizedBox(width: 4),
+            Text('退出补录',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.red.withOpacity(0.8),
+                    fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      ),
+      const Spacer(),
+      // 分钟下拉选择器
+      _MinuteDropdown(
+        value: _minutesPerBlock,
+        onChanged: (m) => setState(() { _minutesPerBlock = m; _dragStart = null; }),
+      ),
     ]),
   );
 
@@ -1156,6 +1153,100 @@ class _TagManagerSheetState extends State<_TagManagerSheet> {
 }
 
 // ── 小按钮 ────────────────────────────────────────────────
+class _TopBarChip extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final Color color;
+  final BuildContext ctx;
+  final VoidCallback? onTap;
+  final bool filled;
+
+  const _TopBarChip({
+    required this.label,
+    required this.color,
+    required this.ctx,
+    this.icon,
+    this.onTap,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = filled ? color : color.withOpacity(0.10);
+    final border = filled ? Colors.transparent : color.withOpacity(0.30);
+    final fg = filled ? Colors.white : color;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: bg,
+          border: Border.all(color: border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: fg),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: fg,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MinuteDropdown extends StatelessWidget {
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  const _MinuteDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.10),
+        border: Border.all(color: accent.withOpacity(0.35)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: value,
+          isDense: true,
+          icon: Icon(Icons.expand_more, size: 14, color: accent),
+          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          style: TextStyle(
+            fontSize: 11,
+            color: accent,
+            fontWeight: FontWeight.w600,
+          ),
+          items: const [5, 10, 15, 30].map((m) => DropdownMenuItem(
+            value: m,
+            child: Text('$m 分/格'),
+          )).toList(),
+          onChanged: (m) { if (m != null) onChanged(m); },
+        ),
+      ),
+    );
+  }
+}
+
 class _TinyButton extends StatelessWidget {
   final String label; final VoidCallback onTap; final bool primary;
   const _TinyButton({required this.label, required this.onTap, this.primary = false});
