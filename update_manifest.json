@@ -9,7 +9,7 @@
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe"
   },
   "announcement": {
-    "show": true,
+    "show": false,
     "title": "系统公告",
     "content": "当出现同步异常:无效的token的时候,请重新登录账号"
   },
