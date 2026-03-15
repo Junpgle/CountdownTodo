@@ -24,6 +24,19 @@ class AccountSection extends StatelessWidget {
     required this.onChangePassword,
   }) : super(key: key);
 
+  Color getTierColor(String tier) {
+    switch (tier.toLowerCase()) {
+      case 'admin':
+        return Colors.redAccent;
+      case 'promax':
+        return Colors.purpleAccent; // 或金色 #FFD700
+      case 'pro':
+        return Colors.orangeAccent;
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -73,15 +86,12 @@ class AccountSection extends StatelessWidget {
                                 child:
                                     CircularProgressIndicator(strokeWidth: 2))
                             : Text(
-                                userTier.toUpperCase(),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: userTier.toLowerCase() == 'pro' ||
-                                          userTier.toLowerCase() == 'admin'
-                                      ? Colors.orangeAccent
-                                      : Colors.grey,
-                                ),
-                              ),
+                                  userTier.toUpperCase(),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: getTierColor(userTier)
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
