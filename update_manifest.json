@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "2.1.4",
+  "version_name": "2.1.5",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 2.1.4",
-    "description":"【优化】屏幕时间逻辑,适配更多app【优化】时间日志日历视图文字遮挡问题【优化】小部件专注统计显示【新增】新增申请适配课表界面【优化】解构设置",
+    "title": "版本更新 2.1.5",
+    "description":"【修复】修复了单日无历史时间数据时，屏幕时间无法同步的问题\n【修复】修复了番茄钟结束后重复记录的问题\n【新增】新增从WebSocket获取更新的功能",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe"
   },
@@ -19,6 +19,14 @@
   },
   "changelog_history": [
     {
+      "version_name": "2.1.5",
+      "date": "2026-03-15",
+      "items": [
+        "【修复】修复了单日无历史时间数据时，屏幕时间无法同步的问题",
+      "【修复】修复了番茄钟结束后重复记录的问题",
+      "【新增】新增从WebSocket获取更新的功能"
+      ]
+    },{
       "version_name": "2.1.4",
       "date": "2026-03-14",
       "items": [
