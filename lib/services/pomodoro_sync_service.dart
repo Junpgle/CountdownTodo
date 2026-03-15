@@ -16,6 +16,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 /// 从 WebSocket 收到的跨端专注状态
 class CrossDevicePomodoroState {
   final String action;      // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'
+  final String? sessionUuid; // 🚀 新增：锁死当前专注的唯一标识
   final String? todoUuid;
   final String? todoTitle;
   final int? duration;      // 本次专注计划时长（秒）
@@ -27,6 +28,7 @@ class CrossDevicePomodoroState {
   const CrossDevicePomodoroState({
     required this.action,
     this.todoUuid,
+    this.sessionUuid, // 🚀 新增
     this.todoTitle,
     this.duration,
     this.targetEndMs,
@@ -38,6 +40,7 @@ class CrossDevicePomodoroState {
   factory CrossDevicePomodoroState.fromJson(Map<String, dynamic> j) =>
       CrossDevicePomodoroState(
         action: j['action']?.toString().toUpperCase() ?? 'UNKNOWN',
+        sessionUuid: j['session_uuid']?.toString() ?? j['sessionUuid']?.toString(), // 🚀 新增解析
         todoUuid: j['todo_uuid']?.toString(),
         todoTitle: j['todo_title']?.toString(),
         duration: _parseInt(j['duration']),
@@ -64,6 +67,7 @@ class CrossDevicePomodoroState {
   Map<String, dynamic> toJson() => {
         'action': action,
         if (todoUuid != null) 'todo_uuid': todoUuid,
+        if (sessionUuid != null) 'session_uuid': sessionUuid, // 🚀 新增序列化
         if (todoTitle != null) 'todo_title': todoTitle,
         if (duration != null) 'duration': duration,
         if (targetEndMs != null) 'target_end_ms': targetEndMs,
@@ -248,6 +252,7 @@ class PomodoroSyncService {
   // ── 发送信号 ──────────────────────────────────────────────
 
   void sendStartSignal({
+    required String sessionUuid, // 🚀 必传：启动时生成的 UUID
     required String? todoUuid,
     required String? todoTitle,
     required int durationSeconds,
@@ -256,6 +261,7 @@ class PomodoroSyncService {
   }) {
     _send({
       'action': 'START',
+      'session_uuid': sessionUuid, // 🚀 塞入 Payload
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
       'duration': durationSeconds,
@@ -267,6 +273,7 @@ class PomodoroSyncService {
   /// 🚀 新增：断线重连/初次连上时，如果本地正在专注，主动向服务端同步本地状态
   /// 服务端会进行防冲突校验，若无冲突则接纳并广播，若有冲突则下发云端最新状态纠正本地
   void sendReconnectSyncSignal({
+    required String sessionUuid, // 🚀 必传
     required String? todoUuid,
     required String? todoTitle,
     required int durationSeconds,
@@ -275,6 +282,7 @@ class PomodoroSyncService {
   }) {
     _send({
       'action': 'RECONNECT_SYNC', // 发送专属的重连同步 Action
+      'session_uuid': sessionUuid, // 🚀 塞入 Payload
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
       'duration': durationSeconds,

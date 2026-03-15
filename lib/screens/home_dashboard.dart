@@ -211,6 +211,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             }
 
             _syncService.sendReconnectSyncSignal(
+              sessionUuid: saved.sessionUuid, // 🚀 补上这个最关键的锁死 UUID！
               todoUuid: saved.todoUuid,
               todoTitle: saved.todoTitle,
               // 根据当前所处的阶段，上报对应的设定时长

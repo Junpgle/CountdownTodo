@@ -244,6 +244,7 @@ enum PomodoroPhase { idle, focusing, breaking, finished, remoteWatching }
 
 class PomodoroRunState {
   PomodoroPhase phase;
+  String sessionUuid; // 🚀 新增：记录当前正在运行的番茄钟 UUID
   int targetEndMs;    // 本阶段绝对结束时间戳（UTC ms）
   int currentCycle;
   int totalCycles;
@@ -257,6 +258,7 @@ class PomodoroRunState {
 
   PomodoroRunState({
     this.phase = PomodoroPhase.idle,
+    String? sessionUuid, // 🚀 新增可选参数
     this.targetEndMs = 0,
     this.currentCycle = 1,
     this.totalCycles = 4,
@@ -267,10 +269,12 @@ class PomodoroRunState {
     List<String>? tagUuids,
     this.sessionStartMs = 0,
     this.plannedFocusSeconds = 25 * 60,
-  }) : tagUuids = tagUuids ?? [];
+  }) : sessionUuid = sessionUuid ?? const Uuid().v4(), // 🚀 如果没有，默认生成一个
+        tagUuids = tagUuids ?? [];
 
   Map<String, dynamic> toJson() => {
         'phase': phase.index,
+        'sessionUuid': sessionUuid, // 🚀 序列化
         'targetEndMs': targetEndMs,
         'currentCycle': currentCycle,
         'totalCycles': totalCycles,
@@ -285,6 +289,7 @@ class PomodoroRunState {
 
   factory PomodoroRunState.fromJson(Map<String, dynamic> j) => PomodoroRunState(
         phase: PomodoroPhase.values[j['phase'] as int? ?? 0],
+        sessionUuid: j['sessionUuid']?.toString() ?? const Uuid().v4(), // 🚀 解析
         targetEndMs: j['targetEndMs'] as int? ?? 0,
         currentCycle: j['currentCycle'] as int? ?? 1,
         totalCycles: j['totalCycles'] as int? ?? 4,
