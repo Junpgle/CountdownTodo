@@ -11,6 +11,9 @@ import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/notification_service.dart';
 import '../services/pomodoro_sync_service.dart';
+import 'package:package_info_plus/package_info_plus.dart'; // 🚀 新增：获取版本
+import 'package:url_launcher/url_launcher.dart';           // 🚀 新增：打开更新链接
+import '../update_service.dart'; // 请替换为你实际的路径
 
 // ══════════════════════════════════════════════════════════════
 // 动态隐藏的 AppBar 包装器
@@ -301,6 +304,9 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   // ── WebSocket 连接状态 ──
   bool _wsConnected = false;
 
+  String _appVersion = '1.0.0';
+  bool _hasShownUpdate = false; // 保证每次打开 App 只弹一次更新提示
+
   // ── 初始化标志（init 完成前不渲染主 UI，避免闪出"准备开始"界面）──
   bool _initializing = true;
 
@@ -378,6 +384,15 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     _settings = await PomodoroService.getSettings();
     _allTags = await PomodoroService.getTags();
     _deviceId = await StorageService.getDeviceId();
+
+    // 🚀 新增：获取当前 App 的真实版本号
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _appVersion = info.version;
+    } catch (e) {
+      debugPrint("获取版本号失败: $e");
+    }
+
     _todos = (await StorageService.getTodos(widget.username))
         .where((t) => !t.isDeleted && !t.isDone)
         .toList();
@@ -444,12 +459,13 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     _crossDeviceSub?.cancel();
     _crossDeviceSub = _syncService.onStateChanged.listen(_handleCrossDeviceSignal);
 
-    await _syncService.forceReconnect(_userId, 'flutter_$_deviceId');
+    // 🚀 修改：带上我们刚刚获取到的版本号去连接
+    await _syncService.forceReconnect(_userId, 'flutter_$_deviceId', appVersion: _appVersion);
 
     if (mounted) setState(() => _wsConnected = true);
   }
 
-  void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) {
+  void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) async {
     if (!mounted) return;
     if (_initializing) return;
 
@@ -457,6 +473,20 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     if (signal.sourceDevice != null && signal.sourceDevice == myDeviceId) return;
 
     switch (signal.action) {
+      case 'UPDATE_AVAILABLE':
+        if (!_hasShownUpdate && mounted && signal.manifestData != null) {
+        _hasShownUpdate = true;
+        final manifest = AppManifest.fromJson(signal.manifestData!);
+
+        // 获取版本号
+        PackageInfo packageInfo = await PackageInfo.fromPlatform();
+
+        // 🚀 加上这句防崩溃判断
+        if (!mounted) return;
+
+        UpdateService.showUpdateDialog(context, manifest, packageInfo.version, hasUpdate: true);
+        }
+        break;
       case 'START':
       case 'SYNC':
       case 'SYNC_FOCUS':

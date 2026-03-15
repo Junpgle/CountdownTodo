@@ -323,6 +323,65 @@ class UpdateService {
     }
   }
 
+  // 🚀 新增：专为 WebSocket 推送设计的更新触发器，直接复用现有的弹窗和下载逻辑
+  static Future<void> triggerWebSocketUpdate(
+      BuildContext context, {
+        required String latestVersion,
+        required String releaseNotes,
+        required String downloadUrl,
+      }) async {
+    if (_isDialogShowing) return;
+
+    PackageInfo packageInfo = await PackageInfo.fromPlatform();
+    String localVersion = packageInfo.version;
+
+    // 核心版本对比逻辑（提取出来复用）
+    bool hasUpdate = _compareVersions(latestVersion, localVersion);
+
+    if (!hasUpdate) return;
+
+    // 🚀 偷梁换柱：用 WebSocket 发来的直链数据，动态组装一个虚拟的 AppManifest
+    // 这样就能完美欺骗 showUpdateDialog，让它以为这是从 GitHub 抓下来的
+    AppManifest mockManifest = AppManifest(
+      versionCode: 0,
+      versionName: latestVersion,
+      forceUpdate: false,
+      updateInfo: UpdateInfo.fromJson({
+        'title': '发现新版本 $latestVersion',
+        'description': releaseNotes,
+        'full_package_url': downloadUrl,
+        'PC_package_url': downloadUrl, // 桌面端和移动端暂时用同一个直链
+      }),
+      announcement: Announcement.fromJson({'show': false}),
+      wallpaper: WallpaperConfig.fromJson({'show': false}),
+    );
+
+    if (context.mounted) {
+      // 完美复用你原有的精美更新弹窗和底层下载框架！
+      showUpdateDialog(context, mockManifest, localVersion, hasUpdate: true, hasNotice: false);
+    }
+  }
+
+  // 🚀 提取出来的纯净版本号对比算法
+  static bool _compareVersions(String manifestVersion, String localVersion) {
+    try {
+      String cleanManifestVersion = manifestVersion.split('+')[0].split('-')[0];
+      String cleanLocalVersion = localVersion.split('+')[0].split('-')[0];
+
+      List<int> v1 = cleanManifestVersion.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      List<int> v2 = cleanLocalVersion.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+      int maxLen = v1.length > v2.length ? v1.length : v2.length;
+      for (int i = 0; i < maxLen; i++) {
+        int p1 = i < v1.length ? v1[i] : 0;
+        int p2 = i < v2.length ? v2[i] : 0;
+        if (p1 > p2) return true;
+        if (p1 < p2) return false;
+      }
+    } catch (_) {}
+    return false;
+  }
+
   static Future<void> showUpdateDialog(BuildContext context, AppManifest manifest, String currentVersion, {bool hasUpdate = true, bool hasNotice = false}) async {
     if (_isDialogShowing) return;
     _isDialogShowing = true;
