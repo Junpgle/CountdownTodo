@@ -3,7 +3,7 @@ import { ApiService } from '../services/api';
 // --------------------------------------------------------
 // 常量与工具函数
 // --------------------------------------------------------
-export const CURRENT_WEB_VERSION = "2.0.9"; // 当前网页版的硬编码版本号
+export const CURRENT_WEB_VERSION = "2.1.0"; // 当前网页版的硬编码版本号
 
 export const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
 export const formatDt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -148,11 +148,13 @@ export function upsertLocalPomRecord(userId: number, rec: PomodoroRecord) {
 export async function syncPomodoroRecords(userId: number): Promise<void> {
   const lastSync = getPomLastSyncTime(userId);
   const all = getLocalPomRecords(userId);
-  const dirty = all.filter(r => r.updated_at > lastSync || r.is_deleted);
+
+  // 找出本地尚未同步到云端的记录（dirty）
+  const dirty = all.filter(r => r.updated_at > lastSync);
 
   const now = Date.now();
 
-  // Upload dirty records
+  // 1. 上传本地变动
   if (dirty.length > 0) {
     try {
       await ApiService.request('/api/pomodoro/records', {
@@ -160,30 +162,47 @@ export async function syncPomodoroRecords(userId: number): Promise<void> {
         body: JSON.stringify({ records: dirty }),
       });
     } catch (e) {
-      console.error('上传番茄钟记录失败', e);
+      console.error('上传失败', e);
     }
   }
 
-  // Pull server records since lastSync
+  // 2. 拉取云端变动
   try {
-    const fromMs = lastSync > 0 ? lastSync : (now - 365 * 24 * 3600 * 1000);
+    // 🚀 核心优化：
+    // 如果没有 sync 过，拉取 30 天内的数据。
+    // 如果 sync 过，拉取从 (lastSync - 2天) 开始的数据，确保由于 start_time 过滤导致的历史遗留记录能被补齐。
+    const safeFromMs = lastSync > 0
+        ? Math.max(0, lastSync - 2 * 24 * 3600 * 1000)
+        : (now - 30 * 24 * 3600 * 1000);
+
     const serverData = await ApiService.request(
-      `/api/pomodoro/records?user_id=${userId}&from=${fromMs}`,
+      `/api/pomodoro/records?user_id=${userId}&from=${safeFromMs}`,
       { method: 'GET' }
     );
+
     const serverRecords = (Array.isArray(serverData) ? serverData : []) as PomodoroRecord[];
+
+    // 使用 Map 进行去重合并（UUID 为准）
     const map = new Map(all.map(r => [r.uuid, r]));
+
     for (const sr of serverRecords) {
       const local = map.get(sr.uuid);
+      // LWW 策略：如果本地没有，或者云端版本/更新时间更晚，则覆盖本地
       if (!local || sr.version > local.version || sr.updated_at > local.updated_at) {
-        // Preserve tag_uuids from local if server doesn't have them
-        map.set(sr.uuid, { ...sr, tag_uuids: sr.tag_uuids ?? local?.tag_uuids ?? [] });
+        map.set(sr.uuid, {
+            ...sr,
+            // 兜底处理：确保 tag_uuids 始终是数组
+            tag_uuids: Array.isArray(sr.tag_uuids) ? sr.tag_uuids : []
+        });
       }
     }
+
     setLocalPomRecords(userId, Array.from(map.values()));
+
+    // 只有成功拉取后才更新同步标记
     setPomLastSyncTime(userId, now);
   } catch (e) {
-    console.error('拉取番茄钟记录失败', e);
+    console.error('拉取失败', e);
   }
 }
 

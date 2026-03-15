@@ -5,9 +5,11 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:async';
 
 // 引入服务和模型
@@ -95,6 +97,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   StreamSubscription<SyncConnectionState>? _connStateSub; // 🚀 新增：连接状态订阅
   final _syncService = PomodoroSyncService();
   String _deviceId = '';
+  bool _hasShownUpdate = false;
 
   // === 初始化与生命周期 ===
   @override
@@ -184,15 +187,13 @@ class _HomeDashboardState extends State<HomeDashboard>
     _remotePomodoroSub =
         _syncService.onStateChanged.listen(_handleRemotePomodoroSignal);
 
-    // 🚀 新增：监听网络重连，主动上报本地专注状态
+    // 监听网络重连，主动上报本地专注状态
     _connStateSub?.cancel();
     _connStateSub = _syncService.onConnectionChanged.listen((state) async {
       if (state == SyncConnectionState.connected) {
-        // 读取本地缓存的专注状态
         final saved = await PomodoroService.loadRunState();
         if (saved == null) return;
 
-        // 判断当前是否处于正在计时的阶段
         if (saved.phase == PomodoroPhase.focusing ||
             saved.phase == PomodoroPhase.breaking) {
           final remaining =
@@ -200,7 +201,6 @@ class _HomeDashboardState extends State<HomeDashboard>
           if (remaining > 0) {
             debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
-            // 1. 临时查出真实的标签名字
             final allTags = await PomodoroService.getTags();
             List<String> realTagNames = [];
             for (String uuid in saved.tagUuids) {
@@ -211,40 +211,61 @@ class _HomeDashboardState extends State<HomeDashboard>
             }
 
             _syncService.sendReconnectSyncSignal(
-              sessionUuid: saved.sessionUuid, // 🚀 补上这个最关键的锁死 UUID！
+              sessionUuid: saved.sessionUuid ?? const Uuid().v4(),
               todoUuid: saved.todoUuid,
               todoTitle: saved.todoTitle,
-              // 根据当前所处的阶段，上报对应的设定时长
               durationSeconds: saved.phase == PomodoroPhase.focusing
                   ? saved.plannedFocusSeconds
                   : saved.breakSeconds,
               targetEndMs: saved.targetEndMs,
-              tagNames: realTagNames, // 对应模型里的 tagUuids
+              tagNames: realTagNames,
             );
           }
         }
       }
     });
 
+    // 🚀 显式获取版本号传给底层服务（双重保险）
+    String appVersion = 'unknown';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      appVersion = info.version;
+    } catch (_) {}
+
     await _syncService.ensureConnected(
-        userIdInt.toString(), 'flutter_$_deviceId');
+        userIdInt.toString(), 'flutter_$_deviceId', appVersion: appVersion);
   }
 
   static const _floatChannel = MethodChannel('com.math_quiz_app/float_window');
 
+  // 🚀 修改：处理云端发来的 UPDATE_AVAILABLE 信号
   Future<void> _handleRemotePomodoroSignal(
       CrossDevicePomodoroState signal) async {
     if (!mounted) return;
     if (signal.sourceDevice == 'flutter_$_deviceId') return;
 
     switch (signal.action) {
+    // 🚀 新增：拦截云端的更新推送
+      case 'UPDATE_AVAILABLE':
+        if (!_hasShownUpdate && mounted && signal.manifestData != null) {
+          _hasShownUpdate = true;
+          final manifest = AppManifest.fromJson(signal.manifestData!);
+
+          PackageInfo packageInfo = await PackageInfo.fromPlatform();
+          if (!mounted) return;
+
+          // 复用强大的 UpdateService 弹窗
+          UpdateService.showUpdateDialog(context, manifest, packageInfo.version, hasUpdate: true);
+        }
+        break;
+
       case 'START':
       case 'SYNC':
       case 'RECONNECT_SYNC':
         final endMs = signal.targetEndMs;
         if (endMs == null) return;
         final rem =
-            ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+        ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
         if (rem <= 0) return;
         setState(() {
           _remotePomodoro = signal;
@@ -252,11 +273,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         });
         _startRemotePomodoroTicker(endMs);
 
-        // 🚀 新增：Windows 端显示悬浮窗
         if (Platform.isWindows) {
           final prefs = await SharedPreferences.getInstance();
           if (prefs.getBool('float_window_enabled') ?? true) {
-            // 🚀
             _floatChannel.invokeMethod('showFloat', {
               'endMs': endMs,
               'title': signal.todoTitle ?? '',
@@ -272,13 +291,14 @@ class _HomeDashboardState extends State<HomeDashboard>
         _stopRemotePomodoroTicker();
         setState(() => _remotePomodoro = null);
 
-        // 🚀 新增：隐藏悬浮窗
         if (Platform.isWindows) {
           _floatChannel.invokeMethod('hideFloat');
         }
         break;
     }
   }
+
+
 
   void _startRemotePomodoroTicker(int targetEndMs) {
     _remotePomodoroTicker?.cancel();

@@ -14,6 +14,7 @@ import '../services/pomodoro_sync_service.dart';
 import 'package:package_info_plus/package_info_plus.dart'; // 🚀 新增：获取版本
 import 'package:url_launcher/url_launcher.dart';           // 🚀 新增：打开更新链接
 import '../update_service.dart'; // 请替换为你实际的路径
+import 'package:package_info_plus/package_info_plus.dart';
 
 // ══════════════════════════════════════════════════════════════
 // 动态隐藏的 AppBar 包装器
@@ -291,6 +292,8 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
 
   String _userId = '';
 
+  String _appVersion = 'unknown';
+
   // ── 跨端感知 ──
   final _syncService = PomodoroSyncService();
   StreamSubscription<CrossDevicePomodoroState>? _crossDeviceSub;
@@ -304,7 +307,6 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
   // ── WebSocket 连接状态 ──
   bool _wsConnected = false;
 
-  String _appVersion = '1.0.0';
   bool _hasShownUpdate = false; // 保证每次打开 App 只弹一次更新提示
 
   // ── 初始化标志（init 完成前不渲染主 UI，避免闪出"准备开始"界面）──
@@ -385,7 +387,7 @@ class _PomodoroWorkbenchState extends State<_PomodoroWorkbench>
     _allTags = await PomodoroService.getTags();
     _deviceId = await StorageService.getDeviceId();
 
-    // 🚀 新增：获取当前 App 的真实版本号
+// 🚀 2. 获取真实的 App 版本号
     try {
       final info = await PackageInfo.fromPlatform();
       _appVersion = info.version;

@@ -49,19 +49,21 @@ export const PomodoroStatsView = ({ userId, todos }: { userId: number, todos: To
   };
 
   // 筛选逻辑 (已接入基于 tag_uuids 的真实筛选)
-  const filteredRecords = useMemo(() => {
-    return records.filter(record => {
-      const d = new Date(record.start_time);
-      const matchYear = filterYear === 'all' || d.getFullYear() === filterYear;
-      const matchMonth = filterMonth === 'all' || (d.getMonth() + 1) === filterMonth;
-      const matchDay = filterDay === 'all' || d.getDate() === filterDay;
+  // 筛选逻辑 (增加 .sort 确保时间倒序)
+    const filteredRecords = useMemo(() => {
+      return records
+        .filter(record => {
+          const d = new Date(record.start_time);
+          const matchYear = filterYear === 'all' || d.getFullYear() === filterYear;
+          const matchMonth = filterMonth === 'all' || (d.getMonth() + 1) === filterMonth;
+          const matchDay = filterDay === 'all' || d.getDate() === filterDay;
+          const matchTag = filterTag === 'all' || (record.tag_uuids && record.tag_uuids.includes(filterTag));
 
-      // 检查当前记录的标签数组中是否包含选中的标签
-      const matchTag = filterTag === 'all' || (record.tag_uuids && record.tag_uuids.includes(filterTag));
-
-      return matchYear && matchMonth && matchDay && matchTag;
-    });
-  }, [records, filterYear, filterMonth, filterDay, filterTag]);
+          return matchYear && matchMonth && matchDay && matchTag;
+        })
+        // 🚀 核心增加：按照开始时间从大到小排序（近 -> 远）
+        .sort((a, b) => b.start_time - a.start_time);
+    }, [records, filterYear, filterMonth, filterDay, filterTag]);
 
   // 统计计算
   const totalFocusSeconds = filteredRecords.reduce((sum, r) => sum + (r.actual_duration || r.planned_duration || 0), 0);
