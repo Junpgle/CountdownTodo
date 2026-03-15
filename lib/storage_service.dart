@@ -726,35 +726,25 @@ class StorageService {
           .map((t) => t.toJson())
           .toList();
 
-      // 4. 🚀 屏幕时间逻辑优化：处理日期污染问题
+      // 4. 🚀 屏幕时间逻辑优化：无条件上传本机纯净数据（拆除跨天死锁）
       Map<String, dynamic>? screenPayload;
       DateTime now = DateTime.now();
       String todayDate = DateFormat('yyyy-MM-dd').format(now);
 
-      // 获取屏幕时间最后更新的物理时间
-      int? lastScreenUpdateMs = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
-      if (lastScreenUpdateMs != null) {
-        DateTime lastUpdateDate = DateTime.fromMillisecondsSinceEpoch(lastScreenUpdateMs).toLocal();
+      // 直接读取专门为上传准备的“纯净缓存”
+      List<dynamic> localScreenStats = await getLocalScreenTime();
 
-        // 核心校验：只有缓存的最后更新时间是【今天】，才允许同步
-        if (lastUpdateDate.year == now.year &&
-            lastUpdateDate.month == now.month &&
-            lastUpdateDate.day == now.day) {
-
-          List<dynamic> localScreenStats = await getLocalScreenTime();
-          if (localScreenStats.isNotEmpty) {
-            screenPayload = {
-              'device_name': friendlyName,
-              'record_date': todayDate,
-              'apps': localScreenStats
-                  .map((e) => {'app_name': e['app_name'], 'duration': e['duration']})
-                  .toList(),
-            };
-            debugPrint("准备同步今日屏幕时间: $todayDate (${localScreenStats.length} 条数据)");
-          }
-        } else {
-          debugPrint("本地屏幕时间缓存已过期 (日期为 ${DateFormat('yyyy-MM-dd').format(lastUpdateDate)})，本次跳过推送。");
-        }
+      if (localScreenStats.isNotEmpty) {
+        screenPayload = {
+          'device_name': friendlyName,
+          'record_date': todayDate,
+          'apps': localScreenStats
+              .map((e) => {'app_name': e['app_name'], 'duration': e['duration']})
+              .toList(),
+        };
+        debugPrint("🚀 准备同步今日屏幕时间: $todayDate (${localScreenStats.length} 条数据)");
+      } else {
+        debugPrint("📭 本机暂无新的屏幕时间需要上传");
       }
 
       // 5. 发起网络同步请求
