@@ -51,9 +51,11 @@ bool FlutterWindow::OnCreate() {
 
                     OutputDebugStringA(("[FloatWindow] title utf8 = " + titleUtf8 + "\n").c_str());
 
-                    int wlen = MultiByteToWideChar(CP_UTF8, 0, titleUtf8.c_str(), -1, nullptr, 0);
+                    int wlen = MultiByteToWideChar(CP_UTF8, 0, titleUtf8.c_str(), (int)titleUtf8.length(), nullptr, 0);
                     std::wstring title(wlen, 0);
-                    MultiByteToWideChar(CP_UTF8, 0, titleUtf8.c_str(), -1, &title[0], wlen);
+                    if (wlen > 0) {
+                        MultiByteToWideChar(CP_UTF8, 0, titleUtf8.c_str(), (int)titleUtf8.length(), &title[0], wlen);
+                    }
 
                     std::vector<std::wstring> tags;
                     auto& tagList = std::get<flutter::EncodableList>(args.at(flutter::EncodableValue("tags")));
@@ -63,9 +65,11 @@ bool FlutterWindow::OnCreate() {
 
                     for (auto& t : tagList) {
                         std::string tagUtf8 = std::get<std::string>(t);
-                        int wl = MultiByteToWideChar(CP_UTF8, 0, tagUtf8.c_str(), -1, nullptr, 0);
+                        int wl = MultiByteToWideChar(CP_UTF8, 0, tagUtf8.c_str(), (int)tagUtf8.length(), nullptr, 0);
                         std::wstring wt(wl, 0);
-                        MultiByteToWideChar(CP_UTF8, 0, tagUtf8.c_str(), -1, &wt[0], wl);
+                        if (wl > 0) {
+                            MultiByteToWideChar(CP_UTF8, 0, tagUtf8.c_str(), (int)tagUtf8.length(), &wt[0], wl);
+                        }
                         tags.push_back(wt);
                     }
 

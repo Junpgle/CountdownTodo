@@ -692,15 +692,15 @@ export default {
 
       if (url.pathname === "/api/pomodoro/settings" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const { default_focus_duration, default_rest_duration, default_loop_count } = await request.json();
-        await DB.prepare(`INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET default_focus_duration = excluded.default_focus_duration, default_rest_duration  = excluded.default_rest_duration, default_loop_count = excluded.default_loop_count, updated_at = excluded.updated_at`).bind(authUserId, default_focus_duration ?? 1500, default_rest_duration ?? 300, default_loop_count ?? 4, Date.now()).run();
+        const { default_focus_duration, default_rest_duration, default_loop_count, timer_mode } = await request.json();
+        await DB.prepare(`INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, timer_mode, updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET default_focus_duration = excluded.default_focus_duration, default_rest_duration  = excluded.default_rest_duration, default_loop_count = excluded.default_loop_count, timer_mode = excluded.timer_mode, updated_at = excluded.updated_at`).bind(authUserId, default_focus_duration ?? 1500, default_rest_duration ?? 300, default_loop_count ?? 4, timer_mode ?? 0, Date.now()).run();
         return jsonResponse({ success: true });
       }
-
+ 
       if (url.pathname === "/api/pomodoro/settings" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const row = await DB.prepare("SELECT * FROM pomodoro_settings WHERE user_id = ?").bind(authUserId).first();
-        return jsonResponse(row ?? { user_id: authUserId, default_focus_duration: 1500, default_rest_duration: 300, default_loop_count: 4 });
+        return jsonResponse(row ?? { user_id: authUserId, default_focus_duration: 1500, default_rest_duration: 300, default_loop_count: 4, timer_mode: 0 });
       }
 
       // --------------------------
@@ -816,12 +816,12 @@ export default {
         if (body.pomodoro_settings && body.pomodoro_settings.length > 0) {
           body.pomodoro_settings.forEach(p => {
             batchStatements.push(DB.prepare(`
-              INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, updated_at)
-              VALUES (?,?,?,?,?)
+              INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, timer_mode, updated_at)
+              VALUES (?,?,?,?,?,?)
               ON CONFLICT(user_id) DO UPDATE SET
-                default_focus_duration=excluded.default_focus_duration, default_rest_duration=excluded.default_rest_duration, default_loop_count=excluded.default_loop_count, updated_at=excluded.updated_at
+                default_focus_duration=excluded.default_focus_duration, default_rest_duration=excluded.default_rest_duration, default_loop_count=excluded.default_loop_count, timer_mode=excluded.timer_mode, updated_at=excluded.updated_at
               WHERE excluded.updated_at > pomodoro_settings.updated_at
-            `).bind(getMappedUserId(p.user_id), p.default_focus_duration, p.default_rest_duration, p.default_loop_count, p.updated_at));
+            `).bind(getMappedUserId(p.user_id), p.default_focus_duration, p.default_rest_duration, p.default_loop_count, p.timer_mode ?? 0, p.updated_at));
           });
         }
 
