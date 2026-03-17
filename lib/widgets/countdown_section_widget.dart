@@ -24,7 +24,6 @@ class CountdownSectionWidget extends StatefulWidget {
 }
 
 class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
-
   void _addCountdown() {
     TextEditingController titleCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
@@ -33,29 +32,59 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text("添加倒计时"),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "事项名称")),
+              TextField(
+                controller: titleCtrl,
+                decoration: const InputDecoration(
+                  labelText: "事项名称",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
               ListTile(
-                title: Text("目标日期: ${DateFormat('yyyy-MM-dd').format(selectedDate)}"), trailing: const Icon(Icons.calendar_today),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Theme.of(context).dividerColor),
+                ),
+                title: Text(
+                  "目标日期: ${DateFormat('yyyy-MM-dd').format(selectedDate)}",
+                  style: const TextStyle(fontSize: 14),
+                ),
+                trailing: const Icon(Icons.calendar_today, size: 20),
                 onTap: () async {
-                  final picked = await showDatePicker(context: context, firstDate: DateTime.now(), lastDate: DateTime(2100), initialDate: selectedDate);
+                  final picked = await showDatePicker(
+                    context: context,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime(2100),
+                    initialDate: selectedDate,
+                  );
                   if (picked != null) setDialogState(() => selectedDate = picked);
                 },
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("取消"),
+            ),
             FilledButton(
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               onPressed: () async {
                 if (titleCtrl.text.isNotEmpty) {
                   List<CountdownItem> updatedList = List.from(widget.countdowns);
-                  // 🚀 修复：去除旧版的 lastUpdated 属性，采用模型的默认版本号初始化
-                  updatedList.add(CountdownItem(title: titleCtrl.text, targetDate: selectedDate));
-                  await StorageService.saveCountdowns(widget.username, updatedList);
-                  widget.onDataChanged(); // 通知父组件更新
+                  updatedList.add(CountdownItem(
+                      title: titleCtrl.text, targetDate: selectedDate));
+                  await StorageService.saveCountdowns(
+                      widget.username, updatedList);
+                  widget.onDataChanged();
                   if (mounted) Navigator.pop(ctx);
                 }
               },
@@ -73,13 +102,22 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
       builder: (ctx) => AlertDialog(
         title: const Text("删除倒计时"),
         content: const Text("确定要删除这条倒计时吗？"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("取消"),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             onPressed: () async {
-              // 🚀 修复：使用 ID 而非 title 来删除倒计时
-              await StorageService.deleteCountdownGlobally(widget.username, itemToDelete.id);
+              await StorageService.deleteCountdownGlobally(
+                  widget.username, itemToDelete.id);
               widget.onDataChanged();
               if (mounted) Navigator.pop(ctx);
             },
@@ -92,22 +130,37 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
 
   @override
   Widget build(BuildContext context) {
+    // 修复：头部图标也根据深色模式动态调整
+    final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    final bool useDarkUI = isDarkTheme || widget.isLight;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(child: SectionHeader(title: "重要日", icon: Icons.timer, onAdd: _addCountdown, isLight: widget.isLight)),
+            Expanded(
+                child: SectionHeader(
+                    title: "重要日",
+                    icon: Icons.timer,
+                    onAdd: _addCountdown,
+                    isLight: widget.isLight)),
             IconButton(
-              icon: Icon(Icons.history, color: widget.isLight ? Colors.white70 : Colors.grey),
+              icon: Icon(Icons.history,
+                  color: useDarkUI ? Colors.white70 : Colors.grey),
               onPressed: () async {
-                await Navigator.push(context, MaterialPageRoute(builder: (_) => HistoricalCountdownsScreen(username: widget.username)));
+                await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => HistoricalCountdownsScreen(
+                            username: widget.username)));
                 widget.onDataChanged();
               },
             ),
           ],
         ),
+        const SizedBox(height: 8),
         _buildList(),
       ],
     );
@@ -119,49 +172,153 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
     }).toList()
       ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
-    if (activeCountdowns.isEmpty) return EmptyState(text: "暂无有效倒计时", isLight: widget.isLight);
+    if (activeCountdowns.isEmpty) {
+      return EmptyState(text: "暂无有效倒计时", isLight: widget.isLight);
+    }
 
     return SizedBox(
-      height: 110,
+      height: 140,
       child: ListView.builder(
-        scrollDirection: Axis.horizontal, itemCount: activeCountdowns.length,
+        clipBehavior: Clip.none,
+        scrollDirection: Axis.horizontal,
+        itemCount: activeCountdowns.length,
         itemBuilder: (context, index) {
           final item = activeCountdowns[index];
           final diff = item.targetDate.difference(DateTime.now()).inDays + 1;
 
-          return Stack(
-            children: [
-              Card(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.9), margin: const EdgeInsets.only(right: 12),
-                child: Container(
-                  width: 140, padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 16.0),
-                        child: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)),
+          final bool isUrgent = diff <= 3;
+
+          // 核心修复：增加系统级别的深色模式检测
+          final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+          final bool useDarkUI = isDarkTheme || widget.isLight;
+
+          final bgColor = useDarkUI
+              ? (isUrgent
+              ? Colors.redAccent.withOpacity(0.25)
+              : (widget.isLight
+              ? Colors.white.withOpacity(0.1)
+              : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5)))
+              : (isUrgent
+              ? Colors.red.shade50
+              : Theme.of(context).colorScheme.surface);
+
+          final borderColor = useDarkUI
+              ? (isUrgent ? Colors.redAccent.withOpacity(0.5) : Colors.white.withOpacity(0.15))
+              : (isUrgent ? Colors.redAccent.withOpacity(0.3) : Colors.black.withOpacity(0.05));
+
+          final textColor = useDarkUI ? Colors.white : Theme.of(context).colorScheme.onSurface;
+
+          final subTextColor = useDarkUI ? Colors.white70 : Theme.of(context).colorScheme.onSurfaceVariant;
+
+          final accentColor = useDarkUI
+              ? (isUrgent ? Colors.redAccent.shade100 : Colors.white)
+              : (isUrgent ? Colors.redAccent : Theme.of(context).colorScheme.primary);
+
+          final closeBgColor = useDarkUI
+              ? Colors.white.withOpacity(0.15)
+              : Theme.of(context).colorScheme.onSurface.withOpacity(0.05);
+
+          return Container(
+            width: 150,
+            margin: const EdgeInsets.only(right: 16, bottom: 12),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: borderColor),
+              // 在深色模式下不需要黑色阴影，否则会看起来很脏
+              boxShadow: useDarkUI ? [] : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 顶部：标题 + 删除按钮
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: textColor,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () => _deleteCountdown(item),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: closeBgColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.close,
+                              size: 14,
+                              color: subTextColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    // 中部：倒计时天数
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          "$diff",
+                          style: TextStyle(
+                            fontSize: 38,
+                            height: 1.0,
+                            fontWeight: FontWeight.bold,
+                            color: accentColor,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6.0),
+                          child: Text(
+                            "天",
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: subTextColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // 底部：具体日期
+                    Text(
+                      "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: subTextColor,
+                        letterSpacing: 0.5,
                       ),
-                      const Spacer(),
-                      Text("$diff天", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onPrimaryContainer)),
-                      Text("目标日: ${DateFormat('MM-dd').format(item.targetDate)}", style: const TextStyle(fontSize: 10)),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-              Positioned(
-                right: 16,
-                top: 4,
-                child: InkWell(
-                  onTap: () => _deleteCountdown(item),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(Icons.close, size: 16, color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.5)),
-                  ),
-                ),
-              ),
-            ],
+            ),
           );
         },
       ),

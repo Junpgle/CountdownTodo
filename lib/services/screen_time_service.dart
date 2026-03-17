@@ -62,20 +62,36 @@ class ScreenTimeService {
       // 1. 获取本机干干净净的数据，存入【专用上传缓存】
       if (Platform.isAndroid) {
         if (!(await checkPermission())) return;
-        final List<dynamic>? stats = await _channel.invokeMethod('getScreenTimeData');
-        if (stats != null && stats.isNotEmpty) {
-          await StorageService.saveLocalScreenTime(stats); // 🚀 改用新的方法
+        final dynamic stats = await _channel.invokeMethod('getScreenTimeData');
+        
+        // 🚀 适配 Android 返回的新格式: { "date": "yyyy-MM-dd", "apps": [...] }
+        if (stats is Map && stats['apps'] != null) {
+          await StorageService.saveLocalScreenTime(stats); 
+        } else if (stats is List && stats.isNotEmpty) {
+          // 向后兼容旧格式
+          String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          await StorageService.saveLocalScreenTime({
+            'date': today,
+            'apps': stats
+          });
         }
       } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         final List<Map<String, dynamic>> apps = await TaiService.getTodayStats();
         if (apps.isNotEmpty) {
-          await StorageService.saveLocalScreenTime(apps); // 🚀 改用新的方法
+          String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          await StorageService.saveLocalScreenTime({
+            'date': today,
+            'apps': apps
+          });
         }
       }
 
       // 2. 将本机纯净数据推送到云端
       await StorageService.syncData(username);
       debugPrint("📤 本机屏幕时间已推送到云端");
+      
+      // 🚀 只要推送成功，即便云端还没聚合好，也更新本地同步水位线，防止 2 分钟死循环
+      await StorageService.updateLastScreenTimeSync();
 
       // 3. 强制向云端索要多端聚合后的“完美总表”
       String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -83,7 +99,7 @@ class ScreenTimeService {
 
       if (cloudStats.isNotEmpty) {
         // 4. 用云端总表覆盖【UI显示缓存】
-        await StorageService.saveScreenTimeCache(cloudStats); // 🚀 只有这里用旧方法
+        await StorageService.saveScreenTimeCache(cloudStats); 
         debugPrint("📥 成功拉取云端聚合数据，准备刷新 UI！");
       }
 

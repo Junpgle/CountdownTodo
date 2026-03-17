@@ -24,15 +24,23 @@ class SectionHeader extends StatelessWidget {
     final Color iconColor = isLight ? Colors.white70 : Theme.of(context).colorScheme.primary;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: iconColor),
-          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 10),
           Text(
             title,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
               color: textColor,
             ),
           ),
@@ -84,16 +92,20 @@ class ScreenTimeCard extends StatelessWidget {
           final bool isTablet = constraints.maxWidth >= 600;
 
           if (!hasPermission) {
-            return Card(
-              color: Colors.amber.withOpacity(0.1),
+            return Container(
               margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+              ),
               child: ListTile(
                 contentPadding: EdgeInsets.symmetric(
                     horizontal: isTablet ? 24 : 16,
-                    vertical: isTablet ? 8 : 0
+                    vertical: isTablet ? 8 : 4
                 ),
                 leading: const Icon(Icons.lock_clock, color: Colors.orange),
-                title: const Text("未开启屏幕时间统计"),
+                title: const Text("未开启屏幕时间统计", style: TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: const Text("点击前往开启权限以同步手机使用时长"),
                 onTap: onOpenSettings,
               ),
@@ -101,9 +113,14 @@ class ScreenTimeCard extends StatelessWidget {
           }
 
           if (isLoading) {
-            return Card(
-              elevation: 2,
-              color: Theme.of(context).cardColor.withOpacity(0.95),
+            return Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                ],
+              ),
               child: Padding(
                 padding: EdgeInsets.all(isTablet ? 60 : 40),
                 child: const Center(
@@ -121,9 +138,14 @@ class ScreenTimeCard extends StatelessWidget {
           }
 
           if (stats.isEmpty) {
-            return Card(
-              elevation: 2,
-              color: Theme.of(context).cardColor.withOpacity(0.95),
+            return Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                ],
+              ),
               child: Padding(
                 padding: EdgeInsets.all(isTablet ? 50 : 30),
                 child: const Center(child: Text("今日暂无屏幕使用数据", style: TextStyle(color: Colors.grey))),
@@ -161,96 +183,112 @@ class ScreenTimeCard extends StatelessWidget {
             appMap["其他"] = totalTime - topSum;
           }
 
-          return Card(
-            elevation: 2,
-            color: Theme.of(context).cardColor.withOpacity(0.95),
-            child: InkWell(
-              onTap: onViewDetail,
-              borderRadius: BorderRadius.circular(12),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1000), // 防止超大屏幕极度拉伸
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: isTablet ? 32 : 16,
-                        vertical: isTablet ? 32 : 20
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text("今日总计", style: TextStyle(color: Colors.grey, fontSize: isTablet ? 16 : 14, fontWeight: FontWeight.w500)),
-                                if (lastSyncTime != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Text(
-                                        "最近更新: ${DateFormat('HH:mm:ss').format(lastSyncTime!)}",
-                                        style: TextStyle(fontSize: isTablet ? 12 : 10, color: Colors.blueGrey)
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            Text(_formatSeconds(totalTime),
-                                style: TextStyle(fontSize: isTablet ? 32 : 22, fontWeight: FontWeight.bold, color: Colors.blue)),
-                          ],
-                        ),
-                        SizedBox(height: isTablet ? 24 : 15),
-                        const Divider(),
-                        SizedBox(height: isTablet ? 24 : 15),
-
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
+          return Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 4))
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onViewDetail,
+                borderRadius: BorderRadius.circular(24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1000), // 防止超大屏幕极度拉伸
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 32 : 20,
+                          vertical: isTablet ? 32 : 24
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  SizedBox(
-                                    width: double.infinity, // <--- 修复点：强制撑满横向空间
-                                    height: isTablet ? 240 : 140, // 平板上分配更大的高度给图表
-                                    child: CustomPaint(
-                                      painter: PieChartPainter(data: deviceMap, total: totalTime),
-                                    ),
-                                  ),
-                                  SizedBox(height: isTablet ? 20 : 12),
-                                  Text("设备分布", style: TextStyle(fontSize: isTablet ? 15 : 13, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  SizedBox(
-                                    width: double.infinity, // <--- 修复点：强制撑满横向空间
-                                    height: isTablet ? 240 : 140,
-                                    child: CustomPaint(
-                                      painter: PieChartPainter(
-                                        data: appMap,
-                                        total: totalTime,
-                                        isAppChart: true,
+                                  Text("今日总计", style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: isTablet ? 16 : 14, fontWeight: FontWeight.w600)),
+                                  if (lastSyncTime != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                          "更新: ${DateFormat('HH:mm').format(lastSyncTime!)}",
+                                          style: TextStyle(fontSize: isTablet ? 12 : 11, color: Colors.blueGrey)
                                       ),
                                     ),
-                                  ),
-                                  SizedBox(height: isTablet ? 20 : 12),
-                                  Text("Top 应用", style: TextStyle(fontSize: isTablet ? 15 : 13, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                                 ],
                               ),
+                              Text(_formatSeconds(totalTime),
+                                  style: TextStyle(fontSize: isTablet ? 34 : 26, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
+                            ],
+                          ),
+                          SizedBox(height: isTablet ? 24 : 16),
+                          Divider(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+                          SizedBox(height: isTablet ? 24 : 16),
+
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    SizedBox(
+                                      width: double.infinity, // <--- 修复点：强制撑满横向空间
+                                      height: isTablet ? 240 : 140, // 平板上分配更大的高度给图表
+                                      child: CustomPaint(
+                                        painter: PieChartPainter(data: deviceMap, total: totalTime),
+                                      ),
+                                    ),
+                                    SizedBox(height: isTablet ? 20 : 12),
+                                    Text("设备分布", style: TextStyle(fontSize: isTablet ? 15 : 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    SizedBox(
+                                      width: double.infinity, // <--- 修复点：强制撑满横向空间
+                                      height: isTablet ? 240 : 140,
+                                      child: CustomPaint(
+                                        painter: PieChartPainter(
+                                          data: appMap,
+                                          total: totalTime,
+                                          isAppChart: true,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(height: isTablet ? 20 : 12),
+                                    Text("Top 应用", style: TextStyle(fontSize: isTablet ? 15 : 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: isTablet ? 32 : 20),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                          ],
-                        ),
-                        SizedBox(height: isTablet ? 32 : 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.touch_app, size: isTablet ? 18 : 14, color: Colors.blue.withOpacity(0.6)),
-                            const SizedBox(width: 4),
-                            Text("点击查看详细列表", style: TextStyle(fontSize: isTablet ? 14 : 12, color: Colors.blueGrey)),
-                          ],
-                        ),
-                      ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.touch_app, size: isTablet ? 18 : 16, color: Theme.of(context).colorScheme.primary),
+                                const SizedBox(width: 6),
+                                Text("点击查看详细列表", style: TextStyle(fontSize: isTablet ? 14 : 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -327,7 +365,7 @@ class PieChartPainter extends CustomPainter {
                 fontSize: fontSize,
                 fontWeight: FontWeight.bold,
                 shadows: const [
-                  Shadow(offset: Offset(0, 1), blurRadius: 1, color: Colors.black12)
+                  Shadow(offset: Offset(0, 1), blurRadius: 2, color: Colors.black26) // 增强了阴影可读性
                 ]
             ),
           ),
@@ -347,20 +385,35 @@ class PieChartPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-/// 通用的空状态显示
+/// 通用的空状态显示（美化版）
 class EmptyState extends StatelessWidget {
   final String text;
   final bool isLight;
   const EmptyState({super.key, required this.text, this.isLight = false});
   @override
   Widget build(BuildContext context) {
-    Color borderColor = isLight ? Colors.white30 : Colors.grey.withOpacity(0.3);
-    Color textColor = isLight ? Colors.white70 : Colors.grey;
+    Color bgColor = isLight ? Colors.white.withOpacity(0.1) : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3);
+    Color textColor = isLight ? Colors.white70 : Colors.grey.shade600;
+
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
       alignment: Alignment.center,
-      decoration: BoxDecoration(border: Border.all(color: borderColor), borderRadius: BorderRadius.circular(12)),
-      child: Text(text, style: TextStyle(color: textColor)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isLight ? Colors.white30 : Theme.of(context).dividerColor.withOpacity(0.5),
+          style: BorderStyle.solid,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.inbox_rounded, size: 36, color: textColor.withOpacity(0.5)),
+          const SizedBox(height: 12),
+          Text(text, style: TextStyle(color: textColor, fontWeight: FontWeight.w500, fontSize: 14)),
+        ],
+      ),
     );
   }
 }
@@ -380,63 +433,86 @@ class MathStatsCard extends StatelessWidget {
         builder: (context, constraints) {
           final bool isTablet = constraints.maxWidth >= 600;
 
-          return Card(
-            elevation: 2,
-            clipBehavior: Clip.antiAlias,
-            color: Theme.of(context).cardColor.withOpacity(0.95),
-            child: InkWell(
-              onTap: onTap,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1000), // 大屏防过度拉伸
-                  child: Padding(
-                    padding: EdgeInsets.all(isTablet ? 32 : 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                            children: [
-                              Icon(todayCount > 0 ? Icons.check_circle : Icons.error_outline,
-                                  color: todayCount > 0 ? Colors.green : Colors.orangeAccent,
-                                  size: isTablet ? 36 : 30),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                  child: Text(todayCount > 0 ? "今日已完成 $todayCount 次测验" : "今日还未完成测验",
-                                      style: TextStyle(fontSize: isTablet ? 22 : 18, fontWeight: FontWeight.bold))
-                              ),
-                              Icon(Icons.arrow_forward_ios, size: isTablet ? 20 : 16, color: Colors.grey)
-                            ]
-                        ),
-                        Divider(height: isTablet ? 40 : 30),
-                        Row(
-                            children: [
-                              Expanded(
-                                  child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text("最佳战绩", style: TextStyle(color: Colors.grey, fontSize: isTablet ? 14 : 12)),
-                                        const SizedBox(height: 6),
-                                        Text(stats['bestTime'] != null ? "${stats['bestTime']}秒" : "--",
-                                            style: TextStyle(fontSize: isTablet ? 32 : 24, fontWeight: FontWeight.bold))
-                                      ]
-                                  )
-                              ),
-                              Expanded(
-                                  child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text("总正确率", style: TextStyle(color: Colors.grey, fontSize: isTablet ? 14 : 12)),
-                                        const SizedBox(height: 6),
-                                        Text("${(accuracy * 100).toStringAsFixed(1)}%",
-                                            style: TextStyle(fontSize: isTablet ? 32 : 24, fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 6),
-                                        LinearProgressIndicator(value: accuracy, borderRadius: BorderRadius.circular(4))
-                                      ]
-                                  )
-                              )
-                            ]
-                        ),
-                      ],
+          return Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1000), // 大屏防过度拉伸
+                    child: Padding(
+                      padding: EdgeInsets.all(isTablet ? 32 : 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: todayCount > 0 ? Colors.green.withOpacity(0.15) : Colors.orangeAccent.withOpacity(0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(todayCount > 0 ? Icons.check_circle : Icons.error_outline,
+                                      color: todayCount > 0 ? Colors.green : Colors.orangeAccent,
+                                      size: isTablet ? 32 : 26),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                    child: Text(todayCount > 0 ? "今日已完成 $todayCount 次测验" : "今日还未完成测验",
+                                        style: TextStyle(fontSize: isTablet ? 20 : 16, fontWeight: FontWeight.bold))
+                                ),
+                                Icon(Icons.arrow_forward_ios, size: isTablet ? 18 : 14, color: Colors.grey)
+                              ]
+                          ),
+                          Divider(height: isTablet ? 40 : 32, color: Theme.of(context).dividerColor.withOpacity(0.5)),
+                          Row(
+                              children: [
+                                Expanded(
+                                    child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text("最佳战绩", style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: isTablet ? 14 : 13)),
+                                          const SizedBox(height: 8),
+                                          Text(stats['bestTime'] != null ? "${stats['bestTime']}秒" : "--",
+                                              style: TextStyle(fontSize: isTablet ? 32 : 26, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.primary))
+                                        ]
+                                    )
+                                ),
+                                Expanded(
+                                    child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text("总正确率", style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: isTablet ? 14 : 13)),
+                                          const SizedBox(height: 8),
+                                          Text("${(accuracy * 100).toStringAsFixed(1)}%",
+                                              style: TextStyle(fontSize: isTablet ? 32 : 26, fontWeight: FontWeight.w900)),
+                                          const SizedBox(height: 8),
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: LinearProgressIndicator(
+                                              value: accuracy,
+                                              minHeight: 6,
+                                              backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                          )
+                                        ]
+                                    )
+                                )
+                              ]
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

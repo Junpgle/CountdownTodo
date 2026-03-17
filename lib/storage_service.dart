@@ -521,12 +521,12 @@ class StorageService {
   // ==========================================
   // 屏幕时间与应用映射
   // ==========================================
-  static Future<void> saveLocalScreenTime(List<dynamic> stats) async {
+  static Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(KEY_LOCAL_SCREEN_TIME, jsonEncode(stats));
   }
 
-  static Future<List<dynamic>> getLocalScreenTime() async {
+  static Future<Map<String, dynamic>> getLocalScreenTimeMap() async {
     final prefs = await SharedPreferences.getInstance();
     String? jsonStr = prefs.getString(KEY_LOCAL_SCREEN_TIME);
     if (jsonStr != null) {
@@ -534,7 +534,12 @@ class StorageService {
         return jsonDecode(jsonStr);
       } catch (_) {}
     }
-    return [];
+    return {};
+  }
+
+  static Future<List<dynamic>> getLocalScreenTime() async {
+    final map = await getLocalScreenTimeMap();
+    return map['apps'] as List<dynamic>? ?? [];
   }
 
   static Future<void> saveScreenTimeCache(List<dynamic> stats) async {
@@ -726,19 +731,21 @@ class StorageService {
           .map((t) => t.toJson())
           .toList();
 
-      // 4. 🚀 屏幕时间逻辑优化：无条件上传本机纯净数据（拆除跨天死锁）
+      // 4. 读取本机待同步屏幕时间 (改为 Map 结构)
+      Map<String, dynamic> localPackage = await getLocalScreenTimeMap();
+      List<dynamic> localScreenStats = localPackage['apps'] ?? [];
+      String? recordDate = localPackage['date']; // 🚀 从缓存中拿原始日期
+
       Map<String, dynamic>? screenPayload;
-      DateTime now = DateTime.now();
-      String todayDate = DateFormat('yyyy-MM-dd').format(now);
-
-      // 直接读取专门为上传准备的“纯净缓存”
-      List<dynamic> localScreenStats = await getLocalScreenTime();
-
       if (localScreenStats.isNotEmpty) {
         try {
+          // 如果没有记录日期（旧版本升级上来），退而求其次用今天
+          final String finalDate =
+              recordDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
+
           screenPayload = {
             'device_name': friendlyName,
-            'record_date': todayDate,
+            'record_date': finalDate,
             'apps': localScreenStats
                 .where((e) => e is Map)
                 .map((e) => {
@@ -747,7 +754,7 @@ class StorageService {
                     })
                 .toList(),
           };
-          debugPrint("🚀 准备同步今日屏幕时间: $todayDate (${localScreenStats.length} 条数据)");
+          debugPrint("🚀 准备同步本机屏幕时间 ($finalDate): ${localScreenStats.length} 条数据");
         } catch (se) {
           debugPrint("屏幕时间 payload 构造失败: $se");
         }
@@ -768,6 +775,12 @@ class StorageService {
 
       if (response['success'] != true) {
         throw Exception("${response['message'] ?? '同步失败'}");
+      }
+
+      // 🛡️ 屏幕时间逻辑优化：上传成功后，务必清理“待上传”缓存
+      if (screenPayload != null) {
+        await prefs.remove(KEY_LOCAL_SCREEN_TIME);
+        debugPrint("✅ 本机屏幕时间上传成功，已清理待上传缓存");
       }
 
       // 6. 🛡️ 数据合并逻辑 (LWW - Last Write Wins)

@@ -403,7 +403,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    private fun getSystemAggregatedUsageStats(): List<Map<String, Any>> {
+    private fun getSystemAggregatedUsageStats(): Map<String, Any> {
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val calendar = Calendar.getInstance()
         calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -414,13 +414,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val startTime = calendar.timeInMillis
         val endTime = System.currentTimeMillis()
 
+        // 🚀 记录本次统计对应的日期 (yyyy-MM-dd)
+        val dateStr = android.text.format.DateFormat.format("yyyy-MM-dd", calendar).toString()
+
         val isTablet =
             (resources.configuration.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK) >= Configuration.SCREENLAYOUT_SIZE_LARGE
         val deviceType = if (isTablet) "Android-Tablet" else "Android-Phone"
 
         val statsMap = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
         val pm = packageManager
-        val usageStatsList = mutableListOf<Map<String, Any>>()
+        val appsList = mutableListOf<Map<String, Any>>()
 
         for ((pkgName, usageStats) in statsMap) {
             val totalTimeMs = usageStats.totalTimeInForeground
@@ -437,7 +440,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
                 if (label == pkgName && pkgName.startsWith("com.android.")) continue
 
-                usageStatsList.add(
+                appsList.add(
                     mapOf(
                         "app_name" to label,
                         "duration" to (totalTimeMs / 1000).toInt(),
@@ -447,7 +450,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             }
         }
 
-        return usageStatsList
+        return mapOf(
+            "date" to dateStr,
+            "apps" to appsList
+        )
     }
 
     private fun createNotificationChannel() {
