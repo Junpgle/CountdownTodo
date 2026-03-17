@@ -116,14 +116,20 @@ void FloatWindow::Render() {
 
         auto nowMs = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
-        int remaining = (int)((endMs_ - nowMs) / 1000);
-        std::wstring countdown = FmtSecs(remaining);
+        int displaySecs = 0;
+        if (mode_ == 1) {
+            displaySecs = (int)((nowMs - endMs_) / 1000);
+        } else {
+            displaySecs = (int)((endMs_ - nowMs) / 1000);
+        }
+        std::wstring countdown = FmtSecs(displaySecs);
         float cdFontSz = divY * 0.52f;
         Font fBig(&ff, cdFontSz, FontStyleBold, UnitPixel);
         RectF rcCD(8.0f, 4.0f, (float)(W - 24), (float)(divY * 0.65f));
         g.DrawString(countdown.c_str(), -1, &fBig, rcCD, &sfCenter, &whiteBr);
 
         std::wstring phase = isLocal_ ? L"\u4e13\u6ce8\u4e2d" : L"\u4e13\u6ce8\u4e2d (\u8de8\u7aef)";
+        if (mode_ == 1) phase = isLocal_ ? L"\u6b63\u5728\u8ba1\u65f6" : L"\u6b63\u5728\u8ba1\u65f6 (\u8de8\u7aef)";
         float subFontSz = (float)divY * 0.18f;
         if (subFontSz < 11.0f) subFontSz = 11.0f;
         Font fSub(&ff, subFontSz, FontStyleRegular, UnitPixel);
@@ -245,7 +251,7 @@ case WM_TIMER:
 if (self) {
 auto nowMs = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-if (nowMs >= self->endMs_) { self->Hide(); return 0; }
+if (self->mode_ == 0 && nowMs >= self->endMs_) { self->Hide(); return 0; }
 self->Render();
 }
 break;
@@ -366,13 +372,14 @@ break;
 return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-void FloatWindow::RunLoop(long long endMs, std::wstring title, std::vector<std::wstring> tags) {
+void FloatWindow::RunLoop(long long endMs, std::wstring title, std::vector<std::wstring> tags, int mode) {
     GdiplusStartupInput gi;
     GdiplusStartup(&gdiplusToken_, &gi, nullptr);
 
     endMs_ = endMs;
     title_ = std::move(title);
     tags_  = std::move(tags);
+    mode_  = mode;
 
     LoadState();
 
@@ -409,12 +416,12 @@ void FloatWindow::RunLoop(long long endMs, std::wstring title, std::vector<std::
 }
 
 void FloatWindow::Show(long long endMs, const std::wstring& title,
-                       const std::vector<std::wstring>& tags, bool isLocal) {
+                       const std::vector<std::wstring>& tags, bool isLocal, int mode) {
     Hide();
     isLocal_ = isLocal;
     running_ = true;
-    thread_ = std::thread([this, endMs, title, tags]() {
-        RunLoop(endMs, title, tags);
+    thread_ = std::thread([this, endMs, title, tags, mode]() {
+        RunLoop(endMs, title, tags, mode);
     });
 }
 

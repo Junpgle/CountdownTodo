@@ -195,21 +195,26 @@ typedef PomodoroSession = PomodoroRecord;
 // 番茄钟设置（对齐数据库 pomodoro_settings 表）
 // ============================================================
 
+enum TimerMode { countdown, countUp }
+
 class PomodoroSettings {
   int focusMinutes;  // default_focus_duration / 60
   int breakMinutes;  // default_rest_duration  / 60
   int cycles;        // default_loop_count
+  TimerMode mode;    // 🚀 新增：倒计时或正计时模式
 
   PomodoroSettings({
     this.focusMinutes = 25,
     this.breakMinutes = 5,
     this.cycles = 4,
+    this.mode = TimerMode.countdown,
   });
 
   Map<String, dynamic> toJson() => {
         'focusMinutes': focusMinutes,
         'breakMinutes': breakMinutes,
         'cycles': cycles,
+        'mode': mode.index,
         // 后端字段（秒）
         'default_focus_duration': focusMinutes * 60,
         'default_rest_duration': breakMinutes * 60,
@@ -221,6 +226,7 @@ class PomodoroSettings {
     final focusRaw = j['focusMinutes'] ?? j['default_focus_duration'];
     final breakRaw = j['breakMinutes'] ?? j['default_rest_duration'];
     final cyclesRaw = j['cycles'] ?? j['default_loop_count'];
+    final modeIdx = j['mode'] as int? ?? 0;
 
     int toMinutes(dynamic v, int def) {
       final n = v as int? ?? def;
@@ -232,6 +238,7 @@ class PomodoroSettings {
       focusMinutes: toMinutes(focusRaw, 25),
       breakMinutes: toMinutes(breakRaw, 5),
       cycles: cyclesRaw as int? ?? 4,
+      mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
     );
   }
 }
@@ -255,10 +262,11 @@ class PomodoroRunState {
   List<String> tagUuids;
   int sessionStartMs;
   int plannedFocusSeconds;
+  TimerMode mode;
 
   PomodoroRunState({
     this.phase = PomodoroPhase.idle,
-    String? sessionUuid, // 🚀 新增可选参数
+    String? sessionUuid, 
     this.targetEndMs = 0,
     this.currentCycle = 1,
     this.totalCycles = 4,
@@ -269,12 +277,13 @@ class PomodoroRunState {
     List<String>? tagUuids,
     this.sessionStartMs = 0,
     this.plannedFocusSeconds = 25 * 60,
-  }) : sessionUuid = sessionUuid ?? const Uuid().v4(), // 🚀 如果没有，默认生成一个
+    this.mode = TimerMode.countdown,
+  }) : sessionUuid = sessionUuid ?? const Uuid().v4(), 
         tagUuids = tagUuids ?? [];
 
   Map<String, dynamic> toJson() => {
         'phase': phase.index,
-        'sessionUuid': sessionUuid, // 🚀 序列化
+        'sessionUuid': sessionUuid,
         'targetEndMs': targetEndMs,
         'currentCycle': currentCycle,
         'totalCycles': totalCycles,
@@ -285,24 +294,32 @@ class PomodoroRunState {
         'tagUuids': tagUuids,
         'sessionStartMs': sessionStartMs,
         'plannedFocusSeconds': plannedFocusSeconds,
+        'mode': mode.index,
+        'isCountUp': mode == TimerMode.countUp,
       };
 
-  factory PomodoroRunState.fromJson(Map<String, dynamic> j) => PomodoroRunState(
+  factory PomodoroRunState.fromJson(Map<String, dynamic> j) {
+    final focusSecs = j['focusSeconds'] as int? ?? 25 * 60;
+    final modeIdx = j['mode'] as int? ?? (j['isCountUp'] == true || focusSecs == 0 ? 1 : 0);
+
+    return PomodoroRunState(
         phase: PomodoroPhase.values[j['phase'] as int? ?? 0],
-        sessionUuid: j['sessionUuid']?.toString() ?? const Uuid().v4(), // 🚀 解析
+        sessionUuid: j['sessionUuid']?.toString() ?? const Uuid().v4(),
         targetEndMs: j['targetEndMs'] as int? ?? 0,
         currentCycle: j['currentCycle'] as int? ?? 1,
         totalCycles: j['totalCycles'] as int? ?? 4,
-        focusSeconds: j['focusSeconds'] as int? ?? 25 * 60,
+        focusSeconds: focusSecs,
         breakSeconds: j['breakSeconds'] as int? ?? 5 * 60,
         todoUuid: j['todoUuid'] as String?,
         todoTitle: j['todoTitle'] as String?,
         tagUuids: (j['tagUuids'] as List?)?.map((e) => e.toString()).toList() ?? [],
         sessionStartMs: j['sessionStartMs'] as int? ?? 0,
         plannedFocusSeconds: j['plannedFocusSeconds'] as int?
-            ?? j['actualFocusedSeconds'] as int?  // 旧字段兼容
-            ?? 25 * 60,
+            ?? j['actualFocusedSeconds'] as int?
+            ?? focusSecs,
+        mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
       );
+  }
 }
 
 // ============================================================

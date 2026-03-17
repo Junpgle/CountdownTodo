@@ -69,13 +69,23 @@ bool FlutterWindow::OnCreate() {
                         tags.push_back(wt);
                     }
 
+                    int mode = 0;
+                    auto modeIt = args.find(flutter::EncodableValue("mode"));
+                    if (modeIt != args.end()) {
+                        if (std::holds_alternative<int32_t>(modeIt->second)) {
+                            mode = std::get<int32_t>(modeIt->second);
+                        } else if (std::holds_alternative<int64_t>(modeIt->second)) {
+                            mode = (int)std::get<int64_t>(modeIt->second);
+                        }
+                    }
+
                     bool isLocal = false;
                     auto isLocalIt = args.find(flutter::EncodableValue("isLocal"));
                     if (isLocalIt != args.end()) {
                         isLocal = std::get<bool>(isLocalIt->second);
                     }
 
-                    FloatWindow::instance().Show(endMs, title, tags, isLocal);
+                    FloatWindow::instance().Show(endMs, title, tags, isLocal, mode);
                     result->Success();
                 } else if (call.method_name() == "hideFloat") {
                     FloatWindow::instance().Hide();

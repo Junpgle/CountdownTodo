@@ -15,7 +15,7 @@ public:
         return inst;
     }
     void Show(long long endMs, const std::wstring& title,
-              const std::vector<std::wstring>& tags, bool isLocal);
+              const std::vector<std::wstring>& tags, bool isLocal, int mode = 0);
     void Hide();
 
 private:
@@ -23,7 +23,7 @@ private:
     ~FloatWindow() { Hide(); }
 
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-    void RunLoop(long long endMs, std::wstring title, std::vector<std::wstring> tags);
+    void RunLoop(long long endMs, std::wstring title, std::vector<std::wstring> tags, int mode);
     void Render();
     void SaveState();
     void LoadState();
@@ -49,6 +49,7 @@ private:
     int resizeOrigW_ = 0;
     int resizeOrigH_ = 0;
 
+    int   mode_  = 0;
     bool isLocal_ = false;
 
     BYTE  alpha_ = 200;

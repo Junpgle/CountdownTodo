@@ -735,14 +735,22 @@ class StorageService {
       List<dynamic> localScreenStats = await getLocalScreenTime();
 
       if (localScreenStats.isNotEmpty) {
-        screenPayload = {
-          'device_name': friendlyName,
-          'record_date': todayDate,
-          'apps': localScreenStats
-              .map((e) => {'app_name': e['app_name'], 'duration': e['duration']})
-              .toList(),
-        };
-        debugPrint("🚀 准备同步今日屏幕时间: $todayDate (${localScreenStats.length} 条数据)");
+        try {
+          screenPayload = {
+            'device_name': friendlyName,
+            'record_date': todayDate,
+            'apps': localScreenStats
+                .where((e) => e is Map)
+                .map((e) => {
+                      'app_name': e['app_name']?.toString() ?? 'Unknown',
+                      'duration': (e['duration'] is int) ? e['duration'] : 0,
+                    })
+                .toList(),
+          };
+          debugPrint("🚀 准备同步今日屏幕时间: $todayDate (${localScreenStats.length} 条数据)");
+        } catch (se) {
+          debugPrint("屏幕时间 payload 构造失败: $se");
+        }
       } else {
         debugPrint("📭 本机暂无新的屏幕时间需要上传");
       }

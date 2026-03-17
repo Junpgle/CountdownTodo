@@ -150,6 +150,55 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 const Divider(),
                 const SizedBox(height: 8),
 
+                const Text('专注开始时间', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+                const SizedBox(height: 4),
+                Text(DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.fromMillisecondsSinceEpoch(session.startTime, isUtc: true).toLocal())),
+                const SizedBox(height: 16),
+
+                const Text('专注结束时间', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () async {
+                    final currentEnd = DateTime.fromMillisecondsSinceEpoch(session.endTime ?? session.startTime, isUtc: true).toLocal();
+                    final pickedTime = await showTimePicker(
+                      context: ctx,
+                      initialTime: TimeOfDay.fromDateTime(currentEnd),
+                    );
+                    if (pickedTime != null) {
+                      final newEnd = DateTime(currentEnd.year, currentEnd.month, currentEnd.day, pickedTime.hour, pickedTime.minute);
+                      if (newEnd.millisecondsSinceEpoch <= session.startTime) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间')));
+                        }
+                        return;
+                      }
+                      // 允许修改，但通常应该是早于或等于原始结束时间（由于是事后修正）
+                      sd(() {
+                        session.endTime = newEnd.toUtc().millisecondsSinceEpoch;
+                        session.actualDuration = ((session.endTime! - session.startTime) / 1000).round();
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.access_time, size: 18),
+                        const SizedBox(width: 8),
+                        Text(DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(session.endTime ?? session.startTime, isUtc: true).toLocal())),
+                        const Spacer(),
+                        const Icon(Icons.edit_outlined, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 const Text('绑定任务', style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 InkWell(
@@ -469,6 +518,21 @@ class PomodoroStatsState extends State<PomodoroStats> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (Theme.of(context).platform == TargetPlatform.windows || 
+                Theme.of(context).platform == TargetPlatform.linux || 
+                Theme.of(context).platform == TargetPlatform.macOS)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.maybePop(context),
+                    ),
+                    const Text('专注统计', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
             Center(
               child: SegmentedButton<int>(
                 segments: const [

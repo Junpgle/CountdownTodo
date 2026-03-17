@@ -99,6 +99,11 @@ class _HomeDashboardState extends State<HomeDashboard>
   String _deviceId = '';
   bool _hasShownUpdate = false;
 
+  // ── 本地专注状态 ──
+  PomodoroRunState? _localPomodoro;
+  Timer? _localPomodoroTicker;
+  int _localPomodoroRemaining = 0;
+
   // === 初始化与生命周期 ===
   @override
   void initState() {
@@ -111,6 +116,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _fetchRandomWallpaper();
     WidgetService.init();
     _initCrossDevicePomodoro(); // 首页也连接 WS
+    _initLocalPomodoroMonitoring(); // 🚀 新增：监测本地专注状态
 
     // 🚀 桌面端拦截：确保只在移动设备监听通道
     if (Platform.isAndroid || Platform.isIOS) {
@@ -154,6 +160,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _connStateSub?.cancel(); // 🚀 新增
     _remotePomodoroSub?.cancel();
     _remotePomodoroTicker?.cancel();
+    _localPomodoroTicker?.cancel(); // 🚀 新增
     ExternalShareHandler.dispose();
     _courseTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -196,8 +203,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
         if (saved.phase == PomodoroPhase.focusing ||
             saved.phase == PomodoroPhase.breaking) {
-          final remaining =
-              saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
+          final isCountUp = saved.mode == TimerMode.countUp;
+          final remaining = isCountUp ? 1 : saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
           if (remaining > 0) {
             debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
@@ -219,6 +226,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                   : saved.breakSeconds,
               targetEndMs: saved.targetEndMs,
               tagNames: realTagNames,
+              mode: saved.mode.index,
+              customTimestamp: saved.sessionStartMs, // 🚀 关键：使用真实的起点时间
             );
           }
         }
@@ -241,7 +250,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   // 🚀 修改：处理云端发来的 UPDATE_AVAILABLE 信号
   Future<void> _handleRemotePomodoroSignal(
       CrossDevicePomodoroState signal) async {
-    if (!mounted) return;
+    if (!mounted || _deviceId.isEmpty) return;
     if (signal.sourceDevice == 'flutter_$_deviceId') return;
 
     switch (signal.action) {
@@ -260,27 +269,36 @@ class _HomeDashboardState extends State<HomeDashboard>
         break;
 
       case 'START':
-      case 'SYNC':
+      case 'SYNC_FOCUS':
       case 'RECONNECT_SYNC':
+        final isCountUp = signal.mode == 1;
         final endMs = signal.targetEndMs;
         if (endMs == null) return;
-        final rem =
-        ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
-        if (rem <= 0) return;
+        
+        int rem = 0;
+        if (isCountUp) {
+          final timestamp = signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
+          rem = ((DateTime.now().millisecondsSinceEpoch - timestamp) / 1000).floor();
+        } else {
+          rem = ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+          if (rem <= 0) return;
+        }
+
         setState(() {
           _remotePomodoro = signal;
           _remotePomodoroRemaining = rem;
         });
-        _startRemotePomodoroTicker(endMs);
+        _startRemotePomodoroTicker(endMs, isCountUp);
 
         if (Platform.isWindows) {
           final prefs = await SharedPreferences.getInstance();
           if (prefs.getBool('float_window_enabled') ?? true) {
             _floatChannel.invokeMethod('showFloat', {
-              'endMs': endMs,
+              'endMs': isCountUp ? signal.timestamp : endMs,
               'title': signal.todoTitle ?? '',
               'tags': signal.tags,
               'isLocal': false,
+              'mode': isCountUp ? 1 : 0,
             });
           }
         }
@@ -295,25 +313,54 @@ class _HomeDashboardState extends State<HomeDashboard>
           _floatChannel.invokeMethod('hideFloat');
         }
         break;
+
+      case 'SWITCH':
+        if (_remotePomodoro == null) return;
+        final isCountUp = _remotePomodoro!.mode == 1;
+        setState(() {
+          _remotePomodoro = CrossDevicePomodoroState(
+            action: _remotePomodoro!.action,
+            sessionUuid: signal.sessionUuid ?? _remotePomodoro!.sessionUuid,
+            todoUuid: signal.todoUuid ?? _remotePomodoro!.todoUuid,
+            todoTitle: signal.todoTitle ?? _remotePomodoro!.todoTitle,
+            duration: _remotePomodoro!.duration,
+            targetEndMs: _remotePomodoro!.targetEndMs,
+            sourceDevice: _remotePomodoro!.sourceDevice,
+            timestamp: signal.timestamp ?? _remotePomodoro!.timestamp,
+            mode: _remotePomodoro!.mode,
+            tags: _remotePomodoro!.tags,
+          );
+          if (isCountUp) {
+            _remotePomodoroRemaining = 0; // 🚀 关键：同步侧归零
+          }
+        });
+        if (isCountUp) {
+           _startRemotePomodoroTicker(_remotePomodoro!.targetEndMs ?? 0, true);
+        }
+        break;
     }
   }
 
 
 
-  void _startRemotePomodoroTicker(int targetEndMs) {
+  void _startRemotePomodoroTicker(int targetEndMs, bool isCountUp) {
     _remotePomodoroTicker?.cancel();
     _remotePomodoroTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) {
         _remotePomodoroTicker?.cancel();
         return;
       }
-      final rem =
-          ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
-      if (rem <= 0) {
-        _remotePomodoroTicker?.cancel();
-        if (mounted) setState(() => _remotePomodoro = null);
+      if (isCountUp) {
+        setState(() => _remotePomodoroRemaining++);
       } else {
-        setState(() => _remotePomodoroRemaining = rem);
+        final rem =
+            ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+        if (rem <= 0) {
+          _remotePomodoroTicker?.cancel();
+          if (mounted) setState(() => _remotePomodoro = null);
+        } else {
+          setState(() => _remotePomodoroRemaining = rem);
+        }
       }
     });
   }
@@ -323,20 +370,87 @@ class _HomeDashboardState extends State<HomeDashboard>
     _remotePomodoroTicker = null;
   }
 
-  /// 首页顶部的跨端专注 Banner
-  Widget _buildRemotePomodoroCard(bool isLight) {
-    final state = _remotePomodoro;
-    if (state == null) return const SizedBox.shrink();
+  /// 🚀 新增：监测本地专注状态
+  void _initLocalPomodoroMonitoring() {
+    _localPomodoroTicker?.cancel();
+    _localPomodoroTicker = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      final saved = await PomodoroService.loadRunState();
+      if (!mounted) return;
 
-    final rem = _remotePomodoroRemaining;
-    final m = rem ~/ 60;
-    final s = rem % 60;
-    final timeStr = rem > 60
-        ? '$m 分钟'
-        : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-    final deviceLabel =
-        state.sourceDevice?.replaceFirst('flutter_', '').substring(0, 8) ??
-            '其他设备';
+      if (saved != null && (saved.phase == PomodoroPhase.focusing || saved.phase == PomodoroPhase.breaking)) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final isCountUp = saved.mode == TimerMode.countUp;
+        final rem = isCountUp 
+          ? ((now - saved.sessionStartMs) / 1000).floor()
+          : ((saved.targetEndMs - now) / 1000).ceil();
+        
+        if (!isCountUp && rem <= 0) {
+           setState(() {
+             _localPomodoro = null;
+             _localPomodoroRemaining = 0;
+           });
+        } else {
+           setState(() {
+             _localPomodoro = saved;
+             _localPomodoroRemaining = rem;
+           });
+        }
+      } else {
+        if (_localPomodoro != null) {
+          setState(() {
+            _localPomodoro = null;
+            _localPomodoroRemaining = 0;
+          });
+        }
+      }
+    });
+  }
+
+  /// 首页顶部的专注 Banner (统一处理本地和远程)
+  Widget _buildFocusBanner(bool isLight) {
+    // 优先显示本地，本地没有显示远程
+    if (_localPomodoro != null) {
+      return _buildFocusCard(
+        isLight: isLight,
+        isLocal: true,
+        title: _localPomodoro!.todoTitle,
+        remaining: _localPomodoroRemaining,
+        mode: _localPomodoro!.mode,
+        label: '正在专注 (本机)',
+      );
+    }
+    if (_remotePomodoro != null) {
+      final deviceLabel = _remotePomodoro!.sourceDevice?.replaceFirst('flutter_', '').substring(0, 8) ?? '其他设备';
+      return _buildFocusCard(
+        isLight: isLight,
+        isLocal: false,
+        title: _remotePomodoro!.todoTitle,
+        remaining: _remotePomodoroRemaining,
+        mode: _remotePomodoro!.mode == 1 ? TimerMode.countUp : TimerMode.countdown,
+        label: '$deviceLabel 正在专注',
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildFocusCard({
+    required bool isLight,
+    required bool isLocal,
+    required String? title,
+    required int remaining,
+    required TimerMode mode,
+    required String label,
+  }) {
+    final m = remaining ~/ 60;
+    final s = remaining % 60;
+    final isCountUp = mode == TimerMode.countUp;
+    final timeStr = isCountUp
+        ? '已专注 ${remaining ~/ 60} 分钟'
+        : (remaining > 60
+            ? '$m 分钟'
+            : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
+
+    final baseColor = isLocal ? const Color(0xFF4F46E5) : const Color(0xFFFF6B6B);
 
     return GestureDetector(
       onTap: () async {
@@ -354,15 +468,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color:
-              const Color(0xFFFF6B6B).withValues(alpha: isLight ? 0.85 : 0.15),
+          color: baseColor.withValues(alpha: isLight ? 0.85 : 0.15),
           borderRadius: BorderRadius.circular(14),
-          border:
-              Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.4)),
+          border: Border.all(color: baseColor.withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [
-            const Text('🍅', style: TextStyle(fontSize: 18)),
+            Text(isLocal ? '⚡' : '🍅', style: const TextStyle(fontSize: 18)),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -370,16 +482,16 @@ class _HomeDashboardState extends State<HomeDashboard>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '$deviceLabel 正在专注',
+                    label,
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: isLight ? Colors.white : const Color(0xFFFF6B6B),
+                      color: isLight ? Colors.white : baseColor,
                     ),
                   ),
-                  if (state.todoTitle?.isNotEmpty == true)
+                  if (title != null && title.isNotEmpty)
                     Text(
-                      state.todoTitle!,
+                      title,
                       style: TextStyle(
                         fontSize: 12,
                         color: isLight ? Colors.white70 : null,
@@ -395,12 +507,12 @@ class _HomeDashboardState extends State<HomeDashboard>
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: isLight ? Colors.white : const Color(0xFFFF6B6B),
+                color: isLight ? Colors.white : baseColor,
               ),
             ),
             const SizedBox(width: 4),
             Icon(Icons.chevron_right,
-                color: isLight ? Colors.white70 : const Color(0xFFFF6B6B),
+                color: isLight ? Colors.white70 : baseColor,
                 size: 18),
           ],
         ),
@@ -595,7 +707,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         saved.phase != PomodoroPhase.breaking) return;
     // 确认倒计时还没结束
     final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
-    if (remaining <= 0) return;
+    if (saved.mode == TimerMode.countdown && remaining <= 0) return;
 
     if (Platform.isWindows) {
       final prefs = await SharedPreferences.getInstance();
@@ -606,11 +718,13 @@ class _HomeDashboardState extends State<HomeDashboard>
                 allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '')
             .where((n) => n.isNotEmpty)
             .toList();
+        final isCountUp = saved.mode == TimerMode.countUp;
         _floatChannel.invokeMethod('showFloat', {
-          'endMs': saved.targetEndMs,
+          'endMs': isCountUp ? saved.sessionStartMs : saved.targetEndMs,
           'title': saved.todoTitle ?? '',
           'tags': tagNames,
           'isLocal': true,
+          'mode': isCountUp ? 1 : 0,
         });
       }
     }
@@ -1159,8 +1273,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                   },
                 ),
 
-                // 跨端专注 Banner
-                if (_remotePomodoro != null) _buildRemotePomodoroCard(isLight),
+                // 🚀 统一处理本地与远程专注 Banner
+                _buildFocusBanner(isLight),
 
                 Expanded(
                   child: LayoutBuilder(

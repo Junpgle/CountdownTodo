@@ -154,7 +154,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       }
       if (mounted) {
         setState(() {
-          _remainingSeconds = _settings.focusMinutes * 60;
+          _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
           _boundTodo = restoredTodo;
           _selectedTagUuids = restoredTagUuids;
         });
@@ -191,7 +191,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     if (!mounted || _initializing) return;
 
     final myDeviceId = 'flutter_$_deviceId';
-    if (signal.sourceDevice != null && signal.sourceDevice == myDeviceId) return;
+    if (_deviceId.isEmpty || (signal.sourceDevice != null && signal.sourceDevice == myDeviceId)) return;
 
     switch (signal.action) {
       case 'UPDATE_AVAILABLE':
@@ -207,12 +207,21 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       case 'SYNC':
       case 'SYNC_FOCUS':
       case 'RECONNECT_SYNC':
+        if (signal.sessionUuid != null && signal.sessionUuid == _currentSessionUuid) break;
         if (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking || _phase == PomodoroPhase.finished) break;
 
-        final endMs = signal.targetEndMs;
-        if (endMs == null) break;
-        final rem = ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
-        if (rem <= 0) break;
+        final isCountUp = signal.mode == 1;
+        final endMs = signal.targetEndMs ?? 0;
+        
+        int rem = 0;
+        if (isCountUp) {
+          final timestamp = signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
+          rem = ((DateTime.now().millisecondsSinceEpoch - timestamp) / 1000).floor();
+          if (rem < 0) rem = 0; // 防止时间差导致的负数
+        } else {
+          rem = ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+          if (rem <= 0) break;
+        }
 
         final todoTitle = signal.todoTitle;
         final remoteTodo = todoTitle != null && todoTitle.isNotEmpty
@@ -228,7 +237,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
           _remoteTagNames = signal.tags;
         });
         widget.onPhaseChanged(_phase);
-        _startRemoteTicker(endMs);
+        _startRemoteTicker(endMs, isCountUp);
         break;
 
       case 'SYNC_TAGS':
@@ -243,7 +252,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         _stopRemoteTicker();
         setState(() {
           _phase = PomodoroPhase.idle;
-          _remainingSeconds = _settings.focusMinutes * 60;
+          _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
           _remoteState = null;
           _boundTodo = null;
           _remoteTagNames = [];
@@ -254,6 +263,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       case 'SWITCH':
         if (_phase != PomodoroPhase.remoteWatching) break;
         if (signal.todoTitle != null && signal.todoTitle!.isNotEmpty) {
+          final isCountUp = _remoteState?.mode == 1; // 🚀 识别是否为正计时
+          final newTimestamp = signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
+          
           setState(() {
             _boundTodo = TodoItem(
               id: signal.todoUuid ?? '',
@@ -261,39 +273,56 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
               isDone: false,
               createdAt: 0,
             );
+            _currentSessionUuid = signal.sessionUuid ?? _currentSessionUuid;
+            if (isCountUp) {
+               // 🚀 关键：同步侧也归零，且校准到这次 SWITCH 的起点
+               _remainingSeconds = ((DateTime.now().millisecondsSinceEpoch - newTimestamp) / 1000).floor();
+               if (_remainingSeconds < 0) _remainingSeconds = 0;
+            }
+
             _remoteState = CrossDevicePomodoroState(
               action: _remoteState?.action ?? 'SYNC',
+              sessionUuid: signal.sessionUuid ?? _remoteState?.sessionUuid,
               todoUuid: signal.todoUuid ?? _remoteState?.todoUuid,
               todoTitle: signal.todoTitle,
               duration: _remoteState?.duration,
               targetEndMs: _remoteState?.targetEndMs,
               sourceDevice: _remoteState?.sourceDevice,
+              timestamp: signal.timestamp ?? _remoteState?.timestamp,
+              mode: _remoteState?.mode,
+              tags: _remoteState?.tags ?? [],
             );
           });
+          // 🚀 重新校准计时器起点 (仅针对正计时)
+          if (isCountUp) {
+             _startRemoteTicker(_targetEndMs, true); 
+          }
         }
         break;
     }
   }
 
-  void _startRemoteTicker(int targetEndMs) {
+  void _startRemoteTicker(int targetEndMs, bool isCountUp) {
     _remoteTicker?.cancel();
     _remoteTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) { _remoteTicker?.cancel(); return; }
-      final rem = ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
-      if (rem <= 0) {
-        _remoteTicker?.cancel();
-        if (_phase == PomodoroPhase.remoteWatching) {
+      if (_phase != PomodoroPhase.remoteWatching) { _remoteTicker?.cancel(); return; }
+
+      if (isCountUp) {
+        setState(() => _remainingSeconds++);
+      } else {
+        final rem = ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+        if (rem <= 0) {
+          _remoteTicker?.cancel();
           setState(() {
             _phase = PomodoroPhase.idle;
-            _remainingSeconds = _settings.focusMinutes * 60;
+            _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
             _remoteState = null;
             _boundTodo = null;
             _remoteTagNames = [];
           });
           widget.onPhaseChanged(_phase);
-        }
-      } else {
-        if (_phase == PomodoroPhase.remoteWatching) {
+        } else {
           setState(() => _remainingSeconds = rem);
         }
       }
@@ -325,10 +354,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
 
   Future<void> _recoverState(PomodoroRunState saved) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final remaining = ((saved.targetEndMs - now) / 1000).ceil();
+    final bool isCountUp = saved.mode == TimerMode.countUp;
+    final remaining = isCountUp ? ((now - saved.sessionStartMs) / 1000).floor() : ((saved.targetEndMs - now) / 1000).ceil();
 
     if (saved.phase == PomodoroPhase.focusing || saved.phase == PomodoroPhase.breaking) {
-      if (remaining <= 0) {
+      if (!isCountUp && remaining <= 0) {
         if (saved.phase == PomodoroPhase.focusing) {
           await _handleFocusEndFromBackground(saved);
         } else {
@@ -355,6 +385,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
             _settings.focusMinutes = saved.focusSeconds ~/ 60;
             _settings.breakMinutes = saved.breakSeconds ~/ 60;
             _settings.cycles = saved.totalCycles;
+            _settings.mode = saved.mode;
             _boundTodo = boundTodo;
             _selectedTagUuids = saved.tagUuids;
             _sessionStartMs = saved.sessionStartMs;
@@ -362,7 +393,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
           widget.onPhaseChanged(_phase);
           _pushPomodoroNotification(overrideRemaining: remaining);
           _startTicker();
-          _scheduleReminders(saved.targetEndMs, saved.phase, saved.todoTitle, saved.currentCycle, saved.totalCycles);
+          if (!isCountUp) {
+            _scheduleReminders(saved.targetEndMs, saved.phase, saved.todoTitle, saved.currentCycle, saved.totalCycles);
+          }
         }
       }
     }
@@ -386,8 +419,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   Future<void> _recoverFromBackground() async {
     if (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking) {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final remaining = ((_targetEndMs - now) / 1000).ceil();
-      if (remaining <= 0) {
+      final bool isCountUp = _settings.mode == TimerMode.countUp;
+      final remaining = isCountUp ? ((now - _sessionStartMs) / 1000).floor() : ((_targetEndMs - now) / 1000).ceil();
+      if (!isCountUp && remaining <= 0) {
         _ticker?.cancel();
         if (_phase == PomodoroPhase.focusing) {
           await _onFocusEnd();
@@ -483,28 +517,41 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       if (_phase != PomodoroPhase.focusing && _phase != PomodoroPhase.breaking) return;
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final remaining = ((_targetEndMs - now) / 1000).ceil();
-      if (remaining <= 0) {
-        _ticker?.cancel();
-        NotificationService.cancelNotification();
-        if (_phase == PomodoroPhase.focusing) {
-          await _onFocusEnd();
-        } else {
-          await _onBreakEnd();
+      final bool isCountUp = _phase == PomodoroPhase.focusing && _settings.mode == TimerMode.countUp;
+
+      if (isCountUp) {
+        final elapsed = ((now - _sessionStartMs) / 1000).floor();
+        setState(() => _remainingSeconds = elapsed);
+        _notifyTickCount++;
+        if (_notifyTickCount >= 60) {
+          _notifyTickCount = 0;
+          _pushPomodoroNotification(overrideRemaining: elapsed);
         }
       } else {
-        setState(() => _remainingSeconds = remaining);
-        _notifyTickCount++;
-        final int interval = remaining <= 60 ? 1 : 60;
-        if (_notifyTickCount >= interval) {
-          _notifyTickCount = 0;
-          _pushPomodoroNotification(overrideRemaining: remaining);
+        final remaining = ((_targetEndMs - now) / 1000).ceil();
+        if (remaining <= 0) {
+          _ticker?.cancel();
+          NotificationService.cancelNotification();
+          if (_phase == PomodoroPhase.focusing) {
+            await _onFocusEnd();
+          } else {
+            await _onBreakEnd();
+          }
+        } else {
+          setState(() => _remainingSeconds = remaining);
+          _notifyTickCount++;
+          final int interval = remaining <= 60 ? 1 : 60;
+          if (_notifyTickCount >= interval) {
+            _notifyTickCount = 0;
+            _pushPomodoroNotification(overrideRemaining: remaining);
+          }
         }
       }
     });
   }
 
   Future<void> _startFocus() async {
+    final bool isCountUp = _settings.mode == TimerMode.countUp;
     if (_phase == PomodoroPhase.remoteWatching) {
       _stopRemoteTicker();
       final prefs = await SharedPreferences.getInstance();
@@ -525,14 +572,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final durationMs = _settings.focusMinutes * 60 * 1000;
-    final end = now + durationMs;
+    final durationMs = isCountUp ? 0 : _settings.focusMinutes * 60 * 1000;
+    final end = isCountUp ? now : now + durationMs;
     _currentSessionUuid = const Uuid().v4();
 
     setState(() {
       _phase = PomodoroPhase.focusing;
       _targetEndMs = end;
-      _remainingSeconds = _settings.focusMinutes * 60;
+      _remainingSeconds = 0;
       _sessionStartMs = now;
       _remoteState = null;
     });
@@ -542,7 +589,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     _showLocalFloat();
     _startTicker();
 
-    _scheduleReminders(end, PomodoroPhase.focusing, _boundTodo?.title, _currentCycle, _settings.cycles);
+    if (!isCountUp) {
+      _scheduleReminders(end, PomodoroPhase.focusing, _boundTodo?.title, _currentCycle, _settings.cycles);
+    }
 
     PomodoroService.saveRunState(PomodoroRunState(
       phase: PomodoroPhase.focusing,
@@ -550,24 +599,33 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       targetEndMs: end,
       currentCycle: _currentCycle,
       totalCycles: _settings.cycles,
-      focusSeconds: _settings.focusMinutes * 60,
+      focusSeconds: isCountUp ? 0 : _settings.focusMinutes * 60,
       breakSeconds: _settings.breakMinutes * 60,
       todoUuid: _boundTodo?.id,
       todoTitle: _boundTodo?.title,
       tagUuids: _selectedTagUuids,
       sessionStartMs: now,
-      plannedFocusSeconds: _settings.focusMinutes * 60,
+      plannedFocusSeconds: isCountUp ? 0 : _settings.focusMinutes * 60,
+      mode: _settings.mode,
     ));
 
     _persistIdleBoundTodo(null);
-    final tagNames = _allTags.where((t) => _selectedTagUuids.contains(t.uuid)).map((t) => t.name).toList();
+    final allTags = await PomodoroService.getTags();
+    final tagNames = _selectedTagUuids
+        .map((uuid) =>
+            allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '')
+        .where((n) => n.isNotEmpty)
+        .toList();
+
     _syncService.sendStartSignal(
       sessionUuid: _currentSessionUuid,
-      todoUuid: _boundTodo?.id,
+      todoUuid: (_boundTodo?.id.isNotEmpty == true) ? _boundTodo!.id : null,
       todoTitle: _boundTodo?.title,
-      durationSeconds: _settings.focusMinutes * 60,
+      durationSeconds: isCountUp ? 0 : _settings.focusMinutes * 60,
       targetEndMs: end,
       tagNames: tagNames,
+      mode: _settings.mode.index,
+      customTimestamp: _sessionStartMs, // 🚀 关键：使用真实的起点时间
     );
   }
 
@@ -581,16 +639,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       _sessionStartMs = now;
     });
     _pushPomodoroNotification();
+    _showLocalFloat(); // 🚀 关键：切换任务后刷新悬浮窗标题
 
     if (actualSeconds > 5) {
+      final isCountUp = _settings.mode == TimerMode.countUp;
       PomodoroService.addRecord(PomodoroRecord(
         uuid: _currentSessionUuid,
-        todoUuid: _boundTodo?.id,
-        todoTitle: _boundTodo?.title,
+        todoUuid: null, // 这里之前绑定的是旧任务
+        todoTitle: null,
         tagUuids: List.from(_selectedTagUuids),
-        startTime: _sessionStartMs - actualSeconds * 1000,
+        startTime: now - actualSeconds * 1000,
         endTime: now,
-        plannedDuration: _settings.focusMinutes * 60,
+        plannedDuration: isCountUp ? 0 : _settings.focusMinutes * 60,
         actualDuration: actualSeconds,
         status: PomodoroRecordStatus.switched,
         deviceId: _deviceId.isNotEmpty ? _deviceId : null,
@@ -598,22 +658,27 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     }
 
     _currentSessionUuid = const Uuid().v4();
+    final isCountUpNow = _settings.mode == TimerMode.countUp;
+    if (isCountUpNow) {
+       setState(() => _remainingSeconds = 0); // 🚀 本端也显式清零
+    }
     PomodoroService.saveRunState(PomodoroRunState(
       phase: PomodoroPhase.focusing,
       sessionUuid: _currentSessionUuid,
       targetEndMs: _targetEndMs,
       currentCycle: _currentCycle,
       totalCycles: _settings.cycles,
-      focusSeconds: _settings.focusMinutes * 60,
+      focusSeconds: isCountUpNow ? 0 : _settings.focusMinutes * 60,
       breakSeconds: _settings.breakMinutes * 60,
       todoUuid: newTodo.id,
       todoTitle: newTodo.title,
       tagUuids: _selectedTagUuids,
       sessionStartMs: now,
-      plannedFocusSeconds: _settings.focusMinutes * 60,
+      plannedFocusSeconds: isCountUpNow ? 0 : _settings.focusMinutes * 60,
+      mode: _settings.mode,
     ));
 
-    _syncService.sendSwitchSignal(todoUuid: newTodo.id, todoTitle: newTodo.title);
+    _syncService.sendSwitchSignal(todoUuid: newTodo.id, todoTitle: newTodo.title, sessionUuid: _currentSessionUuid);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已切换至: ${newTodo.title}'), duration: const Duration(seconds: 2), behavior: SnackBarBehavior.floating));
     }
@@ -629,11 +694,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       NotificationService.cancelReminder(40002);
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = ((now - _sessionStartMs) / 1000).round();
+      final isCountUp = _settings.mode == TimerMode.countUp;
+
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
       _syncService.sendStopSignal();
       _hideLocalFloat();
-      await _askCompletionAndRecord(sessionUuid: _currentSessionUuid, durationSeconds: actualSeconds, startMs: _sessionStartMs, endMs: now);
+
+      await _askCompletionAndRecord(
+        sessionUuid: _currentSessionUuid,
+        durationSeconds: actualSeconds,
+        startMs: _sessionStartMs,
+        endMs: now,
+        isCountUp: isCountUp,
+      );
       NotificationService.sendPomodoroEndAlert(alertKey: 'pomo_end_$now', todoTitle: _boundTodo?.title, isBreak: false);
       await _proceedAfterRecord();
     } finally {
@@ -647,11 +721,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     try {
       NotificationService.cancelReminder(40001);
       final now = DateTime.now().millisecondsSinceEpoch;
+      final isCountUp = _settings.mode == TimerMode.countUp;
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
       _syncService.sendStopSignal();
       _hideLocalFloat();
-      await _askCompletionAndRecord(sessionUuid: _currentSessionUuid, durationSeconds: _settings.focusMinutes * 60, startMs: _sessionStartMs, endMs: now);
+      await _askCompletionAndRecord(
+        sessionUuid: _currentSessionUuid,
+        durationSeconds: isCountUp ? ((now - _sessionStartMs) / 1000).round() : _settings.focusMinutes * 60,
+        startMs: _sessionStartMs,
+        endMs: now,
+        isCountUp: isCountUp,
+      );
       NotificationService.sendPomodoroEndAlert(alertKey: 'pomo_end_$now', todoTitle: _boundTodo?.title, isBreak: false);
       await _proceedAfterRecord();
     } finally {
@@ -659,29 +740,64 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     }
   }
 
-  Future<bool> _askCompletionAndRecord({required String sessionUuid, required int durationSeconds, required int startMs, required int endMs}) async {
+  Future<bool> _askCompletionAndRecord({required String sessionUuid, required int durationSeconds, required int startMs, required int endMs, bool isCountUp = false}) async {
     if (!mounted) return false;
+    
+    int editedDuration = durationSeconds;
+    final durationCtrl = TextEditingController(text: (durationSeconds ~/ 60).toString());
+
     final completed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text('🍅 专注完成！'),
-        content: Text(_boundTodo != null ? '"${_boundTodo!.title}" 是否已完成？' : '专注时段已结束，该任务是否已完成？'),
+        title: Text(isCountUp ? '📈 记录专注' : '🍅 专注完成！'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_boundTodo != null ? '"${_boundTodo!.title}" 是否已完成？' : '专注时段已结束，该任务是否已完成？'),
+            if (isCountUp) ...[
+              const SizedBox(height: 20),
+              const Text('修改计时时长 (分钟):', style: TextStyle(fontSize: 14, color: Colors.grey)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: durationCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('未完成')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('已完成 ✓'))
+          TextButton(onPressed: () {
+            if (isCountUp) {
+              final mins = int.tryParse(durationCtrl.text) ?? (durationSeconds ~/ 60);
+              editedDuration = mins * 60;
+            }
+            Navigator.pop(ctx, false);
+          }, child: const Text('未完成')),
+          FilledButton(onPressed: () {
+            if (isCountUp) {
+              final mins = int.tryParse(durationCtrl.text) ?? (durationSeconds ~/ 60);
+              editedDuration = mins * 60;
+            }
+            Navigator.pop(ctx, true);
+          }, child: const Text('已完成 ✓'))
         ],
       ),
     );
     final record = PomodoroRecord(
       uuid: sessionUuid,
-      todoUuid: (_boundTodo?.id?.isNotEmpty == true) ? _boundTodo!.id : null,
+      todoUuid: (_boundTodo?.id.isNotEmpty == true) ? _boundTodo!.id : null,
       todoTitle: _boundTodo?.title,
       tagUuids: List.from(_selectedTagUuids),
       startTime: startMs,
-      endTime: endMs,
-      plannedDuration: _settings.focusMinutes * 60,
-      actualDuration: durationSeconds,
+      endTime: isCountUp ? startMs + editedDuration * 1000 : endMs,
+      plannedDuration: isCountUp ? 0 : _settings.focusMinutes * 60,
+      actualDuration: editedDuration,
       status: (completed ?? false) ? PomodoroRecordStatus.completed : PomodoroRecordStatus.interrupted,
       deviceId: _deviceId.isNotEmpty ? _deviceId : null,
     );
@@ -704,10 +820,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
 
   Future<void> _proceedAfterRecord() async {
     if (!mounted) return;
-    if (_currentCycle < _settings.cycles) {
+    final isCountUp = _settings.mode == TimerMode.countUp;
+    if (!isCountUp && _currentCycle < _settings.cycles) {
       await _startBreak();
     } else {
-      setState(() { _phase = PomodoroPhase.finished; _currentCycle = 1; _remainingSeconds = _settings.focusMinutes * 60; });
+      setState(() {
+        _phase = PomodoroPhase.finished;
+        _currentCycle = 1;
+        _remainingSeconds = isCountUp ? 0 : _settings.focusMinutes * 60;
+      });
       widget.onPhaseChanged(_phase);
       await _persistIdleBoundTodo(_boundTodo);
     }
@@ -739,7 +860,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     try {
       NotificationService.cancelReminder(40002);
       NotificationService.sendPomodoroEndAlert(alertKey: 'pomo_end_$_targetEndMs', todoTitle: _boundTodo?.title, isBreak: true);
-      setState(() { _phase = PomodoroPhase.idle; _currentCycle += 1; _remainingSeconds = _settings.focusMinutes * 60; });
+      setState(() { _phase = PomodoroPhase.idle; _currentCycle += 1; _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60; });
       widget.onPhaseChanged(_phase);
       PomodoroService.clearRunState();
       await _persistIdleBoundTodo(_boundTodo);
@@ -768,7 +889,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       if (confirm == true) {
         NotificationService.cancelNotification(); NotificationService.cancelReminder(40001); NotificationService.cancelReminder(40002);
         _syncService.sendStopSignal(); _hideLocalFloat();
-        setState(() { _phase = PomodoroPhase.idle; _currentCycle = 1; _remainingSeconds = _settings.focusMinutes * 60; });
+        final isCountUpMode = _settings.mode == TimerMode.countUp;
+        setState(() {
+          _phase = PomodoroPhase.idle;
+          _currentCycle = 1;
+          _remainingSeconds = isCountUpMode ? 0 : _settings.focusMinutes * 60;
+        });
         widget.onPhaseChanged(_phase); _persistIdleBoundTodo(_boundTodo); PomodoroService.clearRunState();
       } else { _startTicker(); }
     } finally { _isHandlingEnd = false; }
@@ -798,7 +924,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
               final f = int.tryParse(focusCtrl.text) ?? 25; final b = int.tryParse(breakCtrl.text) ?? 5; final c = int.tryParse(cyclesCtrl.text) ?? 4;
               final ns = PomodoroSettings(focusMinutes: f.clamp(1, 120), breakMinutes: b.clamp(1, 60), cycles: c.clamp(1, 20));
               await PomodoroService.saveSettings(ns);
-              setState(() { _settings = ns; if (_phase == PomodoroPhase.idle) _remainingSeconds = ns.focusMinutes * 60; });
+              setState(() {
+                _settings = ns;
+                if (_phase == PomodoroPhase.idle) {
+                  _remainingSeconds = ns.mode == TimerMode.countUp ? 0 : ns.focusMinutes * 60;
+                }
+              });
               if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('保存'),
@@ -873,7 +1004,24 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     final prefs = await SharedPreferences.getInstance();
     if (!(prefs.getBool('float_window_enabled') ?? true)) return;
     final tagNames = _allTags.where((t) => _selectedTagUuids.contains(t.uuid)).map((t) => t.name).toList();
-    try { await _floatChannel.invokeMethod('showFloat', {'endMs': _targetEndMs, 'title': _boundTodo?.title ?? '', 'tags': tagNames, 'isLocal': true}); } catch (e) { debugPrint('FloatWindow show error: $e'); }
+    final isCountUp = _phase == PomodoroPhase.focusing && _settings.mode == TimerMode.countUp;
+    final isRemoteCountUp = _phase == PomodoroPhase.remoteWatching && _remoteState?.mode == 1;
+    
+    // 🚀 正计时模式下，endMs 传开始时间，并传 mode=1
+    final int effectiveEndMs = (isCountUp) ? _sessionStartMs : (isRemoteCountUp ? (_remoteState?.timestamp ?? 0) : _targetEndMs);
+    final int mode = (isCountUp || isRemoteCountUp) ? 1 : 0;
+    
+    try { 
+      await _floatChannel.invokeMethod('showFloat', {
+        'endMs': effectiveEndMs, 
+        'title': _boundTodo?.title ?? '', 
+        'tags': tagNames, 
+        'isLocal': _phase != PomodoroPhase.remoteWatching,
+        'mode': mode,
+      }); 
+    } catch (e) { 
+      debugPrint('FloatWindow show error: $e'); 
+    }
   }
 
   Future<void> _hideLocalFloat() async {
@@ -949,12 +1097,38 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   }
 
   Widget _buildWSStatusIndicator() {
-    return SizedBox(width: 48, height: 48,
-      child: AnimatedOpacity(
-        opacity: _wsConnected ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 600),
-        child: const Tooltip(message: '跨端同步已连接', child: Center(child: Icon(Icons.link_rounded, size: 16, color: Colors.grey))),
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_phase == PomodoroPhase.idle)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: SegmentedButton<TimerMode>(
+              segments: const [
+                ButtonSegment(value: TimerMode.countdown, label: Text('倒计时', style: TextStyle(fontSize: 12))),
+                ButtonSegment(value: TimerMode.countUp, label: Text('正计时', style: TextStyle(fontSize: 12))),
+              ],
+              selected: {_settings.mode},
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+              ),
+              onSelectionChanged: (s) async {
+                setState(() {
+                  _settings.mode = s.first;
+                  _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
+                });
+                await PomodoroService.saveSettings(_settings);
+              },
+            ),
+          ),
+        AnimatedOpacity(
+          opacity: _wsConnected ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 600),
+          child: const Tooltip(message: '跨端同步已连接', child: Center(child: Icon(Icons.link_rounded, size: 16, color: Colors.grey))),
+        ),
+      ],
     );
   }
 
@@ -982,9 +1156,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   }
 
   Widget _buildImmersiveTimerWidget() {
+    final isCountUp = _settings.mode == TimerMode.countUp;
+    final isRemoteCountUp = _remoteState?.duration == 0;
     return ImmersiveTimer(
       phase: _phase, remainingSeconds: _remainingSeconds, focusMinutes: _settings.focusMinutes,
-      breakMinutes: _settings.breakMinutes, currentCycle: _currentCycle, totalCycles: _settings.cycles, remoteState: _remoteState,
+      breakMinutes: _settings.breakMinutes, currentCycle: _currentCycle, totalCycles: _settings.cycles,
+      isCountUp: isCountUp, isRemoteCountUp: isRemoteCountUp, remoteState: _remoteState,
     );
   }
 
@@ -1024,7 +1201,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       onShowBindTodo: _showBindTodoDialog, onStartFocus: _startFocus, onFinishEarly: _finishEarly, onAbandonFocus: _abandonFocus, onSkipBreak: () async {
         _ticker?.cancel(); NotificationService.cancelNotification(); NotificationService.cancelReminder(40002);
         await _persistIdleBoundTodo(_boundTodo); await PomodoroService.clearRunState();
-        setState(() { _phase = PomodoroPhase.idle; _currentCycle += 1; _remainingSeconds = _settings.focusMinutes * 60; });
+        setState(() { _phase = PomodoroPhase.idle; _currentCycle += 1; _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60; });
         widget.onPhaseChanged(_phase);
       },
     );
