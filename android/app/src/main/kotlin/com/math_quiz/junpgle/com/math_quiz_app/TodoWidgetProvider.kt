@@ -26,6 +26,11 @@ class TodoWidgetProvider : HomeWidgetProvider() {
         onUpdate(context, appWidgetManager, intArrayOf(appWidgetId), prefs)
     }
 
+    private fun dpToPx(context: Context, dp: Int): Int {
+        val density = context.resources.displayMetrics.density
+        return (dp * density + 0.5f).toInt()
+    }
+
     private fun getTabIntent(context: Context, tabIndex: Int, appWidgetIds: IntArray): PendingIntent {
         val intent = Intent(context, TodoWidgetProvider::class.java).apply {
             action = "SWITCH_TAB"
@@ -88,13 +93,31 @@ class TodoWidgetProvider : HomeWidgetProvider() {
     ) {
         val localPrefs = context.getSharedPreferences("HomeWidgetPreferences", Context.MODE_PRIVATE)
         var currentTab = localPrefs.getInt("current_widget_tab", 0)
+        
         val urgentCourseId = widgetData.getString("urgent_course_id", "") ?: ""
         val lastAutoCourseId = localPrefs.getString("last_auto_course_id", "") ?: ""
+        
+        val widgetMode = widgetData.getString("widget_mode", "todo") ?: "todo"
+        val lastWidgetMode = localPrefs.getString("last_widget_mode", "todo") ?: "todo"
 
+        // 🚀 自动导航逻辑 (优先级：课程 > 专注状态变化)
+        var tabChanged = false
         if (urgentCourseId.isNotEmpty() && urgentCourseId != lastAutoCourseId) {
-            currentTab = 1
-            localPrefs.edit().putInt("current_widget_tab", 1).putString("last_auto_course_id", urgentCourseId).apply()
+            currentTab = 1 // 课程页
+            localPrefs.edit().putString("last_auto_course_id", urgentCourseId).apply()
+            tabChanged = true
+        } else if (widgetMode == "focus" && lastWidgetMode != "focus") {
+            currentTab = 3 // 专注页 (活跃计时)
+            tabChanged = true
+        } else if (widgetMode != "focus" && lastWidgetMode == "focus") {
+            currentTab = 0 // 切回待办
+            tabChanged = true
         }
+
+        if (tabChanged) {
+            localPrefs.edit().putInt("current_widget_tab", currentTab).apply()
+        }
+        localPrefs.edit().putString("last_widget_mode", widgetMode).apply()
 
         // 🚀 动态嗅探系统深色模式
         val isDarkMode = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
@@ -137,10 +160,40 @@ class TodoWidgetProvider : HomeWidgetProvider() {
 
             val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
             val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
+            val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
 
-            // 计算槽位限制
-            val maxTodoSlots = minOf(maxOf(1, (minHeight - 75) / 34), 8)
-            val maxCourseSlots = minOf(maxOf(1, (minHeight - 75) / 80), 8)
+            // 🚀 极致平衡：根据像素密度缩放安全距离 (Safe Distance in Pixels)
+            val isSmallHeight = minHeight < 120
+            // 更紧凑的内边距设置（比之前更小）
+            val sidePaddingPx = dpToPx(context, if (minWidth < 120) 8 else 12)
+            val topPaddingPx = dpToPx(context, if (isSmallHeight) 10 else 12)
+            val bottomPaddingPx = dpToPx(context, if (isSmallHeight) 8 else 10)
+            val headerSpacingPx = dpToPx(context, if (isSmallHeight) 4 else 8)
+
+            // 使用较小的损耗估算，给每一行更多可用空间
+            val dpTop = if (isSmallHeight) 10 else 12
+            val dpBottom = if (isSmallHeight) 8 else 10
+            val baseLossDp = dpTop + dpBottom + 16 + (if (isSmallHeight) 4 else 8) + 6
+            val availableHeightDp = minHeight - baseLossDp
+
+            // 将每行所需 DP 降低，让更多行可见（todo 改为 30 而不是 38）
+            val maxTodoSlots = minOf(maxOf(1, availableHeightDp / 30), 8)
+            val maxCourseSlots = minOf(maxOf(1, availableHeightDp / 70), 8)
+            val maxCdSlots = minOf(maxOf(1, availableHeightDp / 36), 8)
+            val maxTagSlots = minOf(maxOf(1, (availableHeightDp - 8) / 36), 8)
+
+            // 修复：setViewPadding 必须接收像素值 (Pixels)
+            views.setViewPadding(R.id.main_container, sidePaddingPx, topPaddingPx, sidePaddingPx, bottomPaddingPx)
+            views.setViewPadding(R.id.tabs_layout, 0, 0, 0, headerSpacingPx)
+
+
+            // 隐藏低优元素 & 动态调整字体 (Tab 使用 15sp/13sp 显得更大气)
+            views.setViewVisibility(R.id.tl_total, if (isSmallHeight) View.GONE else View.VISIBLE)
+            
+            val tabIds = intArrayOf(R.id.tab_todo, R.id.tab_course, R.id.tab_countdown, R.id.tab_timelog)
+            for (tid in tabIds) {
+                views.setFloat(tid, "setTextSize", if (isSmallHeight) 13f else 15f)
+            }
 
             // 1. 渲染待办 (Page 0)
             for (i in 1..8) {
@@ -235,7 +288,7 @@ class TodoWidgetProvider : HomeWidgetProvider() {
                 val layoutId = context.resources.getIdentifier("cd_layout_$i", "id", context.packageName)
                 if (layoutId == 0) continue
                 val title = widgetData.getString("cd_title_$i", "")
-                if (title.isNullOrEmpty() || i > maxTodoSlots) { views.setViewVisibility(layoutId, View.GONE); continue }
+                if (title.isNullOrEmpty() || i > maxCdSlots) { views.setViewVisibility(layoutId, View.GONE); continue }
 
                 hasCd = true
                 views.setViewVisibility(layoutId, View.VISIBLE)
@@ -260,6 +313,40 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             if (cdEmptyTextId != 0) views.setTextColor(cdEmptyTextId, secondaryTextColor)
 
             // 4. 专注记录
+            val focusActiveLayoutId = context.resources.getIdentifier("focus_active_layout", "id", context.packageName)
+            if (focusActiveLayoutId != 0) {
+                if (widgetMode == "focus") {
+                    views.setViewVisibility(focusActiveLayoutId, View.VISIBLE)
+                    val fTitle = widgetData.getString("focus_title", "专注中")
+                    val fTimer = widgetData.getString("focus_timer", "")
+                    val titleId = context.resources.getIdentifier("focus_title", "id", context.packageName)
+                    val timerId = context.resources.getIdentifier("focus_timer", "id", context.packageName)
+                    val tagsId = context.resources.getIdentifier("focus_tags", "id", context.packageName)
+                    
+                    if (titleId != 0) {
+                        views.setTextViewText(titleId, fTitle)
+                        views.setViewVisibility(titleId, if (isSmallHeight) View.GONE else View.VISIBLE)
+                    }
+                    if (timerId != 0) {
+                        views.setTextViewText(timerId, fTimer)
+                        views.setFloat(timerId, "setTextSize", if (isSmallHeight) 18f else 22f)
+                    }
+                    if (tagsId != 0) {
+                        val tagCountStr = widgetData.getString("focus_tag_count", "0") ?: "0"
+                        val tagCount = try { tagCountStr.toInt() } catch (e: Exception) { 0 }
+                        val tagsList = mutableListOf<String>()
+                        for (i in 1..8) {
+                            val tag = widgetData.getString("focus_tag_$i", "")
+                            if (!tag.isNullOrEmpty()) tagsList.add(tag)
+                        }
+                        views.setTextViewText(tagsId, tagsList.joinToString(" • "))
+                        views.setViewVisibility(tagsId, if (tagsList.isEmpty()) View.GONE else View.VISIBLE)
+                    }
+                } else {
+                    views.setViewVisibility(focusActiveLayoutId, View.GONE)
+                }
+            }
+
             val tlTotalId = context.resources.getIdentifier("tl_total", "id", context.packageName)
             if (tlTotalId != 0) {
                 val tlTotalText = widgetData.getString("tl_total", "今日专注: 0 分钟")
@@ -277,7 +364,7 @@ class TodoWidgetProvider : HomeWidgetProvider() {
                 if (tagLayoutId == 0) continue
                 val tagName = widgetData.getString("tl_tag_name_$i", "")
                 val tagMins = widgetData.getString("tl_tag_mins_$i", "")
-                if (tagName.isNullOrEmpty() || i > tagCount) { views.setViewVisibility(tagLayoutId, View.GONE); continue }
+                if (tagName.isNullOrEmpty() || i > maxTagSlots) { views.setViewVisibility(tagLayoutId, View.GONE); continue }
 
                 hasTags = true
                 views.setViewVisibility(tagLayoutId, View.VISIBLE)

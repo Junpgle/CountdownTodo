@@ -545,36 +545,38 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                         borderRadius: BorderRadius.circular(4),
                         boxShadow: stackIndex > 0 ? [const BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(-1, 1))] : null
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2.0),
-                              child: Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 10, color: Colors.white),
-                            ),
-                            const SizedBox(width: 2),
-                            Expanded(
-                              child: Text(
-                                todo.title,
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                                    height: 1.1
-                                ),
-                                maxLines: height < 25 ? 1 : 3,
-                                overflow: TextOverflow.ellipsis,
+                    child: height < 20 
+                      ? Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 10, color: Colors.white)
+                      : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2.0),
+                                child: Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 10, color: Colors.white),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                child: Text(
+                                  todo.title,
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10, // 稍微缩小字体
+                                      fontWeight: FontWeight.bold,
+                                      decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                                      height: 1.0
+                                  ),
+                                  maxLines: height < 30 ? 1 : 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                   ),
                 ),
               )

@@ -1,6 +1,7 @@
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+import 'dart:async';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
@@ -40,6 +41,7 @@ class WidgetService {
   static const String androidWidgetName = 'TodoWidgetProvider';
   static bool _initialized = false;
   static const int maxWidgetItems = 8;
+  static Timer? _periodicTimer;
 
   static Future<void> init() async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -49,6 +51,32 @@ class WidgetService {
       _initialized = true;
     } catch (e) {
       print('WidgetBackground 注册失败: $e');
+    }
+
+    // 启动一分钟一次的周期刷新（确保在应用运行时定期更新 widget）
+    _periodicTimer?.cancel();
+    _periodicTimer = Timer.periodic(const Duration(minutes: 1), (timer) async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+        if (username.isEmpty) return;
+        final todos = await StorageService.getTodos(username);
+        await WidgetService.updateAllWidgetData(username, todos);
+      } catch (e) {
+        print('Widget periodic refresh error: $e');
+      }
+    });
+
+    // 立即触发一次更新
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      if (username.isNotEmpty) {
+        final todos = await StorageService.getTodos(username);
+        await updateAllWidgetData(username, todos);
+      }
+    } catch (e) {
+      print('Widget initial update error: $e');
     }
   }
 
@@ -70,8 +98,27 @@ class WidgetService {
     DateTime today = DateTime(now.year, now.month, now.day);
     DateFormat dateFormat = DateFormat('yyyy-MM-dd');
 
+    // 并行读取所有必要的数据，极大提升性能
+    final results = await Future.wait([
+        StorageService.getTodos(username),
+        CourseService.getAllCourses(),
+        StorageService.getCountdowns(username),
+        StorageService.getTimeLogs(username),
+        PomodoroService.getTodayRecords(),
+        PomodoroService.getTags(), // 预加载标签
+    ]);
+
+    final List<TodoItem> allTodos = results[0] as List<TodoItem>;
+    final List<CourseItem> allCourses = results[1] as List<CourseItem>;
+    final List<CountdownItem> countdownsRaw = results[2] as List<CountdownItem>;
+    final List<TimeLogItem> tlogsRaw = results[3] as List<TimeLogItem>;
+    final List<PomodoroRecord> pomsRaw = results[4] as List<PomodoroRecord>;
+    final List<PomodoroTag> allTags = results[5] as List<PomodoroTag>;
+
+    final Map<String, String> tagNameByUuid = {for (var t in allTags) t.uuid: t.name};
+
     // 1. 待办事项
-    List<TodoItem> pendingTodos = todos.where((t) => !t.isDone && !t.isDeleted).toList();
+    List<TodoItem> pendingTodos = allTodos.where((t) => !t.isDone && !t.isDeleted).toList();
     List<TodoItem> pastTodos = [];
     List<TodoItem> todayTodos = [];
     List<TodoItem> futureTodos = [];
@@ -120,7 +167,6 @@ class WidgetService {
       await HomeWidget.saveWidgetData('course_id_$i', '');
     }
     try {
-      List<CourseItem> allCourses = await CourseService.getAllCourses();
       List<CourseItem> futureCourses = allCourses.where((c) {
         try {
           DateTime cDate = dateFormat.parse(c.date);
@@ -167,8 +213,7 @@ class WidgetService {
     await HomeWidget.saveWidgetData('urgent_course_id', urgentCourseId);
 
     // 3. 倒数日
-    List<CountdownItem> countdowns = await StorageService.getCountdowns(username);
-    countdowns = countdowns.where((c) => !c.isDeleted && c.targetDate.difference(today).inDays >= 0).toList();
+    List<CountdownItem> countdowns = countdownsRaw.where((c) => !c.isDeleted && c.targetDate.difference(today).inDays >= 0).toList();
     countdowns.sort((a, b) => a.targetDate.compareTo(b.targetDate));
     for (int i = 1; i <= maxWidgetItems; i++) {
       await HomeWidget.saveWidgetData('cd_title_$i', '');
@@ -184,17 +229,8 @@ class WidgetService {
 
     // 4. 专注日志 —— 合并番茄钟记录与时间日志（优先本地数据）
     try {
-      // 获取本地时间日志与本地番茄钟记录（今日）
-      List<TimeLogItem> tlogs = await StorageService.getTimeLogs(username);
-      List<PomodoroRecord> poms = [];
-      try {
-        poms = await PomodoroService.getTodayRecords();
-      } catch (e) {
-        print('Widget Pomodoro fetch error: $e');
-      }
-
       // 过滤出今日且未删除的 time logs
-      final filteredTimeLogs = tlogs.where((l) {
+      final filteredTimeLogs = tlogsRaw.where((l) {
         if (l.isDeleted) return false;
         try {
           final d = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
@@ -203,7 +239,7 @@ class WidgetService {
       }).toList();
 
       // 过滤出今日且未删除的 pomodoro 记录
-      final filteredPoms = poms.where((p) => !p.isDeleted).where((p) {
+      final filteredPoms = pomsRaw.where((p) => !p.isDeleted).where((p) {
         try {
           final d = DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true).toLocal();
           return d.year == today.year && d.month == today.month && d.day == today.day;
@@ -245,13 +281,6 @@ class WidgetService {
       await HomeWidget.saveWidgetData('tl_total', '今日总专注: $totalMins 分钟');
 
       // === 按标签统计分钟数（合并 Pomodoro 与 TimeLog） ===
-      // 读取本地标签映射（uuid -> name）
-      Map<String, String> tagNameByUuid = {};
-      try {
-        final allTags = await PomodoroService.getTags();
-        for (var t in allTags) tagNameByUuid[t.uuid] = t.name;
-      } catch (_) {}
-
       final Map<String, double> tagMinutes = {}; // 使用 double 以便均分
       const String untaggedKey = '未分类';
 
@@ -329,6 +358,64 @@ class WidgetService {
         await HomeWidget.saveWidgetData('tl_time_$i', '');
       }
     }
+
+    // === 新增：根据课程/专注状态切换显示栏位（优先级：课程 -> 专注 -> 待办） ===
+    String widgetMode = 'todo'; // todo | focus | course
+
+    // 优先：课程提醒
+    if (urgentCourseId.isNotEmpty) {
+      widgetMode = 'course';
+    } else {
+      try {
+        final run = await PomodoroService.loadRunState();
+        if (run != null && (run.phase == PomodoroPhase.focusing || run.phase == PomodoroPhase.breaking || run.phase == PomodoroPhase.remoteWatching)) {
+          widgetMode = 'focus';
+
+          // 展示专注信息：任务标题 / 剩余或已用时间 / 标签
+          final title = (run.todoTitle != null && run.todoTitle!.isNotEmpty) ? run.todoTitle! : '专注中';
+          await HomeWidget.saveWidgetData('focus_title', title);
+
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          final isCountUp = run.mode == TimerMode.countUp;
+          int seconds = isCountUp ? ((nowMs - run.sessionStartMs) / 1000).floor() : ((run.targetEndMs - nowMs) / 1000).ceil();
+          if (seconds < 0) seconds = 0;
+
+          final h = seconds ~/ 3600;
+          final m = (seconds % 3600) ~/ 60;
+          final timerStr = isCountUp
+              ? (h > 0 ? '${h}小时 ${m}分钟' : '$m 分钟')
+              : (h > 0 ? '剩余 ${h}小时 ${m}分钟' : '剩余 $m 分钟');
+
+          await HomeWidget.saveWidgetData('focus_seconds', seconds);
+          await HomeWidget.saveWidgetData('focus_timer', timerStr);
+
+          // 标签显示（优先本地 tag 名称）
+          List<String> tagNames = [];
+          for (final tu in run.tagUuids) {
+            final n = tagNameByUuid[tu] ?? tu;
+            tagNames.add(n);
+          }
+
+          // 写入 focus tag 键
+          await HomeWidget.saveWidgetData('focus_tag_count', '${tagNames.length}');
+          for (int i = 1; i <= maxWidgetItems; i++) {
+            await HomeWidget.saveWidgetData('focus_tag_$i', i <= tagNames.length ? tagNames[i - 1] : '');
+          }
+        } else {
+          // 清空 focus 键
+          await HomeWidget.saveWidgetData('focus_title', '');
+          await HomeWidget.saveWidgetData('focus_seconds', 0);
+          await HomeWidget.saveWidgetData('focus_timer', '');
+          await HomeWidget.saveWidgetData('focus_tag_count', '0');
+          for (int i = 1; i <= maxWidgetItems; i++) await HomeWidget.saveWidgetData('focus_tag_$i', '');
+        }
+      } catch (e) {
+        print('Widget focus state read error: $e');
+      }
+    }
+
+    // 保存当前模式，供原生层决定展示哪一栏
+    await HomeWidget.saveWidgetData('widget_mode', widgetMode);
 
     await HomeWidget.updateWidget(androidName: androidWidgetName);
   }

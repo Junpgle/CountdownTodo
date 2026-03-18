@@ -177,7 +177,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
     }
 
     return SizedBox(
-      height: 140,
+      height: 120, // reduced from 140 to make cards smaller
       child: ListView.builder(
         clipBehavior: Clip.none,
         scrollDirection: Axis.horizontal,
@@ -194,17 +194,17 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
 
           final bgColor = useDarkUI
               ? (isUrgent
-              ? Colors.redAccent.withOpacity(0.25)
+              ? Colors.redAccent.withAlpha((0.25 * 255).round())
               : (widget.isLight
-              ? Colors.white.withOpacity(0.1)
-              : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5)))
+              ? Colors.white.withAlpha((0.1 * 255).round())
+              : Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha((0.5 * 255).round())))
               : (isUrgent
               ? Colors.red.shade50
               : Theme.of(context).colorScheme.surface);
 
           final borderColor = useDarkUI
-              ? (isUrgent ? Colors.redAccent.withOpacity(0.5) : Colors.white.withOpacity(0.15))
-              : (isUrgent ? Colors.redAccent.withOpacity(0.3) : Colors.black.withOpacity(0.05));
+              ? (isUrgent ? Colors.redAccent.withAlpha((0.5 * 255).round()) : Colors.white.withAlpha((0.15 * 255).round()))
+              : (isUrgent ? Colors.redAccent.withAlpha((0.3 * 255).round()) : Colors.black.withAlpha((0.05 * 255).round()));
 
           final textColor = useDarkUI ? Colors.white : Theme.of(context).colorScheme.onSurface;
 
@@ -215,20 +215,20 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
               : (isUrgent ? Colors.redAccent : Theme.of(context).colorScheme.primary);
 
           final closeBgColor = useDarkUI
-              ? Colors.white.withOpacity(0.15)
-              : Theme.of(context).colorScheme.onSurface.withOpacity(0.05);
+              ? Colors.white.withAlpha((0.15 * 255).round())
+              : Theme.of(context).colorScheme.onSurface.withAlpha((0.05 * 255).round());
 
           return Container(
-            width: 150,
-            margin: const EdgeInsets.only(right: 16, bottom: 12),
+            width: 130, // reduced from 150
+            margin: const EdgeInsets.only(right: 12, bottom: 10), // tightened margins
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(20), // slightly smaller radius
               border: Border.all(color: borderColor),
               // 在深色模式下不需要黑色阴影，否则会看起来很脏
               boxShadow: useDarkUI ? [] : [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withAlpha((0.04 * 255).round()),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 )
@@ -237,7 +237,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
             child: Material(
               color: Colors.transparent,
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(12.0), // reduced padding
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -253,7 +253,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
                             style: TextStyle(
                               color: textColor,
                               fontWeight: FontWeight.w600,
-                              fontSize: 15,
+                              fontSize: 13, // smaller title
                               height: 1.2,
                             ),
                           ),
@@ -270,7 +270,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
                             ),
                             child: Icon(
                               Icons.close,
-                              size: 14,
+                              size: 12, // slightly smaller icon
                               color: subTextColor,
                             ),
                           ),
@@ -285,7 +285,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
                         Text(
                           "$diff",
                           style: TextStyle(
-                            fontSize: 38,
+                            fontSize: 32, // reduced from 38
                             height: 1.0,
                             fontWeight: FontWeight.bold,
                             color: accentColor,
@@ -297,7 +297,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
                           child: Text(
                             "天",
                             style: TextStyle(
-                              fontSize: 14,
+                              fontSize: 12, // reduced from 14
                               color: subTextColor,
                               fontWeight: FontWeight.w500,
                             ),
@@ -310,7 +310,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
                     Text(
                       "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10, // reduced from 11
                         color: subTextColor,
                         letterSpacing: 0.5,
                       ),
