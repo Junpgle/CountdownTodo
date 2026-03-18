@@ -45,9 +45,18 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isFocusingOrWatching = !_workbenchReady
-        || _currentPhase == PomodoroPhase.focusing
+    // isFocusingOrWatching controls AppBar / bottom tab visibility (when focusing/remote watching)
+    // Keep existing logic for those UI parts but compute more explicit helpers for landscape stats.
+    final bool isTimerRunning = _currentPhase == PomodoroPhase.focusing
+        || _currentPhase == PomodoroPhase.breaking
         || _currentPhase == PomodoroPhase.remoteWatching;
+
+    // Keep previous readiness gating for AppBar/tab hiding behavior
+    final isFocusingOrWatching = !_workbenchReady || isTimerRunning;
+
+    // Show the compact landscape stats column only when timer is idle or finished
+    final bool showLandscapeStats = _currentPhase == PomodoroPhase.idle
+        || _currentPhase == PomodoroPhase.finished;
 
     final int tabIndex = _tabController.index;
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
@@ -82,84 +91,88 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               ),
 
               // Right: fixed-width column with stats and compact controls
-              Container(
-                width: 360,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface.withOpacity(0.02),
-                  border: Border(left: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // compact header with tab-like toggle
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('番茄统计', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                            ToggleButtons(
-                              isSelected: [tabIndex == 0, tabIndex == 1],
-                              onPressed: (i) {
-                                _tabController.animateTo(i);
-                                setState(() {});
-                              },
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                              borderRadius: BorderRadius.circular(8),
-                              children: const [Icon(Icons.timer_outlined), Icon(Icons.bar_chart_rounded)],
+              // Only show the right column when the timer is idle/finished to avoid distraction
+              if (showLandscapeStats)
+                Container(
+                  width: 300, // Reduced width for more focus on workbench
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.02),
+                    border: Border(left: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // compact header with tab-like toggle
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('番茄统计', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                              ToggleButtons(
+                                isSelected: [tabIndex == 0, tabIndex == 1],
+                                onPressed: (i) {
+                                  _tabController.animateTo(i);
+                                  setState(() {});
+                                },
+                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                borderRadius: BorderRadius.circular(8),
+                                children: const [Icon(Icons.timer_outlined, size: 18), Icon(Icons.bar_chart_rounded, size: 18)],
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // Always show stats summary (same widget used in portrait tab)
+                          Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: PomodoroStats(key: _statsKey, username: widget.username, isCompact: true),
                             ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // Always show stats summary (same widget used in portrait tab)
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: PomodoroStats(key: _statsKey, username: widget.username),
                           ),
-                        ),
 
-                        const SizedBox(height: 12),
+                          const SizedBox(height: 12),
 
-                        // quick actions / next items placeholder
-                        Text('待办与会话', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 8),
-                        // keep a compact list area so the right column isn't empty
-                        Container(
-                          height: 200,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.02),
-                            borderRadius: BorderRadius.circular(8),
+                          // quick actions / next items placeholder
+                          Text('待办与会话', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          // keep a compact list area so the right column isn't empty
+                          Container(
+                            height: 120,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.02),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(child: Text('最近的待办 / 会话', style: Theme.of(context).textTheme.labelSmall)),
                           ),
-                          child: Center(child: Text('最近的待办 / 会话将在这里显示', style: Theme.of(context).textTheme.bodySmall)),
-                        ),
 
-                        const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                        // some space for settings / controls
-                        ElevatedButton.icon(
-                          onPressed: () => _tabController.animateTo(0),
-                          icon: const Icon(Icons.play_arrow),
-                          label: const Text('开始/返回工作台'),
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => _tabController.animateTo(1),
-                          icon: const Icon(Icons.bar_chart_rounded),
-                          label: const Text('查看统计'),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
+                          // some space for settings / controls
+                          FilledButton.tonalIcon(
+                            onPressed: () => _tabController.animateTo(0),
+                            icon: const Icon(Icons.play_arrow, size: 18),
+                            label: const Text('工作台', style: TextStyle(fontSize: 12)),
+                            style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: () => _tabController.animateTo(1),
+                            icon: const Icon(Icons.bar_chart_rounded, size: 18),
+                            label: const Text('统计详情', style: TextStyle(fontSize: 12)),
+                            style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -285,7 +298,8 @@ class _PomodoroScreenState extends State<PomodoroScreen>
             ),
           ),
         ),
-      );
+      ),
+    );
   }
 }
 

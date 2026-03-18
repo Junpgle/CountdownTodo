@@ -7,7 +7,8 @@ import '../pomodoro_utils.dart';
 
 class PomodoroStats extends StatefulWidget {
   final String username;
-  const PomodoroStats({super.key, required this.username});
+  final bool isCompact;
+  const PomodoroStats({super.key, required this.username, this.isCompact = false});
 
   @override
   State<PomodoroStats> createState() => PomodoroStatsState();
@@ -21,6 +22,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   List<TodoItem> _todos = [];
   bool _loading = true;
   bool _syncing = false;
+  bool _showDimensionPicker = false;
 
   @override
   void initState() {
@@ -385,68 +387,129 @@ class PomodoroStatsState extends State<PomodoroStats> {
         ? DateFormat('MM-dd HH:mm').format(startLocal)
         : DateFormat('HH:mm').format(startLocal);
 
+    final content = widget.isCompact 
+        ? Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: s.isCompleted ? const Color(0xFF4ECDC4).withValues(alpha: 0.2) : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  s.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded,
+                  color: s.isCompleted ? const Color(0xFF4ECDC4) : const Color(0xFFFF6B6B),
+                  size: 14,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(s.todoTitle ?? '自由专注',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(timeLabel, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                        if (tagNames != null) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(tagNames,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                PomodoroService.formatDuration(s.effectiveDuration),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_vert, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => _editSession(s),
+              ),
+            ],
+          )
+        : ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: s.isCompleted
+                    ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
+                    : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                s.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded,
+                color: s.isCompleted ? const Color(0xFF4ECDC4) : const Color(0xFFFF6B6B),
+              ),
+            ),
+            title: Text(s.todoTitle ?? '自由专注',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  Text(timeLabel, style: const TextStyle(fontSize: 13)),
+                  if (tagNames != null) ...[
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(tagNames,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11)),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  PomodoroService.formatDuration(s.effectiveDuration),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _editSession(s),
+                ),
+              ],
+            ),
+          );
+
     return Card(
       elevation: 0,
       color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: s.isCompleted
-                ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
-                : const Color(0xFFFF6B6B).withValues(alpha: 0.2),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            s.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded,
-            color: s.isCompleted ? const Color(0xFF4ECDC4) : const Color(0xFFFF6B6B),
-          ),
-        ),
-        title: Text(s.todoTitle ?? '自由专注',
-            style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            children: [
-              Text(timeLabel, style: const TextStyle(fontSize: 13)),
-              if (tagNames != null) ...[
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(tagNames,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11)),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              PomodoroService.formatDuration(s.effectiveDuration),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(width: 4),
-            IconButton(
-              icon: const Icon(Icons.more_vert, size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () => _editSession(s),
-            ),
-          ],
-        ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16)),
+      child: Padding(
+        padding: widget.isCompact ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8) : EdgeInsets.zero,
+        child: content,
       ),
     );
   }
@@ -514,13 +577,18 @@ class PomodoroStatsState extends State<PomodoroStats> {
       context: context,
       removeTop: true,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: EdgeInsets.fromLTRB(
+          widget.isCompact ? 16 : 20, 
+          widget.isCompact ? 4 : 12, 
+          widget.isCompact ? 16 : 20, 
+          24
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (Theme.of(context).platform == TargetPlatform.windows || 
+            if (!widget.isCompact && (Theme.of(context).platform == TargetPlatform.windows || 
                 Theme.of(context).platform == TargetPlatform.linux || 
-                Theme.of(context).platform == TargetPlatform.macOS)
+                Theme.of(context).platform == TargetPlatform.macOS))
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Row(
@@ -533,31 +601,75 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   ],
                 ),
               ),
-            Center(
-              child: SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 0, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('日'))),
-                  ButtonSegment(value: 1, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('月'))),
-                  ButtonSegment(value: 2, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('年'))),
-                ],
-                selected: {_dimension},
-                onSelectionChanged: (s) {
-                  setState(() => _dimension = s.first);
-                  _loadLocal();
-                },
-              ),
-            ),
-            const SizedBox(height: 20),
-
+            
+            // --- Navigation Row (Reordered to top in compact) ---
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                IconButton.filledTonal(icon: const Icon(Icons.chevron_left), onPressed: _prev),
-                Text(_rangeLabel(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                IconButton.filledTonal(icon: const Icon(Icons.chevron_right), onPressed: _next),
+                IconButton.filledTonal(
+                  visualDensity: widget.isCompact ? VisualDensity.compact : null,
+                  icon: Icon(Icons.chevron_left, size: widget.isCompact ? 18 : 24), 
+                  onPressed: _prev
+                ),
+                InkWell(
+                  onTap: () => setState(() => _showDimensionPicker = !_showDimensionPicker),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_rangeLabel(), style: TextStyle(
+                          fontSize: widget.isCompact ? 14 : 18, 
+                          fontWeight: FontWeight.bold
+                        )),
+                        if (widget.isCompact) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            _showDimensionPicker ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                IconButton.filledTonal(
+                  visualDensity: widget.isCompact ? VisualDensity.compact : null,
+                  icon: Icon(Icons.chevron_right, size: widget.isCompact ? 18 : 24), 
+                  onPressed: _next
+                ),
               ],
             ),
-            const SizedBox(height: 8),
+
+            // --- Collapsible Dimension Picker ---
+            if (!widget.isCompact || _showDimensionPicker) ...[
+              SizedBox(height: widget.isCompact ? 8 : 12),
+              Center(
+                child: SegmentedButton<int>(
+                  style: widget.isCompact ? SegmentedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ) : null,
+                  segments: [
+                    ButtonSegment(value: 0, label: Padding(padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 4 : 12), child: const Text('日'))),
+                    ButtonSegment(value: 1, label: Padding(padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 4 : 12), child: const Text('月'))),
+                    ButtonSegment(value: 2, label: Padding(padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 4 : 12), child: const Text('年'))),
+                  ],
+                  selected: {_dimension},
+                  onSelectionChanged: (s) {
+                    setState(() {
+                      _dimension = s.first;
+                      if (widget.isCompact) _showDimensionPicker = false;
+                    });
+                    _loadLocal();
+                  },
+                ),
+              ),
+            ],
+            SizedBox(height: widget.isCompact ? 8 : 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -597,7 +709,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: widget.isCompact ? 8 : 16),
 
             Row(
               children: [
@@ -606,23 +718,28 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   value: PomodoroService.formatDuration(totalSecs),
                   icon: Icons.timer_rounded,
                   color: const Color(0xFFFF6B6B),
+                  isCompact: widget.isCompact,
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: widget.isCompact ? 12 : 16),
                 StatCard(
                   label: '完成次数',
                   value: '$completedCount 次',
                   icon: Icons.check_circle_rounded,
                   color: const Color(0xFF4ECDC4),
+                  isCompact: widget.isCompact,
                 ),
               ],
             ),
-            const SizedBox(height: 32),
+            SizedBox(height: widget.isCompact ? 16 : 32),
 
             if (byTag.isNotEmpty) ...[
-              const Text('标签分布', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
+              Text('标签分布', style: TextStyle(
+                fontSize: widget.isCompact ? 14 : 18, 
+                fontWeight: FontWeight.bold
+              )),
+              SizedBox(height: widget.isCompact ? 8 : 16),
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.all(widget.isCompact ? 12 : 20),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainer,
                   borderRadius: BorderRadius.circular(20),
@@ -639,26 +756,35 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     final color = tag != null ? hexToColor(tag.color) : Colors.grey;
                     final ratio = totalSecs > 0 ? secs / totalSecs : 0.0;
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
+                      padding: EdgeInsets.only(bottom: widget.isCompact ? 8 : 16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              CircleAvatar(radius: 6, backgroundColor: color),
-                              const SizedBox(width: 8),
-                              Text(tag?.name ?? '未分类', style: const TextStyle(fontWeight: FontWeight.w500)),
+                              CircleAvatar(radius: widget.isCompact ? 4 : 6, backgroundColor: color),
+                              SizedBox(width: widget.isCompact ? 6 : 8),
+                              Text(tag?.name ?? '未分类', 
+                                style: TextStyle(
+                                  fontSize: widget.isCompact ? 12 : 14,
+                                  fontWeight: FontWeight.w500
+                                )
+                              ),
                               const Spacer(),
                               Text(PomodoroService.formatDuration(secs),
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
+                                  style: TextStyle(
+                                    fontSize: widget.isCompact ? 11 : 14,
+                                    fontWeight: FontWeight.bold, 
+                                    color: Theme.of(context).colorScheme.primary
+                                  )),
                             ],
                           ),
-                          const SizedBox(height: 8),
+                          SizedBox(height: widget.isCompact ? 4 : 8),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: LinearProgressIndicator(
                               value: ratio,
-                              minHeight: 10,
+                              minHeight: widget.isCompact ? 6 : 10,
                               backgroundColor: color.withValues(alpha: 0.15),
                               valueColor: AlwaysStoppedAnimation<Color>(color),
                             ),
@@ -671,11 +797,14 @@ class PomodoroStatsState extends State<PomodoroStats> {
               ),
             ],
 
-            const SizedBox(height: 32),
+            SizedBox(height: widget.isCompact ? 16 : 32),
 
             if (_sessions.isNotEmpty) ...[
-              const Text('专注明细', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
+              Text('专注明细', style: TextStyle(
+                fontSize: widget.isCompact ? 14 : 18, 
+                fontWeight: FontWeight.bold
+              )),
+              SizedBox(height: widget.isCompact ? 8 : 16),
               ..._buildSessionList(),
             ] else
               Center(
@@ -702,6 +831,7 @@ class StatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
+  final bool isCompact;
 
   const StatCard({
     super.key,
@@ -709,32 +839,60 @@ class StatCard extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.color,
+    this.isCompact = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(isCompact ? 10 : 20),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(isCompact ? 12 : 24),
           border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.2), shape: BoxShape.circle),
-              child: Icon(icon, color: color, size: 24),
+        child: isCompact 
+          ? Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.2), shape: BoxShape.circle),
+                  child: Icon(icon, color: color, size: 16),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(value, 
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(label, 
+                        style: TextStyle(fontSize: 9, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.2), shape: BoxShape.circle),
+                  child: Icon(icon, color: color, size: 24),
+                ),
+                const SizedBox(height: 16),
+                Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(label, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          ],
-        ),
       ),
     );
   }

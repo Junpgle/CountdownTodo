@@ -13,6 +13,9 @@ class ImmersiveTimer extends StatelessWidget {
   final bool isRemoteCountUp;
   final CrossDevicePomodoroState? remoteState;
 
+  // New: hint to render in a compact mode (smaller ring and fonts)
+  final bool isCompact;
+
   const ImmersiveTimer({
     super.key,
     required this.phase,
@@ -24,6 +27,7 @@ class ImmersiveTimer extends StatelessWidget {
     this.isCountUp = false,
     this.isRemoteCountUp = false,
     this.remoteState,
+    this.isCompact = false,
   });
 
   @override
@@ -82,20 +86,33 @@ class ImmersiveTimer extends StatelessWidget {
         ? 1.0 - (remainingSeconds / remoteTotal).clamp(0.0, 1.0)
         : progress;
 
+        final sourceIdentifier = remoteState?.sourceDevice?.replaceFirst('flutter_', '') ?? '其他设备';
+        final displayIdentifier = sourceIdentifier.length > 12 
+            ? '${sourceIdentifier.substring(0, 10)}...' 
+            : sourceIdentifier;
+
     final String labelText = isBreaking  ? '☕ 休息中'
         : isFinished ? '🎉 完成！'
         : isFocusing ? (effectiveIsCountUp ? '📈 正在正计时' : '🍅 保持专注')
-        : isRemote   ? '👀 ${remoteState?.sourceDevice?.replaceFirst('flutter_', '') ?? '其他设备'} ${isRemoteCountUp ? '正计时' : '专注'}中'
+        : isRemote   ? '👀 $displayIdentifier ${isRemoteCountUp ? '正计时' : '专注'}中'
         : '准备开始';
 
     final String cycleText = isRemote
         ? '同步观察'
         : (effectiveIsCountUp ? '自由模式' : '第 $currentCycle / $totalCycles 轮');
 
-    final double ringSize = isActive ? 268.0 : 210.0;
-    final double strokeW  = isActive ? 12.0 : 10.0;
-    final double timeFontSize  = isActive ? 60.0 : 48.0;
-    final double labelFontSize = isActive ? 13.0 : 12.0;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    // Adjust sizes for compact mode to better fit side column
+    final compactFactor = isCompact ? 0.72 : 1.0;
+
+    final double ringSize = (isLandscape
+        ? (isActive ? 240.0 : 200.0)
+        : (isActive ? 268.0 : 210.0)) * compactFactor;
+    final double strokeW  = isActive ? 12.0 * compactFactor : 10.0 * compactFactor;
+    final double timeFontSize  = (isLandscape
+        ? (isActive ? 56.0 : 44.0)
+        : (isActive ? 60.0 : 48.0)) * compactFactor;
+    final double labelFontSize = (isActive ? 13.0 : 12.0) * compactFactor;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
@@ -108,8 +125,8 @@ class ImmersiveTimer extends StatelessWidget {
           if (isActive)
             BoxShadow(
               color: ringColor.withValues(alpha: 0.2),
-              blurRadius: 36,
-              spreadRadius: 8,
+              blurRadius: 36 * compactFactor,
+              spreadRadius: 8 * compactFactor,
             ),
         ],
       ),
@@ -167,15 +184,15 @@ class ImmersiveTimer extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                padding: EdgeInsets.symmetric(horizontal: 10 * compactFactor, vertical: 3 * compactFactor),
                 decoration: BoxDecoration(
                   color: cycleBgColor,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(10 * compactFactor),
                 ),
                 child: Text(
                   cycleText,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 11 * compactFactor,
                     fontWeight: FontWeight.w600,
                     color: cycleTextColor,
                   ),

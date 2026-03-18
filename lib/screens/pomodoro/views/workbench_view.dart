@@ -24,11 +24,15 @@ class PomodoroWorkbench extends StatefulWidget {
   final ValueChanged<PomodoroPhase> onPhaseChanged;
   final VoidCallback? onReady;
 
+  // New: allow the workbench to render in a compact mode (used by landscape side column)
+  final bool isCompact;
+
   const PomodoroWorkbench({
     super.key,
     required this.username,
     required this.onPhaseChanged,
     this.onReady,
+    this.isCompact = false,
   });
 
   @override
@@ -68,7 +72,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   final _syncService = PomodoroSyncService();
   StreamSubscription<CrossDevicePomodoroState>? _crossDeviceSub;
   CrossDevicePomodoroState? _remoteState;
-  int _remoteRemainingSeconds = 0;
   Timer? _remoteTicker;
   List<String> _remoteTagNames = [];
 
@@ -332,7 +335,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   void _stopRemoteTicker() {
     _remoteTicker?.cancel();
     _remoteTicker = null;
-    _remoteRemainingSeconds = 0;
   }
 
   Future<void> _persistIdleBoundTodo(TodoItem? todo, {List<String>? tagUuids}) async {
@@ -949,10 +951,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       builder: (ctx) => TagManagerSheet(
         allTags: _allTags, selectedUuids: _selectedTagUuids,
         onChanged: (tags, selected) async {
-          await PomodoroService.saveTags(tags);
-          PomodoroService.syncTagsToCloud().catchError((_) => null);
+           await PomodoroService.saveTags(tags);
+           PomodoroService.syncTagsToCloud().catchError((_) => null);
           setState(() { _allTags = tags; _selectedTagUuids = selected; });
-          await _persistIdleBoundTodo(_boundTodo);
+           await _persistIdleBoundTodo(_boundTodo);
           if (_phase == PomodoroPhase.focusing) {
             final tagNames = tags.where((t) => selected.contains(t.uuid)).map((t) => t.name).toList();
             _syncService.sendUpdateTagsSignal(tagNames);
@@ -1042,30 +1044,134 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         opacity: _initializing ? 0.0 : 1.0,
         duration: const Duration(milliseconds: 350),
         curve: Curves.easeOut,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _buildHeader(isIdle, isFocusing, isRemoteWatching),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
-                  child: isIdle
-                      ? _buildIdleLayout(contentColor)
-                      : _buildActiveLayout(isFocusing, isRemoteWatching, contentColor),
-                ),
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final isLandscape = orientation == Orientation.landscape;
+
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: isLandscape ? 32 : 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _buildHeader(isIdle, isFocusing, isRemoteWatching),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 400),
+                      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+                      child: isLandscape
+                          ? _buildLandscapeLayout(isIdle, isFocusing, isRemoteWatching, contentColor)
+                          : _buildPortraitLayout(isIdle, isFocusing, isRemoteWatching, contentColor),
+                    ),
+                  ),
+                  if (!isLandscape) const SafeArea(top: false, child: SizedBox(height: 8)),
+                ],
               ),
-              const SafeArea(top: false, child: SizedBox(height: 8)),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
+  Widget _buildPortraitLayout(bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
+    return Column(
+      key: const ValueKey('portrait_layout'),
+      children: [
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+            child: isIdle
+                ? _buildIdleLayout(contentColor)
+                : _buildActiveLayout(isFocusing, isRemoteWatching, contentColor),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLandscapeLayout(bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
+    return Row(
+      key: const ValueKey('landscape_layout'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Left side: Timer + Mode Toggle
+        Expanded(
+          flex: 5,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildImmersiveTimerWidget(),
+              // Move mode toggle below the timer in landscape when idle
+              if (isIdle) ...[
+                const SizedBox(height: 18),
+                _buildModeToggle(),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 24),
+        // Right side: Info and Actions
+        Expanded(
+          flex: 5,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top Right Actions
+              if (isIdle)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.settings_outlined), 
+                        tooltip: '设置', 
+                        onPressed: _showSettingsDialog
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.label_outline), 
+                        tooltip: '标签', 
+                        onPressed: _showTagsDialog
+                      ),
+                      _buildSyncLinkButton(),
+                    ],
+                  ),
+                ),
+              
+              if (isIdle) ...[
+                const Spacer(),
+                _buildIdleMiddle(),
+                const Spacer(),
+              ] else ...[
+                const Spacer(),
+                _buildTagsList(isRemoteWatching),
+                const SizedBox(height: 16),
+                WorkbenchTaskArea(
+                  isIdle: false,
+                  isFocusing: isFocusing,
+                  isRemoteWatching: isRemoteWatching,
+                  boundTodo: _boundTodo,
+                  contentColor: contentColor,
+                  onTap: () => _showBindTodoDialog(isSwitching: _boundTodo != null),
+                ),
+                const Spacer(flex: 2),
+              ],
+              _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildHeader(bool isIdle, bool isFocusing, bool isRemoteWatching) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    
     return SizedBox(
       height: kToolbarHeight,
       child: Row(
@@ -1079,18 +1185,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
             ),
           ),
           const Spacer(),
-          AnimatedOpacity(
-            opacity: isIdle ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 300),
-            child: IgnorePointer(
-              ignoring: !isIdle,
-              child: Row(children: [
-                IconButton(icon: const Icon(Icons.settings_outlined), tooltip: '设置', onPressed: _showSettingsDialog),
-                IconButton(icon: const Icon(Icons.label_outline), tooltip: '标签', onPressed: _showTagsDialog),
-              ]),
+          if (!isLandscape) ...[
+            AnimatedOpacity(
+              opacity: isIdle ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              child: IgnorePointer(
+                ignoring: !isIdle,
+                child: Row(children: [
+                  IconButton(icon: const Icon(Icons.settings_outlined), tooltip: '设置', onPressed: _showSettingsDialog),
+                  IconButton(icon: const Icon(Icons.label_outline), tooltip: '标签', onPressed: _showTagsDialog),
+                ]),
+              ),
             ),
-          ),
-          _buildWSStatusIndicator(),
+            _buildWSStatusIndicator(),
+          ],
         ],
       ),
     );
@@ -1100,35 +1208,51 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_phase == PomodoroPhase.idle)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: SegmentedButton<TimerMode>(
-              segments: const [
-                ButtonSegment(value: TimerMode.countdown, label: Text('倒计时', style: TextStyle(fontSize: 12))),
-                ButtonSegment(value: TimerMode.countUp, label: Text('正计时', style: TextStyle(fontSize: 12))),
-              ],
-              selected: {_settings.mode},
-              showSelectedIcon: false,
-              style: SegmentedButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-              ),
-              onSelectionChanged: (s) async {
-                setState(() {
-                  _settings.mode = s.first;
-                  _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
-                });
-                await PomodoroService.saveSettings(_settings);
-              },
-            ),
-          ),
-        AnimatedOpacity(
-          opacity: _wsConnected ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 600),
-          child: const Tooltip(message: '跨端同步已连接', child: Center(child: Icon(Icons.link_rounded, size: 16, color: Colors.grey))),
-        ),
+        // Mode toggle is intentionally moved below the timer; keep only the sync indicator here
+        _buildSyncLinkButton(),
       ],
+    );
+  }
+
+  Widget _buildModeToggle() {
+    if (_phase != PomodoroPhase.idle) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: SegmentedButton<TimerMode>(
+        segments: const [
+          ButtonSegment(value: TimerMode.countdown, label: Text('倒计时', style: TextStyle(fontSize: 12))),
+          ButtonSegment(value: TimerMode.countUp, label: Text('正计时', style: TextStyle(fontSize: 12))),
+        ],
+        selected: {_settings.mode},
+        showSelectedIcon: false,
+        style: SegmentedButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+        ),
+        onSelectionChanged: (s) async {
+          setState(() {
+            _settings.mode = s.first;
+            _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
+          });
+          await PomodoroService.saveSettings(_settings);
+        },
+      ),
+    );
+  }
+
+  Widget _buildSyncLinkButton() {
+    return AnimatedOpacity(
+      opacity: _wsConnected ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 600),
+      child: const Tooltip(
+        message: '跨端同步已连接', 
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Icon(Icons.link_rounded, size: 20, color: Colors.grey),
+          )
+        )
+      ),
     );
   }
 
@@ -1136,7 +1260,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     return Column(children: [
       const Spacer(flex: 2),
       _buildImmersiveTimerWidget(),
-      const SizedBox(height: 20),
+      // Place mode toggle under the timer in idle state (portrait)
+      const SizedBox(height: 12),
+      _buildModeToggle(),
+      const SizedBox(height: 8),
       _buildIdleMiddle(),
       const Spacer(flex: 3),
       _buildActions(true, false, false, contentColor),
@@ -1162,6 +1289,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       phase: _phase, remainingSeconds: _remainingSeconds, focusMinutes: _settings.focusMinutes,
       breakMinutes: _settings.breakMinutes, currentCycle: _currentCycle, totalCycles: _settings.cycles,
       isCountUp: isCountUp, isRemoteCountUp: isRemoteCountUp, remoteState: _remoteState,
+      // explicit compactness control from parent
+      isCompact: widget.isCompact,
     );
   }
 
@@ -1204,6 +1333,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         setState(() { _phase = PomodoroPhase.idle; _currentCycle += 1; _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60; });
         widget.onPhaseChanged(_phase);
       },
+      isCompact: widget.isCompact,
     );
   }
 }
