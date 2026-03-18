@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -331,6 +332,10 @@ class PomodoroService {
   static const _keyRunState  = 'pomodoro_run_state';
   static const _keyTags      = 'pomodoro_tags_v2';
   static const _keyRecords   = 'pomodoro_records';   // 本地缓存记录列表
+  
+  // ── 流控（用于 UI 实时响应状态变更，替代轮询） ──────────
+  static final _runStateCtrl = StreamController<PomodoroRunState?>.broadcast();
+  static Stream<PomodoroRunState?> get onRunStateChanged => _runStateCtrl.stream;
 
   // ── 设置 ─────────────────────────────────────────────────
 
@@ -362,11 +367,13 @@ class PomodoroService {
   static Future<void> saveRunState(PomodoroRunState state) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyRunState, jsonEncode(state.toJson()));
+    _runStateCtrl.add(state); // 🚀 发送变更信号
   }
 
   static Future<void> clearRunState() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyRunState);
+    _runStateCtrl.add(null); // 🚀 发送清除信号
   }
 
   // ── 标签（本地 + 云端 Delta Sync）───────────────────────

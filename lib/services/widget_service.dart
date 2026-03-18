@@ -53,9 +53,9 @@ class WidgetService {
       print('WidgetBackground 注册失败: $e');
     }
 
-    // 启动一分钟一次的周期刷新（确保在应用运行时定期更新 widget）
+    // 启动 15 分钟一次的周期刷新（确保在应用运行期间定期更新 widget，减少能耗）
     _periodicTimer?.cancel();
-    _periodicTimer = Timer.periodic(const Duration(minutes: 1), (timer) async {
+    _periodicTimer = Timer.periodic(const Duration(minutes: 15), (timer) async {
       try {
         final prefs = await SharedPreferences.getInstance();
         final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';

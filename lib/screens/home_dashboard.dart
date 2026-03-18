@@ -103,6 +103,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   PomodoroRunState? _localPomodoro;
   Timer? _localPomodoroTicker;
   int _localPomodoroRemaining = 0;
+  StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
 
   // === 初始化与生命周期 ===
   @override
@@ -116,7 +117,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _fetchRandomWallpaper();
     WidgetService.init();
     _initCrossDevicePomodoro(); // 首页也连接 WS
-    _initLocalPomodoroMonitoring(); // 🚀 新增：监测本地专注状态
+    _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
 
     // 🚀 桌面端拦截：确保只在移动设备监听通道
     if (Platform.isAndroid || Platform.isIOS) {
@@ -159,6 +160,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   void dispose() {
     _connStateSub?.cancel(); // 🚀 新增
     _remotePomodoroSub?.cancel();
+    _localPomodoroSub?.cancel(); // 🚀 新增
     _remotePomodoroTicker?.cancel();
     _localPomodoroTicker?.cancel(); // 🚀 新增
     ExternalShareHandler.dispose();
@@ -370,13 +372,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     _remotePomodoroTicker = null;
   }
 
-  /// 🚀 新增：监测本地专注状态
+  /// 🚀 重新实现：监测本地专注状态
+  /// 不再使用 1 秒一次的轮询读取 Storage，改为监听 Stream
   void _initLocalPomodoroMonitoring() {
-    _localPomodoroTicker?.cancel();
-    _localPomodoroTicker = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      final saved = await PomodoroService.loadRunState();
+    _localPomodoroSub?.cancel();
+    _localPomodoroSub = PomodoroService.onRunStateChanged.listen((saved) {
       if (!mounted) return;
-
       if (saved != null && (saved.phase == PomodoroPhase.focusing || saved.phase == PomodoroPhase.breaking)) {
         final now = DateTime.now().millisecondsSinceEpoch;
         final isCountUp = saved.mode == TimerMode.countUp;
@@ -384,26 +385,63 @@ class _HomeDashboardState extends State<HomeDashboard>
           ? ((now - saved.sessionStartMs) / 1000).floor()
           : ((saved.targetEndMs - now) / 1000).ceil();
         
-        if (!isCountUp && rem <= 0) {
-           setState(() {
-             _localPomodoro = null;
-             _localPomodoroRemaining = 0;
-           });
-        } else {
-           setState(() {
-             _localPomodoro = saved;
-             _localPomodoroRemaining = rem;
-           });
-        }
+        setState(() {
+          _localPomodoro = saved;
+          _localPomodoroRemaining = rem;
+        });
+        _startLocalTicker(isCountUp);
       } else {
-        if (_localPomodoro != null) {
-          setState(() {
-            _localPomodoro = null;
-            _localPomodoroRemaining = 0;
-          });
-        }
+        _stopLocalTicker();
+        setState(() {
+          _localPomodoro = null;
+          _localPomodoroRemaining = 0;
+        });
       }
     });
+
+    // 初始加载一次
+    PomodoroService.loadRunState().then((saved) {
+      if (!mounted || saved == null) return;
+      if (saved.phase == PomodoroPhase.focusing || saved.phase == PomodoroPhase.breaking) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final isCountUp = saved.mode == TimerMode.countUp;
+        final rem = isCountUp 
+          ? ((now - saved.sessionStartMs) / 1000).floor()
+          : ((saved.targetEndMs - now) / 1000).ceil();
+          
+        setState(() {
+          _localPomodoro = saved;
+          _localPomodoroRemaining = rem;
+        });
+        _startLocalTicker(isCountUp);
+      }
+    });
+  }
+
+  void _startLocalTicker(bool isCountUp) {
+    _localPomodoroTicker?.cancel();
+    _localPomodoroTicker = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || _localPomodoro == null) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (isCountUp) {
+          _localPomodoroRemaining++;
+        } else {
+          _localPomodoroRemaining--;
+          if (_localPomodoroRemaining <= 0) {
+            _localPomodoroRemaining = 0;
+            _stopLocalTicker();
+          }
+        }
+      });
+    });
+  }
+
+  void _stopLocalTicker() {
+    _localPomodoroTicker?.cancel();
+    _localPomodoroTicker = null;
   }
 
   /// 首页顶部的专注 Banner (统一处理本地和远程)

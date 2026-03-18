@@ -48,10 +48,16 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    // determine orientation and pick compact sizes in landscape
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final toolbarH = isLandscape ? 64.0 : 100.0;
+    final titleSize = isLandscape ? 18.0 : 22.0;
+    final dateSize = isLandscape ? 12.0 : 13.0;
+    final greetingSize = isLandscape ? 11.0 : 12.0;
     return AppBar(
       backgroundColor: isLight ? Colors.transparent : null,
       elevation: 0,
-      toolbarHeight: 100,
+      toolbarHeight: toolbarH,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -59,7 +65,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           Text(
             "$timeSalutation, $username",
             style: TextStyle(
-              fontSize: 22,
+              fontSize: titleSize,
               fontWeight: FontWeight.bold,
               letterSpacing: 0.5,
               color: isLight ? Colors.white : null,
@@ -69,7 +75,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           Text(
             DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()),
             style: TextStyle(
-              fontSize: 13,
+              fontSize: dateSize,
               fontWeight: FontWeight.w500,
               color: isLight ? Colors.white.withOpacity(0.9) : Colors.blueGrey,
             ),
@@ -78,7 +84,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           Text(
             currentGreeting,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: greetingSize,
               color: isLight ? Colors.white.withOpacity(0.7) : Colors.grey,
             ),
           ),
@@ -109,5 +115,12 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(100);
+  Size get preferredSize {
+    // preferredSize doesn't get BuildContext, so use window metrics to approximate orientation
+    final window = WidgetsBinding.instance.window;
+    final dpr = window.devicePixelRatio;
+    final logical = window.physicalSize / dpr;
+    final landscape = logical.width > logical.height;
+    return Size.fromHeight(landscape ? 64.0 : 100.0);
+  }
 }

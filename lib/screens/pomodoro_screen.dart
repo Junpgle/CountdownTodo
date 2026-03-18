@@ -50,6 +50,121 @@ class _PomodoroScreenState extends State<PomodoroScreen>
         || _currentPhase == PomodoroPhase.remoteWatching;
 
     final int tabIndex = _tabController.index;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    // Landscape: use a two-column layout (big timer/workbench left, stats/controls right)
+    if (isLandscape) {
+      return Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Row(
+            children: [
+              // Left: large workbench area
+              Expanded(
+                flex: 3,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  alignment: Alignment.center,
+                  child: PomodoroWorkbench(
+                    username: widget.username,
+                    onPhaseChanged: (phase) {
+                      if (mounted && _currentPhase != phase) {
+                        setState(() => _currentPhase = phase);
+                      }
+                    },
+                    onReady: () {
+                      if (mounted && !_workbenchReady) {
+                        setState(() => _workbenchReady = true);
+                      }
+                    },
+                  ),
+                ),
+              ),
+
+              // Right: fixed-width column with stats and compact controls
+              Container(
+                width: 360,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface.withOpacity(0.02),
+                  border: Border(left: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // compact header with tab-like toggle
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('番茄统计', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                            ToggleButtons(
+                              isSelected: [tabIndex == 0, tabIndex == 1],
+                              onPressed: (i) {
+                                _tabController.animateTo(i);
+                                setState(() {});
+                              },
+                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                              borderRadius: BorderRadius.circular(8),
+                              children: const [Icon(Icons.timer_outlined), Icon(Icons.bar_chart_rounded)],
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // Always show stats summary (same widget used in portrait tab)
+                        Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: PomodoroStats(key: _statsKey, username: widget.username),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // quick actions / next items placeholder
+                        Text('待办与会话', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 8),
+                        // keep a compact list area so the right column isn't empty
+                        Container(
+                          height: 200,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.02),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(child: Text('最近的待办 / 会话将在这里显示', style: Theme.of(context).textTheme.bodySmall)),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // some space for settings / controls
+                        ElevatedButton.icon(
+                          onPressed: () => _tabController.animateTo(0),
+                          icon: const Icon(Icons.play_arrow),
+                          label: const Text('开始/返回工作台'),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => _tabController.animateTo(1),
+                          icon: const Icon(Icons.bar_chart_rounded),
+                          label: const Text('查看统计'),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -170,7 +285,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
+
