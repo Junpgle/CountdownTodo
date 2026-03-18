@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "2.1.7",
+  "version_name": "2.2.1",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 2.1.7",
-    "description":"【新增】番茄钟正向计时\n【修复】Windows悬浮窗专注标签只显示一个的问题",
+    "title": "版本更新 2.2.1",
+    "description":"- 【新增】首页UI重构\n- 【优化】小部件边距调整\n- 【新增】小部件支持滑动\n- 【优化】番茄钟界面横屏的布局",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe"
   },
@@ -19,6 +19,16 @@
   },
   "changelog_history": [
     {
+      "version_name": "2.2.1",
+      "date": "2026-03-18",
+      "items": [
+        "【新增】首页UI重构",
+        "【优化】小部件边距调整",
+        "【新增】小部件支持滑动",
+        "【优化】番茄钟界面横屏的布局"
+        "【新增】屏幕时间新增折线图"
+      ]
+    },{
       "version_name": "2.1.7",
       "date": "2026-03-17",
       "items": [
