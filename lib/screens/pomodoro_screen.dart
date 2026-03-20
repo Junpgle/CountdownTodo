@@ -74,18 +74,31 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   alignment: Alignment.center,
-                  child: PomodoroWorkbench(
-                    username: widget.username,
-                    onPhaseChanged: (phase) {
-                      if (mounted && _currentPhase != phase) {
-                        setState(() => _currentPhase = phase);
-                      }
-                    },
-                    onReady: () {
-                      if (mounted && !_workbenchReady) {
-                        setState(() => _workbenchReady = true);
-                      }
-                    },
+                  child: Stack(                          // ← 改成 Stack
+                    children: [
+                      PomodoroWorkbench(
+                        username: widget.username,
+                        onPhaseChanged: (phase) {
+                          if (mounted && _currentPhase != phase) {
+                            setState(() => _currentPhase = phase);
+                          }
+                        },
+                        onReady: () {
+                          if (mounted && !_workbenchReady) {
+                            setState(() => _workbenchReady = true);
+                          }
+                        },
+                      ),
+                      if (Navigator.canPop(context))     // ← 返回按钮叠在左上角
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          child: IconButton(
+                            icon: const Icon(Icons.arrow_back),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
