@@ -28,6 +28,9 @@ class FlutterWindow : public Win32Window {
   LRESULT MessageHandler(HWND window, UINT const message, WPARAM const wparam,
                          LPARAM const lparam) noexcept override;
 
+  static constexpr UINT WM_FLOAT_ACTION = WM_USER + 101;
+
+
  private:
   // The project to run.
   flutter::DartProject project_;

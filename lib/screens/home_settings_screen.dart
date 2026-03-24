@@ -20,6 +20,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'feature_guide_screen.dart';
 import '../services/course_service.dart';
 import '../services/reminder_schedule_service.dart';
+import '../services/float_window_service.dart';
 
 // 引入拆分的设置组件
 import 'settings/widgets/account_section.dart';
@@ -65,6 +66,9 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _isCheckingUpdate = false;
   String _taiDbPath = '';
   bool _floatWindowEnabled = true;
+  int _floatWindowStyle = 0; // 0: Classic, 1: Island
+  String _floatWindowLeftSlot = 'countdown';
+  String _floatWindowRightSlot = 'todo';
 
   // 逻辑处理器
   late CourseImportHandler _courseImportHandler;
@@ -283,6 +287,9 @@ class _SettingsPageState extends State<SettingsPage> {
         _noCourseBehavior = noCourseBehaviorPref;
       }
       _floatWindowEnabled = floatEnabled;
+      _floatWindowStyle = prefs.getInt('float_window_style') ?? 0;
+      _floatWindowLeftSlot = prefs.getString('float_window_left_slot') ?? 'countdown';
+      _floatWindowRightSlot = prefs.getString('float_window_right_slot') ?? 'todo';
     });
     if (Platform.isWindows) {
       final taiPath = await TaiService.getSavedDbPath() ??
@@ -913,8 +920,45 @@ class _SettingsPageState extends State<SettingsPage> {
             setState(() => _floatWindowEnabled = val);
             final prefs = await SharedPreferences.getInstance();
             await prefs.setBool('float_window_enabled', val);
+            FloatWindowService.update();
           }
               : null,
+          floatWindowStyle: _floatWindowStyle,
+          onFloatWindowStyleChanged: (val) async {
+            if (val != null) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setInt('float_window_style', val);
+              setState(() => _floatWindowStyle = val);
+              FloatWindowService.update();
+            }
+          },
+          floatWindowLeftSlot: _floatWindowLeftSlot,
+          onFloatWindowLeftSlotChanged: (val) async {
+            if (val != null) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('float_window_left_slot', val);
+              setState(() => _floatWindowLeftSlot = val);
+              FloatWindowService.update();
+            }
+          },
+          floatWindowRightSlot: _floatWindowRightSlot,
+          onFloatWindowRightSlotChanged: (val) async {
+            if (val != null) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('float_window_right_slot', val);
+              setState(() => _floatWindowRightSlot = val);
+              FloatWindowService.update();
+            }
+          },
+          onForceShowFloatWindow: () async {
+            final prefs = await SharedPreferences.getInstance();
+            if (!(prefs.getBool('float_window_enabled') ?? true)) {
+              await prefs.setBool('float_window_enabled', true);
+              setState(() => _floatWindowEnabled = true);
+            }
+            // Attempt a full reset: center main window and force float reset
+            await FloatWindowService.resetPositions();
+          },
         ),
         PermissionSection(
           permissionDefs: PermissionHandler.permissionDefs,
@@ -1066,8 +1110,44 @@ class _SettingsPageState extends State<SettingsPage> {
                     setState(() => _floatWindowEnabled = val);
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setBool('float_window_enabled', val);
+                    FloatWindowService.update();
                   }
                       : null,
+                  floatWindowStyle: _floatWindowStyle,
+                  onFloatWindowStyleChanged: (val) async {
+                    if (val != null) {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setInt('float_window_style', val);
+                      setState(() => _floatWindowStyle = val);
+                      FloatWindowService.update();
+                    }
+                  },
+                  floatWindowLeftSlot: _floatWindowLeftSlot,
+                  onFloatWindowLeftSlotChanged: (val) async {
+                    if (val != null) {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('float_window_left_slot', val);
+                      setState(() => _floatWindowLeftSlot = val);
+                      FloatWindowService.update();
+                    }
+                  },
+                  floatWindowRightSlot: _floatWindowRightSlot,
+                  onFloatWindowRightSlotChanged: (val) async {
+                    if (val != null) {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('float_window_right_slot', val);
+                      setState(() => _floatWindowRightSlot = val);
+                      FloatWindowService.update();
+                    }
+                  },
+                  onForceShowFloatWindow: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    if (!(prefs.getBool('float_window_enabled') ?? true)) {
+                      await prefs.setBool('float_window_enabled', true);
+                      setState(() => _floatWindowEnabled = true);
+                    }
+                    await FloatWindowService.resetPositions();
+                  },
                 ),
                 PermissionSection(
                   permissionDefs: PermissionHandler.permissionDefs,

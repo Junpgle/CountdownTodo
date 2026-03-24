@@ -11,6 +11,8 @@ import 'screens/home_dashboard.dart';
 import 'screens/feature_guide_screen.dart';
 import 'storage_service.dart';
 import 'services/api_service.dart';
+import 'services/float_window_service.dart';
+import 'services/window_service.dart';
 
 // 全局绕过 SSL 证书校验，修复 Cloudflare D1 旧服务器 HandshakeException
 class MyHttpOverrides extends HttpOverrides {
@@ -58,6 +60,10 @@ class _MyAppState extends State<MyApp> {
     String serverChoice = await StorageService.getServerChoice();
     ApiService.setServerChoice(serverChoice);
 
+    // Initialize FloatWindow callback listener
+    FloatWindowService.init();
+
+
     // 1. 读取登录状态
     final user = await StorageService.getLoginSession();
 
@@ -74,6 +80,11 @@ class _MyAppState extends State<MyApp> {
 
     // 3. 异步初始化耗时的底层插件
     _initHeavyPlugins();
+
+    // 4. 启动灵动岛 (如果是 Windows 且用户已登录)
+    if (!kIsWeb && Platform.isWindows && user != null) {
+      FloatWindowService.update();
+    }
   }
 
   Future<void> _initHeavyPlugins() async {
@@ -90,6 +101,8 @@ class _MyAppState extends State<MyApp> {
         WindowsVideoPlayer.registerWith();
       }
       await windowManager.ensureInitialized();
+      // Initialize our window persistence service (applies saved bounds)
+      await WindowService.init();
       WindowOptions windowOptions = const WindowOptions(
         size: Size(1280, 720),
         center: true,

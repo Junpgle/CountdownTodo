@@ -24,6 +24,7 @@ import '../services/external_share_handler.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/reminder_schedule_service.dart';
+import '../services/float_window_service.dart';
 
 // 引入其他页面
 import 'screen_time_detail_screen.dart';
@@ -247,7 +248,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         userIdInt.toString(), 'flutter_$_deviceId', appVersion: appVersion);
   }
 
-  static const _floatChannel = MethodChannel('com.math_quiz_app/float_window');
+  // FloatWindow channel is now handled by FloatWindowService
 
   // 🚀 修改：处理云端发来的 UPDATE_AVAILABLE 信号
   Future<void> _handleRemotePomodoroSignal(
@@ -295,13 +296,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (Platform.isWindows) {
           final prefs = await SharedPreferences.getInstance();
           if (prefs.getBool('float_window_enabled') ?? true) {
-            _floatChannel.invokeMethod('showFloat', {
-              'endMs': isCountUp ? signal.timestamp : endMs,
-              'title': signal.todoTitle ?? '',
-              'tags': signal.tags,
-              'isLocal': false,
-              'mode': isCountUp ? 1 : 0,
-            });
+            await FloatWindowService.update(
+              endMs: isCountUp ? signal.timestamp : endMs,
+              title: signal.todoTitle ?? '',
+              tags: signal.tags,
+              isLocal: false,
+              mode: isCountUp ? 1 : 0,
+            );
           }
         }
         break;
@@ -312,7 +313,10 @@ class _HomeDashboardState extends State<HomeDashboard>
         setState(() => _remotePomodoro = null);
 
         if (Platform.isWindows) {
-          _floatChannel.invokeMethod('hideFloat');
+          // Setting endMs to 0 in update() handles hiding/TopBar transition.
+          // Explicitly mark as remote (isLocal: false) so the float clears
+          // a remote session instead of being ignored by a generic no-arg call.
+          await FloatWindowService.update(endMs: 0, isLocal: false);
         }
         break;
 
@@ -757,13 +761,13 @@ class _HomeDashboardState extends State<HomeDashboard>
             .where((n) => n.isNotEmpty)
             .toList();
         final isCountUp = saved.mode == TimerMode.countUp;
-        _floatChannel.invokeMethod('showFloat', {
-          'endMs': isCountUp ? saved.sessionStartMs : saved.targetEndMs,
-          'title': saved.todoTitle ?? '',
-          'tags': tagNames,
-          'isLocal': true,
-          'mode': isCountUp ? 1 : 0,
-        });
+        await FloatWindowService.update(
+          endMs: isCountUp ? saved.sessionStartMs : saved.targetEndMs,
+          title: saved.todoTitle ?? '',
+          tags: tagNames,
+          isLocal: true,
+          mode: isCountUp ? 1 : 0,
+        );
       }
     }
 
@@ -1010,6 +1014,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         todos: _todos,
         courses: allCourses,
       ));
+
+      // 更新原生灵动岛 TopBar 数据
+      if (Platform.isWindows) {
+        FloatWindowService.update();
+      }
     }
   }
 

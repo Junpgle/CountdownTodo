@@ -23,6 +23,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   PomodoroPhase _currentPhase = PomodoroPhase.idle;
   bool _workbenchReady = false;
   final _statsKey = GlobalKey<PomodoroStatsState>();
+  final GlobalKey<PomodoroWorkbenchState> _workbenchKey = GlobalKey<PomodoroWorkbenchState>();
 
   @override
   void initState() {
@@ -33,7 +34,18 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       if (_tabController.index == 1 && !_tabController.indexIsChanging) {
         _statsKey.currentState?.reload();
       }
+      if (_tabController.index == 0 && !_tabController.indexIsChanging) {
+        // Ensure workbench refreshes when its tab becomes visible
+        _workbenchKey.currentState?.reload();
+      }
       if (mounted) setState(() {});
+    });
+
+    // If initial tab is workbench, trigger a reload after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.initialTab == 0) {
+        _workbenchKey.currentState?.reload();
+      }
     });
   }
 
@@ -74,9 +86,10 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   alignment: Alignment.center,
-                  child: Stack(                          // ← 改成 Stack
+                      child: Stack(                          // ← 改成 Stack
                     children: [
                       PomodoroWorkbench(
+                        key: _workbenchKey,
                         username: widget.username,
                         onPhaseChanged: (phase) {
                           if (mounted && _currentPhase != phase) {
@@ -206,6 +219,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 index: tabIndex,
                 children: [
                   PomodoroWorkbench(
+                    key: _workbenchKey,
                     username: widget.username,
                     onPhaseChanged: (phase) {
                       if (mounted && _currentPhase != phase) {

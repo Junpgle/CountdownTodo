@@ -13,6 +13,13 @@ class PreferenceSection extends StatelessWidget {
   final VoidCallback onPickTaiDatabase;
   final bool floatWindowEnabled;
   final ValueChanged<bool>? onFloatWindowEnabledChanged;
+  final int floatWindowStyle;
+  final ValueChanged<int?> onFloatWindowStyleChanged;
+  final String floatWindowLeftSlot;
+  final ValueChanged<String?> onFloatWindowLeftSlotChanged;
+  final String floatWindowRightSlot;
+  final ValueChanged<String?> onFloatWindowRightSlotChanged;
+  final VoidCallback onForceShowFloatWindow;
 
   const PreferenceSection({
     Key? key,
@@ -27,6 +34,13 @@ class PreferenceSection extends StatelessWidget {
     required this.onPickTaiDatabase,
     required this.floatWindowEnabled,
     this.onFloatWindowEnabledChanged,
+    required this.floatWindowStyle,
+    required this.onFloatWindowStyleChanged,
+    required this.floatWindowLeftSlot,
+    required this.onFloatWindowLeftSlotChanged,
+    required this.floatWindowRightSlot,
+    required this.onFloatWindowRightSlotChanged,
+    required this.onForceShowFloatWindow,
   }) : super(key: key);
 
   @override
@@ -128,6 +142,68 @@ class PreferenceSection extends StatelessWidget {
                   value: floatWindowEnabled,
                   onChanged: onFloatWindowEnabledChanged,
                 ),
+                if (Platform.isWindows && floatWindowEnabled) ...[
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.style_outlined, color: Colors.indigo),
+                    title: const Text('悬浮窗样式'),
+                    trailing: DropdownButton<int>(
+                      value: floatWindowStyle,
+                      underline: const SizedBox(),
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('经典样式')),
+                        DropdownMenuItem(value: 1, child: Text('灵动岛样式')),
+                      ],
+                      onChanged: onFloatWindowStyleChanged,
+                    ),
+                  ),
+                  if (floatWindowStyle == 1) ...[
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.align_horizontal_left_outlined, color: Colors.indigo),
+                      title: const Text('左侧内容'),
+                      trailing: DropdownButton<String>(
+                        value: floatWindowLeftSlot,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 'countdown', child: Text('最近倒计时')),
+                          DropdownMenuItem(value: 'todo', child: Text('最近待办')),
+                          DropdownMenuItem(value: 'course', child: Text('最近课程')),
+                          DropdownMenuItem(value: 'record', child: Text('最近记录')),
+                          DropdownMenuItem(value: 'none', child: Text('不显示')),
+                        ],
+                        onChanged: onFloatWindowLeftSlotChanged,
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.align_horizontal_right_outlined, color: Colors.indigo),
+                      title: const Text('右侧内容'),
+                      trailing: DropdownButton<String>(
+                        value: floatWindowRightSlot,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 'countdown', child: Text('最近倒计时')),
+                          DropdownMenuItem(value: 'todo', child: Text('最近待办')),
+                          DropdownMenuItem(value: 'course', child: Text('最近课程')),
+                          DropdownMenuItem(value: 'record', child: Text('最近记录')),
+                          DropdownMenuItem(value: 'none', child: Text('不显示')),
+                        ],
+                        onChanged: onFloatWindowRightSlotChanged,
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.refresh, color: Colors.indigo),
+                      title: const Text('手动打开/强制刷新'),
+                      subtitle: const Text('如果悬浮窗不见了或位置不对，点击此处强制显示'),
+                      trailing: TextButton(
+                        onPressed: onForceShowFloatWindow,
+                        child: const Text('立即显示'),
+                      ),
+                    ),
+                  ],
+                ],
               ],
             ],
           ),
