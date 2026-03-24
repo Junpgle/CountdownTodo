@@ -24,33 +24,40 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   bool _workbenchReady = false;
   final _statsKey = GlobalKey<PomodoroStatsState>();
   final GlobalKey<PomodoroWorkbenchState> _workbenchKey = GlobalKey<PomodoroWorkbenchState>();
+  bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
+    debugPrint('[PomodoroScreen] initState start; initialTab=${widget.initialTab} username=${widget.username}');
     _tabController = TabController(
         length: 2, vsync: this, initialIndex: widget.initialTab);
     _tabController.addListener(() {
+      if (_disposed || !mounted) return;
+      debugPrint('[PomodoroScreen] TabController listener: index=${_tabController.index} indexIsChanging=${_tabController.indexIsChanging}');
       if (_tabController.index == 1 && !_tabController.indexIsChanging) {
-        _statsKey.currentState?.reload();
+        try { _statsKey.currentState?.reload(); } catch (_) {}
       }
       if (_tabController.index == 0 && !_tabController.indexIsChanging) {
-        // Ensure workbench refreshes when its tab becomes visible
-        _workbenchKey.currentState?.reload();
+        try { _workbenchKey.currentState?.reload(); } catch (_) {}
       }
-      if (mounted) setState(() {});
+      if (mounted && !_disposed) setState(() {});
     });
 
     // If initial tab is workbench, trigger a reload after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed || !mounted) return;
+      debugPrint('[PomodoroScreen] postFrameCallback firing; initialTab=${widget.initialTab}');
       if (widget.initialTab == 0) {
-        _workbenchKey.currentState?.reload();
+        try { _workbenchKey.currentState?.reload(); } catch (_) {}
+        debugPrint('[PomodoroScreen] requested workbench reload from postFrameCallback');
       }
     });
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _tabController.dispose();
     super.dispose();
   }
@@ -92,12 +99,12 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                         key: _workbenchKey,
                         username: widget.username,
                         onPhaseChanged: (phase) {
-                          if (mounted && _currentPhase != phase) {
+                          if (!_disposed && mounted && _currentPhase != phase) {
                             setState(() => _currentPhase = phase);
                           }
                         },
                         onReady: () {
-                          if (mounted && !_workbenchReady) {
+                          if (!_disposed && mounted && !_workbenchReady) {
                             setState(() => _workbenchReady = true);
                           }
                         },
@@ -218,16 +225,17 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               child: FadingIndexedStack(
                 index: tabIndex,
                 children: [
+                  // portrait workbench
                   PomodoroWorkbench(
                     key: _workbenchKey,
                     username: widget.username,
                     onPhaseChanged: (phase) {
-                      if (mounted && _currentPhase != phase) {
+                      if (!_disposed && mounted && _currentPhase != phase) {
                         setState(() => _currentPhase = phase);
                       }
                     },
                     onReady: () {
-                      if (mounted && !_workbenchReady) {
+                      if (!_disposed && mounted && !_workbenchReady) {
                         setState(() => _workbenchReady = true);
                       }
                     },
@@ -329,4 +337,3 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     );
   }
 }
-

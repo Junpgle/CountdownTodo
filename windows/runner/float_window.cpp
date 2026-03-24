@@ -66,6 +66,8 @@ void FloatWindow::SaveState() {
         shrunkW_ = winW_;
         islandH_ = winH_;
         if (expandW_ < shrunkW_) expandW_ = shrunkW_;
+        // Mark that user explicitly sized the window
+        userSized_ = true;
         RegSetValueExW(key, L"X",     0, REG_DWORD, (BYTE*)&dx, sizeof(dx));
         RegSetValueExW(key, L"Y",     0, REG_DWORD, (BYTE*)&dy, sizeof(dy));
         RegSetValueExW(key, L"W",     0, REG_DWORD, (BYTE*)&dw, sizeof(dw));
@@ -88,6 +90,8 @@ void FloatWindow::LoadState() {
             shrunkW_ = winW_;
             islandH_ = winH_;
             if (expandW_ < shrunkW_) expandW_ = shrunkW_;
+            // Treat loaded values as user-sized
+            userSized_ = true;
         DWORD size = sizeof(DWORD);
         DWORD dalpha = 200;
         RegQueryValueExW(key, L"Alpha", nullptr, nullptr, (BYTE*)&dalpha, &size);

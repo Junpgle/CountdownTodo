@@ -143,69 +143,150 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   }
 
   Future<void> _init() async {
-    _settings = await PomodoroService.getSettings();
-    _allTags = await PomodoroService.getTags();
-    _deviceId = await StorageService.getDeviceId();
+    final _initStart = DateTime.now();
+    debugPrint('[PomodoroWorkbench] _init start: ${_initStart.toIso8601String()}');
+    Timer? _initWatchdog = Timer(const Duration(seconds: 6), () {
+      debugPrint('[PomodoroWorkbench] WARNING: _init still running after 6s');
+    });
 
     try {
-      final info = await PackageInfo.fromPlatform();
-      _appVersion = info.version;
-    } catch (e) {
-      debugPrint("获取版本号失败: $e");
-    }
+      debugPrint('[PomodoroWorkbench] getSettings() start');
+      _settings = await PomodoroService.getSettings();
+      debugPrint('[PomodoroWorkbench] getSettings() done');
 
-    _todos = (await StorageService.getTodos(widget.username))
-        .where((t) => !t.isDeleted && !t.isDone)
-        .toList();
+      debugPrint('[PomodoroWorkbench] getTags() start');
+      _allTags = await PomodoroService.getTags();
+      debugPrint('[PomodoroWorkbench] getTags() done (count=${_allTags.length})');
 
-    final saved = await PomodoroService.loadRunState();
-    if (saved != null && saved.phase != PomodoroPhase.idle) {
-      await _recoverState(saved);
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      final savedUuid    = prefs.getString(_keyBoundTodoUuid);
-      final savedTitle   = prefs.getString(_keyBoundTodoTitle);
-      final savedTagsRaw = prefs.getString(_keySelectedTagUuids);
+      debugPrint('[PomodoroWorkbench] StorageService.getDeviceId() start');
+      _deviceId = await StorageService.getDeviceId();
+      debugPrint('[PomodoroWorkbench] StorageService.getDeviceId() done: $_deviceId');
 
-      final restoredTagUuids = savedTagsRaw != null && savedTagsRaw.isNotEmpty
-          ? savedTagsRaw.split(',').where((s) => s.isNotEmpty).toList()
-          : <String>[];
+      debugPrint('[PomodoroWorkbench] PackageInfo.fromPlatform() start');
+      try {
+        final info = await PackageInfo.fromPlatform();
+        _appVersion = info.version;
+        debugPrint('[PomodoroWorkbench] PackageInfo done: $_appVersion');
+      } catch (e, st) {
+        debugPrint('[PomodoroWorkbench] PackageInfo failed: $e\n$st');
+      }
 
-      TodoItem? restoredTodo;
-      if (savedUuid != null && savedUuid.isNotEmpty) {
-        restoredTodo = _todos.cast<TodoItem?>().firstWhere(
-              (t) => t?.id == savedUuid,
-          orElse: () => null,
-        );
-        if (restoredTodo == null && savedTitle != null && savedTitle.isNotEmpty) {
-          restoredTodo = TodoItem(
-            id: savedUuid,
-            title: savedTitle,
-            isDone: false,
-            createdAt: 0,
-          );
+      debugPrint('[PomodoroWorkbench] StorageService.getTodos() start');
+      try {
+        final todosRaw = await StorageService.getTodos(widget.username).timeout(const Duration(seconds: 5), onTimeout: () {
+          debugPrint('[PomodoroWorkbench] WARNING: StorageService.getTodos() timed out');
+          return <TodoItem>[];
+        });
+        _todos = (todosRaw).where((t) => !t.isDeleted && !t.isDone).toList();
+        debugPrint('[PomodoroWorkbench] StorageService.getTodos() done (count=${_todos.length})');
+      } catch (e, st) {
+        debugPrint('[PomodoroWorkbench] getTodos error: $e\n$st');
+        _todos = [];
+      }
+
+      debugPrint('[PomodoroWorkbench] PomodoroService.loadRunState() start');
+      PomodoroRunState? saved;
+      try {
+        saved = await PomodoroService.loadRunState().timeout(const Duration(seconds: 5));
+      } on TimeoutException catch (_) {
+        debugPrint('[PomodoroWorkbench] WARNING: PomodoroService.loadRunState() timed out');
+        saved = null;
+      } catch (e, st) {
+        debugPrint('[PomodoroWorkbench] PomodoroService.loadRunState() error: $e\n$st');
+        saved = null;
+      }
+      debugPrint('[PomodoroWorkbench] PomodoroService.loadRunState() done: ${saved != null}');
+
+      if (saved != null && saved.phase != PomodoroPhase.idle) {
+        debugPrint('[PomodoroWorkbench] _recoverState() start');
+        try {
+          try {
+            await _recoverState(saved).timeout(const Duration(seconds: 5));
+            debugPrint('[PomodoroWorkbench] _recoverState() done');
+          } on TimeoutException catch (_) {
+            debugPrint('[PomodoroWorkbench] WARNING: _recoverState() timed out');
+          }
+        } catch (e, st) {
+          debugPrint('[PomodoroWorkbench] _recoverState() error: $e\n$st');
+        }
+      } else {
+        try {
+          debugPrint('[PomodoroWorkbench] reading persisted idle binding from SharedPreferences');
+          SharedPreferences? prefs;
+          try {
+            prefs = await SharedPreferences.getInstance().timeout(const Duration(seconds: 5));
+          } catch (e, st) {
+            debugPrint('[PomodoroWorkbench] WARNING: SharedPreferences.getInstance() timed out or failed: $e\n$st');
+            prefs = null;
+          }
+          if (prefs != null) {
+            final savedUuid = prefs.getString(_keyBoundTodoUuid);
+            final savedTitle = prefs.getString(_keyBoundTodoTitle);
+            final savedTagsRaw = prefs.getString(_keySelectedTagUuids);
+
+            final restoredTagUuids = savedTagsRaw != null && savedTagsRaw.isNotEmpty
+                ? savedTagsRaw.split(',').where((s) => s.isNotEmpty).toList()
+                : <String>[];
+
+            TodoItem? restoredTodo;
+            if (savedUuid != null && savedUuid.isNotEmpty) {
+              restoredTodo = _todos.cast<TodoItem?>().firstWhere((t) => t?.id == savedUuid, orElse: () => null);
+              if (restoredTodo == null && savedTitle != null && savedTitle.isNotEmpty) {
+                restoredTodo = TodoItem(id: savedUuid, title: savedTitle, isDone: false, createdAt: 0);
+              }
+            }
+            if (mounted) {
+              setState(() {
+                _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
+                _boundTodo = restoredTodo;
+                _selectedTagUuids = restoredTagUuids;
+              });
+            }
+          }
+        } catch (e, st) {
+          debugPrint('[PomodoroWorkbench] error reading prefs: $e\n$st');
         }
       }
+
+      debugPrint('[PomodoroWorkbench] _connectCrossDevice() start');
+      try {
+        try {
+          await _connectCrossDevice().timeout(const Duration(seconds: 5));
+          debugPrint('[PomodoroWorkbench] _connectCrossDevice() done');
+        } on TimeoutException catch (_) {
+          debugPrint('[PomodoroWorkbench] WARNING: _connectCrossDevice() timed out');
+        }
+      } catch (e, st) {
+        debugPrint('[PomodoroWorkbench] _connectCrossDevice() error: $e\n$st');
+      }
+
+      await Future.delayed(const Duration(milliseconds: 400));
+
       if (mounted) {
-        setState(() {
-          _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
-          _boundTodo = restoredTodo;
-          _selectedTagUuids = restoredTagUuids;
-        });
+        setState(() => _initializing = false);
+        widget.onReady?.call();
+        _showLocalFloat();
+
+        if (_userId.isNotEmpty && _deviceId.isNotEmpty) {
+          debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() start');
+            try {
+              try {
+                await _syncService.forceReconnect(_userId, 'flutter_$_deviceId').timeout(const Duration(seconds: 5));
+                debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() done');
+              } on TimeoutException catch (_) {
+                debugPrint('[PomodoroWorkbench] WARNING: _syncService.forceReconnect() timed out');
+              }
+            } catch (e, st) {
+              debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() error: $e\n$st');
+            }
+        }
       }
-    }
-
-    await _connectCrossDevice();
-    await Future.delayed(const Duration(milliseconds: 400));
-
-    if (mounted) {
-      setState(() => _initializing = false);
-      widget.onReady?.call();
-      _showLocalFloat();
-
-      if (_userId.isNotEmpty && _deviceId.isNotEmpty) {
-        await _syncService.forceReconnect(_userId, 'flutter_$_deviceId');
-      }
+    } catch (e, st) {
+      debugPrint('[PomodoroWorkbench] _init error: $e\n$st');
+    } finally {
+      _initWatchdog?.cancel();
+      final elapsed = DateTime.now().difference(_initStart).inMilliseconds;
+      debugPrint('[PomodoroWorkbench] _init finished in ${elapsed}ms');
     }
   }
 

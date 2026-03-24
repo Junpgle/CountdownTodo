@@ -128,6 +128,9 @@ private:
     double centerY_ = 0;
     int   winW_  = 300;
     int   winH_  = 110;
+    // If user manually resized and it was saved, avoid overwriting these
+    // dimensions during subsequent Show()/Render calls unless forceReset.
+    bool  userSized_ = false;
 
     int   shrunkW_ = 150;
     int   expandW_ = 220;
@@ -143,4 +146,4 @@ private:
     float dpiScale_ = 1.0f;
     mutable std::recursive_mutex mtx_;
     std::chrono::steady_clock::time_point lastAnimTime_;
-};
+};
