@@ -14,6 +14,7 @@ import 'services/api_service.dart';
 import 'services/float_window_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
+import 'windows_island/island_manager.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -132,6 +133,15 @@ class _MyAppState extends State<MyApp> {
       windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
         await windowManager.focus();
+        // Try to create the island window on Windows. This is best-effort;
+        // if native side isn't available the call will return null.
+        if (Platform.isWindows) {
+          try {
+            await IslandManager().createIsland('island-1');
+          } catch (e) {
+            debugPrint('Island create failed: $e');
+          }
+        }
       });
     }
   }

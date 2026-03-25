@@ -17,6 +17,7 @@ class IslandUI extends StatefulWidget {
 class _IslandUIState extends State<IslandUI> {
   IslandState _state = IslandState.idle;
   String _title = '';
+  String? _debugPayloadJson;
 
   @override
   void initState() {
@@ -28,16 +29,25 @@ class _IslandUIState extends State<IslandUI> {
   }
 
   void _onNotifierPayload() {
-    _applyPayload(widget.payloadNotifier!.value);
+    try {
+      _applyPayload(widget.payloadNotifier!.value);
+    } catch (e, st) {
+      debugPrint('[IslandUI] _onNotifierPayload error: $e\n$st');
+    }
   }
 
   void _applyPayload(Map<String, dynamic>? payload) {
     if (payload == null) return;
-    setState(() {
-      final endMs = payload['endMs'] ?? 0;
-      _title = payload['title'] ?? '';
-      _state = (endMs != 0) ? IslandState.hoverWide : IslandState.idle;
-    });
+    try {
+      setState(() {
+        _debugPayloadJson = payload.isNotEmpty ? payload.toString() : null;
+        final endMs = payload['endMs'] ?? 0;
+        _title = payload['title'] ?? '';
+        _state = (endMs != 0) ? IslandState.hoverWide : IslandState.idle;
+      });
+    } catch (e, st) {
+      debugPrint('[IslandUI] _applyPayload failed: $e\n$st');
+    }
   }
 
   @override
@@ -88,14 +98,29 @@ class _IslandUIState extends State<IslandUI> {
           _state = IslandState.splitAlert;
         });
       },
-      child: Container(
+        child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(30),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 8)],
         ),
-        child: Text(text, style: const TextStyle(color: Colors.white)),
+          child: Row(
+            children: [
+              Expanded(child: Text(text, style: const TextStyle(color: Colors.white))),
+              if (_debugPayloadJson != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  constraints: const BoxConstraints(maxWidth: 120),
+                  child: Text(
+                    _debugPayloadJson!,
+                    style: const TextStyle(color: Colors.white70, fontSize: 10),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ],
+          ),
       ),
     );
   }

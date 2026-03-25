@@ -21,6 +21,7 @@ import 'feature_guide_screen.dart';
 import '../services/course_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
+import '../windows_island/island_manager.dart';
 
 // 引入拆分的设置组件
 import 'settings/widgets/account_section.dart';
@@ -928,8 +929,12 @@ class _SettingsPageState extends State<SettingsPage> {
             });
           } : null,
           onForceRefreshPressed: Platform.isWindows ? () async {
-            // Center main window and request native float reset
-            await FloatWindowService.resetPositions();
+                    // Center main window and request native float reset
+                    await FloatWindowService.resetPositions();
+                    // Also recreate the island window (Dart-managed)
+                    try {
+                      await IslandManager().recreateIsland('island-1');
+                    } catch (_) {}
           } : null,
         ),
         PermissionSection(

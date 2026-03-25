@@ -12,6 +12,7 @@ import 'course_service.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
 import '../windows_island/island_payload.dart';
+import '../windows_island/island_manager.dart';
 
 class FloatWindowService {
   static const _channel = MethodChannel('com.math_quiz_app/float_window');
@@ -289,91 +290,41 @@ class FloatWindowService {
 
       print('[FloatWindow] showFloat payload: endMs=${payload['endMs']} mode=${payload['mode']} isLocal=${payload['isLocal']} style=${payload['style']} forceReset=${payload['forceReset']}');
 
-      // If style==1 (灵动岛 / Island) try to send payload to desktop multi-window host first.
+      // If style==1 (灵动岛 / Island) try to deliver using Dart IslandManager
       final int styleInt = (payload['style'] is int) ? payload['style'] as int : 0;
-      if (Platform.isWindows && styleInt == 1 && _dmwAvailable) {
-        // Helper to attempt desktop_multi_window invocations with retries and
-        // consistent MissingPluginException handling.
-        Future<dynamic> dmwInvoke(String method, dynamic arguments,
-            {int attempts = 2, Duration timeout = const Duration(milliseconds: 2000)}) async {
-          for (int i = 0; i < attempts; i++) {
-            try {
-              debugPrint('[FloatWindow] desktop_multi_window.invoke -> $method (attempt ${i + 1})');
-              final resFuture = _dmwChannel.invokeMethod(method, arguments);
-              final res = await resFuture.timeout(timeout, onTimeout: () => null);
-              return res;
-            } on MissingPluginException catch (mp) {
-              debugPrint('[FloatWindow] desktop_multi_window MissingPluginException on $method: $mp');
-              _dmwAvailable = false;
-              return null;
-            } catch (e) {
-              debugPrint('[FloatWindow] desktop_multi_window invoke error on $method attempt ${i + 1}: $e');
-              // retry unless last attempt
-              if (i == attempts - 1) return null;
-              await Future.delayed(const Duration(milliseconds: 120));
+      if (Platform.isWindows && styleInt == 1) {
+        try {
+          final islandId = 'island-1';
+          // If no window cached, attempt to create (with cooldown)
+          var winId = IslandManager().getCachedWindowId(islandId);
+          if (winId == null) {
+            final nowMs = DateTime.now().millisecondsSinceEpoch;
+            if (nowMs - _lastIslandCreateAttemptMs < _islandCreateCooldownMs) {
+              debugPrint('[FloatWindow] skipping createIsland due to cooldown (${nowMs - _lastIslandCreateAttemptMs}ms)');
+            } else {
+              _lastIslandCreateAttemptMs = nowMs;
+              debugPrint('[FloatWindow] IslandManager.createIsland -> islandId=$islandId');
+              winId = await IslandManager().createIsland(islandId);
+              if (winId != null) {
+                debugPrint('[FloatWindow] IslandManager created island window id=$winId');
+              }
             }
           }
-          return null;
-        }
 
-        try {
-          // Avoid concurrent createWindow races. If another flow is already
-          // creating the island, wait briefly for it to finish and reuse the
-          // produced window id instead of creating a duplicate window.
-          if (_islandWindowId == null) {
-            if (_creatingIsland) {
-              // Wait up to ~2s for the other creator to finish.
-              final end = DateTime.now().add(const Duration(milliseconds: 2000));
-              while (_creatingIsland && DateTime.now().isBefore(end)) {
-                await Future.delayed(const Duration(milliseconds: 80));
-              }
-            }
-
-            // If another task created the island while we waited, try posting to it.
-            if (_islandWindowId != null) {
-              final postRes = await dmwInvoke('postWindowMessage', {'windowId': _islandWindowId, 'payload': dto.toMap()}, attempts: 2, timeout: const Duration(milliseconds: 2000));
-                if (postRes != null) {
-                    debugPrint('[FloatWindow] posted payload to island window id=$_islandWindowId');
-                    return;
-                  } else {
-                    debugPrint('[FloatWindow] desktop_multi_window.postWindowMessage returned null/timeout; clearing cached island id=$_islandWindowId');
-                    // The target window may have been closed on the native side; clear
-                    // the cached id so subsequent updates will attempt to recreate it.
-                    _islandWindowId = null;
-                  }
-                }
-
-            // Otherwise, attempt to create the island window (mark that we're creating)
-            _creatingIsland = true;
-            try {
-              debugPrint('[FloatWindow] desktop_multi_window.createWindow -> arguments=islandMain');
-              final res = await dmwInvoke('createWindow', {
-                'arguments': 'islandMain',
-                'hiddenAtLaunch': false,
-                'payload': dto.toMap(),
-              }, attempts: 2, timeout: const Duration(milliseconds: 2000));
-              if (res is String && res.isNotEmpty) {
-                _islandWindowId = res;
-                debugPrint('[FloatWindow] created island window id=$_islandWindowId');
-                return; // delivered to multi-window host
-              } else {
-                debugPrint('[FloatWindow] desktop_multi_window.createWindow returned null/timeout or unexpected: $res');
-              }
-            } finally {
-              _creatingIsland = false;
-            }
-          } else {
-            final postRes = await dmwInvoke('postWindowMessage', {'windowId': _islandWindowId, 'payload': dto.toMap()}, attempts: 2, timeout: const Duration(milliseconds: 2000));
-            if (postRes != null) {
-              debugPrint('[FloatWindow] posted payload to island window id=$_islandWindowId');
+          // If we have a window id, try to post payload via IslandManager
+          if (winId != null) {
+            final sent = await IslandManager().sendPayload(islandId, dto);
+            if (sent) {
+              debugPrint('[FloatWindow] posted payload to island window id=$winId');
               return;
             } else {
-              debugPrint('[FloatWindow] desktop_multi_window.postWindowMessage returned null/timeout; clearing cached island id=$_islandWindowId');
-              _islandWindowId = null;
+              debugPrint('[FloatWindow] IslandManager.postMessage failed for window id=$winId; clearing cache and will fallback');
+              // clear cached id and allow fallback to legacy
+              await IslandManager().recreateIsland(islandId);
             }
           }
         } catch (e) {
-          debugPrint('[FloatWindow] desktop_multi_window delivery failed: $e');
+          debugPrint('[FloatWindow] IslandManager delivery failed: $e');
         }
       }
 
@@ -420,6 +371,12 @@ class FloatWindowService {
   // If we detect MissingPluginException or repeated timeouts, mark false
   // to avoid repeated blocking attempts.
   static bool _dmwAvailable = true;
+
+  // Protect against thrashing createWindow calls when native windows are
+  // repeatedly created/destroyed. Record the last create attempt time and
+  // enforce a short cooldown between attempts.
+  static int _lastIslandCreateAttemptMs = 0;
+  static const int _islandCreateCooldownMs = 1200;
 
   // Diagnostic: when true, skip calling the legacy native showFloat method.
   // Set to false in normal runs so the legacy native float (windows) is used
