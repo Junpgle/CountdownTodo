@@ -11,6 +11,10 @@ import 'screens/home_dashboard.dart';
 import 'screens/feature_guide_screen.dart';
 import 'storage_service.dart';
 import 'services/api_service.dart';
+import 'services/float_window_service.dart';
+import 'windows_island/island_debug.dart';
+
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 // 全局绕过 SSL 证书校验，修复 Cloudflare D1 旧服务器 HandshakeException
 class MyHttpOverrides extends HttpOverrides {
@@ -26,6 +30,9 @@ void main() {
 
   // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
   HttpOverrides.global = MyHttpOverrides();
+
+  // 初始化 FloatWindowService（注册 native handler）
+  FloatWindowService.init();
 
   // 立刻运行 App，让引擎画出第一帧，彻底消除黑屏
   runApp(const MyApp());
@@ -127,6 +134,7 @@ class _MyAppState extends State<MyApp> {
         return MaterialApp(
           title: 'CountDownTodo',
           debugShowCheckedModeBanner: false,
+          navigatorKey: appNavigatorKey,
 
           // 绑定动态主题模式
           themeMode: currentThemeMode,
@@ -163,6 +171,7 @@ class _MyAppState extends State<MyApp> {
           routes: {
             '/login': (context) => const LoginScreen(),
             '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
+            '/dev/island': (context) => const IslandDebugPage(),
           },
 
           // 路由控制：加载中 → 升级引导 → 主页/登录

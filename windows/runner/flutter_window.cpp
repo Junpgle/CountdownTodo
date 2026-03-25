@@ -40,63 +40,93 @@ bool FlutterWindow::OnCreate() {
     float_channel_->SetMethodCallHandler(
             [](const flutter::MethodCall<flutter::EncodableValue>& call,
                std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
-
-                if (call.method_name() == "showFloat") {
-                    auto& args = std::get<flutter::EncodableMap>(*call.arguments());
-
-                    long long endMs = std::get<int64_t>(args.at(flutter::EncodableValue("endMs")));
-
-                    std::string titleUtf8 = std::get<std::string>(args.at(flutter::EncodableValue("title")));
-
-
-                    OutputDebugStringA(("[FloatWindow] title utf8 = " + titleUtf8 + "\n").c_str());
-
-                    int wlen = MultiByteToWideChar(CP_UTF8, 0, titleUtf8.c_str(), (int)titleUtf8.length(), nullptr, 0);
-                    std::wstring title(wlen, 0);
-                    if (wlen > 0) {
-                        MultiByteToWideChar(CP_UTF8, 0, titleUtf8.c_str(), (int)titleUtf8.length(), &title[0], wlen);
-                    }
-
-                    std::vector<std::wstring> tags;
-                    auto& tagList = std::get<flutter::EncodableList>(args.at(flutter::EncodableValue("tags")));
-
-
-                    OutputDebugStringA(("[FloatWindow] tags count = " + std::to_string(tagList.size()) + "\n").c_str());
-
-                    for (auto& t : tagList) {
-                        std::string tagUtf8 = std::get<std::string>(t);
-                        int wl = MultiByteToWideChar(CP_UTF8, 0, tagUtf8.c_str(), (int)tagUtf8.length(), nullptr, 0);
-                        std::wstring wt(wl, 0);
-                        if (wl > 0) {
-                            MultiByteToWideChar(CP_UTF8, 0, tagUtf8.c_str(), (int)tagUtf8.length(), &wt[0], wl);
+                try {
+                    if (call.method_name() == "showFloat") {
+                        // Validate arguments
+                        const flutter::EncodableValue* argsVal = call.arguments();
+                        if (!argsVal || !std::holds_alternative<flutter::EncodableMap>(*argsVal)) {
+                            OutputDebugStringA("[FloatWindow] showFloat called with invalid or missing arguments\n");
+                            result->Error("invalid_args", "Expected map arguments for showFloat");
+                            return;
                         }
-                        tags.push_back(wt);
-                    }
+                        auto args = std::get<flutter::EncodableMap>(*argsVal);
 
-                    int mode = 0;
-                    auto modeIt = args.find(flutter::EncodableValue("mode"));
-                    if (modeIt != args.end()) {
-                        if (std::holds_alternative<int32_t>(modeIt->second)) {
-                            mode = std::get<int32_t>(modeIt->second);
-                        } else if (std::holds_alternative<int64_t>(modeIt->second)) {
-                            mode = (int)std::get<int64_t>(modeIt->second);
+                        long long endMs = 0;
+                        auto endIt = args.find(flutter::EncodableValue("endMs"));
+                        if (endIt != args.end()) {
+                            const auto& v = endIt->second;
+                            if (std::holds_alternative<int64_t>(v)) endMs = std::get<int64_t>(v);
+                            else if (std::holds_alternative<int32_t>(v)) endMs = std::get<int32_t>(v);
+                            else if (std::holds_alternative<double>(v)) endMs = (long long)std::get<double>(v);
+                            else {
+                                OutputDebugStringA("[FloatWindow] endMs has unexpected type, using 0\n");
+                            }
                         }
+
+                        std::string titleUtf8;
+                        auto titleIt = args.find(flutter::EncodableValue("title"));
+                        if (titleIt != args.end() && std::holds_alternative<std::string>(titleIt->second)) {
+                            titleUtf8 = std::get<std::string>(titleIt->second);
+                        }
+
+                        OutputDebugStringA((std::string("[FloatWindow] title utf8 = ") + titleUtf8 + "\n").c_str());
+
+                        std::wstring title;
+                        if (!titleUtf8.empty()) {
+                            int wlen = MultiByteToWideChar(CP_UTF8, 0, titleUtf8.c_str(), (int)titleUtf8.length(), nullptr, 0);
+                            title.assign(wlen, L'\0');
+                            if (wlen > 0) {
+                                MultiByteToWideChar(CP_UTF8, 0, titleUtf8.c_str(), (int)titleUtf8.length(), &title[0], wlen);
+                            }
+                        }
+
+                        std::vector<std::wstring> tags;
+                        auto tagsIt = args.find(flutter::EncodableValue("tags"));
+                        if (tagsIt != args.end() && std::holds_alternative<flutter::EncodableList>(tagsIt->second)) {
+                            auto tagList = std::get<flutter::EncodableList>(tagsIt->second);
+                            OutputDebugStringA((std::string("[FloatWindow] tags count = ") + std::to_string(tagList.size()) + "\n").c_str());
+                            for (auto& t : tagList) {
+                                if (std::holds_alternative<std::string>(t)) {
+                                    std::string tagUtf8 = std::get<std::string>(t);
+                                    int wl = MultiByteToWideChar(CP_UTF8, 0, tagUtf8.c_str(), (int)tagUtf8.length(), nullptr, 0);
+                                    std::wstring wt(wl, L'\0');
+                                    if (wl > 0) {
+                                        MultiByteToWideChar(CP_UTF8, 0, tagUtf8.c_str(), (int)tagUtf8.length(), &wt[0], wl);
+                                    }
+                                    tags.push_back(wt);
+                                }
+                            }
+                        }
+
+                        int mode = 0;
+                        auto modeIt = args.find(flutter::EncodableValue("mode"));
+                        if (modeIt != args.end()) {
+                            const auto& mv = modeIt->second;
+                            if (std::holds_alternative<int32_t>(mv)) mode = std::get<int32_t>(mv);
+                            else if (std::holds_alternative<int64_t>(mv)) mode = (int)std::get<int64_t>(mv);
+                            else if (std::holds_alternative<double>(mv)) mode = (int)std::get<double>(mv);
+                        }
+
+                        bool isLocal = false;
+                        auto isLocalIt = args.find(flutter::EncodableValue("isLocal"));
+                        if (isLocalIt != args.end() && std::holds_alternative<bool>(isLocalIt->second)) {
+                            isLocal = std::get<bool>(isLocalIt->second);
+                        }
+
+                        FloatWindow::instance().Show(endMs, title, tags, isLocal, mode);
+                        result->Success();
+                    } else if (call.method_name() == "hideFloat") {
+                        FloatWindow::instance().Hide();
+                        result->Success();
+                    } else {
+                        result->NotImplemented();
                     }
-
-                    bool isLocal = false;
-                    auto isLocalIt = args.find(flutter::EncodableValue("isLocal"));
-                    if (isLocalIt != args.end()) {
-                        isLocal = std::get<bool>(isLocalIt->second);
-                    }
-
-                    FloatWindow::instance().Show(endMs, title, tags, isLocal, mode);
-                    result->Success();
-                } else if (call.method_name() == "hideFloat") {
-                    FloatWindow::instance().Hide();
-                    result->Success();
-
-                } else {
-                    result->NotImplemented();
+                } catch (const std::exception& ex) {
+                    OutputDebugStringA((std::string("[FloatWindow] exception in MethodCall handler: ") + ex.what() + "\n").c_str());
+                    try { result->Error("exception", ex.what()); } catch (...) {}
+                } catch (...) {
+                    OutputDebugStringA("[FloatWindow] unknown exception in MethodCall handler\n");
+                    try { result->Error("exception", "unknown"); } catch (...) {}
                 }
             }
     );

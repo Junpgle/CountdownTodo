@@ -20,6 +20,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'feature_guide_screen.dart';
 import '../services/course_service.dart';
 import '../services/reminder_schedule_service.dart';
+import '../services/float_window_service.dart';
 
 // 引入拆分的设置组件
 import 'settings/widgets/account_section.dart';
@@ -59,12 +60,11 @@ class _SettingsPageState extends State<SettingsPage> {
   MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   final ReceivePort _port = ReceivePort();
 
-  String _shizukuStatus = "点击右侧按钮获取或检查权限";
   String _islandStatus = "点击检测设备是否支持";
   String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)";
   bool _isCheckingUpdate = false;
   String _taiDbPath = '';
-  bool _floatWindowEnabled = true;
+  int _floatWindowStyle = 0; // 0: 经典, 1: 灵动岛, 2: 关闭
 
   // 逻辑处理器
   late CourseImportHandler _courseImportHandler;
@@ -268,7 +268,7 @@ class _SettingsPageState extends State<SettingsPage> {
     DateTime? sEnd = await StorageService.getSemesterEnd();
 
     String? noCourseBehaviorPref = prefs.getString('no_course_behavior');
-    bool floatEnabled = prefs.getBool('float_window_enabled') ?? true;
+    int style = prefs.getInt('float_window_style') ?? 0;
 
     setState(() {
       _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? "未登录";
@@ -282,7 +282,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (noCourseBehaviorPref != null) {
         _noCourseBehavior = noCourseBehaviorPref;
       }
-      _floatWindowEnabled = floatEnabled;
+      _floatWindowStyle = style;
     });
     if (Platform.isWindows) {
       final taiPath = await TaiService.getSavedDbPath() ??
@@ -677,10 +677,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<String> _getAuthToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token') ?? '';
-  }
+  // Removed unused _getAuthToken helper
 
   Future<void> _checkUpdatesAndNotices() async {
     setState(() => _isCheckingUpdate = true);
@@ -907,14 +904,33 @@ class _SettingsPageState extends State<SettingsPage> {
           },
           taiDbPath: _taiDbPath,
           onPickTaiDatabase: _pickTaiDatabase,
-          floatWindowEnabled: _floatWindowEnabled,
-          onFloatWindowEnabledChanged: Platform.isWindows
-              ? (val) async {
-            setState(() => _floatWindowEnabled = val);
+          floatWindowStyle: _floatWindowStyle,
+          onFloatWindowStyleChanged: Platform.isWindows ? (val) async {
+            if (val == null) return;
+            setState(() => _floatWindowStyle = val);
             final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('float_window_enabled', val);
-          }
-              : null,
+            await prefs.setInt('float_window_style', val);
+            // If it's set to closed (2), also mark enabled false for compatibility
+            if (val == 2) {
+              await prefs.setBool('float_window_enabled', false);
+            } else {
+              await prefs.setBool('float_window_enabled', true);
+            }
+            // Do not await update() here because invoking native plugins
+            // (desktop_multi_window / method channel) may block briefly and
+            // cause the UI to appear frozen. Dispatch as a microtask so the
+            // settings UI remains responsive while the update proceeds in
+            // the background.
+            Future.microtask(() async {
+              try {
+                await FloatWindowService.update(forceReset: true);
+              } catch (_) {}
+            });
+          } : null,
+          onForceRefreshPressed: Platform.isWindows ? () async {
+            // Center main window and request native float reset
+            await FloatWindowService.resetPositions();
+          } : null,
         ),
         PermissionSection(
           permissionDefs: PermissionHandler.permissionDefs,
@@ -1060,14 +1076,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   },
                   taiDbPath: _taiDbPath,
                   onPickTaiDatabase: _pickTaiDatabase,
-                  floatWindowEnabled: _floatWindowEnabled,
-                  onFloatWindowEnabledChanged: Platform.isWindows
-                      ? (val) async {
-                    setState(() => _floatWindowEnabled = val);
+                  floatWindowStyle: _floatWindowStyle,
+                  onFloatWindowStyleChanged: Platform.isWindows ? (val) async {
+                    if (val == null) return;
+                    setState(() => _floatWindowStyle = val);
                     final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('float_window_enabled', val);
-                  }
-                      : null,
+                    await prefs.setInt('float_window_style', val);
+                    if (val == 2) {
+                      await prefs.setBool('float_window_enabled', false);
+                    } else {
+                      await prefs.setBool('float_window_enabled', true);
+                    }
+                    try {
+                      await FloatWindowService.update(forceReset: true);
+                    } catch (_) {}
+                  } : null,
+                  onForceRefreshPressed: Platform.isWindows ? () async {
+                    await FloatWindowService.resetPositions();
+                  } : null,
                 ),
                 PermissionSection(
                   permissionDefs: PermissionHandler.permissionDefs,

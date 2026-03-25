@@ -56,12 +56,19 @@ void FloatWindow::LoadState() {
 }
 
 void FloatWindow::Render() {
-    if (!hwnd_) return;
+    HDC hdcScreen = nullptr;
+    HDC memDC = nullptr;
+    HBITMAP memBmp = nullptr;
+    HBITMAP oldBmp = nullptr;
+    void* pBits = nullptr;
     int W = winW_;
     int H = winH_;
+    if (!hwnd_) return;
 
-    HDC hdcScreen = GetDC(NULL);
-    HDC memDC     = CreateCompatibleDC(hdcScreen);
+    hdcScreen = GetDC(NULL);
+    if (!hdcScreen) return;
+    memDC = CreateCompatibleDC(hdcScreen);
+    if (!memDC) { ReleaseDC(NULL, hdcScreen); return; }
 
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
@@ -71,16 +78,16 @@ void FloatWindow::Render() {
     bmi.bmiHeader.biBitCount    = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    void* pBits = nullptr;
-    HBITMAP memBmp = CreateDIBSection(hdcScreen, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
+    memBmp = CreateDIBSection(hdcScreen, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
     if (!memBmp) { DeleteDC(memDC); ReleaseDC(NULL, hdcScreen); return; }
-    HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
+    oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
     memset(pBits, 0, W * H * 4);
 
     {
-        Graphics g(memDC);
-        g.SetSmoothingMode(SmoothingModeAntiAlias);
-        g.SetTextRenderingHint(TextRenderingHintAntiAlias);
+        try {
+            Graphics g(memDC);
+            g.SetSmoothingMode(SmoothingModeAntiAlias);
+            g.SetTextRenderingHint(TextRenderingHintAntiAlias);
 
         int r = 12;
 
@@ -220,29 +227,34 @@ void FloatWindow::Render() {
                 PointF((float)(W - 2),  (float)(H - 2)),
         };
         g.FillPolygon(&resizeBr, tri, 3);
+        } catch (const std::exception& ex) {
+            OutputDebugStringA((std::string("[FloatWindow] exception in Render: ") + ex.what() + "\n").c_str());
+        } catch (...) {
+            OutputDebugStringA("[FloatWindow] unknown exception in Render\n");
+        }
     }
 
-    BLENDFUNCTION bf = {};
-    bf.BlendOp             = AC_SRC_OVER;
-    bf.SourceConstantAlpha = alpha_;
-    bf.AlphaFormat         = AC_SRC_ALPHA;
-    RECT wr;
-    GetWindowRect(hwnd_, &wr);
-    POINT ptDest = { wr.left, wr.top };
-    POINT ptSrc  = { 0, 0 };
-    SIZE  szWnd  = { W, H };
-    UpdateLayeredWindow(hwnd_, hdcScreen, &ptDest, &szWnd, memDC, &ptSrc, 0, &bf, ULW_ALPHA);
+            BLENDFUNCTION bf = {};
+            bf.BlendOp             = AC_SRC_OVER;
+            bf.SourceConstantAlpha = alpha_;
+            bf.AlphaFormat         = AC_SRC_ALPHA;
+            RECT wr;
+            GetWindowRect(hwnd_, &wr);
+            POINT ptDest = { wr.left, wr.top };
+            POINT ptSrc  = { 0, 0 };
+            SIZE  szWnd  = { W, H };
+            UpdateLayeredWindow(hwnd_, hdcScreen, &ptDest, &szWnd, memDC, &ptSrc, 0, &bf, ULW_ALPHA);
 
-    SelectObject(memDC, oldBmp);
-    DeleteObject(memBmp);
-    DeleteDC(memDC);
-    ReleaseDC(NULL, hdcScreen);
+            if (memDC && oldBmp) SelectObject(memDC, oldBmp);
+            if (memBmp) DeleteObject(memBmp);
+            if (memDC) DeleteDC(memDC);
+            if (hdcScreen) ReleaseDC(NULL, hdcScreen);
 }
 
 LRESULT CALLBACK FloatWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-FloatWindow* self = reinterpret_cast<FloatWindow*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    FloatWindow* self = reinterpret_cast<FloatWindow*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
-switch (msg) {
+    switch (msg) {
 case WM_CREATE:
 SetTimer(hwnd, 1, 1000, nullptr);
 break;
@@ -369,49 +381,63 @@ KillTimer(hwnd, 1);
 PostQuitMessage(0);
 break;
 }
-return DefWindowProcW(hwnd, msg, wParam, lParam);
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
 void FloatWindow::RunLoop(long long endMs, std::wstring title, std::vector<std::wstring> tags, int mode) {
     GdiplusStartupInput gi;
-    GdiplusStartup(&gdiplusToken_, &gi, nullptr);
-
-    endMs_ = endMs;
-    title_ = std::move(title);
-    tags_  = std::move(tags);
-    mode_  = mode;
-
-    LoadState();
-
-    HINSTANCE hInst = GetModuleHandleW(nullptr);
-    WNDCLASSEXW wc = {};
-    wc.cbSize        = sizeof(wc);
-    wc.lpfnWndProc   = WndProc;
-    wc.hInstance     = hInst;
-    wc.lpszClassName = kClass;
-    wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
-    RegisterClassExW(&wc);
-
-    int x = (winX_ >= 0) ? winX_ : GetSystemMetrics(SM_CXSCREEN) - winW_ - 20;
-    int y = (winY_ >= 0) ? winY_ : 20;
-
-    hwnd_ = CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
-            kClass, L"", WS_POPUP,
-            x, y, winW_, winH_,
-            nullptr, nullptr, hInst, nullptr
-    );
-    if (!hwnd_) { GdiplusShutdown(gdiplusToken_); return; }
-
-    SetWindowLongPtrW(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-    ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
-    Render();
-
-    MSG msg;
-    while (running_ && GetMessageW(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+    if (GdiplusStartup(&gdiplusToken_, &gi, nullptr) != Ok) {
+        OutputDebugStringA("[FloatWindow] GdiplusStartup failed\n");
+        return;
     }
+
+    try {
+        endMs_ = endMs;
+        title_ = std::move(title);
+        tags_  = std::move(tags);
+        mode_  = mode;
+
+        LoadState();
+
+        HINSTANCE hInst = GetModuleHandleW(nullptr);
+        WNDCLASSEXW wc = {};
+        wc.cbSize        = sizeof(wc);
+        wc.lpfnWndProc   = WndProc;
+        wc.hInstance     = hInst;
+        wc.lpszClassName = kClass;
+        wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
+        RegisterClassExW(&wc);
+
+        int x = (winX_ >= 0) ? winX_ : GetSystemMetrics(SM_CXSCREEN) - winW_ - 20;
+        int y = (winY_ >= 0) ? winY_ : 20;
+
+        hwnd_ = CreateWindowExW(
+                WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
+                kClass, L"", WS_POPUP,
+                x, y, winW_, winH_,
+                nullptr, nullptr, hInst, nullptr
+        );
+        if (!hwnd_) {
+            OutputDebugStringA("[FloatWindow] CreateWindowExW failed\n");
+            GdiplusShutdown(gdiplusToken_);
+            return;
+        }
+
+        SetWindowLongPtrW(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+        ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
+        Render();
+
+        MSG msg;
+        while (running_ && GetMessageW(&msg, nullptr, 0, 0)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    } catch (const std::exception& ex) {
+        OutputDebugStringA((std::string("[FloatWindow] exception in RunLoop: ") + ex.what() + "\n").c_str());
+    } catch (...) {
+        OutputDebugStringA("[FloatWindow] unknown exception in RunLoop\n");
+    }
+
     GdiplusShutdown(gdiplusToken_);
 }
 
@@ -431,7 +457,19 @@ void FloatWindow::Hide() {
         PostMessageW(hwnd_, WM_CLOSE, 0, 0);
         hwnd_ = nullptr;
     }
-    if (thread_.joinable()) {
-        thread_.join();
+    try {
+        if (thread_.joinable()) {
+            // Avoid joining the thread from itself (would deadlock).
+            if (thread_.get_id() != std::this_thread::get_id()) {
+                thread_.join();
+            } else {
+                // We're on the float thread; skip join to avoid deadlock.
+                OutputDebugStringA("[FloatWindow] Hide called from float thread; skipping join\n");
+            }
+        }
+    } catch (const std::exception& ex) {
+        OutputDebugStringA((std::string("[FloatWindow] exception during Hide join: ") + ex.what() + "\n").c_str());
+    } catch (...) {
+        OutputDebugStringA("[FloatWindow] unknown exception during Hide join\n");
     }
 }

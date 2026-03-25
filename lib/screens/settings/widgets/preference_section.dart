@@ -11,8 +11,9 @@ class PreferenceSection extends StatelessWidget {
   final ValueChanged<String?> onThemeModeChanged;
   final String taiDbPath;
   final VoidCallback onPickTaiDatabase;
-  final bool floatWindowEnabled;
-  final ValueChanged<bool>? onFloatWindowEnabledChanged;
+  final int floatWindowStyle; // 0: 经典, 1: 灵动岛, 2: 关闭
+  final ValueChanged<int?>? onFloatWindowStyleChanged;
+  final VoidCallback? onForceRefreshPressed;
 
   const PreferenceSection({
     Key? key,
@@ -25,8 +26,9 @@ class PreferenceSection extends StatelessWidget {
     required this.onThemeModeChanged,
     required this.taiDbPath,
     required this.onPickTaiDatabase,
-    required this.floatWindowEnabled,
-    this.onFloatWindowEnabledChanged,
+    required this.floatWindowStyle,
+    this.onFloatWindowStyleChanged,
+    this.onForceRefreshPressed,
   }) : super(key: key);
 
   @override
@@ -120,13 +122,29 @@ class PreferenceSection extends StatelessWidget {
                   onTap: onPickTaiDatabase,
                 ),
                 const Divider(height: 1, indent: 56),
-                SwitchListTile(
-                  secondary: const Icon(Icons.picture_in_picture_alt_outlined,
-                      color: Colors.indigo),
+                ListTile(
+                  leading: const Icon(Icons.picture_in_picture_alt_outlined, color: Colors.indigo),
                   title: const Text('番茄钟悬浮窗'),
-                  subtitle: const Text('专注/跨端观察时显示桌面悬浮倒计时'),
-                  value: floatWindowEnabled,
-                  onChanged: onFloatWindowEnabledChanged,
+                  subtitle: const Text('选择桌面悬浮窗样式（经典 / 灵动岛 / 关闭）'),
+                  trailing: DropdownButton<int>(
+                    value: floatWindowStyle,
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text('经典')),
+                      DropdownMenuItem(value: 1, child: Text('灵动岛')),
+                      DropdownMenuItem(value: 2, child: Text('关闭')),
+                    ],
+                    onChanged: onFloatWindowStyleChanged,
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(Icons.refresh, color: Colors.indigo),
+                  title: const Text('强制刷新悬浮窗位置'),
+                  subtitle: const Text('若悬浮窗丢失或闪退，点击可将主窗口居中并请求悬浮窗重置位置'),
+                  trailing: TextButton(
+                    onPressed: onForceRefreshPressed,
+                    child: const Text('强制刷新'),
+                  ),
                 ),
               ],
             ],
