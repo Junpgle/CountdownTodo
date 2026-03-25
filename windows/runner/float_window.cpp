@@ -5,6 +5,15 @@
 #pragma comment(lib, "gdiplus.lib")
 using namespace Gdiplus;
 
+FloatWindow::~FloatWindow() {
+    // Ensure the float window thread is stopped and resources are released.
+    try {
+        Hide();
+    } catch (...) {
+        OutputDebugStringA("[FloatWindow] exception in destructor while hiding\n");
+    }
+}
+
 std::wstring FloatWindow::FmtSecs(int secs) {
     if (secs < 0) secs = 0;
     wchar_t buf[16];
@@ -384,7 +393,7 @@ break;
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-void FloatWindow::RunLoop(long long endMs, std::wstring title, std::vector<std::wstring> tags, int mode) {
+void FloatWindow::RunLoop() {
     GdiplusStartupInput gi;
     if (GdiplusStartup(&gdiplusToken_, &gi, nullptr) != Ok) {
         OutputDebugStringA("[FloatWindow] GdiplusStartup failed\n");
@@ -392,11 +401,8 @@ void FloatWindow::RunLoop(long long endMs, std::wstring title, std::vector<std::
     }
 
     try {
-        endMs_ = endMs;
-        title_ = std::move(title);
-        tags_  = std::move(tags);
-        mode_  = mode;
-
+        // RunLoop uses member variables (endMs_, title_, tags_, mode_, etc.)
+        // which should be initialized by Show() before the thread starts.
         LoadState();
 
         HINSTANCE hInst = GetModuleHandleW(nullptr);
@@ -442,12 +448,33 @@ void FloatWindow::RunLoop(long long endMs, std::wstring title, std::vector<std::
 }
 
 void FloatWindow::Show(long long endMs, const std::wstring& title,
-                       const std::vector<std::wstring>& tags, bool isLocal, int mode) {
+                       const std::vector<std::wstring>& tags, bool isLocal, int mode,
+                       int style, const std::wstring& left, const std::wstring& right,
+                       bool forceReset, const std::wstring& reminder, const std::wstring& reminderType,
+                       const DetailCardInfo& detail, const std::wstring& topBarLeft,
+                       const std::wstring& topBarRight, const std::vector<ReminderItem>& reminderQueue) {
+    // Initialize state from parameters and start the float window thread which
+    // runs RunLoop() and uses the member variables.
     Hide();
     isLocal_ = isLocal;
+    endMs_ = endMs;
+    title_ = title;
+    tags_ = tags;
+    mode_ = mode;
+    style_ = static_cast<Style>(style);
+    leftText_ = left;
+    rightText_ = right;
+    reminderText_ = reminder;
+    reminderType_ = reminderType;
+    detailCard_ = detail;
+    topBarLeft_ = topBarLeft;
+    topBarRight_ = topBarRight;
+    reminderQueue_ = reminderQueue;
+
     running_ = true;
-    thread_ = std::thread([this, endMs, title, tags, mode]() {
-        RunLoop(endMs, title, tags, mode);
+    // Start the thread which will call RunLoop() (no args)
+    thread_ = std::thread([this]() {
+        RunLoop();
     });
 }
 

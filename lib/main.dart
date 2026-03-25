@@ -13,6 +13,7 @@ import 'storage_service.dart';
 import 'services/api_service.dart';
 import 'services/float_window_service.dart';
 import 'windows_island/island_debug.dart';
+import 'windows_island/island_entry.dart' as island_entry;
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -25,14 +26,38 @@ class MyHttpOverrides extends HttpOverrides {
   }
 }
 
-void main() {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // If this engine was launched by desktop_multi_window for a secondary
+  // window, the embedder will pass arguments like: ["multi_window", windowId, windowArgument]
+  // In that case we should route directly to the island entrypoint instead
+  // of starting the full main app (which would spawn a duplicate main window).
+  try {
+    if (args.isNotEmpty && args[0] == 'multi_window') {
+      // Delegate to island entrypoint. islandMain will call runApp for the
+      // island UI and return.
+      await island_entry.islandMain(args);
+      return;
+    }
+  } catch (_) {}
 
   // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
   HttpOverrides.global = MyHttpOverrides();
 
   // 初始化 FloatWindowService（注册 native handler）
   FloatWindowService.init();
+
+  // Register island entry as a tear-off so the desktop_multi_window plugin
+  // can start a new Dart isolate using this symbol name. The plugin expects
+  // the entrypoint to be available; when creating windows it passes the
+  // entrypoint string (we use 'island') and the native side will launch an
+  // isolate that invokes this function.
+  // Note: desktop_multi_window typically locates a top-level function by
+  // name; ensure your build includes this symbol. We expose `islandMain` by
+  // importing island_entry above.
+  // There's no extra code required here; the `island_entry.islandMain`
+  // function is available as a top-level symbol when compiled.
 
   // 立刻运行 App，让引擎画出第一帧，彻底消除黑屏
   runApp(const MyApp());

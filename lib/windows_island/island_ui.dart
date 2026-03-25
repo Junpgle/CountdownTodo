@@ -1,26 +1,34 @@
 import 'package:flutter/material.dart';
-import 'package:window_manager/window_manager.dart';
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 enum IslandState { idle, hoverWide, splitAlert, stackedCard, finishConfirm, abandonConfirm }
 
 class IslandUI extends StatefulWidget {
   final Map<String, dynamic>? initialPayload;
   final void Function(String action, [int? modifiedSecs])? onAction;
-  const IslandUI({super.key, this.initialPayload, this.onAction});
+  // A notifier the island entrypoint can update to push payloads into this UI.
+  final ValueNotifier<Map<String, dynamic>?>? payloadNotifier;
+  const IslandUI({super.key, this.initialPayload, this.onAction, this.payloadNotifier});
 
   @override
   State<IslandUI> createState() => _IslandUIState();
 }
 
-class _IslandUIState extends State<IslandUI> with WindowListener {
+class _IslandUIState extends State<IslandUI> {
   IslandState _state = IslandState.idle;
   String _title = '';
 
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
     _applyPayload(widget.initialPayload);
+    if (widget.payloadNotifier != null) {
+      widget.payloadNotifier!.addListener(_onNotifierPayload);
+    }
+  }
+
+  void _onNotifierPayload() {
+    _applyPayload(widget.payloadNotifier!.value);
   }
 
   void _applyPayload(Map<String, dynamic>? payload) {
@@ -34,7 +42,9 @@ class _IslandUIState extends State<IslandUI> with WindowListener {
 
   @override
   void dispose() {
-    windowManager.removeListener(this);
+    if (widget.payloadNotifier != null) {
+      try { widget.payloadNotifier!.removeListener(_onNotifierPayload); } catch (_) {}
+    }
     super.dispose();
   }
 
@@ -57,7 +67,22 @@ class _IslandUIState extends State<IslandUI> with WindowListener {
 
   Widget _buildPill(String text, Color color) {
     return GestureDetector(
-      onPanStart: (_) => windowManager.startDragging(),
+      onPanStart: (_) async {
+        // Use WindowController to request a drag from the native window for
+        // this island window. Different implementations of the host native
+        // code may expose different method names; try a few common ones and
+        // ignore errors so this remains a best-effort action in child engines.
+        try {
+          final controller = await WindowController.fromCurrentEngine();
+          await controller.invokeMethod('window_start_drag').catchError((_) async {
+            await controller.invokeMethod('startDragging').catchError((_) async {
+              await controller.invokeMethod('window_startDragging').catchError((_) {});
+            });
+          });
+        } catch (_) {
+          // If controller isn't available (fallback/debug), do nothing.
+        }
+      },
       onTap: () {
         setState(() {
           _state = IslandState.splitAlert;
