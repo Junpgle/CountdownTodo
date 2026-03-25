@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 // dart:convert not required here
 import 'package:flutter/foundation.dart';
 import 'package:window_manager/window_manager.dart';
@@ -316,19 +317,50 @@ class FloatWindowService {
         }
 
         try {
+          // Avoid concurrent createWindow races. If another flow is already
+          // creating the island, wait briefly for it to finish and reuse the
+          // produced window id instead of creating a duplicate window.
           if (_islandWindowId == null) {
-            debugPrint('[FloatWindow] desktop_multi_window.createWindow -> arguments=islandMain');
-            final res = await dmwInvoke('createWindow', {
-              'arguments': 'islandMain',
-              'hiddenAtLaunch': false,
-              'payload': dto.toMap(),
-            }, attempts: 2, timeout: const Duration(milliseconds: 2000));
-            if (res is String && res.isNotEmpty) {
-              _islandWindowId = res;
-              debugPrint('[FloatWindow] created island window id=$_islandWindowId');
-              return; // delivered to multi-window host
-            } else {
-              debugPrint('[FloatWindow] desktop_multi_window.createWindow returned null/timeout or unexpected: $res');
+            if (_creatingIsland) {
+              // Wait up to ~2s for the other creator to finish.
+              final end = DateTime.now().add(const Duration(milliseconds: 2000));
+              while (_creatingIsland && DateTime.now().isBefore(end)) {
+                await Future.delayed(const Duration(milliseconds: 80));
+              }
+            }
+
+            // If another task created the island while we waited, try posting to it.
+            if (_islandWindowId != null) {
+              final postRes = await dmwInvoke('postWindowMessage', {'windowId': _islandWindowId, 'payload': dto.toMap()}, attempts: 2, timeout: const Duration(milliseconds: 2000));
+                if (postRes != null) {
+                    debugPrint('[FloatWindow] posted payload to island window id=$_islandWindowId');
+                    return;
+                  } else {
+                    debugPrint('[FloatWindow] desktop_multi_window.postWindowMessage returned null/timeout; clearing cached island id=$_islandWindowId');
+                    // The target window may have been closed on the native side; clear
+                    // the cached id so subsequent updates will attempt to recreate it.
+                    _islandWindowId = null;
+                  }
+                }
+
+            // Otherwise, attempt to create the island window (mark that we're creating)
+            _creatingIsland = true;
+            try {
+              debugPrint('[FloatWindow] desktop_multi_window.createWindow -> arguments=islandMain');
+              final res = await dmwInvoke('createWindow', {
+                'arguments': 'islandMain',
+                'hiddenAtLaunch': false,
+                'payload': dto.toMap(),
+              }, attempts: 2, timeout: const Duration(milliseconds: 2000));
+              if (res is String && res.isNotEmpty) {
+                _islandWindowId = res;
+                debugPrint('[FloatWindow] created island window id=$_islandWindowId');
+                return; // delivered to multi-window host
+              } else {
+                debugPrint('[FloatWindow] desktop_multi_window.createWindow returned null/timeout or unexpected: $res');
+              }
+            } finally {
+              _creatingIsland = false;
             }
           } else {
             final postRes = await dmwInvoke('postWindowMessage', {'windowId': _islandWindowId, 'payload': dto.toMap()}, attempts: 2, timeout: const Duration(milliseconds: 2000));
@@ -336,7 +368,8 @@ class FloatWindowService {
               debugPrint('[FloatWindow] posted payload to island window id=$_islandWindowId');
               return;
             } else {
-              debugPrint('[FloatWindow] desktop_multi_window.postWindowMessage returned null/timeout');
+              debugPrint('[FloatWindow] desktop_multi_window.postWindowMessage returned null/timeout; clearing cached island id=$_islandWindowId');
+              _islandWindowId = null;
             }
           }
         } catch (e) {
@@ -381,6 +414,8 @@ class FloatWindowService {
   // Cached island window id (if created via desktop_multi_window). The plugin
   // returns a string id for windows, not an int.
   static String? _islandWindowId;
+  // Guard to avoid concurrent createWindow races
+  static bool _creatingIsland = false;
   // Whether desktop_multi_window appears to be available in this runtime.
   // If we detect MissingPluginException or repeated timeouts, mark false
   // to avoid repeated blocking attempts.
@@ -390,165 +425,143 @@ class FloatWindowService {
   // Set to false in normal runs so the legacy native float (windows) is used
   // when desktop_multi_window is unavailable.
   static const bool _disableLegacyFloat = false;
-
   /// Returns structured data for a given slot type
   static Future<Map<String, String>> _getSlotData(String type,
       {required bool isLeft}) async {
     final username = await StorageService.getLoginSession() ?? 'default';
-    switch (type) {
-      case 'todo':
-        final todos = await StorageService.getTodos(username);
-        final active = todos.where((t) => !t.isDone && !t.isDeleted).toList();
-        if (active.isEmpty) return {'display': '无待办', 'type': 'todo'};
-        active.sort((a, b) {
-          if (a.dueDate == null && b.dueDate == null)
-            return b.createdAt.compareTo(a.createdAt);
-          if (a.dueDate == null) return 1;
-          if (b.dueDate == null) return -1;
-          return a.dueDate!.compareTo(b.dueDate!);
-        });
-        final t = active.first;
-        final time =
-            t.dueDate != null ? DateFormat('MM-dd').format(t.dueDate!) : '';
-        final display = isLeft
-            ? (time.isNotEmpty ? '[$time] ${t.title}' : t.title)
-            : (time.isNotEmpty ? '${t.title} [$time]' : t.title);
-        
-        String timeRange = '';
-        if (t.dueDate != null) {
-          timeRange = DateFormat('HH:mm').format(t.dueDate!);
-        }
-        
-        return {
-          'display': display,
-          'type': 'todo',
-          'detail_title': t.title,
-          'detail_subtitle': t.remark ?? '',
-          'detail_location': '',
-          'detail_time': timeRange,
-          'detail_note': time.isNotEmpty ? time : '',
-        };
-      case 'course':
-        try {
-          final dashboard = await CourseService.getDashboardCourses();
-          final courses = dashboard['courses'] as List?;
-          if (courses != null && courses.isNotEmpty) {
-            final now = DateTime.now();
-            final valid = courses.where((c) {
-              if (c is! CourseItem) return false;
-              if (dashboard['title'] == '今日课程') {
-                return (8 + (c.startTime - 1)) >= now.hour;
-              }
-              return true;
-            }).toList();
+    try {
+      switch (type) {
+        case 'todo':
+          final todos = await StorageService.getTodos(username);
+          final active = todos.where((t) => !t.isDone && !t.isDeleted).toList();
+          if (active.isEmpty) return {'display': '无待办', 'type': 'todo'};
+          active.sort((a, b) {
+            if (a.dueDate == null && b.dueDate == null)
+              return b.createdAt.compareTo(a.createdAt);
+            if (a.dueDate == null) return 1;
+            if (b.dueDate == null) return -1;
+            return a.dueDate!.compareTo(b.dueDate!);
+          });
+          final t = active.first;
+          final time = t.dueDate != null ? DateFormat('MM-dd').format(t.dueDate!) : '';
+          final display = isLeft
+              ? (time.isNotEmpty ? '[$time] ${t.title}' : t.title)
+              : (time.isNotEmpty ? '${t.title} [$time]' : t.title);
 
-            if (valid.isNotEmpty) {
-              final c = valid.first as CourseItem;
-              final time = c.formattedStartTime;
-              final display = isLeft
-                  ? '[$time] ${c.courseName}'
-                  : '${c.courseName} [$time]';
+          String timeRange = '';
+          if (t.dueDate != null) {
+            timeRange = DateFormat('HH:mm').format(t.dueDate!);
+          }
+
+          return {
+            'display': display,
+            'type': 'todo',
+            'detail_title': t.title,
+            'detail_subtitle': t.remark ?? '',
+            'detail_location': '',
+            'detail_time': timeRange,
+            'detail_note': time.isNotEmpty ? time : '',
+          };
+        case 'course':
+          try {
+            final dashboard = await CourseService.getDashboardCourses();
+            final courses = dashboard['courses'] as List?;
+            if (courses != null && courses.isNotEmpty) {
+              final now = DateTime.now();
+              final valid = courses.where((c) {
+                if (c is! CourseItem) return false;
+                if (dashboard['title'] == '今日课程') {
+                  return (8 + (c.startTime - 1)) >= now.hour;
+                }
+                return true;
+              }).toList();
+
+              if (valid.isNotEmpty) {
+                final c = valid.first as CourseItem;
+                final time = c.formattedStartTime;
+                final display = isLeft ? '[$time] ${c.courseName}' : '${c.courseName} [$time]';
+                return {
+                  'display': display,
+                  'type': 'course',
+                  'detail_title': c.courseName,
+                  'detail_subtitle': c.teacherName,
+                  'detail_location': c.roomName,
+                  'detail_time': '${c.formattedStartTime}开始',
+                  'detail_note': '',
+                };
+              }
+            }
+          } catch (_) {}
+          return {'display': '无课程', 'type': 'course'};
+        case 'record':
+          try {
+            final records = await PomodoroService.getRecords();
+            if (records.isNotEmpty) {
+              final r = records.first;
+              final time = DateFormat('HH:mm')
+                  .format(DateTime.fromMillisecondsSinceEpoch(r.endTime ?? r.startTime));
+              final title = r.todoTitle ?? '专注';
               return {
-                'display': display,
-                'type': 'course',
-                'detail_title': c.courseName,
-                'detail_subtitle': c.teacherName,
-                'detail_location': c.roomName,
-                'detail_time': '${c.formattedStartTime}开始',
+                'display': isLeft ? '[$time] $title' : '$title [$time]',
+                'type': 'record',
+                'detail_title': title,
+                'detail_subtitle': '',
+                'detail_location': '',
+                'detail_time': time,
                 'detail_note': '',
               };
             }
-          }
-        } catch (_) {}
-        return {'display': '无课程', 'type': 'course'};
-      case 'record':
-        try {
-          final records = await PomodoroService.getRecords();
-          if (records.isNotEmpty) {
-            final r = records.first;
-            final time = DateFormat('HH:mm').format(
-                DateTime.fromMillisecondsSinceEpoch(r.endTime ?? r.startTime));
-            final title = r.todoTitle ?? '专注';
-            return {
-              'display': isLeft ? '[$time] $title' : '$title [$time]',
-              'type': 'record',
-              'detail_title': title,
-              'detail_subtitle': '',
-              'detail_location': '',
-              'detail_time': time,
-              'detail_note': '',
-            };
-          }
-        } catch (_) {}
-        return {'display': '无记录', 'type': 'record'};
-      case 'countdown':
-        try {
-          final cds = await StorageService.getCountdowns(username);
-          final now = DateTime.now();
-          final active = cds
-              .where((c) => !c.isDeleted && c.targetDate.isAfter(now))
-              .toList();
-          active.sort((a, b) => a.targetDate.compareTo(b.targetDate));
-          if (active.isNotEmpty) {
-            final c = active.first;
-            final days = c.targetDate.difference(now).inDays;
-            final info = '${days}天';
-            final display = isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
-            return {
-              'display': display,
-              'type': 'countdown',
-              'detail_title': c.title,
-              'detail_subtitle': '',
-              'detail_location': '',
-              'detail_time': DateFormat('yyyy-MM-dd').format(c.targetDate),
-              'detail_note': '还有${days}天',
-            };
-          }
-        } catch (_) {}
-        return {'display': '专注时钟', 'type': 'countdown'};
-      default:
-        return {'display': '', 'type': ''};
+          } catch (_) {}
+          return {'display': '无记录', 'type': 'record'};
+        case 'countdown':
+          try {
+            final cds = await StorageService.getCountdowns(username);
+            final now = DateTime.now();
+            final active = cds.where((c) => !c.isDeleted && c.targetDate.isAfter(now)).toList();
+            active.sort((a, b) => a.targetDate.compareTo(b.targetDate));
+            if (active.isNotEmpty) {
+              final c = active.first;
+              final days = c.targetDate.difference(now).inDays;
+              final info = '${days}天';
+              final display = isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
+              return {
+                'display': display,
+                'type': 'countdown',
+                'detail_title': c.title,
+                'detail_subtitle': '',
+                'detail_location': '',
+                'detail_time': DateFormat('yyyy-MM-dd').format(c.targetDate),
+                'detail_note': '还有${days}天',
+              };
+            }
+          } catch (_) {}
+          return {'display': '专注时钟', 'type': 'countdown'};
+        default:
+          return {'display': '', 'type': type};
+      }
+    } catch (_) {
+      return {'display': '', 'type': type};
     }
   }
 
+  /// Returns a list of simple reminder items for the float window (short list)
   static Future<List<Map<String, String>>> _getReminderQueue() async {
-    final List<Map<String, String>> queue = [];
-    final username = await StorageService.getLoginSession() ?? 'default';
-
-    // 1. Courses for today
+    final queue = <Map<String, String>>[];
     try {
-      final dashboard = await CourseService.getDashboardCourses();
-      final courses = dashboard['courses'] as List?;
-      if (courses != null) {
-        final now = DateTime.now();
-        for (var c in courses) {
-          if (c is! CourseItem) continue;
-          // Only upcoming
-          if ((8 + (c.startTime - 1)) >= now.hour) {
-             queue.add({
-               'text': c.courseName,
-               'type': 'course',
-               'timeLabel': '${c.formattedStartTime}开始',
-             });
-          }
+      final username = await StorageService.getLoginSession() ?? 'default';
+      // Upcoming todos for today
+      final todos = await StorageService.getTodos(username);
+      final now = DateTime.now();
+      final active = todos.where((t) => !t.isDone && !t.isDeleted && t.dueDate != null).toList();
+      for (var t in active) {
+        if (t.dueDate!.year == now.year && t.dueDate!.month == now.month && t.dueDate!.day == now.day) {
+          queue.add({
+            'text': t.title,
+            'type': 'todo',
+            'timeLabel': DateFormat('HH:mm').format(t.dueDate!),
+          });
         }
       }
-    } catch (_) {}
-
-    // 2. Upcoming Todos (today or overdue)
-    try {
-       final todos = await StorageService.getTodos(username);
-       final active = todos.where((t) => !t.isDone && !t.isDeleted && t.dueDate != null).toList();
-       final now = DateTime.now();
-       for (var t in active) {
-         if (t.dueDate!.year == now.year && t.dueDate!.month == now.month && t.dueDate!.day == now.day) {
-            queue.add({
-               'text': t.title,
-               'type': 'todo',
-               'timeLabel': DateFormat('HH:mm').format(t.dueDate!),
-            });
-         }
-       }
     } catch (_) {}
 
     return queue;
