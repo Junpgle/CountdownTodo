@@ -170,6 +170,24 @@ Future<void> islandMain(List<String> args) async {
                 ReleaseCapture();
                 SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
                 debugPrint('[Island] Native dragging started for HWND $hwnd');
+
+                // After dragging finishes (SendMessage blocks), persist exact bounds
+                final rectPtr = calloc<RECT>();
+                GetWindowRect(hwnd, rectPtr);
+                final curX = rectPtr.ref.left;
+                final curY = rectPtr.ref.top;
+                final curW = rectPtr.ref.right - rectPtr.ref.left;
+                final curH = rectPtr.ref.bottom - rectPtr.ref.top;
+                calloc.free(rectPtr);
+
+                final scale = _getIslandScaleFactor(hwnd);
+
+                StorageService.saveIslandBounds('island-1', {
+                  'left': curX.toDouble(),
+                  'top': curY.toDouble(),
+                  'width': (curW / scale).ceilToDouble(),
+                  'height': (curH / scale).ceilToDouble(),
+                }).catchError((_) {});
               }
             } catch (e) {
               debugPrint('[Island] Native drag failed: $e');
@@ -185,43 +203,27 @@ Future<void> islandMain(List<String> args) async {
             }
           }
 
-          // Persist bounds when host or UI requests size/position changes
-          if (call.method == 'setWindowSize' ||
-              call.method == 'setWindowBounds' ||
-              call.method == 'windowMoved') {
+          // Persist bounds for other movement events
+          if (call.method == 'setWindowBounds' || call.method == 'windowMoved') {
             try {
-              final args = call.arguments as Map?;
-              if (args != null) {
-                // Normalize bounds map
-                final width = (args['width'] ??
-                        args['w'] ??
-                        args['size']?['width']) is num
-                    ? (args['width'] ?? args['w'] ?? args['size']?['width'])
-                        as num
-                    : null;
-                final height = (args['height'] ??
-                        args['h'] ??
-                        args['size']?['height']) is num
-                    ? (args['height'] ?? args['h'] ?? args['size']?['height'])
-                        as num
-                    : null;
-                final left = (args['left'] ?? args['x']) is num
-                    ? (args['left'] ?? args['x']) as num
-                    : null;
-                final top = (args['top'] ?? args['y']) is num
-                    ? (args['top'] ?? args['y']) as num
-                    : null;
-                final Map<String, dynamic> bounds = {};
-                if (width != null) bounds['width'] = width;
-                if (height != null) bounds['height'] = height;
-                if (left != null) bounds['left'] = left;
-                if (top != null) bounds['top'] = top;
-                if (bounds.isNotEmpty) {
-                  StorageService.saveIslandBounds(controller.windowId, bounds)
-                      .catchError((_) {});
-                  debugPrint(
-                      '[Island] persisted bounds for ${controller.windowId}: $bounds');
-                }
+              final hwnd = _getIslandHwnd();
+              if (hwnd != null) {
+                final rectPtr = calloc<RECT>();
+                GetWindowRect(hwnd, rectPtr);
+                final curX = rectPtr.ref.left;
+                final curY = rectPtr.ref.top;
+                final curW = rectPtr.ref.right - rectPtr.ref.left;
+                final curH = rectPtr.ref.bottom - rectPtr.ref.top;
+                calloc.free(rectPtr);
+                
+                final scale = _getIslandScaleFactor(hwnd);
+
+                StorageService.saveIslandBounds('island-1', {
+                  'left': curX.toDouble(),
+                  'top': curY.toDouble(),
+                  'width': (curW / scale).ceilToDouble(),
+                  'height': (curH / scale).ceilToDouble(),
+                }).catchError((_) {});
               }
             } catch (e) {
               debugPrint('[Island] failed to persist bounds: $e');
@@ -254,19 +256,19 @@ Future<void> islandMain(List<String> args) async {
               final height = ib['height'];
               final left = ib['left'];
               final top = ib['top'];
-              final args = <String, dynamic>{};
-              if (width != null) args['width'] = width;
-              if (height != null) args['height'] = height;
-              if (left != null) args['left'] = left;
-              if (top != null) args['top'] = top;
-              if (args.isNotEmpty) {
-                // Best-effort: request host to set window bounds
-                try {
-                  await controller
-                      .invokeMethod('setWindowBounds', args)
-                      .catchError((_) {});
-                  debugPrint('[Island] applied initialBounds: $args');
-                } catch (_) {}
+              if (width is num && height is num && left is num && top is num) {
+                // Apply physical exact bounds at startup
+                Future.microtask(() {
+                  final hw = _getIslandHwnd();
+                  if (hw != null) {
+                    final scale = _getIslandScaleFactor(hw);
+                    final phyW = (width * scale).ceil();
+                    final phyH = (height * scale).ceil();
+                    const int SWP_NOZORDER = 0x0004;
+                    const int SWP_NOACTIVATE = 0x0010;
+                    SetWindowPos(hw, 0, left.toInt(), top.toInt(), phyW, phyH, SWP_NOZORDER | SWP_NOACTIVATE);
+                  }
+                });
               }
             }
           } catch (_) {}
@@ -522,13 +524,49 @@ void _applyWin32FramelessTransparentImpl(int hwnd) {
 // Deprecated
 void _applyWin32FramelessTransparent() {}
 
-void _resizeCurrentWindow(int w, int h) {
+double _getIslandScaleFactor(int hwnd) {
+  try {
+    final hdc = GetDC(hwnd);
+    final dpi = GetDeviceCaps(hdc, 88); // LOGPIXELSX
+    ReleaseDC(hwnd, hdc);
+    if (dpi > 0) return dpi / 96.0;
+  } catch (_) {}
+  return 1.0;
+}
+
+void _resizeCurrentWindow(int targetW, int targetH) {
   final hwnd = _getIslandHwnd();
   if (hwnd == null) return;
   try {
-    SetWindowPos(
-        hwnd, 0, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    debugPrint('[Island] SetWindowPos ${w}x${h} -> HWND=$hwnd');
+    final scale = _getIslandScaleFactor(hwnd);
+    final int physicalW = (targetW * scale).ceil();
+    final int physicalH = (targetH * scale).ceil();
+
+    final rectPtr = calloc<RECT>();
+    GetWindowRect(hwnd, rectPtr);
+    final curX = rectPtr.ref.left;
+    final curY = rectPtr.ref.top;
+    final curW = rectPtr.ref.right - rectPtr.ref.left;
+    calloc.free(rectPtr);
+
+    int newX = curX;
+    int newY = curY;
+    if (curW > 0 && curW != physicalW) {
+      newX = curX - ((physicalW - curW) ~/ 2);
+    }
+    const int SWP_NOZORDER = 0x0004;
+    const int SWP_NOACTIVATE = 0x0010;
+
+    SetWindowPos(hwnd, 0, newX, newY, physicalW, physicalH, SWP_NOZORDER | SWP_NOACTIVATE);
+    
+    StorageService.saveIslandBounds('island-1', {
+      'left': newX.toDouble(),
+      'top': newY.toDouble(),
+      'width': targetW.toDouble(),
+      'height': targetH.toDouble(),
+    }).catchError((_) {});
+
+    debugPrint('[Island] SetWindowPos centered phy:${physicalW}x${physicalH} -> HWND=$hwnd');
   } catch (e) {
     debugPrint('[Island] resize failed: $e');
   }
