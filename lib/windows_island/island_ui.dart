@@ -49,6 +49,18 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   String _timeLabel = '';
   bool _isCountdown = true;
 
+  bool _transitioning = false;
+  int _transitionVersion = 0;
+  Timer? _hoverDebounce;
+  bool _isHovered = false;
+
+  WindowController? _windowController;
+
+  Future<WindowController> _getController() async {
+    _windowController ??= await WindowController.fromCurrentEngine();
+    return _windowController!;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -64,8 +76,30 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     widget.payloadNotifier?.addListener(_onNotifierPayload);
   }
 
+  IslandState _computeNextState(String stateStr) {
+    switch (stateStr) {
+      case 'idle':
+        return _isFocusing ? IslandState.focusing : IslandState.idle;
+      case 'focusing':
+        return IslandState.focusing;
+      case 'split_alert':
+        return IslandState.splitAlert;
+      case 'stacked_card':
+        return IslandState.stackedCard;
+      case 'finish_confirm':
+        return IslandState.finishConfirm;
+      case 'abandon_confirm':
+        return IslandState.abandonConfirm;
+      case 'finish_final':
+        return IslandState.finishFinal;
+      default:
+        return _isFocusing ? IslandState.focusing : IslandState.idle;
+    }
+  }
+
   @override
   void dispose() {
+    _hoverDebounce?.cancel();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _pulseController.dispose();
     _splitController.dispose();
@@ -85,76 +119,61 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final String stateStr = payload['state']?.toString() ?? 'idle';
 
     // Detect focusing based on state string, endMs, or a non-empty time label
-    // Check both local and remote (syncMode)
     final int endMs = focusData?['endMs'] ?? 0;
     final String timeLabel = focusData?['timeLabel']?.toString() ?? '';
     _isFocusing = stateStr == 'focusing' || endMs > 0 || timeLabel.isNotEmpty;
+
+    // Compute next state BEFORE setState
+    final IslandState nextStateCandidate = _computeNextState(stateStr);
 
     setState(() {
       if (focusData != null) {
         _timeLabel = timeLabel.isNotEmpty ? timeLabel : _timeLabel;
         _isCountdown = focusData['isCountdown'] ?? true;
-        _parseTimeLabel(
-            timeLabel); // Reset remaining secs based on payload if possible
-      }
-
-      // Map incoming state to internal IslandState
-      IslandState nextState = _state;
-      switch (stateStr) {
-        case 'idle':
-          nextState = _isFocusing ? IslandState.focusing : IslandState.idle;
-          break;
-        case 'focusing':
-          nextState = IslandState.focusing;
-          break;
-        case 'split_alert':
-          nextState = IslandState.splitAlert;
-          break;
-        case 'stacked_card':
-          nextState = IslandState.stackedCard;
-          break;
-        case 'finish_confirm':
-          nextState = IslandState.finishConfirm;
-          break;
-        case 'abandon_confirm':
-          nextState = IslandState.abandonConfirm;
-          break;
-        case 'finish_final':
-          nextState = IslandState.finishFinal;
-          break;
-        default:
-          nextState = _isFocusing ? IslandState.focusing : IslandState.idle;
-      }
-
-      if (nextState != _state) {
-        // If we are currently in a hover-expanded state, don't immediately
-        // transition back unless the new state is critical (focusing/alert)
-        if (_state == IslandState.hoverWide &&
-            (nextState == IslandState.idle ||
-                nextState == IslandState.focusing)) {
-          _savedStateBeforeHover = nextState;
-        } else {
-          _transitionToState(nextState);
-        }
       }
     });
 
-    // We always run the timer to update the idle system clock!
-    _startTimer();
+    // Handle transition outside of setState
+    if (nextStateCandidate != _state) {
+      if (_state == IslandState.hoverWide &&
+          (nextStateCandidate == IslandState.idle ||
+              nextStateCandidate == IslandState.focusing)) {
+        _savedStateBeforeHover = nextStateCandidate;
+      } else {
+        _transitionToState(nextStateCandidate);
+      }
+    }
+
+    // Only reset _remainingSecs if it's currently 0 or we have a forced update
+    if (_remainingSecs == 0 && timeLabel.isNotEmpty) {
+      _parseTimeLabel(timeLabel);
+    }
+
+    _ensureTimerRunning();
   }
 
   void _onHoverEnter() {
-    if (_state == IslandState.idle || _state == IslandState.focusing) {
-      _savedStateBeforeHover = _state;
-      _transitionToState(IslandState.hoverWide);
-    }
+    _hoverDebounce?.cancel();
+    _isHovered = true;
+    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
+      if (!_isHovered) return;
+      if (_state == IslandState.idle || _state == IslandState.focusing) {
+        _savedStateBeforeHover = _state;
+        _transitionToState(IslandState.hoverWide);
+      }
+    });
   }
 
   void _onHoverExit() {
-    if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
-      _transitionToState(_savedStateBeforeHover!);
-      _savedStateBeforeHover = null;
-    }
+    _hoverDebounce?.cancel();
+    _isHovered = false;
+    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
+      if (_isHovered) return; // Mouse returned quickly
+      if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
+        _transitionToState(_savedStateBeforeHover!);
+        _savedStateBeforeHover = null;
+      }
+    });
   }
 
   void _parseTimeLabel(String label) {
@@ -171,8 +190,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     } catch (_) {}
   }
 
-  void _startTimer() {
-    _countdownTimer?.cancel();
+  void _ensureTimerRunning() {
+    if (_countdownTimer?.isActive == true) return;
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -186,8 +205,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             _remainingSecs++;
           }
         }
-        // If not focusing, the setState still triggers a rebuild and updates
-        // _displayTime with the current system time.
       });
     });
   }
@@ -207,6 +224,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _transitionToState(IslandState nextState) async {
+    // If target state and current are same, skip
+    if (nextState == _state && !_transitioning) return;
+
+    // Increment version, making all old delayed callbacks invalid
+    final int myVersion = ++_transitionVersion;
+    _transitioning = true;
+
     final prevState = _state;
     final prevW = _width;
     final prevH = _height;
@@ -216,30 +240,36 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     switch (nextState) {
       case IslandState.idle:
         targetW = 120;
-        targetH = 34; // Black pill "12:15"
+        targetH = 34;
         break;
       case IslandState.focusing:
         targetW = 100;
-        targetH = 46; // Stacked "专注事项 20:05"
+        targetH = 46;
         break;
       case IslandState.hoverWide:
         targetW = 380;
-        targetH = 34; // Long pill with icons
+        targetH = 34;
         break;
       case IslandState.splitAlert:
         targetW = 300;
-        targetH = 36; // Two pills side-by-side
+        targetH = 36;
         break;
       case IslandState.stackedCard:
-        targetW = 280;
-        targetH = 140; // Local focus detail
-        break;
       case IslandState.finishConfirm:
       case IslandState.abandonConfirm:
       case IslandState.finishFinal:
-        targetW = 260;
-        targetH = 130;
+        targetW = nextState == IslandState.stackedCard ? 280 : 260;
+        targetH = nextState == IslandState.stackedCard ? 140 : 130;
         break;
+    }
+
+    final bool shrinking = targetW < prevW || targetH < prevH;
+    final double maxW = targetW > prevW ? targetW : prevW;
+    final double maxH = targetH > prevH ? targetH : prevH;
+
+    if (!mounted) {
+      _transitioning = false;
+      return;
     }
 
     setState(() {
@@ -248,27 +278,60 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       _height = targetH;
     });
 
-    if (nextState == IslandState.splitAlert)
+    if (nextState == IslandState.splitAlert) {
       _splitController.forward();
-    else if (prevState == IslandState.splitAlert) _splitController.reverse();
+    } else if (prevState == IslandState.splitAlert) {
+      _splitController.reverse();
+    }
 
-    bool shrinking = (targetW < prevW) || (targetH < prevH);
-    if (!shrinking) {
-      try {
-        final controller = await WindowController.fromCurrentEngine();
-        await controller.invokeMethod(
+    final ctrl = await _getController();
+
+    // Check version after await. If a newer transition started, exit.
+    if (!mounted || _transitionVersion != myVersion) {
+      _transitioning = false;
+      return;
+    }
+
+    try {
+      if (!shrinking) {
+        await ctrl.invokeMethod(
             'setWindowSize', {'width': targetW, 'height': targetH});
-      } catch (_) {}
-    } else {
-      Future.delayed(const Duration(milliseconds: 400), () async {
-        if (_state == nextState) {
+      } else {
+        // Immediately grow to max to cover transition
+        await ctrl.invokeMethod(
+            'setWindowSize', {'width': maxW, 'height': maxH});
+
+        // Delay shrinking
+        Future.delayed(const Duration(milliseconds: 420), () async {
+          // If version mismatch, a newer transition is active; do NOT shrink.
+          if (!mounted || _transitionVersion != myVersion) return;
           try {
-            final controller = await WindowController.fromCurrentEngine();
-            await controller.invokeMethod(
+            await ctrl.invokeMethod(
                 'setWindowSize', {'width': targetW, 'height': targetH});
           } catch (_) {}
-        }
-      });
+        });
+      }
+    } catch (_) {}
+
+    // Final state correction logic:
+    // After transition completes, verify if current _state matches _isHovered reality.
+    if (mounted && _transitionVersion == myVersion) {
+      _transitioning = false;
+      // If hovered but state is still small,补发 hoverWide
+      if (_isHovered &&
+          _state != IslandState.hoverWide &&
+          (_state == IslandState.idle || _state == IslandState.focusing)) {
+        _savedStateBeforeHover = _state;
+        _transitionToState(IslandState.hoverWide);
+      }
+      // If NOT hovered but state is still wide,补发收缩
+      else if (!_isHovered && _state == IslandState.hoverWide) {
+        final saved = _savedStateBeforeHover;
+        _savedStateBeforeHover = null;
+        if (saved != null) _transitionToState(saved);
+      }
+    } else {
+      _transitioning = false;
     }
   }
 
@@ -713,7 +776,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   void _startDragging() async {
     try {
-      final controller = await WindowController.fromCurrentEngine();
+      final controller = await _getController();
       await controller.invokeMethod('startDragging');
     } catch (_) {}
   }

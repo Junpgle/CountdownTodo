@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import '../windows_island/island_manager.dart';
 
 class WindowService with WindowListener {
   static const _keyX = 'main_window_x';
@@ -20,6 +21,7 @@ class WindowService with WindowListener {
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
     try {
       await windowManager.ensureInitialized();
+      await windowManager.setPreventClose(true);
       final prefs = await SharedPreferences.getInstance();
       final int? x = prefs.getInt(_keyX);
       final int? y = prefs.getInt(_keyY);
@@ -64,7 +66,12 @@ class WindowService with WindowListener {
   }
 
   // Unused listeners
-  @override void onWindowClose() {}
+  @override void onWindowClose() async {
+    try {
+      await IslandManager().destroyCachedIsland('island-1');
+    } catch (_) {}
+    windowManager.destroy();
+  }
   @override void onWindowEnterFullScreen() {}
   @override void onWindowLeaveFullScreen() {}
   @override void onWindowMaximize() {}

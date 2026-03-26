@@ -69,9 +69,15 @@ class FloatWindowService {
   // a separate native window). This helps during development before
   // the desktop_multi_window integration is completed.
   static ValueNotifier<Map<String, dynamic>?> debugPayload = ValueNotifier(null);
+  
+  static bool isWorkbenchMounted = false;
 
   static void _handleAction(String action, int secs) async {
     print('FloatWindow Action: $action, secs: $secs');
+    
+    if (isWorkbenchMounted && (action == 'finish' || action == 'abandon')) {
+      return; // WorkbenchView is alive and will handle this event, popping the UI dialog
+    }
     
     final saved = await PomodoroService.loadRunState();
     if (saved == null) {

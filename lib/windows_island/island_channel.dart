@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 class IslandChannel {
   // Use the desktop_multi_window plugin channel name to create/post/close windows
@@ -20,10 +21,13 @@ class IslandChannel {
   static void ensureInitialized() {
 	if (_handlerSet) return;
 	_handlerSet = true;
-	_dmw.setMethodCallHandler((call) async {
+	Future.microtask(() async {
 	  try {
-		debugPrint('[IslandChannel] incoming dmw method: ${call.method} args=${call.arguments}');
-		final args = call.arguments;
+		final controller = await WindowController.fromCurrentEngine();
+		controller.setWindowMethodHandler((call) async {
+	      try {
+			debugPrint('[IslandChannel] incoming controller method: ${call.method} args=${call.arguments}');
+			final args = call.arguments;
 		if (call.method == 'onAction') {
 		  if (args is Map && args['action'] == 'ready') {
 			// Try to extract windowId if present
@@ -63,10 +67,14 @@ class IslandChannel {
 		  // For now just log.
 		  debugPrint('[IslandChannel] host received postWindowMessage: $args');
 		}
+		  } catch (e) {
+			debugPrint('[IslandChannel] incoming handler error: $e');
+		  }
+		  return null;
+		});
 	  } catch (e) {
-		debugPrint('[IslandChannel] incoming handler error: $e');
+		debugPrint('[IslandChannel] failed to attach WindowController handler: $e');
 	  }
-	  return null;
 	});
   }
 

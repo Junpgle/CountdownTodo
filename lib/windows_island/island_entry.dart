@@ -326,7 +326,7 @@ Future<void> islandMain(List<String> args) async {
                       return;
                     }
 
-                    await controller.invokeMethod('onAction', {
+                    await WindowController.fromWindowId('0').invokeMethod('onAction', {
                       'action': action,
                       'modifiedSecs': modifiedSecs ?? 0,
                       'windowId': controller.windowId
@@ -362,7 +362,7 @@ Future<void> islandMain(List<String> args) async {
       // This is best-effort: ignore errors if host doesn't implement onAction.
       Future.microtask(() async {
         try {
-          await controller.invokeMethod('onAction', {
+          await WindowController.fromWindowId('0').invokeMethod('onAction', {
             'action': 'ready',
             'windowId': controller.windowId
           }).timeout(const Duration(milliseconds: 800), onTimeout: () => null);

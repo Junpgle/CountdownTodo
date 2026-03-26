@@ -18,6 +18,8 @@ import '../widgets/tag_manager_sheet.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
 import '../widgets/workbench_task_area.dart';
+import '../../../windows_island/island_channel.dart';
+import 'package:window_manager/window_manager.dart';
 
 class PomodoroWorkbench extends StatefulWidget {
   final String username;
@@ -91,9 +93,30 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   @override
   void initState() {
     super.initState();
+    FloatWindowService.isWorkbenchMounted = true;
     WidgetsBinding.instance.addObserver(this);
     _init();
     _listenToRunState();
+    _listenToIslandActions();
+  }
+
+  StreamSubscription? _islandSub;
+  void _listenToIslandActions() {
+    _islandSub = IslandChannel.actionStream.listen((actionData) {
+      if (!mounted) return;
+      if (actionData.isNotEmpty) {
+        final action = actionData['action']?.toString();
+        if (action == 'finish') {
+          windowManager.show();
+          windowManager.focus();
+          _onFocusEnd();
+        } else if (action == 'abandon') {
+          windowManager.show();
+          windowManager.focus();
+          _abandonFocus(true);
+        }
+      }
+    });
   }
 
   StreamSubscription? _runStateSub;
@@ -118,10 +141,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
 
   @override
   void dispose() {
+    FloatWindowService.isWorkbenchMounted = false;
     _ticker?.cancel();
     _remoteTicker?.cancel();
     _crossDeviceSub?.cancel();
     _runStateSub?.cancel();
+    _islandSub?.cancel();
     _wsConnected = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -989,23 +1014,27 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     }
   }
 
-  Future<void> _abandonFocus() async {
+  Future<void> _abandonFocus([bool skipDialog = false]) async {
     if (_isHandlingEnd) return;
     _isHandlingEnd = true;
     try {
       _ticker?.cancel(); _ticker = null;
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('放弃本次专注？'), content: const Text('本次专注记录将被丢弃。'),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('继续专注')),
-            FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red.shade400), onPressed: () => Navigator.pop(ctx, true), child: const Text('放弃')),
-          ],
-        ),
-      );
-      if (confirm == true) {
+      bool confirm = skipDialog;
+      if (!skipDialog) {
+        final res = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('放弃本次专注？'), content: const Text('本次专注记录将被丢弃。'),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('继续专注')),
+              FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red.shade400), onPressed: () => Navigator.pop(ctx, true), child: const Text('放弃')),
+            ],
+          ),
+        );
+        confirm = res == true;
+      }
+      if (confirm) {
         NotificationService.cancelNotification(); NotificationService.cancelReminder(40001); NotificationService.cancelReminder(40002);
         _syncService.sendStopSignal(); _showLocalFloat();
         final isCountUpMode = _settings.mode == TimerMode.countUp;
