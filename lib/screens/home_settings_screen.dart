@@ -36,6 +36,7 @@ import 'settings/widgets/system_section.dart';
 import 'settings/dialogs/change_password_dialog.dart';
 import 'settings/dialogs/home_section_manager_dialog.dart';
 import 'settings/dialogs/migration_dialog.dart';
+import 'settings/dialogs/island_priority_dialog.dart';
 
 // 引入逻辑处理器
 import 'settings/handlers/course_import_handler.dart';
@@ -352,6 +353,19 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (result == true) {
       _loadSettings();
+    }
+  }
+
+  void _showIslandPriorityDialog() async {
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (context) => const IslandPriorityDialog(),
+    );
+    if (changed == true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 灵动岛优先级已更新')));
+      }
+      FloatWindowService.update(); // trigger a re-render
     }
   }
 
@@ -936,6 +950,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       await IslandManager().recreateIsland('island-1');
                     } catch (_) {}
           } : null,
+          onIslandPriorityPressed: Platform.isWindows ? _showIslandPriorityDialog : null,
         ),
         PermissionSection(
           permissionDefs: PermissionHandler.permissionDefs,
@@ -1099,6 +1114,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   onForceRefreshPressed: Platform.isWindows ? () async {
                     await FloatWindowService.resetPositions();
                   } : null,
+                  onIslandPriorityPressed: Platform.isWindows ? _showIslandPriorityDialog : null,
                 ),
                 PermissionSection(
                   permissionDefs: PermissionHandler.permissionDefs,

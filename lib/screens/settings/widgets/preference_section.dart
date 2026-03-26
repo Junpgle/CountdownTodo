@@ -14,6 +14,7 @@ class PreferenceSection extends StatelessWidget {
   final int floatWindowStyle; // 0: 经典, 1: 灵动岛, 2: 关闭
   final ValueChanged<int?>? onFloatWindowStyleChanged;
   final VoidCallback? onForceRefreshPressed;
+  final VoidCallback? onIslandPriorityPressed;
 
   const PreferenceSection({
     Key? key,
@@ -29,6 +30,7 @@ class PreferenceSection extends StatelessWidget {
     required this.floatWindowStyle,
     this.onFloatWindowStyleChanged,
     this.onForceRefreshPressed,
+    this.onIslandPriorityPressed,
   }) : super(key: key);
 
   @override
@@ -135,6 +137,14 @@ class PreferenceSection extends StatelessWidget {
                     ],
                     onChanged: onFloatWindowStyleChanged,
                   ),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(Icons.sort, color: Colors.indigo),
+                  title: const Text('灵动岛信息流优先级'),
+                  subtitle: const Text('拖拽排序：决定灵动岛左右两侧的信息展示优先级'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onIslandPriorityPressed,
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(

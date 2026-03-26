@@ -32,7 +32,8 @@ class IslandUI extends StatefulWidget {
 
 class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   IslandState _state = IslandState.idle;
-  IslandState? _savedStateBeforeHover; // To return to focusing/idle after hover exit
+  IslandState?
+      _savedStateBeforeHover; // To return to focusing/idle after hover exit
   Map<String, dynamic>? _currentPayload;
   bool _isLocal = true;
   bool _isFocusing = false;
@@ -52,7 +53,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
+    _pulseController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 1))
+          ..repeat(reverse: true);
     _splitController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -81,7 +84,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final focusData = payload['focusData'] as Map?;
     final String stateStr = payload['state']?.toString() ?? 'idle';
-    
+
     // Detect focusing based on state string, endMs, or a non-empty time label
     // Check both local and remote (syncMode)
     final int endMs = focusData?['endMs'] ?? 0;
@@ -90,11 +93,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     setState(() {
       _isLocal = (focusData?['syncMode']?.toString() ?? 'local') == 'local';
-      
+
       if (focusData != null) {
         _timeLabel = timeLabel.isNotEmpty ? timeLabel : _timeLabel;
         _isCountdown = focusData['isCountdown'] ?? true;
-        _parseTimeLabel(timeLabel); // Reset remaining secs based on payload if possible
+        _parseTimeLabel(
+            timeLabel); // Reset remaining secs based on payload if possible
       }
 
       // Map incoming state to internal IslandState
@@ -128,7 +132,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       if (nextState != _state) {
         // If we are currently in a hover-expanded state, don't immediately
         // transition back unless the new state is critical (focusing/alert)
-        if (_state == IslandState.hoverWide && (nextState == IslandState.idle || nextState == IslandState.focusing)) {
+        if (_state == IslandState.hoverWide &&
+            (nextState == IslandState.idle ||
+                nextState == IslandState.focusing)) {
           _savedStateBeforeHover = nextState;
         } else {
           _transitionToState(nextState);
@@ -161,7 +167,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       if (parts.length == 2) {
         _remainingSecs = int.parse(parts[0]) * 60 + int.parse(parts[1]);
       } else if (parts.length == 3) {
-        _remainingSecs = int.parse(parts[0]) * 3600 + int.parse(parts[1]) * 60 + int.parse(parts[2]);
+        _remainingSecs = int.parse(parts[0]) * 3600 +
+            int.parse(parts[1]) * 60 +
+            int.parse(parts[2]);
       }
     } catch (_) {}
   }
@@ -188,13 +196,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   String get _displayTime {
-    if (_state == IslandState.idle || (_state == IslandState.hoverWide && !_isFocusing)) {
+    if (_state == IslandState.idle ||
+        (_state == IslandState.hoverWide && !_isFocusing)) {
       final now = DateTime.now();
       final h = now.hour.toString().padLeft(2, '0');
       final m = now.minute.toString().padLeft(2, '0');
       return '$h:$m';
     }
-    
+
     final m = (_remainingSecs ~/ 60).toString().padLeft(2, '0');
     final s = (_remainingSecs % 60).toString().padLeft(2, '0');
     return '$m:$s';
@@ -209,24 +218,30 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     double targetW = 120, targetH = 34;
     switch (nextState) {
       case IslandState.idle:
-        targetW = 120; targetH = 34; // Black pill "12:15"
+        targetW = 120;
+        targetH = 34; // Black pill "12:15"
         break;
       case IslandState.focusing:
-        targetW = 160; targetH = 34; // "专注事项 20:05"
+        targetW = 160;
+        targetH = 34; // "专注事项 20:05"
         break;
       case IslandState.hoverWide:
-        targetW = 380; targetH = 34; // Long pill with icons
+        targetW = 380;
+        targetH = 34; // Long pill with icons
         break;
       case IslandState.splitAlert:
-        targetW = 300; targetH = 36; // Two pills side-by-side
+        targetW = 300;
+        targetH = 36; // Two pills side-by-side
         break;
       case IslandState.stackedCard:
-        targetW = 280; targetH = 140; // Local focus detail
+        targetW = 280;
+        targetH = 140; // Local focus detail
         break;
       case IslandState.finishConfirm:
       case IslandState.abandonConfirm:
       case IslandState.finishFinal:
-        targetW = 260; targetH = 130;
+        targetW = 260;
+        targetH = 130;
         break;
     }
 
@@ -236,21 +251,24 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       _height = targetH;
     });
 
-    if (nextState == IslandState.splitAlert) _splitController.forward();
+    if (nextState == IslandState.splitAlert)
+      _splitController.forward();
     else if (prevState == IslandState.splitAlert) _splitController.reverse();
 
     bool shrinking = (targetW < prevW) || (targetH < prevH);
     if (!shrinking) {
       try {
         final controller = await WindowController.fromCurrentEngine();
-        await controller.invokeMethod('setWindowSize', {'width': targetW, 'height': targetH});
+        await controller.invokeMethod(
+            'setWindowSize', {'width': targetW, 'height': targetH});
       } catch (_) {}
     } else {
       Future.delayed(const Duration(milliseconds: 400), () async {
         if (_state == nextState) {
           try {
             final controller = await WindowController.fromCurrentEngine();
-            await controller.invokeMethod('setWindowSize', {'width': targetW, 'height': targetH});
+            await controller.invokeMethod(
+                'setWindowSize', {'width': targetW, 'height': targetH});
           } catch (_) {}
         }
       });
@@ -259,45 +277,61 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // FFI ColorKey is 0x000000, so any pure black would be invisible!
-    // Using 0xFF010101 ensures it looks perfectly black to users but survives the FFI ColorKey.
-    final bgColor = const Color(0xFF010101);
+    final bgColor = const Color(0xFF1C1C1E); // pill 本体颜色，不再是黑色填充整个窗口
     final borderColor = Colors.white.withOpacity(0.15);
 
-    return MouseRegion(
-      onEnter: (_) => _onHoverEnter(),
-      onExit: (_) => _onHoverExit(),
-      child: Material(
-        color: Colors.transparent,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeInOutQuart,
-            width: _width,
-            height: _height,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(_state == IslandState.stackedCard || _state == IslandState.finishConfirm || _state == IslandState.abandonConfirm || _state == IslandState.finishFinal ? 20 : 28),
-              border: Border.all(color: borderColor, width: 0.8),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(_state == IslandState.stackedCard || _state == IslandState.finishConfirm || _state == IslandState.abandonConfirm || _state == IslandState.finishFinal ? 20 : 28),
-              child: _buildContent(),
+    return Material(
+        color: Colors.transparent, // ✅ 整个 Material 透明，不留黑底
+        child: MouseRegion(
+          onEnter: (_) => _onHoverEnter(),
+          onExit: (_) => _onHoverExit(),
+          child: Material(
+            color: Colors.transparent,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOutQuart,
+                width: _width,
+                height: _height,
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(
+                      _state == IslandState.stackedCard ||
+                              _state == IslandState.finishConfirm ||
+                              _state == IslandState.abandonConfirm ||
+                              _state == IslandState.finishFinal
+                          ? 20
+                          : 28),
+                  border: Border.all(color: borderColor, width: 0.8),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4))
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(
+                      _state == IslandState.stackedCard ||
+                              _state == IslandState.finishConfirm ||
+                              _state == IslandState.abandonConfirm ||
+                              _state == IslandState.finishFinal
+                          ? 20
+                          : 28),
+                  child: _buildContent(),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 
   Widget _buildContent() {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+      transitionBuilder: (child, anim) =>
+          FadeTransition(opacity: anim, child: child),
       child: _getContentForState(),
     );
   }
@@ -339,7 +373,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         alignment: Alignment.center,
         child: Text(
           _displayTime,
-          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.0),
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0),
         ),
       ),
     );
@@ -351,7 +389,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     return GestureDetector(
       key: const ValueKey('focusing'),
-      onTap: () => _transitionToState(_isLocal ? IslandState.splitAlert : IslandState.stackedCard),
+      onTap: () => _transitionToState(
+          _isLocal ? IslandState.splitAlert : IslandState.stackedCard),
       onPanStart: (_) => _startDragging(),
       child: Container(
         color: Colors.transparent,
@@ -360,8 +399,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
-            Text(_displayTime, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
+            Text(title,
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold)),
+            Text(_displayTime,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900)),
           ],
         ),
       ),
@@ -370,8 +417,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   Widget _buildHoverWide() {
     final dashData = _currentPayload?['dashboardData'] as Map?;
-    final left = dashData?['leftSlot']?.toString() ?? '';
-    final right = dashData?['rightSlot']?.toString() ?? '';
+    final legacy = _currentPayload?['legacy'] as Map?;
+
+    final String tbLeft = dashData?['leftSlot']?.toString() ?? _currentPayload?['topBarLeft']?.toString() ?? legacy?['topBarLeft']?.toString() ?? '';
+    final String tbRight = dashData?['rightSlot']?.toString() ?? _currentPayload?['topBarRight']?.toString() ?? legacy?['topBarRight']?.toString() ?? '';
+    final String fallbackLeft = _currentPayload?['left']?.toString() ?? legacy?['left']?.toString() ?? '';
+    final String fallbackRight = _currentPayload?['right']?.toString() ?? legacy?['right']?.toString() ?? '';
+
+    final left = tbLeft.isNotEmpty ? tbLeft : fallbackLeft;
+    final right = tbRight.isNotEmpty ? tbRight : fallbackRight;
 
     return GestureDetector(
       key: const ValueKey('hoverWide'),
@@ -386,7 +440,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               flex: 2,
               child: Text(
                 left,
-                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -398,14 +455,20 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               ),
               child: Text(
                 _displayTime, // Real dynamic time
-                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900),
               ),
             ),
             Expanded(
               flex: 2,
               child: Text(
                 right,
-                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold),
                 textAlign: TextAlign.right,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -435,9 +498,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14),
             height: 32,
-            decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(20)),
+            decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.circular(20)),
             alignment: Alignment.center,
-            child: Text(_displayTime, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
+            child: Text(_displayTime,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900)),
           ),
           const SizedBox(width: 4),
           // Right: Content pill
@@ -447,7 +516,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               child: Container(
                 height: 32,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(20)),
                 child: Row(
                   children: [
                     Icon(iconData, color: Colors.white, size: 14),
@@ -455,7 +526,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     Expanded(
                       child: Text(
                         '$reminderTitle ${reminderTime.isNotEmpty ? reminderTime : ""}',
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -473,21 +547,39 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final focusData = _currentPayload?['focusData'] as Map?;
     final title = focusData?['title']?.toString() ?? '专注事项';
     final tags = (focusData?['tags'] as List?)?.join(' ') ?? '专注标签';
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text('$_displayTime | $title', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
+          Text('$_displayTime | $title',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
-          Text(tags, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(tags,
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildDesignBtn(label: '完成', color: const Color(0xFF4CAF50), onTap: () => _transitionToState(IslandState.finishConfirm))),
+              Expanded(
+                  child: _buildDesignBtn(
+                      label: '完成',
+                      color: const Color(0xFF4CAF50),
+                      onTap: () =>
+                          _transitionToState(IslandState.finishConfirm))),
               const SizedBox(width: 12),
-              Expanded(child: _buildDesignBtn(label: '放弃', color: const Color(0xFFD32F2F), onTap: () => _transitionToState(IslandState.abandonConfirm))),
+              Expanded(
+                  child: _buildDesignBtn(
+                      label: '放弃',
+                      color: const Color(0xFFD32F2F),
+                      onTap: () =>
+                          _transitionToState(IslandState.abandonConfirm))),
             ],
           )
         ],
@@ -523,29 +615,62 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(mainText, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
+          Text(mainText,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
-          Text(subText, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+          Text(subText,
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
-          if (mode == 'final') 
-            _buildDesignBtn(label: okLabel, color: okColor, onTap: () => _transitionToState(IslandState.idle))
+          if (mode == 'final')
+            _buildDesignBtn(
+                label: okLabel,
+                color: okColor,
+                onTap: () => _transitionToState(IslandState.idle))
           else
             Row(
               children: [
                 if (!isReverse) ...[
-                  Expanded(child: _buildDesignBtn(label: okLabel, color: okColor, onTap: () {
-                    widget.onAction?.call(mode == 'finish' ? 'finish' : 'abandon', _remainingSecs);
-                    _transitionToState(mode == 'finish' ? IslandState.finishFinal : IslandState.idle);
-                  })),
+                  Expanded(
+                      child: _buildDesignBtn(
+                          label: okLabel,
+                          color: okColor,
+                          onTap: () {
+                            widget.onAction?.call(
+                                mode == 'finish' ? 'finish' : 'abandon',
+                                _remainingSecs);
+                            _transitionToState(mode == 'finish'
+                                ? IslandState.finishFinal
+                                : IslandState.idle);
+                          })),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildDesignBtn(label: cancelLabel, color: cancelColor, onTap: () => _transitionToState(IslandState.stackedCard))),
+                  Expanded(
+                      child: _buildDesignBtn(
+                          label: cancelLabel,
+                          color: cancelColor,
+                          onTap: () =>
+                              _transitionToState(IslandState.stackedCard))),
                 ] else ...[
-                  Expanded(child: _buildDesignBtn(label: cancelLabel, color: okColor, onTap: () => _transitionToState(IslandState.stackedCard))),
+                  Expanded(
+                      child: _buildDesignBtn(
+                          label: cancelLabel,
+                          color: okColor,
+                          onTap: () =>
+                              _transitionToState(IslandState.stackedCard))),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildDesignBtn(label: okLabel, color: cancelColor, onTap: () {
-                    widget.onAction?.call('abandon', 0);
-                    _transitionToState(IslandState.idle);
-                  })),
+                  Expanded(
+                      child: _buildDesignBtn(
+                          label: okLabel,
+                          color: cancelColor,
+                          onTap: () {
+                            widget.onAction?.call('abandon', 0);
+                            _transitionToState(IslandState.idle);
+                          })),
                 ]
               ],
             )
@@ -554,18 +679,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDesignBtn({required String label, required Color color, required VoidCallback onTap}) {
+  Widget _buildDesignBtn(
+      {required String label,
+      required Color color,
+      required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 36,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(18)),
-        child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
+        decoration: BoxDecoration(
+            color: color, borderRadius: BorderRadius.circular(18)),
+        child: Text(label,
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 13)),
       ),
     );
   }
-
 
   void _startDragging() async {
     try {

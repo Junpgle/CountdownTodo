@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ffi' hide Size;
+import 'package:ffi/ffi.dart';
+import 'package:win32/win32.dart' hide Size;
 import 'package:flutter/foundation.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
-import 'package:window_manager/window_manager.dart';
 import 'island_ui.dart';
 import 'island_payload.dart';
 import '../storage_service.dart';
@@ -13,17 +14,15 @@ import 'dart:convert';
 
 @pragma('vm:entry-point')
 Future<void> islandMain(List<String> args) async {
+  // CRITICAL: Initialize bindings at the very start of the isolate entrypoint
+  // BEFORE any zones are created to avoid "Zone mismatch" errors.
+  WidgetsFlutterBinding.ensureInitialized();
+
   // Start with a default idle payload so the island UI renders immediately
-  // and doesn't show a 'waiting' overlay while host messages arrive.
   final ValueNotifier<Map<String, dynamic>?> payloadNotifier = ValueNotifier(IslandPayload.fromMap(null).toMap());
 
-  // Guard the entire island isolate so uncaught exceptions don't crash the
-  // engine without a readable error message. Present an error UI instead.
+  // Guard the entire island isolate so uncaught exceptions don't crash
   await runZonedGuarded(() async {
-    // Ensure bindings are initialized in the same zone that will later run
-    // the Flutter UI. Calling this outside the zone causes the zone mismatch
-    // error seen previously.
-    WidgetsFlutterBinding.ensureInitialized();
 
     FlutterError.onError = (FlutterErrorDetails details) {
       debugPrint('[Island] FlutterError: ${details.exceptionAsString()}');
@@ -31,29 +30,14 @@ Future<void> islandMain(List<String> args) async {
 
     try {
       final controller = await WindowController.fromCurrentEngine();
-      // Best-effort: request a compact initial window size and transparency so
-      // the window area tightly wraps the UI. Host plugin may not implement
-      // these methods; ignore failures.
-      Future.delayed(const Duration(milliseconds: 100), () async {
-        try {
-          WidgetsFlutterBinding.ensureInitialized();
-          await windowManager.ensureInitialized();
-          
-          await windowManager.setAlwaysOnTop(true);
-          await windowManager.setSkipTaskbar(true);
-          
-          // FFI: Force Windows frameless & transparency
-          _applyWin32FramelessTransparent();
-          
-          // Set initial size to accommodate the maximum state of the island (hoverWide / stackedCard)
-          // Since the FFI FFI transparent parts will be invisible and unclickable, we can make it large enough
-          await windowManager.setSize(const Size(400, 160));
-          await windowManager.setAlignment(Alignment.topCenter);
-        } catch (_) {}
+      // FFI: Force Windows frameless & transparency by searching for sub-window HWND in current PID
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _applyWin32FramelessTransparentByProcessId();
       });
       
       try {
-        await controller.invokeMethod('setWindowSize', {'width': 160, 'height': 56}).catchError((_) {});
+        await controller.invokeMethod('setFrame', {'x': 0.0, 'y': 0.0, 'width': 160.0, 'height': 56.0});
+        await controller.invokeMethod('setAlwaysOnTop', true);
         await controller.invokeMethod('setWindowTransparent', {'transparent': true}).catchError((_) {});
       } catch (_) {}
       debugPrint('[Island] islandMain started for windowId=${controller.windowId} args=$args');
@@ -66,7 +50,12 @@ Future<void> islandMain(List<String> args) async {
           final m = call.arguments as Map?;
           if (m != null) {
             try {
-              final mm = Map<String, dynamic>.from(m);
+              // Extract 'payload' key if the host wrapped it (standard for postWindowMessage)
+              final rawMap = Map<String, dynamic>.from(m);
+              final dynamic mmRaw = rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
+              if (mmRaw is! Map) return;
+              
+              final mm = Map<String, dynamic>.from(mmRaw);
               // Handshake ping
               if (mm['handshake'] == 'ping') {
                 // reply with handshake_pong to host
@@ -195,15 +184,15 @@ Future<void> islandMain(List<String> args) async {
       debugPrint('[Island] getWindowDefinition error: $e');
     }
 
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Material(
-        color: Colors.transparent,
-        child: Center(
-          // Use a Stack so we can overlay a small waiting hint when there is
-          // no payload, but otherwise allow the IslandUI to size itself.
-          child: Stack(
-            alignment: Alignment.center,
+      runApp(MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          scaffoldBackgroundColor: const Color(0xFF000000),
+        ),
+        home: Scaffold(
+          backgroundColor: const Color(0xFF000000), // ← ColorKey 透明化的关键
+          body: Stack(
+            alignment: Alignment.topCenter,
             children: [
               IslandUI(
                 payloadNotifier: payloadNotifier,
@@ -238,11 +227,10 @@ Future<void> islandMain(List<String> args) async {
                   }
                 },
               ),
-              // Debug / placeholder overlay to avoid white blank while waiting
               ValueListenableBuilder<Map<String, dynamic>?>(
                 valueListenable: payloadNotifier,
                 builder: (context, val, child) {
-                  if (val == null) {
+                  if (val == null || (val.isEmpty)) {
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(color: Colors.black.withOpacity(0.35), borderRadius: BorderRadius.circular(8)),
@@ -255,8 +243,7 @@ Future<void> islandMain(List<String> args) async {
             ],
           ),
         ),
-      ),
-    ));
+      ));
 
     // Notify host that this island window has initialized and is ready to receive messages.
     // This is best-effort: ignore errors if host doesn't implement onAction.
@@ -277,7 +264,13 @@ Future<void> islandMain(List<String> args) async {
       // Fallback: run in-layout island for debugging if controller not available
       runApp(MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(body: Center(child: IslandUI(initialPayload: payloadNotifier.value))),
+        theme: ThemeData(
+          scaffoldBackgroundColor: const Color(0xFF000000),
+        ),
+        home: Scaffold(
+          backgroundColor: const Color(0xFF000000),
+          body: Center(child: IslandUI(initialPayload: payloadNotifier.value)),
+        ),
       ));
     }
   }, (error, stack) {
@@ -285,7 +278,11 @@ Future<void> islandMain(List<String> args) async {
     try {
       runApp(MaterialApp(
         debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          scaffoldBackgroundColor: const Color(0xFF000000),
+        ),
         home: Scaffold(
+          backgroundColor: const Color(0xFF000000),
           body: Center(
             child: Container(
               padding: const EdgeInsets.all(20),
@@ -294,9 +291,9 @@ Future<void> islandMain(List<String> args) async {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: Colors.red),
                   const SizedBox(height: 12),
-                  const Text('灵动岛发生错误', style: TextStyle(fontSize: 16)),
+                  const Text('灵动岛发生错误', style: TextStyle(fontSize: 16, color: Colors.white)),
                   const SizedBox(height: 8),
-                  Text(error.toString(), style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                  Text(error.toString(), style: const TextStyle(fontSize: 12, color: Colors.white70)),
                 ],
               ),
             ),
@@ -307,45 +304,57 @@ Future<void> islandMain(List<String> args) async {
   });
 }
 
-void _applyWin32FramelessTransparent() {
+void _applyWin32FramelessTransparentByProcessId() {
   if (!Platform.isWindows) return;
   try {
-    final user32 = DynamicLibrary.open('user32.dll');
-    final getForegroundWindow = user32.lookupFunction<IntPtr Function(), int Function()>('GetForegroundWindow');
+    final currentPid = GetCurrentProcessId();
+    final foundHwnds = <int>[];
 
-    final is64 = sizeOf<IntPtr>() == 8;
-    final getWindowLong = is64
-        ? user32.lookupFunction<IntPtr Function(IntPtr, Int32), int Function(int, int)>('GetWindowLongPtrW')
-        : user32.lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>('GetWindowLongW');
-    final setWindowLong = is64
-        ? user32.lookupFunction<IntPtr Function(IntPtr, Int32, IntPtr), int Function(int, int, int)>('SetWindowLongPtrW')
-        : user32.lookupFunction<Int32 Function(Int32, Int32, Int32), int Function(int, int, int)>('SetWindowLongW');
-    final setLayeredWindowAttributes = user32.lookupFunction<Int32 Function(IntPtr, Uint32, Uint8, Uint32), int Function(int, int, int, int)>('SetLayeredWindowAttributes');
+    // NativeCallable.isolateLocal allows returning a value (required by EnumWindows)
+    final lpEnumFunc = NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
+      final pidPtr = calloc<Uint32>();
+      GetWindowThreadProcessId(hwnd, pidPtr);
+      final pid = pidPtr.value;
+      calloc.free(pidPtr);
+      
+      if (pid == currentPid && IsWindowVisible(hwnd) != 0) {
+        foundHwnds.add(hwnd);
+      }
+      return 1; // TRUE: continue enumeration
+    }, exceptionalReturn: 0);
 
-    final hwnd = getForegroundWindow();
-    if (hwnd == 0) return;
+    EnumWindows(lpEnumFunc.nativeFunction, 0);
+    lpEnumFunc.close();
 
-    const GWL_STYLE = -16;
-    const GWL_EXSTYLE = -20;
+    if (foundHwnds.isEmpty) return;
+    
+    // The sub-window is typically created after the main window (last one in list)
+    final hwnd = foundHwnds.length > 1 ? foundHwnds.last : foundHwnds.first;
+
+    // Apply styles to remove caption, thick frame and system menu
     const WS_CAPTION = 0x00C00000;
     const WS_THICKFRAME = 0x00040000;
     const WS_SYSMENU = 0x00080000;
-    const WS_EX_LAYERED = 0x00080000;
-    const LWA_COLORKEY = 0x00000001;
-
-    // Remove frame (title bar and borders)
-    int style = getWindowLong(hwnd, GWL_STYLE);
+    
+    var style = GetWindowLongPtr(hwnd, GWL_STYLE);
     style &= ~WS_CAPTION;
     style &= ~WS_THICKFRAME;
     style &= ~WS_SYSMENU;
-    setWindowLong(hwnd, GWL_STYLE, style);
+    SetWindowLongPtr(hwnd, GWL_STYLE, style);
 
-    // Make transparent using pure black (0x000000) as the color key for the window
-    int exStyle = getWindowLong(hwnd, GWL_EXSTYLE);
+    // Enable Layered window for ColorKey transparency
+    var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
     exStyle |= WS_EX_LAYERED;
-    setWindowLong(hwnd, GWL_EXSTYLE, exStyle);
-    setLayeredWindowAttributes(hwnd, 0x000000, 0, LWA_COLORKEY);
+    SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+    
+    // Set ColorKey to #000000 (Black) to make pure black pixels transparent
+    SetLayeredWindowAttributes(hwnd, 0, 0, LWA_COLORKEY);
+    
+    debugPrint('[Island] FFI applied to HWND $hwnd (PID: $currentPid). Total windows found for PID: ${foundHwnds.length}');
   } catch (e) {
-    debugPrint('FFI win32 failed: $e');
+    debugPrint('[Island] PID-based FFI failed: $e');
   }
 }
+
+// Deprecated
+void _applyWin32FramelessTransparent() {}

@@ -197,8 +197,10 @@ class FloatWindowService {
     }
 
     final style = prefs.getInt('float_window_style') ?? 0;
-    final leftType = prefs.getString('float_window_left_slot') ?? 'countdown';
-    final rightType = prefs.getString('float_window_right_slot') ?? 'todo';
+    
+    // Priority sorting system for island slots
+    final defaultPriority = ['course', 'countdown', 'todo'];
+    final priorityList = prefs.getStringList('island_slot_priority') ?? defaultPriority;
 
     String leftStr = '';
     String rightStr = '';
@@ -206,26 +208,32 @@ class FloatWindowService {
     Map<String, String> rightDetail = {};
 
     if (style == 1) {
-      if (_lastEndMs == 0) {
-        // When idle and not explicitly requested, avoid loading reminder/slot data
-        // to prevent noisy reminders on startup or when toggling settings.
-        if (includeReminders) {
-          final cdData = await _getSlotData('countdown', isLeft: true);
-          final courseData = await _getSlotData('course', isLeft: false);
-          topBarLeft ??= cdData['display'] ?? '';
-          topBarRight ??= courseData['display'] ?? '';
-          leftDetail = cdData; // Default detail for TopBar
-        } else {
-          topBarLeft ??= '';
-          topBarRight ??= '';
-          leftDetail = {};
+      // Collect top 2 non-empty valid slots
+      List<Map<String, String>> validSlots = [];
+
+      for (String pType in priorityList) {
+        if (validSlots.length >= 2) break; // we only need left and right
+
+        final slotData = await _getSlotData(pType, isLeft: validSlots.isEmpty);
+        if ((slotData['display'] ?? '').isNotEmpty) {
+          validSlots.add(slotData);
         }
-      } else {
-        // Focus mode or legacy slot behavior
-        leftDetail = await _getSlotData(leftType, isLeft: true);
-        rightDetail = await _getSlotData(rightType, isLeft: false);
+      }
+
+      if (validSlots.isNotEmpty) {
+        leftDetail = validSlots[0];
         leftStr = leftDetail['display'] ?? '';
+      }
+      if (validSlots.length > 1) {
+        rightDetail = validSlots[1];
         rightStr = rightDetail['display'] ?? '';
+      }
+
+      if (_lastEndMs == 0) {
+        topBarLeft ??= leftStr;
+        topBarRight ??= rightStr;
+      } else {
+        // Focus mode. topBarLeft and right remain fallback handled...
       }
     }
     
@@ -341,8 +349,8 @@ class FloatWindowService {
             : {};
 
         final dashboardData = {
-          'leftSlot': p.left ?? '',
-          'rightSlot': p.right ?? '',
+          'leftSlot': (p.topBarLeft.isNotEmpty) ? p.topBarLeft : p.left,
+          'rightSlot': (p.topBarRight.isNotEmpty) ? p.topBarRight : p.right,
         };
 
                 // Check whether host supports transparent windows for this island
