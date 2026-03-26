@@ -6,9 +6,6 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 class IslandChannel {
   // Use the desktop_multi_window plugin channel name to create/post/close windows
   static const MethodChannel _dmw = MethodChannel('mixin.one/desktop_multi_window');
-  
-  // Custom channel for reliable island-to-host business actions
-  static const MethodChannel _actionChannel = MethodChannel('mixin.one/island_actions');
 
   static bool _handlerSet = false;
 
@@ -23,16 +20,18 @@ class IslandChannel {
   static final StreamController<Map<String, dynamic>> _actionController = StreamController.broadcast();
 
   static Stream<Map<String, dynamic>> get actionStream => _actionController.stream;
+  static const _globalChannel = MethodChannel('mixin.one/desktop_multi_window');
 
   static void ensureInitialized() {
     if (_handlerSet) return;
     _handlerSet = true;
 
-    // 1) Specialized channel handler for reliable business actions (finish, abandon, ready)
-    _actionChannel.setMethodCallHandler((call) async {
+    // Handle business actions from island windows via global channel
+    // because window-specific channels are often isolated across engines.
+    _globalChannel.setMethodCallHandler((call) async {
       try {
-        debugPrint('[IslandChannel] actionChannel received: ${call.method} args=${call.arguments}');
-        if (call.method == 'onAction') {
+        debugPrint('[IslandChannel] global channel received: ${call.method} args=${call.arguments}');
+        if (call.method == 'islandAction') {
           final args = call.arguments;
           if (args is Map && args['action'] == 'ready') {
             final winId = args['windowId']?.toString();
@@ -61,12 +60,13 @@ class IslandChannel {
           }
         }
       } catch (e) {
-        debugPrint('[IslandChannel] actionChannel handler error: $e');
+        debugPrint('[IslandChannel] global handler error: $e');
       }
       return null;
     });
 
-    // 2) Original controller-based handler for window-level actions (dragging, resizing)
+    // Original controller-based handler for window-level actions (dragging, resizing)
+    // This handler is specific to the current window's controller.
     Future.microtask(() async {
       try {
         final controller = await WindowController.fromCurrentEngine();

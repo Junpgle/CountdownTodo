@@ -14,8 +14,9 @@ import 'island_payload.dart';
 import '../storage_service.dart';
 import 'dart:convert';
 
-const _actionChannel = MethodChannel('mixin.one/island_actions');
+const _globalDmwChannel = MethodChannel('mixin.one/desktop_multi_window');
 
+/// Entry point for the lightweight Windows Island process.
 @pragma('vm:entry-point')
 Future<void> islandMain(List<String> args) async {
   // CRITICAL: Initialize bindings at the very start of the isolate entrypoint
@@ -357,12 +358,12 @@ Future<void> islandMain(List<String> args) async {
                     }
 
                     try {
-                      await _actionChannel.invokeMethod('onAction', {
+                      await _globalDmwChannel.invokeMethod('islandAction', {
                         'action': action,
                         'modifiedSecs': modifiedSecs ?? 0,
                         'windowId': controller.windowId
                       });
-                      debugPrint('[Island] onAction "$action" sent via actionChannel');
+                      debugPrint('[Island] onAction "$action" sent via global channel');
                     } catch (e) {
                       debugPrint('[Island] onAction "$action" FAILED: $e');
                     }
@@ -396,12 +397,12 @@ Future<void> islandMain(List<String> args) async {
       // 3) Signal to host that we are ready to receive state/theme
       Future.microtask(() async {
         try {
-          await _actionChannel.invokeMethod('onAction', {
+          await _globalDmwChannel.invokeMethod('islandAction', {
             'action': 'ready',
             'windowId': controller.windowId,
           }).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
           debugPrint(
-              '[Island] ready signal sent via actionChannel for windowId=${controller.windowId}');
+              '[Island] ready signal sent via global channel for windowId=${controller.windowId}');
         } catch (e) {
           debugPrint('[Island] failed to send ready signal: $e');
         }
@@ -411,7 +412,7 @@ Future<void> islandMain(List<String> args) async {
       // renders real data provided by the host. This matches the requirement
       // to not display debug data and to rely on actual IPC payloads.
     } catch (e) {
-      debugPrint('[Island] top-level island error: $e');
+      debugPrint('[Island] initialization failed: $e');
       // Fallback: run in-layout island for debugging if controller not available
       runApp(MaterialApp(
         debugShowCheckedModeBanner: false,

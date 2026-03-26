@@ -78,7 +78,6 @@ class FloatWindowService {
     debugPrint('[FloatWindow] _handleAction: action=$action, secs=$secs, isWorkbenchMounted=$isWorkbenchMounted');
 
     // 只有当主窗口真正在前台获得焦点时，才信任 UI 层会处理并弹出对话框。
-    // 否则（最小化、后台、失焦），由 FloatWindowService 直接接管逻辑。
     if (isWorkbenchMounted) {
       try {
         final isFocused = await windowManager.isFocused();
