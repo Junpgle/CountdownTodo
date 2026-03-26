@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'dart:async';
 import 'dart:ui';
@@ -11,7 +12,7 @@ enum IslandState {
   stackedCard,
   finishConfirm,
   abandonConfirm,
-  finishFinal // The "专注完成" state
+  finishFinal,
 }
 
 class IslandUI extends StatefulWidget {
@@ -32,21 +33,18 @@ class IslandUI extends StatefulWidget {
 
 class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   IslandState _state = IslandState.idle;
-  IslandState?
-      _savedStateBeforeHover; // To return to focusing/idle after hover exit
+  IslandState? _savedStateBeforeHover;
   Map<String, dynamic>? _currentPayload;
   bool _isFocusing = false;
 
-  double _width = 160;
-  double _height = 36;
-
-  // Animation controllers
-  late AnimationController _pulseController;
   late AnimationController _splitController;
+  late AnimationController _sizeController;
+  late Animation<Size> _sizeAnimation;
+
+  final ValueNotifier<String> _timeNotifier = ValueNotifier<String>('');
 
   Timer? _countdownTimer;
   int _remainingSecs = 0;
-  String _timeLabel = '';
   bool _isCountdown = true;
 
   bool _transitioning = false;
@@ -56,6 +54,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   WindowController? _windowController;
 
+  // ══════════════════════════════════════════════════════════════
+  //  关键：记录当前窗口实际大小，避免重复调用平台通道
+  // ══════════════════════════════════════════════════════════════
+  Size _currentWindowSize = const Size(120, 34);
+
   Future<WindowController> _getController() async {
     _windowController ??= await WindowController.fromCurrentEngine();
     return _windowController!;
@@ -64,17 +67,67 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _pulseController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 1))
-          ..repeat(reverse: true);
+    _getController();
+
     _splitController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _sizeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
+    // ╔══════════════════════════════════════════════════════════╗
+    // ║  不再 addListener —— 这就是闪退的根源                   ║
+    // ║  Flutter 的 AnimatedBuilder 已经负责每帧渲染正确尺寸    ║
+    // ║  窗口 resize 只在状态切换时做一次就够了                  ║
+    // ╚══════════════════════════════════════════════════════════╝
 
-    _applyPayload(widget.initialPayload);
+    _sizeAnimation = Tween<Size>(
+      begin: const Size(120, 34),
+      end: const Size(120, 34),
+    ).animate(CurvedAnimation(
+      parent: _sizeController,
+      curve: Curves.easeInOutQuart,
+    ));
+
     widget.payloadNotifier?.addListener(_onNotifierPayload);
+
+    if (widget.initialPayload != null) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _applyPayload(widget.initialPayload);
+      });
+    }
   }
+
+  // ══════════════════════════════════════════════════════════════
+  //  只在目标尺寸确实变了的时候才调一次平台通道
+  // ══════════════════════════════════════════════════════════════
+  Future<void> _resizeWindowOnce(Size targetSize) async {
+    if (targetSize == _currentWindowSize) return; // 尺寸没变就跳过
+    _currentWindowSize = targetSize;
+    try {
+      final ctrl = await _getController();
+      await ctrl.invokeMethod('setWindowSize', {
+        'width': targetSize.width.toDouble(),
+        'height': targetSize.height.toDouble(),
+      });
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _hoverDebounce?.cancel();
+    _countdownTimer?.cancel();
+    _timeNotifier.dispose();
+    widget.payloadNotifier?.removeListener(_onNotifierPayload);
+    _splitController.dispose();
+    _sizeController.dispose();
+    super.dispose();
+  }
+
+  // ── 状态计算 ──────────────────────────────────────────────
 
   IslandState _computeNextState(String stateStr) {
     switch (stateStr) {
@@ -97,43 +150,48 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
   }
 
-  @override
-  void dispose() {
-    _hoverDebounce?.cancel();
-    widget.payloadNotifier?.removeListener(_onNotifierPayload);
-    _pulseController.dispose();
-    _splitController.dispose();
-    _countdownTimer?.cancel();
-    super.dispose();
-  }
+  // ── Payload 处理 ──────────────────────────────────────────
 
   void _onNotifierPayload() {
     if (mounted) _applyPayload(widget.payloadNotifier!.value);
   }
 
   void _applyPayload(Map<String, dynamic>? payload) {
-    if (payload == null) return;
+    if (payload == null || !mounted) return;
     _currentPayload = payload;
 
     final focusData = payload['focusData'] as Map?;
     final String stateStr = payload['state']?.toString() ?? 'idle';
 
-    // Detect focusing based on state string, endMs, or a non-empty time label
     final int endMs = focusData?['endMs'] ?? 0;
     final String timeLabel = focusData?['timeLabel']?.toString() ?? '';
     _isFocusing = stateStr == 'focusing' || endMs > 0 || timeLabel.isNotEmpty;
 
-    // Compute next state BEFORE setState
     final IslandState nextStateCandidate = _computeNextState(stateStr);
 
-    setState(() {
-      if (focusData != null) {
-        _timeLabel = timeLabel.isNotEmpty ? timeLabel : _timeLabel;
-        _isCountdown = focusData['isCountdown'] ?? true;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        if (focusData != null) {
+          final tl = focusData['timeLabel']?.toString() ?? '';
+          if (tl.isNotEmpty) _timeNotifier.value = tl;
 
-    // Handle transition outside of setState
+          // 1. Determine countdown/count-up mode early as parsing depends on it
+          _isCountdown = focusData['isCountdown'] ?? true;
+
+          // 2. Prioritize parsing from timeLabel (works for both modes)
+          if (tl.isNotEmpty) {
+            _parseTimeLabel(tl);
+          }
+          // 3. Fallback: compute from endMs (only meaningful for countdown)
+          else if (endMs > 0) {
+            final nowMs = DateTime.now().millisecondsSinceEpoch;
+            _remainingSecs = ((endMs - nowMs) / 1000).round();
+            if (_remainingSecs < 0) _remainingSecs = 0;
+          }
+        }
+      });
+    }
+
     if (nextStateCandidate != _state) {
       if (_state == IslandState.hoverWide &&
           (nextStateCandidate == IslandState.idle ||
@@ -144,19 +202,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       }
     }
 
-    // Only reset _remainingSecs if it's currently 0 or we have a forced update
-    if (_remainingSecs == 0 && timeLabel.isNotEmpty) {
-      _parseTimeLabel(timeLabel);
-    }
-
     _ensureTimerRunning();
   }
+
+  // ── Hover ─────────────────────────────────────────────────
 
   void _onHoverEnter() {
     _hoverDebounce?.cancel();
     _isHovered = true;
     _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
-      if (!_isHovered) return;
+      if (!_isHovered || !mounted) return;
       if (_state == IslandState.idle || _state == IslandState.focusing) {
         _savedStateBeforeHover = _state;
         _transitionToState(IslandState.hoverWide);
@@ -168,13 +223,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _hoverDebounce?.cancel();
     _isHovered = false;
     _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
-      if (_isHovered) return; // Mouse returned quickly
+      if (_isHovered || !mounted) return;
       if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
         _transitionToState(_savedStateBeforeHover!);
         _savedStateBeforeHover = null;
       }
     });
   }
+
+  // ── 倒计时 ────────────────────────────────────────────────
 
   void _parseTimeLabel(String label) {
     if (label.isEmpty) return;
@@ -197,206 +254,177 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         timer.cancel();
         return;
       }
-      setState(() {
-        if (_isFocusing) {
-          if (_isCountdown) {
-            if (_remainingSecs > 0) _remainingSecs--;
-          } else {
-            _remainingSecs++;
-          }
+      if (_isFocusing) {
+        if (_isCountdown) {
+          if (_remainingSecs > 0) _remainingSecs--;
+        } else {
+          _remainingSecs++;
         }
-      });
+      }
+      _updateDisplayTime();
     });
   }
 
-  String get _displayTime {
+  void _updateDisplayTime() {
     if (_state == IslandState.idle ||
         (_state == IslandState.hoverWide && !_isFocusing)) {
       final now = DateTime.now();
-      final h = now.hour.toString().padLeft(2, '0');
-      final m = now.minute.toString().padLeft(2, '0');
-      return '$h:$m';
+      _timeNotifier.value =
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      return;
     }
-
     final m = (_remainingSecs ~/ 60).toString().padLeft(2, '0');
     final s = (_remainingSecs % 60).toString().padLeft(2, '0');
-    return '$m:$s';
+    _timeNotifier.value = '$m:$s';
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  核心状态切换 —— 窗口 resize 只在这里调一次
+  // ══════════════════════════════════════════════════════════════
+
+  static Size _targetSizeFor(IslandState s) {
+    switch (s) {
+      case IslandState.focusing:
+        return const Size(100, 46);
+      case IslandState.hoverWide:
+        return const Size(380, 34);
+      case IslandState.splitAlert:
+        return const Size(300, 36);
+      case IslandState.stackedCard:
+        return const Size(280, 140);
+      case IslandState.finishConfirm:
+      case IslandState.abandonConfirm:
+      case IslandState.finishFinal:
+        return const Size(260, 130);
+      default:
+        return const Size(120, 34);
+    }
   }
 
   void _transitionToState(IslandState nextState) async {
-    // If target state and current are same, skip
+    if (!mounted) return;
     if (nextState == _state && !_transitioning) return;
 
-    // Increment version, making all old delayed callbacks invalid
     final int myVersion = ++_transitionVersion;
     _transitioning = true;
 
     final prevState = _state;
-    final prevW = _width;
-    final prevH = _height;
+    final Size fromSize = _sizeAnimation.value;
+    final Size toSize = _targetSizeFor(nextState);
 
-    // Determine new window size based on design screenshot
-    double targetW = 120, targetH = 34;
-    switch (nextState) {
-      case IslandState.idle:
-        targetW = 120;
-        targetH = 34;
-        break;
-      case IslandState.focusing:
-        targetW = 100;
-        targetH = 46;
-        break;
-      case IslandState.hoverWide:
-        targetW = 380;
-        targetH = 34;
-        break;
-      case IslandState.splitAlert:
-        targetW = 300;
-        targetH = 36;
-        break;
-      case IslandState.stackedCard:
-      case IslandState.finishConfirm:
-      case IslandState.abandonConfirm:
-      case IslandState.finishFinal:
-        targetW = nextState == IslandState.stackedCard ? 280 : 260;
-        targetH = nextState == IslandState.stackedCard ? 140 : 130;
-        break;
-    }
-
-    final bool shrinking = targetW < prevW || targetH < prevH;
-    final double maxW = targetW > prevW ? targetW : prevW;
-    final double maxH = targetH > prevH ? targetH : prevH;
-
-    if (!mounted) {
-      _transitioning = false;
-      return;
-    }
-
+    // 1) 先更新逻辑状态（让内容切换）
     setState(() {
       _state = nextState;
-      _width = targetW;
-      _height = targetH;
     });
 
+    // 2) split 动画
     if (nextState == IslandState.splitAlert) {
       _splitController.forward();
     } else if (prevState == IslandState.splitAlert) {
       _splitController.reverse();
     }
 
-    final ctrl = await _getController();
+    // 3) 准备尺寸动画（纯 Flutter 内部，不调平台通道）
+    _sizeAnimation = Tween<Size>(
+      begin: fromSize,
+      end: toSize,
+    ).animate(CurvedAnimation(
+      parent: _sizeController,
+      curve: Curves.easeInOutQuart,
+    ));
 
-    // Check version after await. If a newer transition started, exit.
-    if (!mounted || _transitionVersion != myVersion) {
-      _transitioning = false;
-      return;
-    }
+    // 4) 关键：在首帧之后、动画播放之前，调一次 native resize
+    //    这样 Flutter 下一帧就能拿到正确的约束来渲染
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _resizeWindowOnce(toSize);
+    });
 
-    try {
-      if (!shrinking) {
-        await ctrl.invokeMethod(
-            'setWindowSize', {'width': targetW, 'height': targetH});
-      } else {
-        // Immediately grow to max to cover transition
-        await ctrl.invokeMethod(
-            'setWindowSize', {'width': maxW, 'height': maxH});
-
-        // Delay shrinking
-        Future.delayed(const Duration(milliseconds: 420), () async {
-          // If version mismatch, a newer transition is active; do NOT shrink.
-          if (!mounted || _transitionVersion != myVersion) return;
-          try {
-            await ctrl.invokeMethod(
-                'setWindowSize', {'width': targetW, 'height': targetH});
-          } catch (_) {}
-        });
+    // 5) 播放 Flutter 内部的尺寸动画（纯渲染，无平台调用）
+    _sizeController.forward(from: 0).then((_) {
+      if (mounted && _transitionVersion == myVersion) {
+        _transitioning = false;
+        _doPostTransitionCorrection(myVersion);
       }
-    } catch (_) {}
+    });
+  }
 
-    // Final state correction logic:
-    // After transition completes, verify if current _state matches _isHovered reality.
-    if (mounted && _transitionVersion == myVersion) {
-      _transitioning = false;
-      // If hovered but state is still small,补发 hoverWide
-      if (_isHovered &&
-          _state != IslandState.hoverWide &&
-          (_state == IslandState.idle || _state == IslandState.focusing)) {
-        _savedStateBeforeHover = _state;
-        _transitionToState(IslandState.hoverWide);
-      }
-      // If NOT hovered but state is still wide,补发收缩
-      else if (!_isHovered && _state == IslandState.hoverWide) {
-        final saved = _savedStateBeforeHover;
-        _savedStateBeforeHover = null;
-        if (saved != null) _transitionToState(saved);
-      }
-    } else {
-      _transitioning = false;
+  void _doPostTransitionCorrection(int version) {
+    if (!mounted || _transitionVersion != version) return;
+
+    if (_isHovered &&
+        _state != IslandState.hoverWide &&
+        (_state == IslandState.idle || _state == IslandState.focusing)) {
+      _savedStateBeforeHover = _state;
+      _transitionToState(IslandState.hoverWide);
+    } else if (!_isHovered && _state == IslandState.hoverWide) {
+      final saved = _savedStateBeforeHover;
+      _savedStateBeforeHover = null;
+      if (saved != null) _transitionToState(saved);
     }
   }
+
+  // ── Build ─────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = const Color(0xFF1C1C1E); // pill 本体颜色
-    final borderColor = Colors.black.withOpacity(0.5); // Use dark border to minimize anti-aliasing artifacts
+    final bgColor = const Color(0xFF1C1C1E);
+    final borderColor = Colors.black.withOpacity(0.5);
 
     return Material(
-        color: Colors.transparent, // ✅ 整个 Material 透明，不留黑底
-        child: MouseRegion(
-          onEnter: (_) => _onHoverEnter(),
-          onExit: (_) => _onHoverExit(),
-          child: Material(
-            color: Colors.transparent,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeInOutQuart,
-                width: _width,
-                height: _height,
+      color: Colors.transparent,
+      child: MouseRegion(
+        onEnter: (_) => _onHoverEnter(),
+        onExit: (_) => _onHoverExit(),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: AnimatedBuilder(
+            animation: _sizeController,
+            builder: (context, child) {
+              final currentSize = _sizeAnimation.value;
+              return Container(
+                width: currentSize.width,
+                height: currentSize.height,
                 decoration: BoxDecoration(
                   color: bgColor,
                   borderRadius: BorderRadius.circular(
-                      _state == IslandState.stackedCard ||
-                              _state == IslandState.finishConfirm ||
-                              _state == IslandState.abandonConfirm ||
-                              _state == IslandState.finishFinal
-                          ? 20
-                          : 28),
+                    _state == IslandState.stackedCard ||
+                            _state == IslandState.finishConfirm ||
+                            _state == IslandState.abandonConfirm ||
+                            _state == IslandState.finishFinal
+                        ? 20
+                        : 28,
+                  ),
                   border: Border.all(color: borderColor, width: 0.8),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4))
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
                   ],
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(
-                      _state == IslandState.stackedCard ||
-                              _state == IslandState.finishConfirm ||
-                              _state == IslandState.abandonConfirm ||
-                              _state == IslandState.finishFinal
-                          ? 20
-                          : 28),
+                clipBehavior: Clip.antiAlias,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: 0.92, end: 1.0)
+                          .animate(animation),
+                      child: child,
+                    ),
+                  ),
                   child: _buildContent(),
                 ),
-              ),
-            ),
+              );
+            },
           ),
-        ));
-  }
-
-  Widget _buildContent() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (child, anim) =>
-          FadeTransition(opacity: anim, child: child),
-      child: _getContentForState(),
+        ),
+      ),
     );
   }
 
-  Widget _getContentForState() {
+  Widget _buildContent() {
     switch (_state) {
       case IslandState.idle:
         return _buildIdle();
@@ -417,6 +445,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
   }
 
+  // ── 各状态 UI ─────────────────────────────────────────────
+
   Widget _buildIdle() {
     return GestureDetector(
       key: const ValueKey('idle'),
@@ -431,13 +461,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       child: Container(
         color: Colors.transparent,
         alignment: Alignment.center,
-        child: Text(
-          _displayTime,
-          style: const TextStyle(
+        child: ValueListenableBuilder<String>(
+          valueListenable: _timeNotifier,
+          builder: (context, time, _) => Text(
+            time,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 13,
               fontWeight: FontWeight.w900,
-              letterSpacing: 1.0),
+              letterSpacing: 1.0,
+            ),
+          ),
         ),
       ),
     );
@@ -459,19 +493,28 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(title,
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                height: 1.1,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            ValueListenableBuilder<String>(
+              valueListenable: _timeNotifier,
+              builder: (context, time, _) => Text(
+                time,
                 style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    height: 1.1),
-                overflow: TextOverflow.ellipsis),
-            Text(_displayTime,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    height: 1.1)),
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  height: 1.1,
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -482,13 +525,18 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final dashData = _currentPayload?['dashboardData'] as Map?;
     final legacy = _currentPayload?['legacy'] as Map?;
 
-    final String tbLeft = dashData?['leftSlot']?.toString() ?? _currentPayload?['topBarLeft']?.toString() ?? legacy?['topBarLeft']?.toString() ?? '';
-    final String tbRight = dashData?['rightSlot']?.toString() ?? _currentPayload?['topBarRight']?.toString() ?? legacy?['topBarRight']?.toString() ?? '';
-    final String fallbackLeft = _currentPayload?['left']?.toString() ?? legacy?['left']?.toString() ?? '';
-    final String fallbackRight = _currentPayload?['right']?.toString() ?? legacy?['right']?.toString() ?? '';
-
-    final left = tbLeft.isNotEmpty ? tbLeft : fallbackLeft;
-    final right = tbRight.isNotEmpty ? tbRight : fallbackRight;
+    final String left = dashData?['leftSlot']?.toString() ??
+        _currentPayload?['topBarLeft']?.toString() ??
+        legacy?['topBarLeft']?.toString() ??
+        _currentPayload?['left']?.toString() ??
+        legacy?['left']?.toString() ??
+        '';
+    final String right = dashData?['rightSlot']?.toString() ??
+        _currentPayload?['topBarRight']?.toString() ??
+        legacy?['topBarRight']?.toString() ??
+        _currentPayload?['right']?.toString() ??
+        legacy?['right']?.toString() ??
+        '';
 
     return GestureDetector(
       key: const ValueKey('hoverWide'),
@@ -510,9 +558,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               child: Text(
                 left,
                 style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold),
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -522,12 +571,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 color: Colors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                _displayTime, // Real dynamic time
-                style: const TextStyle(
+              child: ValueListenableBuilder<String>(
+                valueListenable: _timeNotifier,
+                builder: (context, time, _) => Text(
+                  time,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13,
-                    fontWeight: FontWeight.w900),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
             ),
             Expanded(
@@ -535,9 +588,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               child: Text(
                 right,
                 style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold),
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.right,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -563,22 +617,27 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       padding: const EdgeInsets.all(2),
       child: Row(
         children: [
-          // Left: Timer pill (matching design's specific padding and size)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14),
             height: 32,
             decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(20)),
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(20),
+            ),
             alignment: Alignment.center,
-            child: Text(_displayTime,
+            child: ValueListenableBuilder<String>(
+              valueListenable: _timeNotifier,
+              builder: (context, time, _) => Text(
+                time,
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900)),
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 4),
-          // Right: Content pill
           Expanded(
             child: GestureDetector(
               onTap: () => _transitionToState(IslandState.stackedCard),
@@ -586,8 +645,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 height: 32,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
-                    borderRadius: BorderRadius.circular(20)),
+                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 child: Row(
                   children: [
                     Icon(iconData, color: Colors.white, size: 14),
@@ -596,9 +656,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       child: Text(
                         '$reminderTitle ${reminderTime.isNotEmpty ? reminderTime : ""}',
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold),
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -616,6 +677,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final focusData = _currentPayload?['focusData'] as Map?;
     final title = focusData?['title']?.toString() ?? '专注事项';
     final tags = (focusData?['tags'] as List?)?.join(' ') ?? '专注标签';
+    final syncMode = focusData?['syncMode']?.toString() ?? 'local';
+    final bool isLocal = syncMode == 'local';
 
     return GestureDetector(
       key: const ValueKey('stackedCard'),
@@ -627,35 +690,55 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('$_displayTime | $title',
+            ValueListenableBuilder<String>(
+              valueListenable: _timeNotifier,
+              builder: (context, time, _) => Text(
+                '$time | $title',
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900)),
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(tags,
-                style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
+            Text(
+              tags,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
+            if (!isLocal)
+              _buildDesignBtn(
+                label: '远端计时中，无法更改',
+                color: Colors.white.withOpacity(0.1),
+                onTap: () {},
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
                     child: _buildDesignBtn(
-                        label: '完成',
-                        color: const Color(0xFF4CAF50),
-                        onTap: () =>
-                            _transitionToState(IslandState.finishConfirm))),
-                const SizedBox(width: 12),
-                Expanded(
+                      label: '完成',
+                      color: const Color(0xFF4CAF50),
+                      onTap: () =>
+                          _transitionToState(IslandState.finishConfirm),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: _buildDesignBtn(
-                        label: '放弃',
-                        color: const Color(0xFFD32F2F),
-                        onTap: () =>
-                            _transitionToState(IslandState.abandonConfirm))),
-              ],
-            )
+                      label: '放弃',
+                      color: const Color(0xFFD32F2F),
+                      onTap: () =>
+                          _transitionToState(IslandState.abandonConfirm),
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -664,7 +747,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   Widget _buildConfirm({required String mode}) {
     String mainText = '';
-    String subText = '专注内容 | 已专注时长';
     String okLabel = '确认';
     String cancelLabel = '手滑了';
     Color okColor = const Color(0xFF4CAF50);
@@ -683,93 +765,115 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final focusData = _currentPayload?['focusData'] as Map?;
     final title = focusData?['title']?.toString() ?? '专注内容';
-    subText = '$title | $_displayTime';
+    final subText = '$title | ${_timeNotifier.value}';
 
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(mainText,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900)),
+          Text(
+            mainText,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(subText,
-              style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold)),
+          Text(
+            subText,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 14),
           if (mode == 'final')
             _buildDesignBtn(
-                label: okLabel,
-                color: okColor,
-                onTap: () => _transitionToState(IslandState.idle))
+              label: okLabel,
+              color: okColor,
+              onTap: () => _transitionToState(IslandState.idle),
+            )
           else
             Row(
               children: [
                 if (!isReverse) ...[
                   Expanded(
-                      child: _buildDesignBtn(
-                          label: okLabel,
-                          color: okColor,
-                          onTap: () {
-                            widget.onAction?.call(
-                                mode == 'finish' ? 'finish' : 'abandon',
-                                _remainingSecs);
-                            _transitionToState(mode == 'finish'
-                                ? IslandState.finishFinal
-                                : IslandState.idle);
-                          })),
+                    child: _buildDesignBtn(
+                      label: okLabel,
+                      color: okColor,
+                      onTap: () {
+                        widget.onAction?.call(
+                          mode == 'finish' ? 'finish' : 'abandon',
+                          _remainingSecs,
+                        );
+                        _transitionToState(
+                          mode == 'finish'
+                              ? IslandState.finishFinal
+                              : IslandState.idle,
+                        );
+                      },
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
-                      child: _buildDesignBtn(
-                          label: cancelLabel,
-                          color: cancelColor,
-                          onTap: () =>
-                              _transitionToState(IslandState.stackedCard))),
+                    child: _buildDesignBtn(
+                      label: cancelLabel,
+                      color: cancelColor,
+                      onTap: () => _transitionToState(IslandState.stackedCard),
+                    ),
+                  ),
                 ] else ...[
                   Expanded(
-                      child: _buildDesignBtn(
-                          label: cancelLabel,
-                          color: okColor,
-                          onTap: () =>
-                              _transitionToState(IslandState.stackedCard))),
+                    child: _buildDesignBtn(
+                      label: cancelLabel,
+                      color: okColor,
+                      onTap: () => _transitionToState(IslandState.stackedCard),
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
-                      child: _buildDesignBtn(
-                          label: okLabel,
-                          color: cancelColor,
-                          onTap: () {
-                            widget.onAction?.call('abandon', 0);
-                            _transitionToState(IslandState.idle);
-                          })),
-                ]
+                    child: _buildDesignBtn(
+                      label: okLabel,
+                      color: cancelColor,
+                      onTap: () {
+                        widget.onAction?.call('abandon', 0);
+                        _transitionToState(IslandState.idle);
+                      },
+                    ),
+                  ),
+                ],
               ],
-            )
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildDesignBtn(
-      {required String label,
-      required Color color,
-      required VoidCallback onTap}) {
+  Widget _buildDesignBtn({
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-            color: color, borderRadius: BorderRadius.circular(18)),
-        child: Text(label,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 13)),
+          color: color,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }

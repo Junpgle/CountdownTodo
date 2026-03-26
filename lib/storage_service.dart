@@ -930,6 +930,9 @@ class StorageService {
 
   static Future<Map<String, dynamic>?> getIslandBounds(String islandId) async {
     final prefs = await StorageService.prefs;
+    try {
+      await prefs.reload();
+    } catch (_) {}
     final s = prefs.getString('island_bounds_$islandId');
     if (s == null) return null;
     try {

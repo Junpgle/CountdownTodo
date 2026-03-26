@@ -26,6 +26,8 @@ Future<void> islandMain(List<String> args) async {
 
   // Guard the entire island isolate so uncaught exceptions don't crash
   await runZonedGuarded(() async {
+    Map<String, dynamic>? lastReportedBounds;
+
     FlutterError.onError = (FlutterErrorDetails details) {
       debugPrint('[Island] FlutterError: ${details.exceptionAsString()}');
     };
@@ -184,33 +186,6 @@ Future<void> islandMain(List<String> args) async {
               Future.microtask(() => _resizeCurrentWindow(w, h));
             }
           }
-
-          // Persist bounds for other movement events
-          if (call.method == 'setWindowBounds' || call.method == 'windowMoved') {
-            try {
-              final hwnd = _getIslandHwnd();
-              if (hwnd != null) {
-                final rectPtr = calloc<RECT>();
-                GetWindowRect(hwnd, rectPtr);
-                final curX = rectPtr.ref.left;
-                final curY = rectPtr.ref.top;
-                final curW = rectPtr.ref.right - rectPtr.ref.left;
-                final curH = rectPtr.ref.bottom - rectPtr.ref.top;
-                calloc.free(rectPtr);
-                
-                final scale = _getIslandScaleFactor(hwnd);
-
-                StorageService.saveIslandBounds('island-1', {
-                  'left': curX.toDouble(),
-                  'top': curY.toDouble(),
-                  'width': (curW / scale).ceilToDouble(),
-                  'height': (curH / scale).ceilToDouble(),
-                }).catchError((_) {});
-              }
-            } catch (e) {
-              debugPrint('[Island] failed to persist bounds: $e');
-            }
-          }
         } catch (e) {
           debugPrint('[Island] error in window method handler: $e');
         }
@@ -239,16 +214,25 @@ Future<void> islandMain(List<String> args) async {
               final left = ib['left'];
               final top = ib['top'];
               if (width is num && height is num && left is num && top is num) {
-                // Apply physical exact bounds at startup
-                Future.microtask(() {
-                  final hw = _getIslandHwnd();
-                  if (hw != null) {
-                    final scale = _getIslandScaleFactor(hw);
-                    final phyW = (width * scale).ceil();
-                    final phyH = (height * scale).ceil();
-                    const int HWND_TOPMOST = -1;
-                    const int SWP_NOACTIVATE = 0x0010;
-                    SetWindowPos(hw, HWND_TOPMOST, left.toInt(), top.toInt(), phyW, phyH, SWP_NOACTIVATE);
+                // Apply physical exact bounds at startup with retry loop
+                Future.microtask(() async {
+                  for (int i = 0; i < 20; i++) {
+                    final hw = _getIslandHwnd();
+                    if (hw != null) {
+                      final scale = _getIslandScaleFactor(hw);
+                      final phyW = (width * scale).ceil();
+                      final phyH = (height * scale).ceil();
+                      final phyLeft = (left * scale).toInt();
+                      final phyTop = (top * scale).toInt();
+                      const int HWND_TOPMOST = -1;
+                      const int SWP_NOACTIVATE = 0x0010;
+                      SetWindowPos(hw, HWND_TOPMOST, phyLeft, phyTop, phyW,
+                          phyH, SWP_NOACTIVATE);
+                      debugPrint(
+                          '[Island] applied initial physical bounds from host: $phyLeft,$phyTop ${phyW}x${phyH}');
+                      break;
+                    }
+                    await Future.delayed(const Duration(milliseconds: 100));
                   }
                 });
               }
@@ -284,6 +268,50 @@ Future<void> islandMain(List<String> args) async {
       } catch (e) {
         debugPrint('[Island] getWindowDefinition error: $e');
       }
+      // Register periodic bounds monitor to support window position memory
+      Timer.periodic(const Duration(seconds: 2), (timer) async {
+        try {
+          final hwnd = _getIslandHwnd();
+          if (hwnd == null) return;
+
+          final rectPtr = calloc<RECT>();
+          GetWindowRect(hwnd, rectPtr);
+          final curX = rectPtr.ref.left;
+          final curY = rectPtr.ref.top;
+          final curW = rectPtr.ref.right - rectPtr.ref.left;
+          final curH = rectPtr.ref.bottom - rectPtr.ref.top;
+          calloc.free(rectPtr);
+
+          final scale = _getIslandScaleFactor(hwnd);
+          final double logicalX = curX / scale;
+          final double logicalY = curY / scale;
+          final double logicalW = curW / scale;
+          final double logicalH = curH / scale;
+
+          final currentBounds = {
+            'left': logicalX,
+            'top': logicalY,
+            'width': logicalW.ceilToDouble(),
+            'height': logicalH.ceilToDouble(),
+          };
+
+          // Compare with last reported to avoid redundant IPC
+          if (lastReportedBounds == null ||
+              lastReportedBounds!['left'] != currentBounds['left'] ||
+              lastReportedBounds!['top'] != currentBounds['top']) {
+            lastReportedBounds = currentBounds;
+            
+            // Only report if window is likely in a stable state (not moving right now)
+            // Native drag (postMessage) might keep it in a modal loop, but this timer 
+            // will fire once the loop ends or periodically.
+            WindowController.fromWindowId('0').invokeMethod('onAction', {
+              'action': 'bounds_changed',
+              'bounds': currentBounds,
+              'windowId': controller.windowId
+            }).catchError((_) {});
+          }
+        } catch (_) {}
+      });
 
       runApp(MaterialApp(
         debugShowCheckedModeBanner: false,

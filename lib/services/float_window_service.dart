@@ -46,9 +46,10 @@ class FloatWindowService {
           } else if (action == 'bounds_changed') {
             try {
               final bounds = payload?['bounds'] as Map<String, dynamic>?;
-              if (bounds != null && winId != null) {
-                StorageService.saveIslandBounds(winId, bounds);
-                debugPrint('[FloatWindow] saved island bounds for $winId: $bounds');
+              if (bounds != null) {
+                // Use a fixed logical ID for the primary island to ensure persistence stability
+                StorageService.saveIslandBounds('island-1', bounds);
+                debugPrint('[FloatWindow] saved island bounds for island-1: $bounds');
               }
             } catch (e) {
               debugPrint('[FloatWindow] failed to save bounds: $e');
