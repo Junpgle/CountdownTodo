@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' hide window; // For Rect
 import 'dart:ffi' hide Size;
 import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart';
 import 'package:win32/win32.dart' hide Size;
 import 'package:flutter/foundation.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -19,11 +21,11 @@ Future<void> islandMain(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Start with a default idle payload so the island UI renders immediately
-  final ValueNotifier<Map<String, dynamic>?> payloadNotifier = ValueNotifier(IslandPayload.fromMap(null).toMap());
+  final ValueNotifier<Map<String, dynamic>?> payloadNotifier =
+      ValueNotifier(IslandPayload.fromMap(null).toMap());
 
   // Guard the entire island isolate so uncaught exceptions don't crash
   await runZonedGuarded(() async {
-
     FlutterError.onError = (FlutterErrorDetails details) {
       debugPrint('[Island] FlutterError: ${details.exceptionAsString()}');
     };
@@ -34,155 +36,249 @@ Future<void> islandMain(List<String> args) async {
       Future.delayed(const Duration(milliseconds: 500), () {
         _applyWin32FramelessTransparentByProcessId();
       });
-      
-      try {
-        await controller.invokeMethod('setFrame', {'x': 0.0, 'y': 0.0, 'width': 160.0, 'height': 56.0});
-        await controller.invokeMethod('setAlwaysOnTop', true);
-        await controller.invokeMethod('setWindowTransparent', {'transparent': true}).catchError((_) {});
-      } catch (_) {}
-      debugPrint('[Island] islandMain started for windowId=${controller.windowId} args=$args');
 
-    // Register handler to receive messages from host for this window
-    await controller.setWindowMethodHandler((call) async {
       try {
-        debugPrint('[Island] received window method: ${call.method} args=${call.arguments}');
-        if (call.method == 'postWindowMessage' || call.method == 'updateState') {
+        await controller.invokeMethod(
+            'setFrame', {'x': 0.0, 'y': 0.0, 'width': 160.0, 'height': 56.0});
+        await controller.invokeMethod('setAlwaysOnTop', true);
+        await controller.invokeMethod(
+            'setWindowTransparent', {'transparent': true}).catchError((_) {});
+      } catch (_) {}
+      debugPrint(
+          '[Island] islandMain started for windowId=${controller.windowId} args=$args');
+
+      // ✅ 这个才能收到 postMessage 发来的数据
+      const globalChannel = MethodChannel('mixin.one/desktop_multi_window');
+      globalChannel.setMethodCallHandler((call) async {
+        final fromWindowId =
+            (call.arguments is Map) ? call.arguments['windowId'] : 0;
+        debugPrint(
+            '[Island] >>> GLOBAL CALL: "${call.method}" from=$fromWindowId args=${call.arguments}');
+
+        if (call.method == 'postWindowMessage' ||
+            call.method == 'updateState') {
           final m = call.arguments as Map?;
           if (m != null) {
             try {
-              // Extract 'payload' key if the host wrapped it (standard for postWindowMessage)
               final rawMap = Map<String, dynamic>.from(m);
-              final dynamic mmRaw = rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
-              if (mmRaw is! Map) return;
-              
+              final dynamic mmRaw =
+                  rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
+              if (mmRaw is! Map) return null;
+
               final mm = Map<String, dynamic>.from(mmRaw);
-              // Handshake ping
+
               if (mm['handshake'] == 'ping') {
-                // reply with handshake_pong to host
-                controller.invokeMethod('onAction', {'action': 'handshake_pong', 'windowId': controller.windowId}).catchError((_) {});
-                debugPrint('[Island] responded handshake_pong to host');
+                controller.invokeMethod('onAction', {
+                  'action': 'handshake_pong',
+                  'windowId': controller.windowId
+                }).catchError((_) {});
+                return null;
               }
-              // Support both legacy DTO and the new structured payload.
-              if (mm.containsKey('legacy') && mm['legacy'] is Map) {
-                payloadNotifier.value = Map<String, dynamic>.from(mm['legacy']);
-                debugPrint('[Island] applied legacy payload from structured wrapper: ${payloadNotifier.value}');
-              } else if (mm.containsKey('focusData') || mm.containsKey('state')) {
-                // If host sent a structured payload that already includes 'state' or 'focusData',
-                // prefer delivering the structured map to the Island UI so it can map states directly.
-                try {
-                  final structured = Map<String, dynamic>.from(mm);
-                  payloadNotifier.value = structured;
-                  debugPrint('[Island] applied structured payload directly: ${payloadNotifier.value}');
-                } catch (e) {
-                  debugPrint('[Island] failed to apply structured payload directly: $e');
-                }
+
+              if (mm.containsKey('focusData') || mm.containsKey('state')) {
+                payloadNotifier.value = mm;
+                debugPrint('[Island] ✅ payload applied: state=${mm['state']}');
+              } else if (mm.containsKey('legacy') && mm['legacy'] is Map) {
+                payloadNotifier.value =
+                    Map<String, dynamic>.from(mm['legacy'] as Map);
               } else {
-                try {
-                  final dto = IslandPayload.fromMap(mm);
-                  payloadNotifier.value = dto.toMap();
-                  debugPrint('[Island] payloadNotifier updated from method handler: ${payloadNotifier.value}');
-                } catch (e) {
-                  debugPrint('[Island] failed to parse payload in handler as DTO: $e');
-                }
+                final dto = IslandPayload.fromMap(mm);
+                payloadNotifier.value = dto.toMap();
               }
             } catch (e) {
-              debugPrint('[Island] failed to parse payload in handler: $e');
+              debugPrint('[Island] global handler parse error: $e');
             }
           }
         }
-        // Persist bounds when host or UI requests size/position changes
-        if (call.method == 'setWindowSize' || call.method == 'setWindowBounds' || call.method == 'windowMoved') {
-          try {
-            final args = call.arguments as Map?;
-            if (args != null) {
-              // Normalize bounds map
-              final width = (args['width'] ?? args['w'] ?? args['size']?['width']) is num
-                  ? (args['width'] ?? args['w'] ?? args['size']?['width']) as num
-                  : null;
-              final height = (args['height'] ?? args['h'] ?? args['size']?['height']) is num
-                  ? (args['height'] ?? args['h'] ?? args['size']?['height']) as num
-                  : null;
-              final left = (args['left'] ?? args['x']) is num ? (args['left'] ?? args['x']) as num : null;
-              final top = (args['top'] ?? args['y']) is num ? (args['top'] ?? args['y']) as num : null;
-              final Map<String, dynamic> bounds = {};
-              if (width != null) bounds['width'] = width;
-              if (height != null) bounds['height'] = height;
-              if (left != null) bounds['left'] = left;
-              if (top != null) bounds['top'] = top;
-              if (bounds.isNotEmpty) {
-                StorageService.saveIslandBounds(controller.windowId, bounds).catchError((_) {});
-                debugPrint('[Island] persisted bounds for ${controller.windowId}: $bounds');
+        return null;
+      });
+
+      // Register handler to receive messages from host for this window
+      await controller.setWindowMethodHandler((call) async {
+        debugPrint('[Island] >>> CALL: "${call.method}" | ${call.arguments}');
+        try {
+          debugPrint(
+              '[Island] received window method: ${call.method} args=${call.arguments}');
+          if (call.method == 'postWindowMessage' ||
+              call.method == 'updateState') {
+            final m = call.arguments as Map?;
+            if (m != null) {
+              try {
+                // Extract 'payload' key if the host wrapped it (standard for postWindowMessage)
+                final rawMap = Map<String, dynamic>.from(m);
+                final dynamic mmRaw =
+                    rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
+                if (mmRaw is! Map) return;
+
+                final mm = Map<String, dynamic>.from(mmRaw);
+                // Handshake ping
+                if (mm['handshake'] == 'ping') {
+                  // reply with handshake_pong to host
+                  controller.invokeMethod('onAction', {
+                    'action': 'handshake_pong',
+                    'windowId': controller.windowId
+                  }).catchError((_) {});
+                  debugPrint('[Island] responded handshake_pong to host');
+                }
+                // Support both legacy DTO and the new structured payload.
+                if (mm.containsKey('legacy') && mm['legacy'] is Map) {
+                  payloadNotifier.value =
+                      Map<String, dynamic>.from(mm['legacy']);
+                  debugPrint(
+                      '[Island] applied legacy payload from structured wrapper: ${payloadNotifier.value}');
+                } else if (mm.containsKey('focusData') ||
+                    mm.containsKey('state')) {
+                  // If host sent a structured payload that already includes 'state' or 'focusData',
+                  // prefer delivering the structured map to the Island UI so it can map states directly.
+                  try {
+                    final structured = Map<String, dynamic>.from(mm);
+                    payloadNotifier.value = structured;
+                    debugPrint(
+                        '[Island] applied structured payload directly: ${payloadNotifier.value}');
+                  } catch (e) {
+                    debugPrint(
+                        '[Island] failed to apply structured payload directly: $e');
+                  }
+                } else {
+                  try {
+                    final dto = IslandPayload.fromMap(mm);
+                    payloadNotifier.value = dto.toMap();
+                    debugPrint(
+                        '[Island] payloadNotifier updated from method handler: ${payloadNotifier.value}');
+                  } catch (e) {
+                    debugPrint(
+                        '[Island] failed to parse payload in handler as DTO: $e');
+                  }
+                }
+              } catch (e) {
+                debugPrint('[Island] failed to parse payload in handler: $e');
               }
             }
-          } catch (e) {
-            debugPrint('[Island] failed to persist bounds: $e');
+          }
+          if (call.method == 'setWindowSize') {
+            final a = call.arguments as Map?;
+            if (a != null) {
+              final w = (a['width'] as num?)?.toInt() ?? 160;
+              final h = (a['height'] as num?)?.toInt() ?? 56;
+              Future.microtask(() => _resizeCurrentWindow(w, h));
+            }
+          }
+
+          // Persist bounds when host or UI requests size/position changes
+          if (call.method == 'setWindowSize' ||
+              call.method == 'setWindowBounds' ||
+              call.method == 'windowMoved') {
+            try {
+              final args = call.arguments as Map?;
+              if (args != null) {
+                // Normalize bounds map
+                final width = (args['width'] ??
+                        args['w'] ??
+                        args['size']?['width']) is num
+                    ? (args['width'] ?? args['w'] ?? args['size']?['width'])
+                        as num
+                    : null;
+                final height = (args['height'] ??
+                        args['h'] ??
+                        args['size']?['height']) is num
+                    ? (args['height'] ?? args['h'] ?? args['size']?['height'])
+                        as num
+                    : null;
+                final left = (args['left'] ?? args['x']) is num
+                    ? (args['left'] ?? args['x']) as num
+                    : null;
+                final top = (args['top'] ?? args['y']) is num
+                    ? (args['top'] ?? args['y']) as num
+                    : null;
+                final Map<String, dynamic> bounds = {};
+                if (width != null) bounds['width'] = width;
+                if (height != null) bounds['height'] = height;
+                if (left != null) bounds['left'] = left;
+                if (top != null) bounds['top'] = top;
+                if (bounds.isNotEmpty) {
+                  StorageService.saveIslandBounds(controller.windowId, bounds)
+                      .catchError((_) {});
+                  debugPrint(
+                      '[Island] persisted bounds for ${controller.windowId}: $bounds');
+                }
+              }
+            } catch (e) {
+              debugPrint('[Island] failed to persist bounds: $e');
+            }
+          }
+        } catch (e) {
+          debugPrint('[Island] error in window method handler: $e');
+        }
+        return null;
+      });
+
+      // Try to fetch any initial payload that the host passed during createWindow.
+      // Some hosts deliver an initial payload as part of the window definition
+      // (getWindowDefinition) or as a serialized argument. We try both forms so
+      // the island isn't blank if a postWindowMessage arrived before the Dart
+      // handler was registered.
+      try {
+        final def = await controller
+            .invokeMethod('getWindowDefinition', null)
+            .timeout(const Duration(milliseconds: 800), onTimeout: () => null);
+        if (def is Map) {
+          // The plugin may return 'payload' (map) or 'windowArgument' (string).
+          dynamic payloadCandidate =
+              def['payload'] ?? def['windowArgument'] ?? def['window_argument'];
+          // If host provided initialBounds, apply them
+          try {
+            final ib = def['initialBounds'] ?? def['initial_bounds'];
+            if (ib is Map) {
+              final width = ib['width'];
+              final height = ib['height'];
+              final left = ib['left'];
+              final top = ib['top'];
+              final args = <String, dynamic>{};
+              if (width != null) args['width'] = width;
+              if (height != null) args['height'] = height;
+              if (left != null) args['left'] = left;
+              if (top != null) args['top'] = top;
+              if (args.isNotEmpty) {
+                // Best-effort: request host to set window bounds
+                try {
+                  await controller
+                      .invokeMethod('setWindowBounds', args)
+                      .catchError((_) {});
+                  debugPrint('[Island] applied initialBounds: $args');
+                } catch (_) {}
+              }
+            }
+          } catch (_) {}
+          if (payloadCandidate != null) {
+            Map<String, dynamic>? payloadMap;
+            if (payloadCandidate is Map) {
+              payloadMap = Map<String, dynamic>.from(payloadCandidate);
+            } else if (payloadCandidate is String &&
+                payloadCandidate.isNotEmpty) {
+              try {
+                final decoded = jsonDecode(payloadCandidate);
+                if (decoded is Map)
+                  payloadMap = Map<String, dynamic>.from(decoded);
+              } catch (e) {
+                debugPrint('[Island] initial payload JSON parse error: $e');
+              }
+            }
+
+            if (payloadMap != null) {
+              try {
+                final dto = IslandPayload.fromMap(payloadMap);
+                payloadNotifier.value = dto.toMap();
+                debugPrint(
+                    '[Island] initial payload applied: ${payloadNotifier.value}');
+              } catch (e) {
+                debugPrint('[Island] failed to apply initial payload: $e');
+              }
+            }
           }
         }
       } catch (e) {
-        debugPrint('[Island] error in window method handler: $e');
+        debugPrint('[Island] getWindowDefinition error: $e');
       }
-      return null;
-    });
-
-    // Try to fetch any initial payload that the host passed during createWindow.
-    // Some hosts deliver an initial payload as part of the window definition
-    // (getWindowDefinition) or as a serialized argument. We try both forms so
-    // the island isn't blank if a postWindowMessage arrived before the Dart
-    // handler was registered.
-    try {
-      final def = await controller.invokeMethod('getWindowDefinition', null).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
-      if (def is Map) {
-        // The plugin may return 'payload' (map) or 'windowArgument' (string).
-        dynamic payloadCandidate = def['payload'] ?? def['windowArgument'] ?? def['window_argument'];
-        // If host provided initialBounds, apply them
-        try {
-          final ib = def['initialBounds'] ?? def['initial_bounds'];
-          if (ib is Map) {
-            final width = ib['width'];
-            final height = ib['height'];
-            final left = ib['left'];
-            final top = ib['top'];
-            final args = <String, dynamic>{};
-            if (width != null) args['width'] = width;
-            if (height != null) args['height'] = height;
-            if (left != null) args['left'] = left;
-            if (top != null) args['top'] = top;
-            if (args.isNotEmpty) {
-              // Best-effort: request host to set window bounds
-              try {
-                await controller.invokeMethod('setWindowBounds', args).catchError((_) {});
-                debugPrint('[Island] applied initialBounds: $args');
-              } catch (_) {}
-            }
-          }
-        } catch (_) {}
-        if (payloadCandidate != null) {
-          Map<String, dynamic>? payloadMap;
-          if (payloadCandidate is Map) {
-            payloadMap = Map<String, dynamic>.from(payloadCandidate);
-          } else if (payloadCandidate is String && payloadCandidate.isNotEmpty) {
-            try {
-              final decoded = jsonDecode(payloadCandidate);
-              if (decoded is Map) payloadMap = Map<String, dynamic>.from(decoded);
-            } catch (e) {
-              debugPrint('[Island] initial payload JSON parse error: $e');
-            }
-          }
-
-          if (payloadMap != null) {
-            try {
-              final dto = IslandPayload.fromMap(payloadMap);
-              payloadNotifier.value = dto.toMap();
-              debugPrint('[Island] initial payload applied: ${payloadNotifier.value}');
-            } catch (e) {
-              debugPrint('[Island] failed to apply initial payload: $e');
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[Island] getWindowDefinition error: $e');
-    }
 
       runApp(MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -206,22 +302,30 @@ Future<void> islandMain(List<String> args) async {
                       if (current.containsKey('legacy')) {
                         final legacy = current['legacy'] as Map?;
                         if (legacy != null && legacy['isLocal'] is bool) {
-                          syncMode = (legacy['isLocal'] as bool) ? 'local' : 'remote';
+                          syncMode =
+                              (legacy['isLocal'] as bool) ? 'local' : 'remote';
                         }
                       } else if (current.containsKey('focusData')) {
-                        final fd = current['focusData'] as Map<String, dynamic>?;
+                        final fd =
+                            current['focusData'] as Map<String, dynamic>?;
                         if (fd != null && fd['syncMode'] != null) {
                           syncMode = fd['syncMode']?.toString() ?? 'local';
                         }
                       }
                     }
 
-                    if ((action == 'finish' || action == 'abandon') && syncMode != 'local') {
-                      debugPrint('[Island] action $action blocked because syncMode=$syncMode');
+                    if ((action == 'finish' || action == 'abandon') &&
+                        syncMode != 'local') {
+                      debugPrint(
+                          '[Island] action $action blocked because syncMode=$syncMode');
                       return;
                     }
 
-                    await controller.invokeMethod('onAction', {'action': action, 'modifiedSecs': modifiedSecs ?? 0, 'windowId': controller.windowId}).catchError((_) {});
+                    await controller.invokeMethod('onAction', {
+                      'action': action,
+                      'modifiedSecs': modifiedSecs ?? 0,
+                      'windowId': controller.windowId
+                    }).catchError((_) {});
                   } catch (e) {
                     debugPrint('[Island] onAction forward failed: $e');
                   }
@@ -232,9 +336,13 @@ Future<void> islandMain(List<String> args) async {
                 builder: (context, val, child) {
                   if (val == null || (val.isEmpty)) {
                     return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.35), borderRadius: BorderRadius.circular(8)),
-                      child: const Text('灵动岛已就绪 — 等待主程序数据', style: TextStyle(color: Colors.white, fontSize: 12)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.35),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: const Text('灵动岛已就绪 — 等待主程序数据',
+                          style: TextStyle(color: Colors.white, fontSize: 12)),
                     );
                   }
                   return const SizedBox.shrink();
@@ -245,20 +353,24 @@ Future<void> islandMain(List<String> args) async {
         ),
       ));
 
-    // Notify host that this island window has initialized and is ready to receive messages.
-    // This is best-effort: ignore errors if host doesn't implement onAction.
-    Future.microtask(() async {
-      try {
-        await controller.invokeMethod('onAction', {'action': 'ready', 'windowId': controller.windowId}).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
-        debugPrint('[Island] ready signal sent to host for windowId=${controller.windowId}');
-      } catch (e) {
-        debugPrint('[Island] failed to send ready signal: $e');
-      }
-    });
+      // Notify host that this island window has initialized and is ready to receive messages.
+      // This is best-effort: ignore errors if host doesn't implement onAction.
+      Future.microtask(() async {
+        try {
+          await controller.invokeMethod('onAction', {
+            'action': 'ready',
+            'windowId': controller.windowId
+          }).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
+          debugPrint(
+              '[Island] ready signal sent to host for windowId=${controller.windowId}');
+        } catch (e) {
+          debugPrint('[Island] failed to send ready signal: $e');
+        }
+      });
 
-    // NOTE: removed diagnostic debug payload injection to ensure island only
-    // renders real data provided by the host. This matches the requirement
-    // to not display debug data and to rely on actual IPC payloads.
+      // NOTE: removed diagnostic debug payload injection to ensure island only
+      // renders real data provided by the host. This matches the requirement
+      // to not display debug data and to rely on actual IPC payloads.
     } catch (e) {
       debugPrint('[Island] top-level island error: $e');
       // Fallback: run in-layout island for debugging if controller not available
@@ -291,9 +403,12 @@ Future<void> islandMain(List<String> args) async {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: Colors.red),
                   const SizedBox(height: 12),
-                  const Text('灵动岛发生错误', style: TextStyle(fontSize: 16, color: Colors.white)),
+                  const Text('灵动岛发生错误',
+                      style: TextStyle(fontSize: 16, color: Colors.white)),
                   const SizedBox(height: 8),
-                  Text(error.toString(), style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                  Text(error.toString(),
+                      style:
+                          const TextStyle(fontSize: 12, color: Colors.white70)),
                 ],
               ),
             ),
@@ -311,12 +426,13 @@ void _applyWin32FramelessTransparentByProcessId() {
     final foundHwnds = <int>[];
 
     // NativeCallable.isolateLocal allows returning a value (required by EnumWindows)
-    final lpEnumFunc = NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
+    final lpEnumFunc =
+        NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
       final pidPtr = calloc<Uint32>();
       GetWindowThreadProcessId(hwnd, pidPtr);
       final pid = pidPtr.value;
       calloc.free(pidPtr);
-      
+
       if (pid == currentPid && IsWindowVisible(hwnd) != 0) {
         foundHwnds.add(hwnd);
       }
@@ -327,7 +443,7 @@ void _applyWin32FramelessTransparentByProcessId() {
     lpEnumFunc.close();
 
     if (foundHwnds.isEmpty) return;
-    
+
     // The sub-window is typically created after the main window (last one in list)
     final hwnd = foundHwnds.length > 1 ? foundHwnds.last : foundHwnds.first;
 
@@ -335,7 +451,7 @@ void _applyWin32FramelessTransparentByProcessId() {
     const WS_CAPTION = 0x00C00000;
     const WS_THICKFRAME = 0x00040000;
     const WS_SYSMENU = 0x00080000;
-    
+
     var style = GetWindowLongPtr(hwnd, GWL_STYLE);
     style &= ~WS_CAPTION;
     style &= ~WS_THICKFRAME;
@@ -346,11 +462,12 @@ void _applyWin32FramelessTransparentByProcessId() {
     var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
     exStyle |= WS_EX_LAYERED;
     SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
-    
+
     // Set ColorKey to #000000 (Black) to make pure black pixels transparent
     SetLayeredWindowAttributes(hwnd, 0, 0, LWA_COLORKEY);
-    
-    debugPrint('[Island] FFI applied to HWND $hwnd (PID: $currentPid). Total windows found for PID: ${foundHwnds.length}');
+
+    debugPrint(
+        '[Island] FFI applied to HWND $hwnd (PID: $currentPid). Total windows found for PID: ${foundHwnds.length}');
   } catch (e) {
     debugPrint('[Island] PID-based FFI failed: $e');
   }
@@ -358,3 +475,31 @@ void _applyWin32FramelessTransparentByProcessId() {
 
 // Deprecated
 void _applyWin32FramelessTransparent() {}
+
+void _resizeCurrentWindow(int w, int h) {
+  if (!Platform.isWindows) return;
+  try {
+    final currentPid = GetCurrentProcessId();
+    final foundHwnds = <int>[];
+    final lpEnum =
+        NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
+      final pidPtr = calloc<Uint32>();
+      GetWindowThreadProcessId(hwnd, pidPtr);
+      if (pidPtr.value == currentPid && IsWindowVisible(hwnd) != 0) {
+        foundHwnds.add(hwnd);
+      }
+      calloc.free(pidPtr);
+      return 1;
+    }, exceptionalReturn: 0);
+    EnumWindows(lpEnum.nativeFunction, 0);
+    lpEnum.close();
+
+    if (foundHwnds.isEmpty) return;
+    final hwnd = foundHwnds.length > 1 ? foundHwnds.last : foundHwnds.first;
+    SetWindowPos(
+        hwnd, 0, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    debugPrint('[Island] SetWindowPos ${w}x${h} -> HWND=$hwnd');
+  } catch (e) {
+    debugPrint('[Island] resize failed: $e');
+  }
+}

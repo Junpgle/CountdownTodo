@@ -277,8 +277,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = const Color(0xFF1C1C1E); // pill 本体颜色，不再是黑色填充整个窗口
-    final borderColor = Colors.white.withOpacity(0.15);
+    final bgColor = const Color(0xFF1C1C1E); // pill 本体颜色
+    final borderColor = Colors.black.withOpacity(0.5); // Use dark border to minimize anti-aliasing artifacts
 
     return Material(
         color: Colors.transparent, // ✅ 整个 Material 透明，不留黑底
@@ -396,14 +396,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         color: Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         alignment: Alignment.center,
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(title,
                 style: const TextStyle(
                     color: Colors.white70,
-                    fontSize: 9,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold)),
+            const SizedBox(width: 8),
             Text(_displayTime,
                 style: const TextStyle(
                     color: Colors.white,
