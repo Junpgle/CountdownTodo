@@ -35,7 +35,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   IslandState?
       _savedStateBeforeHover; // To return to focusing/idle after hover exit
   Map<String, dynamic>? _currentPayload;
-  bool _isLocal = true;
   bool _isFocusing = false;
 
   double _width = 160;
@@ -92,8 +91,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _isFocusing = stateStr == 'focusing' || endMs > 0 || timeLabel.isNotEmpty;
 
     setState(() {
-      _isLocal = (focusData?['syncMode']?.toString() ?? 'local') == 'local';
-
       if (focusData != null) {
         _timeLabel = timeLabel.isNotEmpty ? timeLabel : _timeLabel;
         _isCountdown = focusData['isCountdown'] ?? true;
@@ -222,8 +219,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         targetH = 34; // Black pill "12:15"
         break;
       case IslandState.focusing:
-        targetW = 160;
-        targetH = 34; // "专注事项 20:05"
+        targetW = 100;
+        targetH = 46; // Stacked "专注事项 20:05"
         break;
       case IslandState.hoverWide:
         targetW = 380;
@@ -389,27 +386,29 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     return GestureDetector(
       key: const ValueKey('focusing'),
-      onTap: () => _transitionToState(
-          _isLocal ? IslandState.splitAlert : IslandState.stackedCard),
+      onTap: () => _transitionToState(IslandState.stackedCard),
       onPanStart: (_) => _startDragging(),
       child: Container(
         color: Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         alignment: Alignment.center,
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(title,
                 style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 10,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(width: 8),
+                    fontWeight: FontWeight.bold,
+                    height: 1.1),
+                overflow: TextOverflow.ellipsis),
             Text(_displayTime,
                 style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900)),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1)),
           ],
         ),
       ),
@@ -430,7 +429,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     return GestureDetector(
       key: const ValueKey('hoverWide'),
-      onTap: () => _transitionToState(IslandState.idle),
+      onTap: () {
+        if (_isFocusing) {
+          _transitionToState(IslandState.stackedCard);
+        } else {
+          _transitionToState(IslandState.idle);
+        }
+      },
       onPanStart: (_) => _startDragging(),
       child: Container(
         color: Colors.transparent,
@@ -549,41 +554,47 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final title = focusData?['title']?.toString() ?? '专注事项';
     final tags = (focusData?['tags'] as List?)?.join(' ') ?? '专注标签';
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text('$_displayTime | $title',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900)),
-          const SizedBox(height: 4),
-          Text(tags,
-              style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                  child: _buildDesignBtn(
-                      label: '完成',
-                      color: const Color(0xFF4CAF50),
-                      onTap: () =>
-                          _transitionToState(IslandState.finishConfirm))),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: _buildDesignBtn(
-                      label: '放弃',
-                      color: const Color(0xFFD32F2F),
-                      onTap: () =>
-                          _transitionToState(IslandState.abandonConfirm))),
-            ],
-          )
-        ],
+    return GestureDetector(
+      key: const ValueKey('stackedCard'),
+      onTap: () => _transitionToState(IslandState.focusing),
+      onPanStart: (_) => _startDragging(),
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('$_displayTime | $title',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900)),
+            const SizedBox(height: 4),
+            Text(tags,
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                    child: _buildDesignBtn(
+                        label: '完成',
+                        color: const Color(0xFF4CAF50),
+                        onTap: () =>
+                            _transitionToState(IslandState.finishConfirm))),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: _buildDesignBtn(
+                        label: '放弃',
+                        color: const Color(0xFFD32F2F),
+                        onTap: () =>
+                            _transitionToState(IslandState.abandonConfirm))),
+              ],
+            )
+          ],
+        ),
       ),
     );
   }

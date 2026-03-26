@@ -325,15 +325,15 @@ class FloatWindowService {
         final focusData = {
           'title': p.title,
           'timeLabel': (() {
-            if ((p.endMs ?? 0) > 0) {
+            if (p.endMs > 0) {
               final now = DateTime.now().millisecondsSinceEpoch;
               int secs;
               if (p.mode == 1) {
                 // Count-up: endMs represents the start time
-                secs = (now - (p.endMs ?? now)) ~/ 1000;
+                secs = (now - p.endMs) ~/ 1000;
               } else {
                 // Count-down: endMs represents the target end time
-                secs = ((p.endMs ?? 0) - now) ~/ 1000;
+                secs = (p.endMs - now) ~/ 1000;
               }
               if (secs < 0) secs = 0;
               final mm = (secs ~/ 60).toString().padLeft(2, '0');
