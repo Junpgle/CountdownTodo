@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:convert';
-// dart:convert not required here
+// dart:convert removed
 import 'package:flutter/foundation.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter/services.dart';
@@ -13,28 +12,56 @@ import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
 import '../windows_island/island_payload.dart';
 import '../windows_island/island_manager.dart';
+import '../windows_island/island_channel.dart';
 
 class FloatWindowService {
-  static const _channel = MethodChannel('com.math_quiz_app/float_window');
   // Channel used to communicate with a desktop multi-window host (guarded).
   // Use the same channel name as the desktop_multi_window plugin expects.
   static const _dmwChannel = MethodChannel('mixin.one/desktop_multi_window');
 
   static bool _initialized = false;
-  static void init() {
+  static Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onAction') {
-        final action = call.arguments['action'];
-        final modifiedSecs = call.arguments['modifiedSecs'];
-        if (action == 'finish') {
-          _handleAction('finish', modifiedSecs);
-        } else if (action == 'abandon') {
-          _handleAction('abandon', 0);
+    try {
+      importIslandChannelAndSubscribe();
+    } catch (_) {}
+  }
+
+  static void importIslandChannelAndSubscribe() {
+    // Delayed import to avoid circular imports at file top-level
+    try {
+      // Ensure handler is set and subscribe to actions
+      IslandChannel.ensureInitialized();
+      IslandChannel.actionStream.listen((event) {
+        try {
+          final winId = event['windowId']?.toString();
+          final action = event['action']?.toString();
+          final payload = event['payload'] as Map<String, dynamic>?;
+          debugPrint('[FloatWindow] Island action from $winId: $action payload=$payload');
+          if (action == 'finish') {
+            _handleAction('finish', payload?['modifiedSecs'] ?? 0);
+          } else if (action == 'abandon') {
+            _handleAction('abandon', 0);
+          } else if (action == 'bounds_changed') {
+            try {
+              final bounds = payload?['bounds'] as Map<String, dynamic>?;
+              if (bounds != null && winId != null) {
+                StorageService.saveIslandBounds(winId, bounds);
+                debugPrint('[FloatWindow] saved island bounds for $winId: $bounds');
+              }
+            } catch (e) {
+              debugPrint('[FloatWindow] failed to save bounds: $e');
+            }
+          } else if (action == 'handshake_pong') {
+            // Handshake pong received; IslandManager waiting logic will observe via stream
+            debugPrint('[FloatWindow] handshake_pong from $winId');
+          }
+        } catch (e) {
+          debugPrint('[FloatWindow] failed to handle island action: $e');
         }
-      }
-    });
+      });
+    } catch (_) {}
   }
 
   // Development helper: when running in debug, allow an in-layout island
@@ -50,7 +77,6 @@ class FloatWindowService {
     if (saved == null) {
       if (action == 'abandon') {
          await PomodoroService.clearRunState();
-         await _channel.invokeMethod('hideFloat');
       }
       return;
     }
@@ -167,9 +193,6 @@ class FloatWindowService {
     } catch (_) {}
 
     if (!(prefs.getBool('float_window_enabled') ?? true)) {
-      try {
-        await _channel.invokeMethod('hideFloat');
-      } catch (_) {}
       return;
     }
 
@@ -278,15 +301,64 @@ class FloatWindowService {
         'detail_note': (payload['detail_note'] is String) ? payload['detail_note'] as String : '',
       };
 
-      // Convert to typed DTO
+      // Convert to typed DTO (legacy) and build structured island payload
       final dto = () {
         try {
-          // Lazily import DTO to avoid circular imports at top-level
           return IslandPayload.fromMap(sanitized);
         } catch (_) {
           return IslandPayload.fromMap(null);
         }
       }();
+
+      // Build structured payload following docs/island.md
+      Map<String, dynamic> buildIslandStructuredPayload(IslandPayload p) {
+        final bool isFocusing = p.endMs > 0;
+        final state = isFocusing ? 'focusing' : 'idle';
+        final focusData = {
+          'title': p.title,
+          'timeLabel': (() {
+            if ((p.endMs ?? 0) > 0) {
+              final now = DateTime.now().millisecondsSinceEpoch;
+              final secs = ((p.endMs ?? 0) - now) ~/ 1000;
+              final mm = (secs ~/ 60).toString().padLeft(2, '0');
+              final ss = (secs % 60).toString().padLeft(2, '0');
+              return '${mm}:${ss}';
+            }
+            return '';
+          })(),
+          'isCountdown': true,
+          'tags': p.tags,
+          'syncMode': p.isLocal ? 'local' : 'remote',
+          'endMs': p.endMs ?? 0,
+        };
+
+        final reminderData = (p.reminderQueue.isNotEmpty)
+            ? {
+                'title': p.reminderQueue.first['text'] ?? '',
+                'location': p.reminderQueue.first['type'] ?? '',
+                'time': p.reminderQueue.first['timeLabel'] ?? '',
+              }
+            : {};
+
+        final dashboardData = {
+          'leftSlot': p.left ?? '',
+          'rightSlot': p.right ?? '',
+        };
+
+                // Check whether host supports transparent windows for this island
+                final bool transparentSupported = IslandManager().getTransparentSupport('island-1');
+
+                return {
+          'state': state,
+          'theme': prefs.getString('theme') ?? 'system',
+          'focusData': focusData,
+          'reminderData': reminderData,
+          'dashboardData': dashboardData,
+                  'transparentSupported': transparentSupported,
+          // include legacy flattened payload for compatibility
+          'legacy': p.toMap(),
+        };
+      }
 
       print('[FloatWindow] showFloat payload: endMs=${payload['endMs']} mode=${payload['mode']} isLocal=${payload['isLocal']} style=${payload['style']} forceReset=${payload['forceReset']}');
 
@@ -297,28 +369,34 @@ class FloatWindowService {
           final islandId = 'island-1';
           // If no window cached, attempt to create (with cooldown)
           var winId = IslandManager().getCachedWindowId(islandId);
+
           if (winId == null) {
             final nowMs = DateTime.now().millisecondsSinceEpoch;
             if (nowMs - _lastIslandCreateAttemptMs < _islandCreateCooldownMs) {
-              debugPrint('[FloatWindow] skipping createIsland due to cooldown (${nowMs - _lastIslandCreateAttemptMs}ms)');
+              debugPrint('[FloatWindow] creation cooldown active, checking if window appeared...');
+              // If we skipped create but the window is now actually up, winId might still be null here
+              // so we re-fetch from cache. 
+              winId = IslandManager().getCachedWindowId(islandId);
             } else {
               _lastIslandCreateAttemptMs = nowMs;
               debugPrint('[FloatWindow] IslandManager.createIsland -> islandId=$islandId');
               winId = await IslandManager().createIsland(islandId);
-              if (winId != null) {
-                debugPrint('[FloatWindow] IslandManager created island window id=$winId');
-              }
             }
           }
 
-          // If we have a window id, try to post payload via IslandManager
+          // If we have (or just created) a window id, post the structured payload
           if (winId != null) {
-            final sent = await IslandManager().sendPayload(islandId, dto);
+            final structured = buildIslandStructuredPayload(dto);
+            // Optimization: if it's the first payload for a new window, send it
+            // but createWindow already takes a payload. This is an extra push to be sure.
+            final sent = await IslandManager().sendStructuredPayload(islandId, structured);
             if (sent) {
-              debugPrint('[FloatWindow] posted payload to island window id=$winId');
+              debugPrint('[FloatWindow] posted structured payload to island window id=$winId');
+              // Clear any in-layout debug payload when native island is active
+              try { debugPayload.value = null; } catch (_) {}
               return;
             } else {
-              debugPrint('[FloatWindow] IslandManager.postMessage failed for window id=$winId; clearing cache and will fallback');
+              debugPrint('[FloatWindow] IslandManager.postStructuredPayload failed for window id=$winId; clearing cache and will fallback');
               // clear cached id and allow fallback to legacy
               await IslandManager().recreateIsland(islandId);
             }
@@ -341,22 +419,10 @@ class FloatWindowService {
             _islandWindowId = null;
           }
         } catch (_) {}
-        try {
-          await _channel.invokeMethod('hideFloat');
-        } catch (_) {}
         return;
       }
 
-      // Legacy delivery: ask native legacy float to show/update. Also guard with timeout
-      try {
-        if (_disableLegacyFloat) {
-          debugPrint('[FloatWindow] legacy showFloat disabled for diagnostics. payload: ${dto.toMap()}');
-        } else {
-          await _channel.invokeMethod('showFloat', dto.toMap()).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
-        }
-      } catch (e) {
-        debugPrint('[FloatWindow] legacy showFloat failed: $e');
-      }
+      // Removed legacy delivery: ask native legacy float to show/update.
     } catch (e) {
       // Ignore errors if the window isn't ready or other issues
     }
@@ -378,10 +444,6 @@ class FloatWindowService {
   static int _lastIslandCreateAttemptMs = 0;
   static const int _islandCreateCooldownMs = 1200;
 
-  // Diagnostic: when true, skip calling the legacy native showFloat method.
-  // Set to false in normal runs so the legacy native float (windows) is used
-  // when desktop_multi_window is unavailable.
-  static const bool _disableLegacyFloat = false;
   /// Returns structured data for a given slot type
   static Future<Map<String, String>> _getSlotData(String type,
       {required bool isLeft}) async {

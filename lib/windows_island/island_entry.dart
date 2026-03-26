@@ -1,15 +1,21 @@
 // Island window entrypoint for desktop_multi_window
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
+import 'dart:ffi' hide Size;
 import 'package:flutter/foundation.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'island_ui.dart';
 import 'island_payload.dart';
+import '../storage_service.dart';
 import 'dart:convert';
 
 @pragma('vm:entry-point')
 Future<void> islandMain(List<String> args) async {
-  final ValueNotifier<Map<String, dynamic>?> payloadNotifier = ValueNotifier(null);
+  // Start with a default idle payload so the island UI renders immediately
+  // and doesn't show a 'waiting' overlay while host messages arrive.
+  final ValueNotifier<Map<String, dynamic>?> payloadNotifier = ValueNotifier(IslandPayload.fromMap(null).toMap());
 
   // Guard the entire island isolate so uncaught exceptions don't crash the
   // engine without a readable error message. Present an error UI instead.
@@ -25,7 +31,32 @@ Future<void> islandMain(List<String> args) async {
 
     try {
       final controller = await WindowController.fromCurrentEngine();
-    debugPrint('[Island] islandMain started for windowId=${controller.windowId} args=$args');
+      // Best-effort: request a compact initial window size and transparency so
+      // the window area tightly wraps the UI. Host plugin may not implement
+      // these methods; ignore failures.
+      Future.delayed(const Duration(milliseconds: 100), () async {
+        try {
+          WidgetsFlutterBinding.ensureInitialized();
+          await windowManager.ensureInitialized();
+          
+          await windowManager.setAlwaysOnTop(true);
+          await windowManager.setSkipTaskbar(true);
+          
+          // FFI: Force Windows frameless & transparency
+          _applyWin32FramelessTransparent();
+          
+          // Set initial size to accommodate the maximum state of the island (hoverWide / stackedCard)
+          // Since the FFI FFI transparent parts will be invisible and unclickable, we can make it large enough
+          await windowManager.setSize(const Size(400, 160));
+          await windowManager.setAlignment(Alignment.topCenter);
+        } catch (_) {}
+      });
+      
+      try {
+        await controller.invokeMethod('setWindowSize', {'width': 160, 'height': 56}).catchError((_) {});
+        await controller.invokeMethod('setWindowTransparent', {'transparent': true}).catchError((_) {});
+      } catch (_) {}
+      debugPrint('[Island] islandMain started for windowId=${controller.windowId} args=$args');
 
     // Register handler to receive messages from host for this window
     await controller.setWindowMethodHandler((call) async {
@@ -35,12 +66,67 @@ Future<void> islandMain(List<String> args) async {
           final m = call.arguments as Map?;
           if (m != null) {
             try {
-              final dto = IslandPayload.fromMap(Map<String, dynamic>.from(m));
-              payloadNotifier.value = dto.toMap();
-              debugPrint('[Island] payloadNotifier updated from method handler: ${payloadNotifier.value}');
+              final mm = Map<String, dynamic>.from(m);
+              // Handshake ping
+              if (mm['handshake'] == 'ping') {
+                // reply with handshake_pong to host
+                controller.invokeMethod('onAction', {'action': 'handshake_pong', 'windowId': controller.windowId}).catchError((_) {});
+                debugPrint('[Island] responded handshake_pong to host');
+              }
+              // Support both legacy DTO and the new structured payload.
+              if (mm.containsKey('legacy') && mm['legacy'] is Map) {
+                payloadNotifier.value = Map<String, dynamic>.from(mm['legacy']);
+                debugPrint('[Island] applied legacy payload from structured wrapper: ${payloadNotifier.value}');
+              } else if (mm.containsKey('focusData') || mm.containsKey('state')) {
+                // If host sent a structured payload that already includes 'state' or 'focusData',
+                // prefer delivering the structured map to the Island UI so it can map states directly.
+                try {
+                  final structured = Map<String, dynamic>.from(mm);
+                  payloadNotifier.value = structured;
+                  debugPrint('[Island] applied structured payload directly: ${payloadNotifier.value}');
+                } catch (e) {
+                  debugPrint('[Island] failed to apply structured payload directly: $e');
+                }
+              } else {
+                try {
+                  final dto = IslandPayload.fromMap(mm);
+                  payloadNotifier.value = dto.toMap();
+                  debugPrint('[Island] payloadNotifier updated from method handler: ${payloadNotifier.value}');
+                } catch (e) {
+                  debugPrint('[Island] failed to parse payload in handler as DTO: $e');
+                }
+              }
             } catch (e) {
               debugPrint('[Island] failed to parse payload in handler: $e');
             }
+          }
+        }
+        // Persist bounds when host or UI requests size/position changes
+        if (call.method == 'setWindowSize' || call.method == 'setWindowBounds' || call.method == 'windowMoved') {
+          try {
+            final args = call.arguments as Map?;
+            if (args != null) {
+              // Normalize bounds map
+              final width = (args['width'] ?? args['w'] ?? args['size']?['width']) is num
+                  ? (args['width'] ?? args['w'] ?? args['size']?['width']) as num
+                  : null;
+              final height = (args['height'] ?? args['h'] ?? args['size']?['height']) is num
+                  ? (args['height'] ?? args['h'] ?? args['size']?['height']) as num
+                  : null;
+              final left = (args['left'] ?? args['x']) is num ? (args['left'] ?? args['x']) as num : null;
+              final top = (args['top'] ?? args['y']) is num ? (args['top'] ?? args['y']) as num : null;
+              final Map<String, dynamic> bounds = {};
+              if (width != null) bounds['width'] = width;
+              if (height != null) bounds['height'] = height;
+              if (left != null) bounds['left'] = left;
+              if (top != null) bounds['top'] = top;
+              if (bounds.isNotEmpty) {
+                StorageService.saveIslandBounds(controller.windowId, bounds).catchError((_) {});
+                debugPrint('[Island] persisted bounds for ${controller.windowId}: $bounds');
+              }
+            }
+          } catch (e) {
+            debugPrint('[Island] failed to persist bounds: $e');
           }
         }
       } catch (e) {
@@ -59,6 +145,28 @@ Future<void> islandMain(List<String> args) async {
       if (def is Map) {
         // The plugin may return 'payload' (map) or 'windowArgument' (string).
         dynamic payloadCandidate = def['payload'] ?? def['windowArgument'] ?? def['window_argument'];
+        // If host provided initialBounds, apply them
+        try {
+          final ib = def['initialBounds'] ?? def['initial_bounds'];
+          if (ib is Map) {
+            final width = ib['width'];
+            final height = ib['height'];
+            final left = ib['left'];
+            final top = ib['top'];
+            final args = <String, dynamic>{};
+            if (width != null) args['width'] = width;
+            if (height != null) args['height'] = height;
+            if (left != null) args['left'] = left;
+            if (top != null) args['top'] = top;
+            if (args.isNotEmpty) {
+              // Best-effort: request host to set window bounds
+              try {
+                await controller.invokeMethod('setWindowBounds', args).catchError((_) {});
+                debugPrint('[Island] applied initialBounds: $args');
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
         if (payloadCandidate != null) {
           Map<String, dynamic>? payloadMap;
           if (payloadCandidate is Map) {
@@ -89,18 +197,45 @@ Future<void> islandMain(List<String> args) async {
 
     runApp(MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Center(
+      home: Material(
+        color: Colors.transparent,
+        child: Center(
+          // Use a Stack so we can overlay a small waiting hint when there is
+          // no payload, but otherwise allow the IslandUI to size itself.
           child: Stack(
             alignment: Alignment.center,
             children: [
               IslandUI(
                 payloadNotifier: payloadNotifier,
                 initialPayload: payloadNotifier.value,
-                onAction: (action, [modifiedSecs]) {
-                  // Forward actions back to the host window via controller
-                  controller.invokeMethod('onAction', {'action': action, 'modifiedSecs': modifiedSecs ?? 0}).catchError((_) {});
+                onAction: (action, [modifiedSecs]) async {
+                  // Check local/remote permission before forwarding
+                  try {
+                    final current = payloadNotifier.value;
+                    String syncMode = 'local';
+                    if (current != null) {
+                      if (current.containsKey('legacy')) {
+                        final legacy = current['legacy'] as Map?;
+                        if (legacy != null && legacy['isLocal'] is bool) {
+                          syncMode = (legacy['isLocal'] as bool) ? 'local' : 'remote';
+                        }
+                      } else if (current.containsKey('focusData')) {
+                        final fd = current['focusData'] as Map<String, dynamic>?;
+                        if (fd != null && fd['syncMode'] != null) {
+                          syncMode = fd['syncMode']?.toString() ?? 'local';
+                        }
+                      }
+                    }
+
+                    if ((action == 'finish' || action == 'abandon') && syncMode != 'local') {
+                      debugPrint('[Island] action $action blocked because syncMode=$syncMode');
+                      return;
+                    }
+
+                    await controller.invokeMethod('onAction', {'action': action, 'modifiedSecs': modifiedSecs ?? 0, 'windowId': controller.windowId}).catchError((_) {});
+                  } catch (e) {
+                    debugPrint('[Island] onAction forward failed: $e');
+                  }
                 },
               ),
               // Debug / placeholder overlay to avoid white blank while waiting
@@ -111,7 +246,7 @@ Future<void> islandMain(List<String> args) async {
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(color: Colors.black.withOpacity(0.35), borderRadius: BorderRadius.circular(8)),
-                      child: const Text('Island ready — waiting for payload', style: TextStyle(color: Colors.white, fontSize: 12)),
+                      child: const Text('灵动岛已就绪 — 等待主程序数据', style: TextStyle(color: Colors.white, fontSize: 12)),
                     );
                   }
                   return const SizedBox.shrink();
@@ -127,46 +262,16 @@ Future<void> islandMain(List<String> args) async {
     // This is best-effort: ignore errors if host doesn't implement onAction.
     Future.microtask(() async {
       try {
-        await controller.invokeMethod('onAction', {'action': 'ready'}).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
+        await controller.invokeMethod('onAction', {'action': 'ready', 'windowId': controller.windowId}).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
         debugPrint('[Island] ready signal sent to host for windowId=${controller.windowId}');
       } catch (e) {
         debugPrint('[Island] failed to send ready signal: $e');
       }
     });
 
-    // Diagnostic: if after a short timeout we still have no payload, inject
-    // a debug payload so the UI can render and we can tell whether the
-    // island is able to draw independently of IPC delivery.
-    Future.delayed(const Duration(seconds: 3), () {
-      try {
-        if (payloadNotifier.value == null) {
-          final debugMap = IslandPayload.fromMap({
-            'endMs': DateTime.now().millisecondsSinceEpoch + 25 * 60 * 1000,
-            'title': 'Debug Focus',
-            'tags': <String>[],
-            'isLocal': true,
-            'mode': 1,
-            'style': 1,
-            'left': '',
-            'right': '',
-            'forceReset': false,
-            'topBarLeft': '',
-            'topBarRight': '',
-            'reminderQueue': <Map<String, String>>[],
-            'detail_type': '',
-            'detail_title': '',
-            'detail_subtitle': '',
-            'detail_location': '',
-            'detail_time': '',
-            'detail_note': '',
-          }).toMap();
-          payloadNotifier.value = debugMap;
-          debugPrint('[Island] injected debug payload to force render: $debugMap');
-        }
-      } catch (e) {
-        debugPrint('[Island] failed to inject debug payload: $e');
-      }
-    });
+    // NOTE: removed diagnostic debug payload injection to ensure island only
+    // renders real data provided by the host. This matches the requirement
+    // to not display debug data and to rely on actual IPC payloads.
     } catch (e) {
       debugPrint('[Island] top-level island error: $e');
       // Fallback: run in-layout island for debugging if controller not available
@@ -189,7 +294,7 @@ Future<void> islandMain(List<String> args) async {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: Colors.red),
                   const SizedBox(height: 12),
-                  const Text('Island encountered an error', style: TextStyle(fontSize: 16)),
+                  const Text('灵动岛发生错误', style: TextStyle(fontSize: 16)),
                   const SizedBox(height: 8),
                   Text(error.toString(), style: const TextStyle(fontSize: 12, color: Colors.black54)),
                 ],
@@ -202,3 +307,45 @@ Future<void> islandMain(List<String> args) async {
   });
 }
 
+void _applyWin32FramelessTransparent() {
+  if (!Platform.isWindows) return;
+  try {
+    final user32 = DynamicLibrary.open('user32.dll');
+    final getForegroundWindow = user32.lookupFunction<IntPtr Function(), int Function()>('GetForegroundWindow');
+
+    final is64 = sizeOf<IntPtr>() == 8;
+    final getWindowLong = is64
+        ? user32.lookupFunction<IntPtr Function(IntPtr, Int32), int Function(int, int)>('GetWindowLongPtrW')
+        : user32.lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>('GetWindowLongW');
+    final setWindowLong = is64
+        ? user32.lookupFunction<IntPtr Function(IntPtr, Int32, IntPtr), int Function(int, int, int)>('SetWindowLongPtrW')
+        : user32.lookupFunction<Int32 Function(Int32, Int32, Int32), int Function(int, int, int)>('SetWindowLongW');
+    final setLayeredWindowAttributes = user32.lookupFunction<Int32 Function(IntPtr, Uint32, Uint8, Uint32), int Function(int, int, int, int)>('SetLayeredWindowAttributes');
+
+    final hwnd = getForegroundWindow();
+    if (hwnd == 0) return;
+
+    const GWL_STYLE = -16;
+    const GWL_EXSTYLE = -20;
+    const WS_CAPTION = 0x00C00000;
+    const WS_THICKFRAME = 0x00040000;
+    const WS_SYSMENU = 0x00080000;
+    const WS_EX_LAYERED = 0x00080000;
+    const LWA_COLORKEY = 0x00000001;
+
+    // Remove frame (title bar and borders)
+    int style = getWindowLong(hwnd, GWL_STYLE);
+    style &= ~WS_CAPTION;
+    style &= ~WS_THICKFRAME;
+    style &= ~WS_SYSMENU;
+    setWindowLong(hwnd, GWL_STYLE, style);
+
+    // Make transparent using pure black (0x000000) as the color key for the window
+    int exStyle = getWindowLong(hwnd, GWL_EXSTYLE);
+    exStyle |= WS_EX_LAYERED;
+    setWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+    setLayeredWindowAttributes(hwnd, 0x000000, 0, LWA_COLORKEY);
+  } catch (e) {
+    debugPrint('FFI win32 failed: $e');
+  }
+}

@@ -37,7 +37,6 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
-  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> float_channel_;
 
 };
 

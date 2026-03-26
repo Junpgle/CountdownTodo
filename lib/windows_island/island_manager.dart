@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'island_channel.dart';
 import 'island_payload.dart';
+import '../storage_service.dart';
+import 'package:window_manager/window_manager.dart';
 
 class IslandManager {
   static final IslandManager _instance = IslandManager._internal();
@@ -12,6 +14,8 @@ class IslandManager {
 
   final Map<String, String> _windowIdCache = {}; // islandId -> windowId
   final Map<String, Future<String?>> _creating = {};
+  // Cache whether the host supports transparent windows for each islandId
+  final Map<String, bool> _transparentSupport = {};
 
   Future<String?> createIsland(String islandId) async {
     if (kIsWeb) return null;
@@ -39,13 +43,70 @@ class IslandManager {
   }
 
   Future<String?> _doCreate(String islandId) async {
-    // Prepare an initial payload (empty) so island isn't blank
-    final initial = IslandPayload.fromMap(null).toMap();
+    // Prepare an initial payload so island isn't blank. Include a minimal
+    // structured payload that tells the child to render an idle pill and
+    // whether transparency is expected (default false). This reduces the
+    // chance of the child showing a 'waiting' overlay while host finishes
+    // window setup.
+    final initialLegacy = IslandPayload.fromMap(null).toMap();
+    final initialStructured = {
+      'state': 'idle',
+      'theme': 'system',
+      'focusData': {'title': '', 'timeLabel': '', 'isCountdown': true, 'tags': [], 'syncMode': 'local'},
+      'reminderData': {},
+      'dashboardData': {'leftSlot': '', 'rightSlot': ''},
+      'transparentSupported': false,
+      'legacy': initialLegacy,
+    };
+
     final args = {
       'arguments': 'islandMain',
+      // Do not create hidden: some hosts don't implement showWindow, which
+      // would leave the window invisible. Create visible by default.
       'hiddenAtLaunch': false,
-      'payload': initial,
+      // Best-effort: request host to make the window topmost and skip taskbar
+      'alwaysOnTop': true,
+      'skipTaskbar': true,
+      // Request transparent hosting if plugin supports it
+      'transparent': true,
+      'payload': initialStructured,
     };
+    try {
+      final bounds = await StorageService.getIslandBounds(islandId);
+      if (bounds != null && bounds.isNotEmpty) {
+        args['initialBounds'] = bounds;
+      }
+    } catch (_) {}
+    // If there are no persisted bounds, try to center the new island window
+    // relative to the main window so it doesn't spawn in a corner with large
+    // empty/black margins. This is best-effort and wrapped in try/catch.
+    try {
+      if (args['initialBounds'] == null) {
+        await windowManager.ensureInitialized();
+        try {
+          final mainBounds = await windowManager.getBounds();
+          // Default island pill size (match IslandUI idle size)
+          const double defaultW = 160.0;
+          const double defaultH = 56.0;
+          final left = (mainBounds.left + (mainBounds.width - defaultW) / 2).toInt();
+          // Center vertically relative to main window
+          final top = (mainBounds.top + (mainBounds.height - defaultH) / 2).toInt();
+          args['initialBounds'] = {
+            'left': left,
+            'top': top,
+            'width': defaultW,
+            'height': defaultH,
+          };
+          debugPrint('[IslandManager] applying computed initialBounds for $islandId: ${args['initialBounds']}');
+        } catch (_) {}
+      }
+    } catch (_) {}
+    // Fallback: if still no initialBounds, set a small default to avoid
+    // spawning a large window with visible black margins.
+    if (args['initialBounds'] == null) {
+      args['initialBounds'] = {'left': 100, 'top': 100, 'width': 160.0, 'height': 56.0};
+      debugPrint('[IslandManager] applied fallback initialBounds for $islandId: ${args['initialBounds']}');
+    }
     try {
       debugPrint('[IslandManager] _doCreate calling IslandChannel.createWindow for $islandId');
       final windowId = await IslandChannel.createWindow(args);
@@ -54,9 +115,67 @@ class IslandManager {
       // before the host attempts to postWindowMessage. This reduces races
       // where createWindow returns but the child isn't ready to receive.
       if (windowId != null) {
+        // Immediately send a minimal structured payload so the child can
+        // render something without waiting for the host-side processing
+        // (setWindowTransparent/etc). This avoids a blank island during
+        // startup on hosts that don't support getWindowDefinition.
+        try {
+          await IslandChannel.postMessage(windowId, initialStructured);
+        } catch (_) {}
+        // If we computed initialBounds, attempt to apply them to the newly
+        // created (hidden) window and then show it. Best-effort: host may
+        // ignore these calls.
+        try {
+          final ib = args['initialBounds'] as Map<String, dynamic>?;
+          if (ib != null) {
+            await IslandChannel.setWindowBounds(windowId, ib).catchError((_) {});
+            await IslandChannel.showWindow(windowId).catchError((_) {});
+            // Request transparency so island content's transparent Material shows
+            // through instead of a black window background. Best-effort.
+            try {
+              final got = await IslandChannel.setWindowTransparent(windowId, true).catchError((_) => false);
+              // Cache the host support result for this islandId so payloads can
+              // inform the child engine whether to render a full background
+              // (if transparency is unsupported) or rely on native transparency.
+              _transparentSupport[islandId] = got == true;
+              debugPrint('[IslandManager] setWindowTransparent result for $windowId -> $got');
+            } catch (_) {
+              _transparentSupport[islandId] = false;
+            }
+
+            debugPrint('[IslandManager] applied initialBounds, showed window and requested transparency for $windowId');
+          }
+        } catch (_) {}
         try {
           await Future.delayed(const Duration(milliseconds: 400));
         } catch (_) {}
+        // Wait for explicit ready signal from the child window (best-effort)
+        try {
+          final ok = await IslandChannel.waitForReady(windowId, timeout: const Duration(milliseconds: 1200));
+          debugPrint('[IslandManager] waitForReady result for $windowId: $ok');
+          if (!ok) {
+            // Try handshake ping/pong: send small ping and wait for handshake_pong via actionStream
+            debugPrint('[IslandManager] waitForReady timed out for $windowId; sending handshake ping');
+            // send ping
+            await IslandChannel.postMessage(windowId, {'handshake': 'ping'});
+            // await handshake_pong event
+            final completer = Completer<bool>();
+            final sub = IslandChannel.actionStream.listen((event) {
+              try {
+                if (event['action'] == 'handshake_pong' && event['windowId'] == windowId) {
+                  completer.complete(true);
+                }
+              } catch (_) {}
+            });
+            try {
+              final got = await completer.future.timeout(const Duration(milliseconds: 1000), onTimeout: () => false);
+              debugPrint('[IslandManager] handshake_pong result for $windowId: $got');
+            } catch (_) {}
+            try { await sub.cancel(); } catch (_) {}
+          }
+        } catch (e) {
+          debugPrint('[IslandManager] waitForReady exception for $windowId: $e');
+        }
       }
       return windowId;
     } catch (_) {
@@ -69,6 +188,11 @@ class IslandManager {
     final windowId = _windowIdCache[islandId];
     if (windowId == null) return false;
     final Map<String, dynamic> map = payload.toMap();
+    // Ensure child is ready before starting send attempts
+    try {
+      final ready = await IslandChannel.waitForReady(windowId, timeout: const Duration(milliseconds: 600));
+      debugPrint('[IslandManager] pre-send waitForReady for $windowId -> $ready');
+    } catch (_) {}
     int attempts = 0;
     int delayMs = 50;
     while (attempts < 5) {
@@ -87,13 +211,55 @@ class IslandManager {
 
   String? getCachedWindowId(String islandId) => _windowIdCache[islandId];
 
+  /// Return whether the host supports transparent windows for this island id.
+  bool getTransparentSupport(String islandId) => _transparentSupport[islandId] ?? false;
+
   Future<void> recreateIsland(String islandId) async {
     final old = _windowIdCache[islandId];
     if (old != null) {
       await IslandChannel.destroyWindow(old);
       _windowIdCache.remove(islandId);
     }
+    // avoid immediate recreate loops: if we recreated recently, wait a bit
+    _lastRecreateMs ??= {};
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _lastRecreateMs![islandId] ?? 0;
+    if (now - last < 1200) {
+      debugPrint('[IslandManager] recreateIsland suppressed due to recent recreate (${now - last}ms)');
+      return;
+    }
+    _lastRecreateMs![islandId] = now;
     await createIsland(islandId);
+  }
+
+  /// Destroy cached island window without creating a new one.
+  Future<void> destroyCachedIsland(String islandId) async {
+    final old = _windowIdCache[islandId];
+    if (old != null) {
+      try {
+        await IslandChannel.destroyWindow(old);
+      } catch (_) {}
+      _windowIdCache.remove(islandId);
+    }
+    _transparentSupport.remove(islandId);
+  }
+
+  Map<String, int>? _lastRecreateMs;
+
+  /// Send a structured payload (Map) to island windowId. Returns true on success.
+  Future<bool> sendStructuredPayload(String islandId, Map<String, dynamic> payload) async {
+    final windowId = _windowIdCache[islandId];
+    if (windowId == null) return false;
+    // Ensure child ready
+    try {
+      await IslandChannel.waitForReady(windowId, timeout: const Duration(milliseconds: 600));
+    } catch (_) {}
+    final ok = await IslandChannel.postMessage(windowId, payload);
+    if (!ok) {
+      debugPrint('[IslandManager] sendStructuredPayload failed for $windowId');
+      _windowIdCache.remove(islandId);
+    }
+    return ok;
   }
 }
 

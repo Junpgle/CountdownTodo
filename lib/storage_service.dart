@@ -921,4 +921,21 @@ class StorageService {
           .toLocal();
     return null;
   }
+
+  // Island bounds persistence helpers
+  static Future<void> saveIslandBounds(String islandId, Map<String, dynamic> bounds) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString('island_bounds_$islandId', jsonEncode(bounds));
+  }
+
+  static Future<Map<String, dynamic>?> getIslandBounds(String islandId) async {
+    final prefs = await StorageService.prefs;
+    final s = prefs.getString('island_bounds_$islandId');
+    if (s == null) return null;
+    try {
+      final m = jsonDecode(s);
+      if (m is Map) return Map<String, dynamic>.from(m);
+    } catch (_) {}
+    return null;
+  }
 }

@@ -15,6 +15,8 @@ import 'services/float_window_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 import 'windows_island/island_manager.dart';
+import 'services/float_window_service.dart';
+import 'windows_island/island_ui.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -133,10 +135,13 @@ class _MyAppState extends State<MyApp> {
       windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
         await windowManager.focus();
-        // Try to create the island window on Windows. This is best-effort;
-        // if native side isn't available the call will return null.
+        // Try to create the island window on Windows. Before creating, probe
+        // whether desktop_multi_window exposes the core methods we need. If
+        // not, we'll fall back to an in-layout island overlay powered by
+        // FloatWindowService.debugPayload.
         if (Platform.isWindows) {
           try {
+            await FloatWindowService.init();
             await IslandManager().createIsland('island-1');
           } catch (e) {
             debugPrint('Island create failed: $e');
@@ -202,12 +207,27 @@ class _MyAppState extends State<MyApp> {
             Locale('en', 'US'),
           ],
 
-          // 🚀 添加这一段
-          routes: {
+            // 🚀 添加这一段
+              routes: {
             '/login': (context) => const LoginScreen(),
             '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
             '/dev/island': (context) => const IslandDebugPage(),
           },
+
+              // Inject an in-layout island overlay when needed via builder so it
+              // sits above all routes. The overlay listens to
+              // FloatWindowService.debugPayload to show an in-app island when
+              // multi-window features are unavailable.
+              builder: (context, child) {
+                return Stack(
+                  children: [
+                    child ?? const SizedBox.shrink(),
+                    // In-layout island overlay
+                    const SizedBox.expand(child: SizedBox()),
+                    InLayoutIslandOverlay(),
+                  ],
+                );
+              },
 
           // 路由控制：加载中 → 升级引导 → 主页/登录
           // 若有进行中的番茄钟，先进主页，再由主页自动 push 番茄钟（保留返回栈）
@@ -229,6 +249,55 @@ class _MyAppState extends State<MyApp> {
                       : const LoginScreen(),
         );
       },
+    );
+  }
+}
+
+class InLayoutIslandOverlay extends StatefulWidget {
+  const InLayoutIslandOverlay({super.key});
+
+  @override
+  State<InLayoutIslandOverlay> createState() => _InLayoutIslandOverlayState();
+}
+
+class _InLayoutIslandOverlayState extends State<InLayoutIslandOverlay> {
+  Offset _pos = const Offset(40, 400);
+
+  @override
+  void initState() {
+    super.initState();
+    FloatWindowService.debugPayload.addListener(_onPayload);
+  }
+
+  void _onPayload() => setState(() {});
+
+  @override
+  void dispose() {
+    FloatWindowService.debugPayload.removeListener(_onPayload);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final payload = FloatWindowService.debugPayload.value;
+    if (payload == null) return const SizedBox.shrink();
+
+    // Render a small draggable island in-layout
+    return Positioned(
+      left: _pos.dx,
+      top: _pos.dy,
+      child: GestureDetector(
+        onPanUpdate: (d) => setState(() => _pos += d.delta),
+        child: Material(
+          elevation: 6,
+          borderRadius: BorderRadius.circular(28),
+          color: Colors.transparent,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380, maxHeight: 300),
+            child: IslandUI(initialPayload: payload),
+          ),
+        ),
+      ),
     );
   }
 }
