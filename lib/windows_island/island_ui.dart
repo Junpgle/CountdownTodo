@@ -164,17 +164,19 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final String stateStr = payload['state']?.toString() ?? 'idle';
 
     final int endMs = focusData?['endMs'] ?? 0;
-    final String timeLabel = focusData?['timeLabel']?.toString() ?? '';
-    _isFocusing = stateStr == 'focusing' || endMs > 0 || timeLabel.isNotEmpty;
+    
+    // 关键修正：直接信任 state 字段，忽略残留数据
+    _isFocusing = stateStr == 'focusing';
 
     final IslandState nextStateCandidate = _computeNextState(stateStr);
+    
+    final tl = focusData?['timeLabel']?.toString() ?? '';
+    debugPrint('[IslandUI] 收到 payload: state=$stateStr, endMs=$endMs, timeLabel=$tl, _isFocusing=$_isFocusing');
+    debugPrint('[IslandUI] 计算结果: nextState=$nextStateCandidate');
 
     if (mounted) {
       setState(() {
         if (focusData != null) {
-          final tl = focusData['timeLabel']?.toString() ?? '';
-          if (tl.isNotEmpty) _timeNotifier.value = tl;
-
           // 1. Determine countdown/count-up mode early as parsing depends on it
           _isCountdown = focusData['isCountdown'] ?? true;
 
@@ -312,6 +314,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final Size fromSize = _sizeAnimation.value;
     final Size toSize = _targetSizeFor(nextState);
 
+    debugPrint('[IslandUI] 状态切换: $_state -> $nextState');
+    
     // 1) 先更新逻辑状态（让内容切换）
     setState(() {
       _state = nextState;

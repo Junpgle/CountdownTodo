@@ -148,6 +148,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     _runStateSub?.cancel();
     _islandSub?.cancel();
     _wsConnected = false;
+    FloatWindowService.isWorkbenchMounted = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

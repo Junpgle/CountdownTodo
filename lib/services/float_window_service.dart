@@ -40,7 +40,8 @@ class FloatWindowService {
           final payload = event['payload'] as Map<String, dynamic>?;
           debugPrint('[FloatWindow] Island action from $winId: $action payload=$payload');
           if (action == 'finish') {
-            _handleAction('finish', payload?['modifiedSecs'] ?? 0);
+            final modifiedSecs = event['modifiedSecs'] ?? payload?['modifiedSecs'] ?? 0;
+            _handleAction('finish', (modifiedSecs is int) ? modifiedSecs : 0);
           } else if (action == 'abandon') {
             _handleAction('abandon', 0);
           } else if (action == 'bounds_changed') {
@@ -74,26 +75,40 @@ class FloatWindowService {
   static bool isWorkbenchMounted = false;
 
   static void _handleAction(String action, int secs) async {
-    print('FloatWindow Action: $action, secs: $secs');
-    
-    if (isWorkbenchMounted && (action == 'finish' || action == 'abandon')) {
-      return; // WorkbenchView is alive and will handle this event, popping the UI dialog
+    debugPrint('[FloatWindow] _handleAction: action=$action, secs=$secs, isWorkbenchMounted=$isWorkbenchMounted');
+
+    // 只有当主窗口真正在前台获得焦点时，才信任 UI 层会处理并弹出对话框。
+    // 否则（最小化、后台、失焦），由 FloatWindowService 直接接管逻辑。
+    if (isWorkbenchMounted) {
+      try {
+        final isFocused = await windowManager.isFocused();
+        if (isFocused) {
+          debugPrint('[FloatWindow] action $action skipped: workbench is focused');
+          return;
+        }
+      } catch (e) {
+        debugPrint('[FloatWindow] failed to check focus state: $e. Proceeding with service handling.');
+      }
     }
-    
+
     final saved = await PomodoroService.loadRunState();
     if (saved == null) {
       if (action == 'abandon') {
-         await PomodoroService.clearRunState();
+        await PomodoroService.clearRunState();
+        clearFocus();
+        await update(endMs: 0, isLocal: true);
       }
       return;
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    
+
     if (action == 'abandon') {
       await PomodoroService.clearRunState();
       PomodoroSyncService().sendStopSignal();
       clearFocus();
+      await update(endMs: 0, isLocal: true);
+      debugPrint('[FloatWindow] abandon done, island updated to idle');
     } else if (action == 'finish') {
       final isCountUp = saved.mode == TimerMode.countUp;
       final actualSecs = isCountUp ? secs : ((now - saved.sessionStartMs) ~/ 1000);
@@ -109,12 +124,12 @@ class FloatWindowService {
         actualDuration: actualSecs,
         status: PomodoroRecordStatus.completed,
       );
-      
+
       await PomodoroService.addRecord(record);
       await PomodoroService.clearRunState();
       PomodoroSyncService().sendStopSignal();
       clearFocus();
-      
+
       if (saved.todoUuid != null && saved.todoUuid!.isNotEmpty) {
         final username = await StorageService.getLoginSession() ?? 'default';
         final allTodos = await StorageService.getTodos(username);
@@ -125,9 +140,10 @@ class FloatWindowService {
           await StorageService.saveTodos(username, allTodos);
         }
       }
+
+      await update(endMs: 0, isLocal: true);
+      debugPrint('[FloatWindow] finish done, island updated to idle');
     }
-    
-    await update();
   }
 
 
@@ -410,8 +426,7 @@ class FloatWindowService {
           // If we have (or just created) a window id, post the structured payload
           if (winId != null) {
             final structured = buildIslandStructuredPayload(dto);
-            // Optimization: if it's the first payload for a new window, send it
-            // but createWindow already takes a payload. This is an extra push to be sure.
+            debugPrint('[FloatWindow] 发送 payload 到岛: state=${structured['state']}, endMs=${(structured['focusData'] as Map?)?['endMs']}, timeLabel=${(structured['focusData'] as Map?)?['timeLabel']}');
             final sent = await IslandManager().sendStructuredPayload(islandId, structured);
             if (sent) {
               debugPrint('[FloatWindow] posted structured payload to island window id=$winId');

@@ -128,8 +128,8 @@ class IslandManager {
         try {
           final ib = args['initialBounds'] as Map<String, dynamic>?;
           if (ib != null) {
-            await IslandChannel.setWindowBounds(windowId, ib).catchError((_) {});
-            await IslandChannel.showWindow(windowId).catchError((_) {});
+            await IslandChannel.setWindowBounds(windowId, ib).catchError((_) => false);
+            await IslandChannel.showWindow(windowId).catchError((_) => false);
             // Request transparency so island content's transparent Material shows
             // through instead of a black window background. Best-effort.
             try {

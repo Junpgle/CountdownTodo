@@ -14,6 +14,8 @@ import 'island_payload.dart';
 import '../storage_service.dart';
 import 'dart:convert';
 
+const _actionChannel = MethodChannel('mixin.one/island_actions');
+
 @pragma('vm:entry-point')
 Future<void> islandMain(List<String> args) async {
   // CRITICAL: Initialize bindings at the very start of the isolate entrypoint
@@ -354,13 +356,18 @@ Future<void> islandMain(List<String> args) async {
                       return;
                     }
 
-                    await WindowController.fromWindowId('0').invokeMethod('onAction', {
-                      'action': action,
-                      'modifiedSecs': modifiedSecs ?? 0,
-                      'windowId': controller.windowId
-                    }).catchError((_) {});
+                    try {
+                      await _actionChannel.invokeMethod('onAction', {
+                        'action': action,
+                        'modifiedSecs': modifiedSecs ?? 0,
+                        'windowId': controller.windowId
+                      });
+                      debugPrint('[Island] onAction "$action" sent via actionChannel');
+                    } catch (e) {
+                      debugPrint('[Island] onAction "$action" FAILED: $e');
+                    }
                   } catch (e) {
-                    debugPrint('[Island] onAction forward failed: $e');
+                    debugPrint('[Island] onAction flow error: $e');
                   }
                 },
               ),
@@ -386,16 +393,15 @@ Future<void> islandMain(List<String> args) async {
         ),
       ));
 
-      // Notify host that this island window has initialized and is ready to receive messages.
-      // This is best-effort: ignore errors if host doesn't implement onAction.
+      // 3) Signal to host that we are ready to receive state/theme
       Future.microtask(() async {
         try {
-          await WindowController.fromWindowId('0').invokeMethod('onAction', {
+          await _actionChannel.invokeMethod('onAction', {
             'action': 'ready',
-            'windowId': controller.windowId
+            'windowId': controller.windowId,
           }).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
           debugPrint(
-              '[Island] ready signal sent to host for windowId=${controller.windowId}');
+              '[Island] ready signal sent via actionChannel for windowId=${controller.windowId}');
         } catch (e) {
           debugPrint('[Island] failed to send ready signal: $e');
         }
