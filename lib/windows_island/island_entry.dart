@@ -168,26 +168,8 @@ Future<void> islandMain(List<String> args) async {
                 const int WM_NCLBUTTONDOWN = 0x00A1;
                 const int HTCAPTION = 2;
                 ReleaseCapture();
-                SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
-                debugPrint('[Island] Native dragging started for HWND $hwnd');
-
-                // After dragging finishes (SendMessage blocks), persist exact bounds
-                final rectPtr = calloc<RECT>();
-                GetWindowRect(hwnd, rectPtr);
-                final curX = rectPtr.ref.left;
-                final curY = rectPtr.ref.top;
-                final curW = rectPtr.ref.right - rectPtr.ref.left;
-                final curH = rectPtr.ref.bottom - rectPtr.ref.top;
-                calloc.free(rectPtr);
-
-                final scale = _getIslandScaleFactor(hwnd);
-
-                StorageService.saveIslandBounds('island-1', {
-                  'left': curX.toDouble(),
-                  'top': curY.toDouble(),
-                  'width': (curW / scale).ceilToDouble(),
-                  'height': (curH / scale).ceilToDouble(),
-                }).catchError((_) {});
+                PostMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+                debugPrint('[Island] Native dragging posted for HWND $hwnd');
               }
             } catch (e) {
               debugPrint('[Island] Native drag failed: $e');
@@ -264,9 +246,9 @@ Future<void> islandMain(List<String> args) async {
                     final scale = _getIslandScaleFactor(hw);
                     final phyW = (width * scale).ceil();
                     final phyH = (height * scale).ceil();
-                    const int SWP_NOZORDER = 0x0004;
+                    const int HWND_TOPMOST = -1;
                     const int SWP_NOACTIVATE = 0x0010;
-                    SetWindowPos(hw, 0, left.toInt(), top.toInt(), phyW, phyH, SWP_NOZORDER | SWP_NOACTIVATE);
+                    SetWindowPos(hw, HWND_TOPMOST, left.toInt(), top.toInt(), phyW, phyH, SWP_NOACTIVATE);
                   }
                 });
               }
@@ -516,6 +498,12 @@ void _applyWin32FramelessTransparentImpl(int hwnd) {
     exStyle |= WS_EX_LAYERED;
     SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
     SetLayeredWindowAttributes(hwnd, 0, 0, LWA_COLORKEY);
+
+    const int HWND_TOPMOST = -1;
+    const int SWP_NOMOVE = 0x0002;
+    const int SWP_NOSIZE = 0x0001;
+    const int SWP_NOACTIVATE = 0x0010;
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   } catch (e) {
     debugPrint('[Island] PID-based FFI failed: $e');
   }
@@ -554,10 +542,10 @@ void _resizeCurrentWindow(int targetW, int targetH) {
     if (curW > 0 && curW != physicalW) {
       newX = curX - ((physicalW - curW) ~/ 2);
     }
-    const int SWP_NOZORDER = 0x0004;
+    const int HWND_TOPMOST = -1;
     const int SWP_NOACTIVATE = 0x0010;
 
-    SetWindowPos(hwnd, 0, newX, newY, physicalW, physicalH, SWP_NOZORDER | SWP_NOACTIVATE);
+    SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH, SWP_NOACTIVATE);
     
     StorageService.saveIslandBounds('island-1', {
       'left': newX.toDouble(),
