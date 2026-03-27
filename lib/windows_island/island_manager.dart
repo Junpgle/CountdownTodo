@@ -159,7 +159,10 @@ class IslandManager {
             try {
               final got = await IslandChannel.setWindowTransparent(windowId, true).catchError((_) => false);
               _transparentSupport[islandId] = got == true;
-              debugPrint('[IslandManager] setWindowTransparent result for $windowId -> $got');
+              debugPrint('[IslandManager] setWindowTransparent 结果: $got');
+              if (!got) {
+                debugPrint('[IslandManager] 插件透明设置失败，依赖 Win32 后备方案');
+              }
             } catch (_) {
               _transparentSupport[islandId] = false;
             }
