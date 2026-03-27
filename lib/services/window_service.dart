@@ -68,7 +68,8 @@ class WindowService with WindowListener {
   // Unused listeners
   @override void onWindowClose() async {
     try {
-      await IslandManager().destroyCachedIsland('island-1');
+      await IslandManager().destroyCachedIsland('island-1')
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () {});
     } catch (_) {}
     windowManager.destroy();
   }

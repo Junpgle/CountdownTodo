@@ -278,7 +278,8 @@ Future<void> islandMain(List<String> args) async {
       } catch (e) {
         debugPrint('[Island] getWindowDefinition error: $e');
       }
-      // Register periodic bounds monitor to support window position memory
+      // Register periodic bounds monitor to persist island position directly.
+      // Coordinates are saved as logical (÷ scale) so they adapt to DPI changes.
       Timer.periodic(const Duration(seconds: 2), (timer) async {
         try {
           final hwnd = _getIslandHwnd();
@@ -305,20 +306,13 @@ Future<void> islandMain(List<String> args) async {
             'height': logicalH.ceilToDouble(),
           };
 
-          // Compare with last reported to avoid redundant IPC
+          // Compare with last reported to avoid redundant writes
           if (lastReportedBounds == null ||
               lastReportedBounds!['left'] != currentBounds['left'] ||
               lastReportedBounds!['top'] != currentBounds['top']) {
             lastReportedBounds = currentBounds;
-            
-            // Only report if window is likely in a stable state (not moving right now)
-            // Native drag (postMessage) might keep it in a modal loop, but this timer 
-            // will fire once the loop ends or periodically.
-            WindowController.fromWindowId('0').invokeMethod('onAction', {
-              'action': 'bounds_changed',
-              'bounds': currentBounds,
-              'windowId': controller.windowId
-            }).catchError((_) {});
+            // Save directly from the island process (DPI-aware logical coords)
+            StorageService.saveIslandBounds('island-1', currentBounds).catchError((_) {});
           }
         } catch (_) {}
       });

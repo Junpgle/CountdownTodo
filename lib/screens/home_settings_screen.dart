@@ -925,29 +925,29 @@ class _SettingsPageState extends State<SettingsPage> {
             setState(() => _floatWindowStyle = val);
             final prefs = await SharedPreferences.getInstance();
             await prefs.setInt('float_window_style', val);
-            // If it's set to closed (2), also mark enabled false for compatibility
             if (val == 2) {
-              await prefs.setBool('float_window_enabled', false);
+              // Immediately destroy the island window when toggling OFF
+              try {
+                await IslandManager().destroyCachedIsland('island-1');
+              } catch (_) {}
             } else {
-              await prefs.setBool('float_window_enabled', true);
-            }
-            // Do not await update() here because invoking native plugins
-            // (desktop_multi_window / method channel) may block briefly and
-            // cause the UI to appear frozen. Dispatch as a microtask so the
-            // settings UI remains responsive while the update proceeds in
-            // the background.
-            Future.microtask(() async {
+              // Toggling ON: update() will create the island
               try {
                 await FloatWindowService.update(forceReset: true);
               } catch (_) {}
-            });
+            }
           } : null,
           onForceRefreshPressed: Platform.isWindows ? () async {
-                    // Center main window and request native float reset
-                    await FloatWindowService.resetPositions();
-                    // Also recreate the island window (Dart-managed)
+                    // Clear saved position so island resets to screen center
                     try {
-                      await IslandManager().recreateIsland('island-1');
+                      await StorageService.saveIslandBounds('island-1', {});
+                    } catch (_) {}
+                    // Destroy current island and recreate at center
+                    try {
+                      await IslandManager().destroyCachedIsland('island-1');
+                    } catch (_) {}
+                    try {
+                      await FloatWindowService.update(forceReset: true);
                     } catch (_) {}
           } : null,
           onIslandPriorityPressed: Platform.isWindows ? _showIslandPriorityDialog : null,

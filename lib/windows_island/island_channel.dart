@@ -193,6 +193,23 @@ class IslandChannel {
     }
   }
 
+  static Future<List<String>> getAllWindowIds() async {
+    try {
+      final res = await _dmw.invokeMethod('getAllWindows');
+      if (res is List) {
+        return res.map((e) {
+          if (e is Map) {
+            return e['windowId']?.toString() ?? '';
+          }
+          return e.toString();
+        }).where((id) => id.isNotEmpty).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   static Future<bool> destroyWindow(String windowId) async {
     try {
       final res = await _dmw.invokeMethod('closeWindow', {'windowId': windowId});

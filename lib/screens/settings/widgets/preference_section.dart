@@ -125,37 +125,40 @@ class PreferenceSection extends StatelessWidget {
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  leading: const Icon(Icons.picture_in_picture_alt_outlined, color: Colors.indigo),
-                  title: const Text('番茄钟悬浮窗'),
-                  subtitle: const Text('选择桌面悬浮窗样式（经典 / 灵动岛 / 关闭）'),
-                  trailing: DropdownButton<int>(
-                    value: floatWindowStyle,
-                    items: const [
-                      DropdownMenuItem(value: 0, child: Text('经典')),
-                      DropdownMenuItem(value: 1, child: Text('灵动岛')),
-                      DropdownMenuItem(value: 2, child: Text('关闭')),
-                    ],
-                    onChanged: onFloatWindowStyleChanged,
+                  leading: const Icon(Icons.layers_outlined, color: Colors.indigo),
+                  title: const Text('灵动岛'),
+                  subtitle: const Text('开启灵动岛式浮动窗口'),
+                  trailing: Switch(
+                    value: floatWindowStyle != 2,
+                    activeColor: Colors.indigo,
+                    onChanged: (val) {
+                      if (onFloatWindowStyleChanged != null) {
+                        // 开启则设为 1 (灵动岛)，关闭则设为 2 (关闭)
+                        onFloatWindowStyleChanged!(val ? 1 : 2);
+                      }
+                    },
                   ),
                 ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.sort, color: Colors.indigo),
-                  title: const Text('灵动岛信息流优先级'),
-                  subtitle: const Text('拖拽排序：决定灵动岛左右两侧的信息展示优先级'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: onIslandPriorityPressed,
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.refresh, color: Colors.indigo),
-                  title: const Text('强制刷新悬浮窗位置'),
-                  subtitle: const Text('若悬浮窗丢失或闪退，点击可将主窗口居中并请求悬浮窗重置位置'),
-                  trailing: TextButton(
-                    onPressed: onForceRefreshPressed,
-                    child: const Text('强制刷新'),
+                if (floatWindowStyle != 2) ...[
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.sort, color: Colors.indigo),
+                    title: const Text('灵动岛信息流优先级'),
+                    subtitle: const Text('拖拽排序：决定灵动岛左右两侧的信息展示优先级'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: onIslandPriorityPressed,
                   ),
-                ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.refresh, color: Colors.indigo),
+                    title: const Text('强制刷新悬浮窗位置'),
+                    subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
+                    trailing: TextButton(
+                      onPressed: onForceRefreshPressed,
+                      child: const Text('强制刷新'),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
