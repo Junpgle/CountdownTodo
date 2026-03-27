@@ -231,11 +231,19 @@ class FloatWindowService {
       await prefs.reload();
     } catch (_) {}
 
-    if (!(prefs.getBool('float_window_enabled') ?? true)) {
+    // Use float_window_style as the single source of truth:
+    // 0 = classic (no island), 1 = island enabled, 2 = disabled
+    final style = prefs.getInt('float_window_style') ?? 0;
+
+    if (style != 1) {
+      if (Platform.isWindows) {
+        // Ensure any existing island window is destroyed when not in island mode
+        try {
+          await IslandManager().destroyCachedIsland('island-1');
+        } catch (_) {}
+      }
       return;
     }
-
-    final style = prefs.getInt('float_window_style') ?? 0;
     
     // Priority sorting system for island slots
     final defaultPriority = ['course', 'countdown', 'todo'];
@@ -452,9 +460,7 @@ class FloatWindowService {
               try { debugPayload.value = null; } catch (_) {}
               return;
             } else {
-              debugPrint('[FloatWindow] IslandManager.postStructuredPayload failed for window id=$winId; clearing cache and will fallback');
-              // clear cached id and allow fallback to legacy
-              await IslandManager().recreateIsland(islandId);
+              debugPrint('[FloatWindow] sendStructuredPayload failed for window id=$winId');
             }
           }
         } catch (e) {
@@ -462,21 +468,7 @@ class FloatWindowService {
         }
       }
 
-      // If style==2 (关闭), try to ensure any native windows are hidden/closed.
-      if (Platform.isWindows && styleInt == 2) {
-        try {
-          // Try to close island window if we have an id
-          if (_islandWindowId != null) {
-            try {
-              await _dmwChannel
-                  .invokeMethod('closeWindow', {'windowId': _islandWindowId})
-                  .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
-            } catch (_) {}
-            _islandWindowId = null;
-          }
-        } catch (_) {}
-        return;
-      }
+      // style==2 (disabled) is now handled by the early-return at the top of update()
 
       // Removed legacy delivery: ask native legacy float to show/update.
     } catch (e) {
@@ -546,28 +538,44 @@ class FloatWindowService {
               final valid = courses.where((c) {
                 if (c is! CourseItem) return false;
                 if (dashboard['title'] == '今日课程') {
-                  return (8 + (c.startTime - 1)) >= now.hour;
+                  final endHour = c.endTime ~/ 100;
+                  final endMin = c.endTime % 100;
+                  final courseEnd = DateTime(now.year, now.month, now.day, endHour, endMin);
+                  return now.isBefore(courseEnd);
                 }
                 return true;
               }).toList();
 
               if (valid.isNotEmpty) {
                 final c = valid.first as CourseItem;
-                final time = c.formattedStartTime;
-                final display = isLeft ? '[$time] ${c.courseName}' : '${c.courseName} [$time]';
+
+                // ✅ 判断课程是否正在进行
+                final startHour = c.startTime ~/ 100;
+                final startMin = c.startTime % 100;
+                final courseStart = DateTime(now.year, now.month, now.day, startHour, startMin);
+
+                final bool isOngoing = now.isAfter(courseStart);
+
+                final time = isOngoing ? c.formattedEndTime : c.formattedStartTime;
+                final timeLabel = isOngoing ? '结束' : '开始';
+
+                final display = isLeft
+                    ? '[$time] ${c.courseName}'
+                    : '${c.courseName} [$time]';
+
                 return {
                   'display': display,
                   'type': 'course',
                   'detail_title': c.courseName,
                   'detail_subtitle': c.teacherName,
                   'detail_location': c.roomName,
-                  'detail_time': '${c.formattedStartTime}开始',
+                  'detail_time': '$time$timeLabel',
                   'detail_note': '',
                 };
               }
             }
           } catch (_) {}
-          return {'display': '无课程', 'type': 'course'};
+          return {'display': '', 'type': 'course'};
         case 'record':
           try {
             final records = await PomodoroService.getRecords();
@@ -656,19 +664,50 @@ class FloatWindowService {
             final b = await windowManager.getBounds();
             final newTop = (b.top - 120).toInt();
             await windowManager.setBounds(Rect.fromLTWH(b.left, newTop.toDouble(), b.width, b.height));
-          } catch (_) {
-            // fallback to focus if bounds APIs are not available
-          }
+          } catch (_) {}
           await windowManager.focus();
-        } catch (_) {
-          // ignore window_manager errors
+        } catch (_) {}
+      }
+
+      // Instruct native float implementation to reset its position.
+      if (Platform.isWindows) {
+        final islandId = 'island-1';
+        final winId = IslandManager().getCachedWindowId(islandId);
+        if (winId != null) {
+          try {
+            // Default island pill size (Idle state)
+            const double w = 160.0;
+            const double h = 56.0;
+
+            int left, top;
+            try {
+              // Center relative to the main window (which was just centered)
+              // This ensures it appears in the middle of the active monitor.
+              final mb = await windowManager.getBounds();
+              left = (mb.left + (mb.width - w) / 2).toInt();
+              top = (mb.top + (mb.height - h) / 2).toInt();
+            } catch (e) {
+              // Absolute fallback
+              left = 100;
+              top = 100;
+            }
+
+            // Move the window to the center
+            await IslandChannel.setWindowBounds(winId, {
+              'left': left,
+              'top': top,
+              'width': w.toInt(),
+              'height': h.toInt(),
+            });
+            
+            debugPrint('[FloatWindow] Reset island position to center: $left, $top');
+          } catch (e) {
+            debugPrint('[FloatWindow] Failed to reset island position: $e');
+          }
         }
       }
-      // Instruct native float implementation to reset its position.
-      // Use our update() so the payload contains the current cached session
-      // fields (style/endMs/isLocal/mode). Calling native directly with only
-      // {'forceReset':true} would cause native to receive default style=0
-      // and reset window size to Classic defaults.
+
+      // Trigger a refresh/update to ensure state is synchronized
       try {
         await update(forceReset: true);
       } catch (_) {}
