@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "2.2.1",
+  "version_name": "2.3.0",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 2.2.1",
-    "description":"- 【新增】首页UI重构\n- 【优化】小部件边距调整\n- 【新增】小部件支持滑动\n- 【优化】番茄钟界面横屏的布局",
+    "title": "版本更新 2.3.0",
+    "description":"灵动岛支持多种状态\n默认态，仅仅展示时间\n默认态鼠标移入，展示时间+两侧展开内容（支持用户按优先级排序显示）（支持显示课程表、待办、倒计时）\n专注态，展示正计时/倒计时+计时器\n专注态+鼠标移入，展示计时器+两侧内容，同上\n专注态+鼠标点击，灵动岛交互，支持岛内结束专注",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe"
   },
@@ -15,10 +15,23 @@
   },
   "wallpaper": {
     "show": true,
-    "image_url": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80"
+    "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
     {
+      "version_name": "2.3.0",
+      "date": "2026-03-27",
+      "items": [
+        "【炫耀】没错上面这张图片就是桃岭六道湾!",
+        "灵动岛支持多种状态\n",
+        "默认态，仅仅展示时间\n",
+        "默认态鼠标移入，展示时间+两侧展开内容（支持用户按优先级排序显示）（支持显示课程表、待办、倒计时）\n",
+        "专注态，展示正计时/倒计时+计时器\n",
+        "专注态+鼠标移入，展示计时器+两侧内容，同上\n专注态+鼠标点击，灵动岛交互，支持岛内结束专注",
+        "【优化】时间日志界面优化，实时时间展示更准确",
+        "【炫耀】皖南川藏线壁纸 嘿嘿嘿绝不经意间炫耀一下主播周一自驾去了一趟嘿嘿嘿（新增桃岭九道湾、漕溪花海、旵山头、青龙湾原生态度假区）",
+      ]
+    },{
       "version_name": "2.2.1",
       "date": "2026-03-18",
       "items": [
