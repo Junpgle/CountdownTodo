@@ -18,6 +18,8 @@ class FloatWindowService {
   // Channel used to communicate with a desktop multi-window host (guarded).
   // Use the same channel name as the desktop_multi_window plugin expects.
   static const _dmwChannel = MethodChannel('mixin.one/desktop_multi_window');
+  
+  static bool _processingAction = false;
 
   static bool _initialized = false;
   static Future<void> init() async {
@@ -73,21 +75,27 @@ class FloatWindowService {
   static ValueNotifier<Map<String, dynamic>?> debugPayload = ValueNotifier(null);
   
   static bool isWorkbenchMounted = false;
+  static int _actionVersion = 0;
 
   static void _handleAction(String action, int secs) async {
+    if (_processingAction) {
+      debugPrint('[FloatWindow] action $action ignored: already processing');
+      return;
+    }
+    _processingAction = true;
+    final int myVersion = ++_actionVersion;
+
     debugPrint('[FloatWindow] _handleAction: action=$action, secs=$secs, isWorkbenchMounted=$isWorkbenchMounted');
 
-    // 只有当主窗口真正在前台获得焦点时，才信任 UI 层会处理并弹出对话框。
     if (isWorkbenchMounted) {
       try {
         final isFocused = await windowManager.isFocused();
         if (isFocused) {
           debugPrint('[FloatWindow] action $action skipped: workbench is focused');
+          _processingAction = false;
           return;
         }
-      } catch (e) {
-        debugPrint('[FloatWindow] failed to check focus state: $e. Proceeding with service handling.');
-      }
+      } catch (_) {}
     }
 
     final saved = await PomodoroService.loadRunState();
@@ -97,18 +105,27 @@ class FloatWindowService {
         clearFocus();
         await update(endMs: 0, isLocal: true);
       }
+      _processingAction = false;
       return;
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    if (action == 'abandon') {
-      await PomodoroService.clearRunState();
-      PomodoroSyncService().sendStopSignal();
-      clearFocus();
-      await update(endMs: 0, isLocal: true);
-      debugPrint('[FloatWindow] abandon done, island updated to idle');
-    } else if (action == 'finish') {
+    // 1. 立即清状态推岛
+    await PomodoroService.clearRunState();
+    clearFocus();
+    await update(endMs: 0, isLocal: true);
+    debugPrint('[FloatWindow] island updated to idle');
+
+    // 2. 检查版本号：如果期间有新的 action，丢弃旧的记录保存
+    if (_actionVersion != myVersion) {
+      debugPrint('[FloatWindow] action $action stale, skipping record save');
+      _processingAction = false;
+      return;
+    }
+
+    // 3. 后台保存记录
+    if (action == 'finish') {
       final isCountUp = saved.mode == TimerMode.countUp;
       final actualSecs = isCountUp ? secs : ((now - saved.sessionStartMs) ~/ 1000);
 
@@ -125,9 +142,7 @@ class FloatWindowService {
       );
 
       await PomodoroService.addRecord(record);
-      await PomodoroService.clearRunState();
       PomodoroSyncService().sendStopSignal();
-      clearFocus();
 
       if (saved.todoUuid != null && saved.todoUuid!.isNotEmpty) {
         final username = await StorageService.getLoginSession() ?? 'default';
@@ -139,10 +154,12 @@ class FloatWindowService {
           await StorageService.saveTodos(username, allTodos);
         }
       }
-
-      await update(endMs: 0, isLocal: true);
-      debugPrint('[FloatWindow] finish done, island updated to idle');
+    } else if (action == 'abandon') {
+      PomodoroSyncService().sendStopSignal();
     }
+
+    debugPrint('[FloatWindow] $action done');
+    _processingAction = false;
   }
 
 
@@ -426,7 +443,9 @@ class FloatWindowService {
           if (winId != null) {
             final structured = buildIslandStructuredPayload(dto);
             debugPrint('[FloatWindow] 发送 payload 到岛: state=${structured['state']}, endMs=${(structured['focusData'] as Map?)?['endMs']}, timeLabel=${(structured['focusData'] as Map?)?['timeLabel']}');
+            debugPrint('[FloatWindow] about to send to island: state=${structured['state']}');
             final sent = await IslandManager().sendStructuredPayload(islandId, structured);
+            debugPrint('[FloatWindow] send result: $sent, state sent=${structured['state']}');
             if (sent) {
               debugPrint('[FloatWindow] posted structured payload to island window id=$winId');
               // Clear any in-layout debug payload when native island is active

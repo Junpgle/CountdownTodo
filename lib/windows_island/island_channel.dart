@@ -2,6 +2,9 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:path_provider/path_provider.dart';
 
 class IslandChannel {
   // Use the desktop_multi_window plugin channel name to create/post/close windows
@@ -9,8 +12,8 @@ class IslandChannel {
 
   static bool _handlerSet = false;
 
-  // Map of windowId -> Completer<void> waiting for ready signal
-  static final Map<String, Completer<void>> _readyCompleters = {};
+  // Map of windowId -> List<Completer<void>> waiting for ready signal
+  static final Map<String, List<Completer<void>>> _readyCompleters = {};
   // FIFO queue for anonymous ready waiters when windowId isn't provided
   static final List<Completer<void>> _anonReadyQueue = [];
   // Set of windowIds that have already signaled ready (sticky)
@@ -20,25 +23,36 @@ class IslandChannel {
   static final StreamController<Map<String, dynamic>> _actionController = StreamController.broadcast();
 
   static Stream<Map<String, dynamic>> get actionStream => _actionController.stream;
-  static const _globalChannel = MethodChannel('mixin.one/desktop_multi_window');
+  static Timer? _actionFileTimer;
 
   static void ensureInitialized() {
     if (_handlerSet) return;
     _handlerSet = true;
 
-    // Handle business actions from island windows via global channel
-    // because window-specific channels are often isolated across engines.
-    _globalChannel.setMethodCallHandler((call) async {
+    // File IPC Polling: Check every 200ms if sub-window has written an action file.
+    // This bypasses Flutter's engine/isolate isolation for custom method calls.
+    _actionFileTimer = Timer.periodic(const Duration(milliseconds: 200), (_) async {
       try {
-        debugPrint('[IslandChannel] global channel received: ${call.method} args=${call.arguments}');
-        if (call.method == 'islandAction') {
-          final args = call.arguments;
-          if (args is Map && args['action'] == 'ready') {
-            final winId = args['windowId']?.toString();
+        final dir = await getApplicationSupportDirectory();
+        final file = File('${dir.path}/island_action.json');
+        if (await file.exists()) {
+          final content = await file.readAsString();
+          // Delete immediately to prevent double-processing
+          try { await file.delete(); } catch (_) {}
+          
+          final map = Map<String, dynamic>.from(jsonDecode(content));
+          final action = map['action']?.toString();
+          debugPrint('[IslandChannel] file IPC received: $action');
+
+          if (action == 'ready') {
+            final winId = map['windowId']?.toString();
             if (winId != null) {
               if (_readyCompleters.containsKey(winId)) {
-                _readyCompleters.remove(winId)?.complete();
-                debugPrint('[IslandChannel] completed ready for windowId=$winId');
+                final list = _readyCompleters.remove(winId);
+                for (var c in list!) {
+                  if (!c.isCompleted) c.complete();
+                }
+                debugPrint('[IslandChannel] completed ${list.length} ready waiters for windowId=$winId');
               } else {
                 _readySet.add(winId);
                 debugPrint('[IslandChannel] recorded sticky ready for windowId=$winId');
@@ -47,22 +61,14 @@ class IslandChannel {
               _anonReadyQueue.removeAt(0).complete();
               debugPrint('[IslandChannel] completed anonymous ready waiter');
             }
-          } else if (args is Map) {
-            try {
-              final map = Map<String, dynamic>.from(args);
-              if (map.isNotEmpty) {
-                debugPrint('[IslandChannel] forwarding to actionStream: $map');
-                _actionController.add(map);
-              }
-            } catch (e) {
-              debugPrint('[IslandChannel] failed to forward action: $e');
-            }
+          } else if (action != null) {
+            debugPrint('[IslandChannel] forwarding to actionStream: $map');
+            _actionController.add(map);
           }
         }
       } catch (e) {
-        debugPrint('[IslandChannel] global handler error: $e');
+        debugPrint('[IslandChannel] file IPC error: $e');
       }
-      return null;
     });
 
     // Original controller-based handler for window-level actions (dragging, resizing)
@@ -108,7 +114,7 @@ class IslandChannel {
     }
     final completer = Completer<void>();
     if (windowId != null && windowId.isNotEmpty) {
-      _readyCompleters[windowId] = completer;
+      _readyCompleters.putIfAbsent(windowId, () => []).add(completer);
     } else {
       _anonReadyQueue.add(completer);
     }
@@ -116,8 +122,12 @@ class IslandChannel {
       await completer.future.timeout(timeout);
       return true;
     } catch (_) {
-      if (windowId != null) _readyCompleters.remove(windowId);
-      else _anonReadyQueue.remove(completer);
+      if (windowId != null && _readyCompleters.containsKey(windowId)) {
+        _readyCompleters[windowId]?.remove(completer);
+        if (_readyCompleters[windowId]!.isEmpty) _readyCompleters.remove(windowId);
+      } else if (windowId == null) {
+        _anonReadyQueue.remove(completer);
+      }
       return false;
     }
   }
@@ -126,7 +136,10 @@ class IslandChannel {
   static void recordReady(String windowId) {
     try {
       if (_readyCompleters.containsKey(windowId)) {
-        _readyCompleters.remove(windowId)?.complete();
+        final list = _readyCompleters.remove(windowId);
+        for (var c in list!) {
+          if (!c.isCompleted) c.complete();
+        }
       } else {
         _readySet.add(windowId);
       }

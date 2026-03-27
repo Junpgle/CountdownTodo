@@ -148,7 +148,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     _runStateSub?.cancel();
     _islandSub?.cancel();
     _wsConnected = false;
-    FloatWindowService.isWorkbenchMounted = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -842,7 +841,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
       _syncService.sendStopSignal();
-      _showLocalFloat();
+      // 🚀 Notify island to switch to idle immediately
+      await FloatWindowService.update(endMs: 0, isLocal: true);
 
       await _askCompletionAndRecord(
         sessionUuid: _currentSessionUuid,
@@ -868,7 +868,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
       _syncService.sendStopSignal();
-      _showLocalFloat();
+      // 🚀 Notify island to switch to idle immediately
+      await FloatWindowService.update(endMs: 0, isLocal: true);
       await _askCompletionAndRecord(
         sessionUuid: _currentSessionUuid,
         durationSeconds: isCountUp ? ((now - _sessionStartMs) / 1000).round() : _settings.focusMinutes * 60,
@@ -1037,7 +1038,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       }
       if (confirm) {
         NotificationService.cancelNotification(); NotificationService.cancelReminder(40001); NotificationService.cancelReminder(40002);
-        _syncService.sendStopSignal(); _showLocalFloat();
+        _syncService.sendStopSignal();
+        // 🚀 Notify island to switch to idle immediately
+        await FloatWindowService.update(endMs: 0, isLocal: true);
         final isCountUpMode = _settings.mode == TimerMode.countUp;
         setState(() {
           _phase = PomodoroPhase.idle;
@@ -1172,10 +1175,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     }
 
     if (isIdle) {
-      // Do a non-destructive refresh: avoid explicitly clearing the float
-      // state when we don't have a local session. Calling update() with no
-      // args preserves the last-known remote/local state in the float service.
-      await FloatWindowService.update();
+      // 🚀 Fix: Forward explicitly to clear the island session state
+      // when the local workbench enters idle/finished phase.
+      await FloatWindowService.update(endMs: 0, isLocal: true);
     } else {
       await FloatWindowService.update(
         endMs: effectiveEndMs,

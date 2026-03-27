@@ -157,6 +157,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _applyPayload(Map<String, dynamic>? payload) {
+    debugPrint('[IslandUI] _applyPayload called: state=${payload?['state']}, _isFocusing will be=${payload?['state'] == 'focusing'}, currentTimer active=${_countdownTimer?.isActive}');
     if (payload == null || !mounted) return;
     _currentPayload = payload;
 
@@ -176,7 +177,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     if (mounted) {
       setState(() {
-        if (focusData != null) {
+        if (focusData != null && _isFocusing) {
           // 1. Determine countdown/count-up mode early as parsing depends on it
           _isCountdown = focusData['isCountdown'] ?? true;
 
@@ -191,6 +192,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             if (_remainingSecs < 0) _remainingSecs = 0;
           }
         }
+        
+        // 🚀 Important: If not focusing, clear any stale timing state
+        if (!_isFocusing) {
+          _remainingSecs = 0;
+          _countdownTimer?.cancel();
+          _countdownTimer = null;
+          // 🚀 Refresh immediately to show the clock
+          _updateDisplayTime();
+        }
       });
     }
 
@@ -204,7 +214,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       }
     }
 
-    _ensureTimerRunning();
+    if (_isFocusing) {
+      _ensureTimerRunning();
+    }
   }
 
   // ── Hover ─────────────────────────────────────────────────
@@ -250,6 +262,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _ensureTimerRunning() {
+    if (!_isFocusing) {
+      _countdownTimer?.cancel();
+      _countdownTimer = null;
+      return;
+    }
     if (_countdownTimer?.isActive == true) return;
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
@@ -268,8 +285,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _updateDisplayTime() {
-    if (_state == IslandState.idle ||
-        (_state == IslandState.hoverWide && !_isFocusing)) {
+    if (!_isFocusing) {
       final now = DateTime.now();
       _timeNotifier.value =
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';

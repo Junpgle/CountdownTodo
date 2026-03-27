@@ -13,10 +13,17 @@ import 'island_ui.dart';
 import 'island_payload.dart';
 import '../storage_service.dart';
 import 'dart:convert';
+import 'package:path_provider/path_provider.dart';
 
-const _globalDmwChannel = MethodChannel('mixin.one/desktop_multi_window');
+// Deleted _globalDmwChannel because File IPC is used for sub->host communication.
+// _dmw channel is still used for host->sub via setWindowMethodHandler.
 
 /// Entry point for the lightweight Windows Island process.
+Future<File> _getActionFile() async {
+  final dir = await getApplicationSupportDirectory();
+  return File('${dir.path}/island_action.json');
+}
+
 @pragma('vm:entry-point')
 Future<void> islandMain(List<String> args) async {
   // CRITICAL: Initialize bindings at the very start of the isolate entrypoint
@@ -358,12 +365,14 @@ Future<void> islandMain(List<String> args) async {
                     }
 
                     try {
-                      await _globalDmwChannel.invokeMethod('islandAction', {
+                      final file = await _getActionFile();
+                      await file.writeAsString(jsonEncode({
                         'action': action,
                         'modifiedSecs': modifiedSecs ?? 0,
-                        'windowId': controller.windowId
-                      });
-                      debugPrint('[Island] onAction "$action" sent via global channel');
+                        'windowId': controller.windowId,
+                        'timestamp': DateTime.now().millisecondsSinceEpoch,
+                      }));
+                      debugPrint('[Island] onAction "$action" written to File IPC');
                     } catch (e) {
                       debugPrint('[Island] onAction "$action" FAILED: $e');
                     }
@@ -395,16 +404,19 @@ Future<void> islandMain(List<String> args) async {
       ));
 
       // 3) Signal to host that we are ready to receive state/theme
+      // Using File IPC for ready signal as well.
       Future.microtask(() async {
         try {
-          await _globalDmwChannel.invokeMethod('islandAction', {
+          final file = await _getActionFile();
+          await file.writeAsString(jsonEncode({
             'action': 'ready',
             'windowId': controller.windowId,
-          }).timeout(const Duration(milliseconds: 800), onTimeout: () => null);
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }));
           debugPrint(
-              '[Island] ready signal sent via global channel for windowId=${controller.windowId}');
+              '[Island] ready signal written to File IPC for windowId=${controller.windowId}');
         } catch (e) {
-          debugPrint('[Island] failed to send ready signal: $e');
+          debugPrint('[Island] failed to write ready signal: $e');
         }
       });
 
