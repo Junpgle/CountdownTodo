@@ -106,24 +106,29 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ══════════════════════════════════════════════════════════════
   Future<void> _resizeWindowOnce(Size targetSize) async {
     if (targetSize == _currentWindowSize) return; // 尺寸没变就跳过
-    _currentWindowSize = targetSize;
     try {
       final ctrl = await _getController();
       await ctrl.invokeMethod('setWindowSize', {
         'width': targetSize.width.toDouble(),
         'height': targetSize.height.toDouble(),
       });
-    } catch (_) {}
+      // 🚀 仅在调用成功后再更新本地状态，确保失败后可重试
+      _currentWindowSize = targetSize;
+    } catch (e) {
+      debugPrint('[IslandUI] _resizeWindowOnce error: $e');
+    }
   }
 
   @override
   void dispose() {
     _hoverDebounce?.cancel();
     _countdownTimer?.cancel();
+    _countdownTimer = null;
     _timeNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
     _sizeController.dispose();
+    _windowController = null;
     super.dispose();
   }
 
@@ -192,15 +197,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             if (_remainingSecs < 0) _remainingSecs = 0;
           }
         }
-        
-        // 🚀 Important: If not focusing, clear any stale timing state
-        if (!_isFocusing) {
-          _remainingSecs = 0;
-          _countdownTimer?.cancel();
-          _countdownTimer = null;
-          // 🚀 Refresh immediately to show the clock
-          _updateDisplayTime();
-        }
+        // No longer handling timer cancellation here; moved to _ensureTimerRunning
       });
     }
 
@@ -214,9 +211,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       }
     }
 
-    if (_isFocusing) {
-      _ensureTimerRunning();
-    }
+    _ensureTimerRunning();
   }
 
   // ── Hover ─────────────────────────────────────────────────
@@ -262,12 +257,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _ensureTimerRunning() {
+    // Unconditionally cancel and nullify existing timer to avoid leaks
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+
     if (!_isFocusing) {
-      _countdownTimer?.cancel();
-      _countdownTimer = null;
+      _updateDisplayTime(); // Refresh to show clock when not focusing
       return;
     }
-    if (_countdownTimer?.isActive == true) return;
+
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -319,18 +317,19 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
   }
 
-  void _transitionToState(IslandState nextState) async {
+  void _transitionToState(IslandState nextState) {
     if (!mounted) return;
+
+    // 🚀 使用版本号及状态检查实现并发保护
+    final int myVersion = ++_transitionVersion;
     if (nextState == _state && !_transitioning) return;
 
-    final int myVersion = ++_transitionVersion;
     _transitioning = true;
-
     final prevState = _state;
     final Size fromSize = _sizeAnimation.value;
     final Size toSize = _targetSizeFor(nextState);
 
-    debugPrint('[IslandUI] 状态切换: $_state -> $nextState');
+    debugPrint('[IslandUI] 状态切换 [$myVersion]: $_state -> $nextState');
     
     // 1) 先更新逻辑状态（让内容切换）
     setState(() {
@@ -344,7 +343,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       _splitController.reverse();
     }
 
-    // 3) 准备尺寸动画（纯 Flutter 内部，不调平台通道）
+    // 3) 准备尺寸动画
     _sizeAnimation = Tween<Size>(
       begin: fromSize,
       end: toSize,
@@ -353,13 +352,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       curve: Curves.easeInOutQuart,
     ));
 
-    // 4) 关键：在首帧之后、动画播放之前，调一次 native resize
-    //    这样 Flutter 下一帧就能拿到正确的约束来渲染
+    // 4) 只有当前版本才触发 native resize
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      _resizeWindowOnce(toSize);
+      if (_transitionVersion == myVersion) {
+        _resizeWindowOnce(toSize);
+      }
     });
 
-    // 5) 播放 Flutter 内部的尺寸动画（纯渲染，无平台调用）
+    // 5) 播放 Flutter 内部的尺寸动画
     _sizeController.forward(from: 0).then((_) {
       if (mounted && _transitionVersion == myVersion) {
         _transitioning = false;
