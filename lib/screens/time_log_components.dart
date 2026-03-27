@@ -460,10 +460,13 @@ class _DayGridPainter extends CustomPainter {
 
     final now = DateTime.now();
     if (now.isAfter(gridStart) && now.isBefore(gridStart.add(const Duration(days: 1)))) {
-      final y = now.difference(gridStart).inMinutes / 60 * hourH;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y),
+      // 修正：在特定的分钟刻度处画一根贯穿当前小时的垂直红线
+      final h = now.hour;
+      final x = (now.minute + now.second / 60) / 60 * size.width;
+
+      canvas.drawLine(Offset(x, h * hourH), Offset(x, (h + 1) * hourH),
           Paint()..color = Colors.redAccent.withOpacity(0.7)..strokeWidth = 1.5);
-      canvas.drawCircle(Offset(3, y), 3, Paint()..color = Colors.redAccent);
+      canvas.drawCircle(Offset(x, h * hourH), 3, Paint()..color = Colors.redAccent);
     }
   }
 

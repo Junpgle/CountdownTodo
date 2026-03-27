@@ -28,13 +28,15 @@ class FlutterWindow : public Win32Window {
   LRESULT MessageHandler(HWND window, UINT const message, WPARAM const wparam,
                          LPARAM const lparam) noexcept override;
 
+  static constexpr UINT WM_FLOAT_ACTION = WM_USER + 101;
+
+
  private:
   // The project to run.
   flutter::DartProject project_;
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
-  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> float_channel_;
 
 };
 

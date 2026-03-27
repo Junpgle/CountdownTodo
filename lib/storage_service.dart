@@ -6,10 +6,17 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 import 'services/api_service.dart';
 
 class StorageService {
+      static SharedPreferences? _prefs;
+      static Future<SharedPreferences> get prefs async {
+        if (_prefs != null) return _prefs!;
+        _prefs = await SharedPreferences.getInstance();
+        return _prefs!;
+      }
   // --- 常量定义 ---
   static const String KEY_USERS = "users_data";
   static const String KEY_LEADERBOARD = "leaderboard_data";
@@ -45,7 +52,7 @@ class StorageService {
 
   /// 获取设备唯一 UUID (用于后端同步过滤)
   static Future<String> _getUniqueDeviceId(String username) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     String accountDeviceKey = "${KEY_DEVICE_ID}_$username";
     String? deviceId = prefs.getString(accountDeviceKey);
     if (deviceId == null) {
@@ -91,7 +98,7 @@ class StorageService {
   }
 
   static Future<String> getDeviceId() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     final username = prefs.getString(KEY_CURRENT_USER) ?? 'default';
     return _getUniqueDeviceId(username);
   }
@@ -100,12 +107,12 @@ class StorageService {
   // 基础配置与用户系统
   // ==========================================
   static Future<void> initTheme() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     themeNotifier.value = prefs.getString(KEY_THEME_MODE) ?? 'system';
   }
 
   static Future<bool> register(String username, String password) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     Map<String, dynamic> users = {};
     String? usersJson = prefs.getString(KEY_USERS);
     if (usersJson != null) users = jsonDecode(usersJson);
@@ -116,7 +123,7 @@ class StorageService {
   }
 
   static Future<bool> login(String username, String password) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     String? usersJson = prefs.getString(KEY_USERS);
     if (usersJson == null) return false;
     Map<String, dynamic> users = jsonDecode(usersJson);
@@ -133,7 +140,7 @@ class StorageService {
   }
 
   static Future<String?> getLoginSession() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     String? token = prefs.getString(KEY_AUTH_TOKEN);
     if (token != null && token.isNotEmpty) {
       ApiService.setToken(token);
@@ -142,7 +149,7 @@ class StorageService {
   }
 
   static Future<void> clearLoginSession() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     await prefs.remove(KEY_CURRENT_USER);
     await prefs.remove(KEY_LAST_SCREEN_TIME_SYNC);
     await prefs.remove(KEY_AUTH_TOKEN);
@@ -150,12 +157,12 @@ class StorageService {
   }
 
   static Future<void> saveSettings(Map<String, dynamic> settings) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     await prefs.setString(KEY_SETTINGS, jsonEncode(settings));
   }
 
   static Future<Map<String, dynamic>> getSettings() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     String? jsonStr = prefs.getString(KEY_SETTINGS);
     if (jsonStr != null) return Map<String, dynamic>.from(jsonDecode(jsonStr));
     return {
@@ -170,7 +177,7 @@ class StorageService {
 
   static Future<void> savePomodoroTags(
       String username, List<Map<String, dynamic>> tags) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     await prefs.setString("pomodoro_tags_$username", jsonEncode(tags));
   }
 
@@ -347,7 +354,7 @@ class StorageService {
   }
 
   static Future<List<TodoItem>> getTodos(String username) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
     List<TodoItem> todos = [];
 
@@ -466,7 +473,7 @@ class StorageService {
   // ==========================================
   static Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
       {bool sync = true}) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     final Map<String, TimeLogItem> dedupeMap = {};
 
     for (var item in items) {
@@ -490,7 +497,7 @@ class StorageService {
   }
 
   static Future<List<TimeLogItem>> getTimeLogs(String username) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     List<String> list = prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
     List<TimeLogItem> logs = [];
 
@@ -522,12 +529,12 @@ class StorageService {
   // 屏幕时间与应用映射
   // ==========================================
   static Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     await prefs.setString(KEY_LOCAL_SCREEN_TIME, jsonEncode(stats));
   }
 
   static Future<Map<String, dynamic>> getLocalScreenTimeMap() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     String? jsonStr = prefs.getString(KEY_LOCAL_SCREEN_TIME);
     if (jsonStr != null) {
       try {
@@ -545,7 +552,7 @@ class StorageService {
   static Future<void> saveScreenTimeCache(List<dynamic> stats) async {
     if (stats.isEmpty) return;
 
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     final now = DateTime.now();
     final String today = DateFormat('yyyy-MM-dd').format(now);
 
@@ -588,7 +595,7 @@ class StorageService {
   }
 
   static Future<List<dynamic>> getScreenTimeCache() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
 
     // 检查缓存是否是今天的
     int? lastSyncMs = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
@@ -618,7 +625,7 @@ class StorageService {
   }
 
   static Future<Map<String, List<dynamic>>> getScreenTimeHistory() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     String? jsonStr = prefs.getString(KEY_SCREEN_TIME_HISTORY);
     if (jsonStr != null) {
       try {
@@ -856,7 +863,7 @@ class StorageService {
   // 偏好设置与状态管理
   // ==========================================
   static Future<void> saveAppSetting(String key, dynamic value) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     if (value is int) await prefs.setInt(key, value);
     if (value is String) await prefs.setString(key, value);
     if (value is bool) await prefs.setBool(key, value);
@@ -864,55 +871,81 @@ class StorageService {
   }
 
   static Future<int> getSyncInterval() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0;
   }
 
   static Future<String> getThemeMode() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     return prefs.getString(KEY_THEME_MODE) ?? 'system';
   }
 
   static Future<void> saveServerChoice(String choice) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     await prefs.setString(KEY_SERVER_CHOICE, choice);
     ApiService.setServerChoice(choice);
   }
 
   static Future<String> getServerChoice() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     return prefs.getString(KEY_SERVER_CHOICE) ?? 'cloudflare';
   }
 
   static Future<bool> getSemesterEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
   }
 
   static Future<DateTime?> getSemesterStart() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     String? s = prefs.getString(KEY_SEMESTER_START);
     return s != null ? DateTime.tryParse(s) : null;
   }
 
   static Future<DateTime?> getSemesterEnd() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     String? s = prefs.getString(KEY_SEMESTER_END);
     return s != null ? DateTime.tryParse(s) : null;
   }
 
   static Future<void> updateLastAutoSyncTime() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     await prefs.setInt(
         KEY_LAST_AUTO_SYNC, DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<DateTime?> getLastAutoSyncTime() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await StorageService.prefs;
     int? timestamp = prefs.getInt(KEY_LAST_AUTO_SYNC);
     if (timestamp != null)
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();
+    return null;
+  }
+
+  // Island bounds persistence helpers — uses file-based storage instead of
+  // SharedPreferences because the island runs in a separate Flutter engine
+  // and SharedPreferences is engine-isolated.
+  static Future<File> _islandBoundsFile(String islandId) async {
+    final dir = await getApplicationSupportDirectory();
+    return File('${dir.path}/island_bounds_$islandId.json');
+  }
+
+  static Future<void> saveIslandBounds(String islandId, Map<String, dynamic> bounds) async {
+    try {
+      final file = await _islandBoundsFile(islandId);
+      await file.writeAsString(jsonEncode(bounds));
+    } catch (_) {}
+  }
+
+  static Future<Map<String, dynamic>?> getIslandBounds(String islandId) async {
+    try {
+      final file = await _islandBoundsFile(islandId);
+      if (!await file.exists()) return null;
+      final s = await file.readAsString();
+      final m = jsonDecode(s);
+      if (m is Map && m.isNotEmpty) return Map<String, dynamic>.from(m);
+    } catch (_) {}
     return null;
   }
 }

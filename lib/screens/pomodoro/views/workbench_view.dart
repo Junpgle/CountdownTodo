@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,12 +11,15 @@ import '../../../storage_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
+import '../../../services/float_window_service.dart';
 import '../../../update_service.dart';
 import '../pomodoro_utils.dart';
 import '../widgets/tag_manager_sheet.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
 import '../widgets/workbench_task_area.dart';
+import '../../../windows_island/island_channel.dart';
+import 'package:window_manager/window_manager.dart';
 
 class PomodoroWorkbench extends StatefulWidget {
   final String username;
@@ -57,6 +59,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   TodoItem? _boundTodo;
   List<PomodoroTag> _allTags = [];
   List<String> _selectedTagUuids = [];
+  // Backwards-compatibility: older code referred to `_selectedUuids`.
+  // Keep a getter/setter so any remaining call sites still work.
+  List<String> get _selectedUuids => _selectedTagUuids;
+  set _selectedUuids(List<String> v) => _selectedTagUuids = v;
 
   // ── Timer ──
   Timer? _ticker;
@@ -83,23 +89,73 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   static const _keyBoundTodoTitle = 'pomodoro_idle_bound_todo_title';
   static const _keySelectedTagUuids = 'pomodoro_idle_selected_tag_uuids';
 
-  static const _floatChannel = MethodChannel('com.math_quiz_app/float_window');
 
   @override
   void initState() {
     super.initState();
+    FloatWindowService.isWorkbenchMounted = true;
     WidgetsBinding.instance.addObserver(this);
     _init();
+    _listenToRunState();
+    _listenToIslandActions();
+  }
+
+  StreamSubscription? _islandSub;
+  void _listenToIslandActions() {
+    _islandSub = IslandChannel.actionStream.listen((actionData) {
+      if (!mounted) return;
+      if (actionData.isNotEmpty) {
+        final action = actionData['action']?.toString();
+        if (action == 'finish') {
+          windowManager.show();
+          windowManager.focus();
+          _onFocusEnd();
+        } else if (action == 'abandon') {
+          windowManager.show();
+          windowManager.focus();
+          _abandonFocus(true);
+        }
+      }
+    });
+  }
+
+  StreamSubscription? _runStateSub;
+  void _listenToRunState() {
+    _runStateSub = PomodoroService.onRunStateChanged.listen((state) {
+      if (state == null && (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking)) {
+         // Island action (finish/abandon) cleared the state, we must sync UI
+         _ticker?.cancel();
+         NotificationService.cancelNotification();
+         if (mounted) {
+           setState(() {
+             _phase = PomodoroPhase.idle;
+             _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
+           });
+           widget.onPhaseChanged(_phase);
+           // Force full UI reload to reflect completed/abandoned session
+           _init();
+         }
+      }
+    });
   }
 
   @override
   void dispose() {
+    FloatWindowService.isWorkbenchMounted = false;
     _ticker?.cancel();
     _remoteTicker?.cancel();
     _crossDeviceSub?.cancel();
+    _runStateSub?.cancel();
+    _islandSub?.cancel();
     _wsConnected = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Public API: reload workbench data (used by parent when tab becomes visible)
+  Future<void> reload() async {
+    // Re-run the initialization sequence to refresh settings/tags/state
+    await _init();
   }
 
   @override
@@ -112,68 +168,150 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   }
 
   Future<void> _init() async {
-    _settings = await PomodoroService.getSettings();
-    _allTags = await PomodoroService.getTags();
-    _deviceId = await StorageService.getDeviceId();
+    final _initStart = DateTime.now();
+    debugPrint('[PomodoroWorkbench] _init start: ${_initStart.toIso8601String()}');
+    Timer? _initWatchdog = Timer(const Duration(seconds: 6), () {
+      debugPrint('[PomodoroWorkbench] WARNING: _init still running after 6s');
+    });
 
     try {
-      final info = await PackageInfo.fromPlatform();
-      _appVersion = info.version;
-    } catch (e) {
-      debugPrint("获取版本号失败: $e");
-    }
+      debugPrint('[PomodoroWorkbench] getSettings() start');
+      _settings = await PomodoroService.getSettings();
+      debugPrint('[PomodoroWorkbench] getSettings() done');
 
-    _todos = (await StorageService.getTodos(widget.username))
-        .where((t) => !t.isDeleted && !t.isDone)
-        .toList();
+      debugPrint('[PomodoroWorkbench] getTags() start');
+      _allTags = await PomodoroService.getTags();
+      debugPrint('[PomodoroWorkbench] getTags() done (count=${_allTags.length})');
 
-    final saved = await PomodoroService.loadRunState();
-    if (saved != null && saved.phase != PomodoroPhase.idle) {
-      await _recoverState(saved);
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      final savedUuid    = prefs.getString(_keyBoundTodoUuid);
-      final savedTitle   = prefs.getString(_keyBoundTodoTitle);
-      final savedTagsRaw = prefs.getString(_keySelectedTagUuids);
+      debugPrint('[PomodoroWorkbench] StorageService.getDeviceId() start');
+      _deviceId = await StorageService.getDeviceId();
+      debugPrint('[PomodoroWorkbench] StorageService.getDeviceId() done: $_deviceId');
 
-      final restoredTagUuids = savedTagsRaw != null && savedTagsRaw.isNotEmpty
-          ? savedTagsRaw.split(',').where((s) => s.isNotEmpty).toList()
-          : <String>[];
+      debugPrint('[PomodoroWorkbench] PackageInfo.fromPlatform() start');
+      try {
+        final info = await PackageInfo.fromPlatform();
+        _appVersion = info.version;
+        debugPrint('[PomodoroWorkbench] PackageInfo done: $_appVersion');
+      } catch (e, st) {
+        debugPrint('[PomodoroWorkbench] PackageInfo failed: $e\n$st');
+      }
 
-      TodoItem? restoredTodo;
-      if (savedUuid != null && savedUuid.isNotEmpty) {
-        restoredTodo = _todos.cast<TodoItem?>().firstWhere(
-              (t) => t?.id == savedUuid,
-          orElse: () => null,
-        );
-        if (restoredTodo == null && savedTitle != null && savedTitle.isNotEmpty) {
-          restoredTodo = TodoItem(
-            id: savedUuid,
-            title: savedTitle,
-            isDone: false,
-            createdAt: 0,
-          );
+      debugPrint('[PomodoroWorkbench] StorageService.getTodos() start');
+      try {
+        final todosRaw = await StorageService.getTodos(widget.username).timeout(const Duration(seconds: 5), onTimeout: () {
+          debugPrint('[PomodoroWorkbench] WARNING: StorageService.getTodos() timed out');
+          return <TodoItem>[];
+        });
+        _todos = (todosRaw).where((t) => !t.isDeleted && !t.isDone).toList();
+        debugPrint('[PomodoroWorkbench] StorageService.getTodos() done (count=${_todos.length})');
+      } catch (e, st) {
+        debugPrint('[PomodoroWorkbench] getTodos error: $e\n$st');
+        _todos = [];
+      }
+
+      debugPrint('[PomodoroWorkbench] PomodoroService.loadRunState() start');
+      PomodoroRunState? saved;
+      try {
+        saved = await PomodoroService.loadRunState().timeout(const Duration(seconds: 5));
+      } on TimeoutException catch (_) {
+        debugPrint('[PomodoroWorkbench] WARNING: PomodoroService.loadRunState() timed out');
+        saved = null;
+      } catch (e, st) {
+        debugPrint('[PomodoroWorkbench] PomodoroService.loadRunState() error: $e\n$st');
+        saved = null;
+      }
+      debugPrint('[PomodoroWorkbench] PomodoroService.loadRunState() done: ${saved != null}');
+
+      if (saved != null && saved.phase != PomodoroPhase.idle) {
+        debugPrint('[PomodoroWorkbench] _recoverState() start');
+        try {
+          try {
+            await _recoverState(saved).timeout(const Duration(seconds: 5));
+            debugPrint('[PomodoroWorkbench] _recoverState() done');
+          } on TimeoutException catch (_) {
+            debugPrint('[PomodoroWorkbench] WARNING: _recoverState() timed out');
+          }
+        } catch (e, st) {
+          debugPrint('[PomodoroWorkbench] _recoverState() error: $e\n$st');
+        }
+      } else {
+        try {
+          debugPrint('[PomodoroWorkbench] reading persisted idle binding from SharedPreferences');
+          SharedPreferences? prefs;
+          try {
+            prefs = await SharedPreferences.getInstance().timeout(const Duration(seconds: 5));
+          } catch (e, st) {
+            debugPrint('[PomodoroWorkbench] WARNING: SharedPreferences.getInstance() timed out or failed: $e\n$st');
+            prefs = null;
+          }
+          if (prefs != null) {
+            final savedUuid = prefs.getString(_keyBoundTodoUuid);
+            final savedTitle = prefs.getString(_keyBoundTodoTitle);
+            final savedTagsRaw = prefs.getString(_keySelectedTagUuids);
+
+            final restoredTagUuids = savedTagsRaw != null && savedTagsRaw.isNotEmpty
+                ? savedTagsRaw.split(',').where((s) => s.isNotEmpty).toList()
+                : <String>[];
+
+            TodoItem? restoredTodo;
+            if (savedUuid != null && savedUuid.isNotEmpty) {
+              restoredTodo = _todos.cast<TodoItem?>().firstWhere((t) => t?.id == savedUuid, orElse: () => null);
+              if (restoredTodo == null && savedTitle != null && savedTitle.isNotEmpty) {
+                restoredTodo = TodoItem(id: savedUuid, title: savedTitle, isDone: false, createdAt: 0);
+              }
+            }
+            if (mounted) {
+              setState(() {
+                _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
+                _boundTodo = restoredTodo;
+                _selectedTagUuids = restoredTagUuids;
+              });
+            }
+          }
+        } catch (e, st) {
+          debugPrint('[PomodoroWorkbench] error reading prefs: $e\n$st');
         }
       }
+
+      debugPrint('[PomodoroWorkbench] _connectCrossDevice() start');
+      try {
+        try {
+          await _connectCrossDevice().timeout(const Duration(seconds: 5));
+          debugPrint('[PomodoroWorkbench] _connectCrossDevice() done');
+        } on TimeoutException catch (_) {
+          debugPrint('[PomodoroWorkbench] WARNING: _connectCrossDevice() timed out');
+        }
+      } catch (e, st) {
+        debugPrint('[PomodoroWorkbench] _connectCrossDevice() error: $e\n$st');
+      }
+
+      await Future.delayed(const Duration(milliseconds: 400));
+
       if (mounted) {
-        setState(() {
-          _remainingSeconds = _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60;
-          _boundTodo = restoredTodo;
-          _selectedTagUuids = restoredTagUuids;
-        });
+        setState(() => _initializing = false);
+        widget.onReady?.call();
+        _showLocalFloat();
+
+        if (_userId.isNotEmpty && _deviceId.isNotEmpty) {
+          debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() start');
+            try {
+              try {
+                await _syncService.forceReconnect(_userId, 'flutter_$_deviceId').timeout(const Duration(seconds: 5));
+                debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() done');
+              } on TimeoutException catch (_) {
+                debugPrint('[PomodoroWorkbench] WARNING: _syncService.forceReconnect() timed out');
+              }
+            } catch (e, st) {
+              debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() error: $e\n$st');
+            }
+        }
       }
-    }
-
-    await _connectCrossDevice();
-    await Future.delayed(const Duration(milliseconds: 400));
-
-    if (mounted) {
-      setState(() => _initializing = false);
-      widget.onReady?.call();
-
-      if (_userId.isNotEmpty && _deviceId.isNotEmpty) {
-        await _syncService.forceReconnect(_userId, 'flutter_$_deviceId');
-      }
+    } catch (e, st) {
+      debugPrint('[PomodoroWorkbench] _init error: $e\n$st');
+    } finally {
+      _initWatchdog?.cancel();
+      final elapsed = DateTime.now().difference(_initStart).inMilliseconds;
+      debugPrint('[PomodoroWorkbench] _init finished in ${elapsed}ms');
     }
   }
 
@@ -241,6 +379,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         });
         widget.onPhaseChanged(_phase);
         _startRemoteTicker(endMs, isCountUp);
+        _showLocalFloat(); // Update float window with correct style for remote sessions
         break;
 
       case 'SYNC_TAGS':
@@ -394,6 +533,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
           });
           widget.onPhaseChanged(_phase);
           _pushPomodoroNotification(overrideRemaining: remaining);
+          _showLocalFloat();
           _startTicker();
           if (!isCountUp) {
             _scheduleReminders(saved.targetEndMs, saved.phase, saved.todoTitle, saved.currentCycle, saved.totalCycles);
@@ -701,7 +841,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
       _syncService.sendStopSignal();
-      _hideLocalFloat();
+      // 🚀 Notify island to switch to idle immediately
+      await FloatWindowService.update(endMs: 0, isLocal: true);
 
       await _askCompletionAndRecord(
         sessionUuid: _currentSessionUuid,
@@ -727,7 +868,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
       _syncService.sendStopSignal();
-      _hideLocalFloat();
+      // 🚀 Notify island to switch to idle immediately
+      await FloatWindowService.update(endMs: 0, isLocal: true);
       await _askCompletionAndRecord(
         sessionUuid: _currentSessionUuid,
         durationSeconds: isCountUp ? ((now - _sessionStartMs) / 1000).round() : _settings.focusMinutes * 60,
@@ -833,6 +975,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       });
       widget.onPhaseChanged(_phase);
       await _persistIdleBoundTodo(_boundTodo);
+      _showLocalFloat();
     }
   }
 
@@ -846,6 +989,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     });
     widget.onPhaseChanged(_phase);
     _pushPomodoroNotification();
+    _showLocalFloat();
     _startTicker();
     NotificationService.cancelReminder(40001);
     _scheduleReminders(end, PomodoroPhase.breaking, _boundTodo?.title, _currentCycle, _settings.cycles);
@@ -872,25 +1016,31 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     }
   }
 
-  Future<void> _abandonFocus() async {
+  Future<void> _abandonFocus([bool skipDialog = false]) async {
     if (_isHandlingEnd) return;
     _isHandlingEnd = true;
     try {
       _ticker?.cancel(); _ticker = null;
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('放弃本次专注？'), content: const Text('本次专注记录将被丢弃。'),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('继续专注')),
-            FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red.shade400), onPressed: () => Navigator.pop(ctx, true), child: const Text('放弃')),
-          ],
-        ),
-      );
-      if (confirm == true) {
+      bool confirm = skipDialog;
+      if (!skipDialog) {
+        final res = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('放弃本次专注？'), content: const Text('本次专注记录将被丢弃。'),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('继续专注')),
+              FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red.shade400), onPressed: () => Navigator.pop(ctx, true), child: const Text('放弃')),
+            ],
+          ),
+        );
+        confirm = res == true;
+      }
+      if (confirm) {
         NotificationService.cancelNotification(); NotificationService.cancelReminder(40001); NotificationService.cancelReminder(40002);
-        _syncService.sendStopSignal(); _hideLocalFloat();
+        _syncService.sendStopSignal();
+        // 🚀 Notify island to switch to idle immediately
+        await FloatWindowService.update(endMs: 0, isLocal: true);
         final isCountUpMode = _settings.mode == TimerMode.countUp;
         setState(() {
           _phase = PomodoroPhase.idle;
@@ -955,6 +1105,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
            PomodoroService.syncTagsToCloud().catchError((_) => null);
           setState(() { _allTags = tags; _selectedTagUuids = selected; });
            await _persistIdleBoundTodo(_boundTodo);
+           _showLocalFloat();
           if (_phase == PomodoroPhase.focusing) {
             final tagNames = tags.where((t) => selected.contains(t.uuid)).map((t) => t.name).toList();
             _syncService.sendUpdateTagsSignal(tagNames);
@@ -1002,35 +1153,41 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
   }
 
   Future<void> _showLocalFloat() async {
-    if (!Platform.isWindows) return;
-    final prefs = await SharedPreferences.getInstance();
-    if (!(prefs.getBool('float_window_enabled') ?? true)) return;
+    final bool isFocusing = _phase == PomodoroPhase.focusing;
+    final bool isRemoteWatching = _phase == PomodoroPhase.remoteWatching;
+    final bool isIdle = _phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished;
+    
     final tagNames = _allTags.where((t) => _selectedTagUuids.contains(t.uuid)).map((t) => t.name).toList();
-    final isCountUp = _phase == PomodoroPhase.focusing && _settings.mode == TimerMode.countUp;
-    final isRemoteCountUp = _phase == PomodoroPhase.remoteWatching && _remoteState?.mode == 1;
     
-    // 🚀 正计时模式下，endMs 传开始时间，并传 mode=1
-    final int effectiveEndMs = (isCountUp) ? _sessionStartMs : (isRemoteCountUp ? (_remoteState?.timestamp ?? 0) : _targetEndMs);
-    final int mode = (isCountUp || isRemoteCountUp) ? 1 : 0;
-    
-    try { 
-      await _floatChannel.invokeMethod('showFloat', {
-        'endMs': effectiveEndMs, 
-        'title': _boundTodo?.title ?? '', 
-        'tags': tagNames, 
-        'isLocal': _phase != PomodoroPhase.remoteWatching,
-        'mode': mode,
-      }); 
-    } catch (e) { 
-      debugPrint('FloatWindow show error: $e'); 
+    int effectiveEndMs = 0;
+    int mode = 0;
+
+    if (!isIdle) {
+      final isCountUp = isFocusing && _settings.mode == TimerMode.countUp;
+      final isRemoteCountUp = isRemoteWatching && _remoteState?.mode == 1;
+      effectiveEndMs = (isCountUp) ? _sessionStartMs : (isRemoteCountUp ? (_remoteState?.timestamp ?? 0) : _targetEndMs);
+      mode = (isCountUp || isRemoteCountUp) ? 1 : 0;
+    }
+
+    String displayTitle = _boundTodo?.title ?? '';
+    if (displayTitle.isEmpty && !isIdle) {
+      displayTitle = '自由专注';
+    }
+
+    if (isIdle) {
+      // 🚀 Fix: Forward explicitly to clear the island session state
+      // when the local workbench enters idle/finished phase.
+      await FloatWindowService.update(endMs: 0, isLocal: true);
+    } else {
+      await FloatWindowService.update(
+        endMs: effectiveEndMs,
+        title: displayTitle,
+        tags: tagNames,
+        isLocal: _phase != PomodoroPhase.remoteWatching,
+        mode: mode,
+      );
     }
   }
-
-  Future<void> _hideLocalFloat() async {
-    if (!Platform.isWindows) return;
-    try { await _floatChannel.invokeMethod('hideFloat'); } catch (e) { debugPrint('FloatWindow hide error: $e'); }
-  }
-
   @override
   Widget build(BuildContext context) {
     final bool isIdle = _phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished;
@@ -1317,6 +1474,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
           onSelected: (val) async {
             setState(() { if (val) _selectedTagUuids.add(tag.uuid); else _selectedTagUuids.remove(tag.uuid); });
             await _persistIdleBoundTodo(_boundTodo);
+            _showLocalFloat();
             if (_phase == PomodoroPhase.focusing) _syncService.sendUpdateTagsSignal(_allTags.where((t) => _selectedTagUuids.contains(t.uuid)).map((t) => t.name).toList());
           },
         );
