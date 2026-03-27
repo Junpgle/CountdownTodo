@@ -7,7 +7,6 @@ import 'dart:ffi' hide Size;
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:win32/win32.dart' hide Size;
-import 'package:flutter/foundation.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'island_ui.dart';
 import 'island_payload.dart';
@@ -90,8 +89,6 @@ Future<void> islandMain(List<String> args) async {
         await controller.invokeMethod(
             'setFrame', {'x': 0.0, 'y': 0.0, 'width': 160.0, 'height': 56.0});
         await controller.invokeMethod('setAlwaysOnTop', true);
-        await controller.invokeMethod(
-            'setWindowTransparent', {'transparent': true}).catchError((_) {});
       } catch (_) {}
 
 
