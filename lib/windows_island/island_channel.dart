@@ -175,6 +175,15 @@ class IslandChannel {
     }
   }
 
+  static Future<bool> hideWindow(String windowId) async {
+    try {
+      final res = await _dmw.invokeMethod('window_hide', {'windowId': windowId});
+      return res == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> setWindowTransparent(String windowId, bool transparent) async {
     try {
       final res = await _dmw.invokeMethod('setWindowTransparent', {'windowId': windowId, 'transparent': transparent});
@@ -211,6 +220,11 @@ class IslandChannel {
   }
 
   static Future<bool> destroyWindow(String windowId) async {
+    // First hide the window for immediate visual feedback
+    try {
+      await _dmw.invokeMethod('window_hide', {'windowId': windowId});
+    } catch (_) {}
+    // Then close/remove from the manager for actual cleanup
     try {
       final res = await _dmw.invokeMethod('closeWindow', {'windowId': windowId});
       return res == true;
