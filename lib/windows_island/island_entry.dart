@@ -52,20 +52,22 @@ Future<void> _initFfi() async {
   for (int i = 0; i < 100; i++) {
     final hwnd = _getSmallestFlutterWindow();
     if (hwnd != null) {
-      final rectPtr = calloc<RECT>();
-      GetWindowRect(hwnd, rectPtr);
-      final w = rectPtr.ref.right - rectPtr.ref.left;
-      final hSize = rectPtr.ref.bottom - rectPtr.ref.top;
-      calloc.free(rectPtr);
+      using((arena) {
+        final rectPtr = arena<RECT>();
+        if (GetWindowRect(hwnd, rectPtr) != 0) {
+          final w = rectPtr.ref.right - rectPtr.ref.left;
+          final hSize = rectPtr.ref.bottom - rectPtr.ref.top;
 
-      // 只有当窗口切实被 Flutter 缩小后，才将其锁定为灵动岛并透明化。
-      // 这完美避开了把主程序变透明的风险。
-      if (w <= 800 && hSize <= 600) {
-        debugPrint('[Island] HWND found and shrunk on attempt $i: $hwnd (${w}x${hSize})');
-        _islandHwndCache = hwnd;
-        _applyWin32FramelessTransparentImpl(hwnd);
-        return;
-      }
+          // 只有当窗口切实被 Flutter 缩小后，才将其锁定为灵动岛并透明化。
+          // 这完美避开了把主程序变透明的风险。
+          if (w <= 800 && hSize <= 600) {
+            debugPrint('[Island] HWND found and shrunk on attempt $i: $hwnd (${w}x${hSize})');
+            _islandHwndCache = hwnd;
+            _applyWin32FramelessTransparentImpl(hwnd);
+            return;
+          }
+        }
+      });
     }
     await Future.delayed(const Duration(milliseconds: 100));
   }
@@ -281,38 +283,47 @@ Future<void> islandMain(List<String> args) async {
       }
     } catch (_) {}
 
-    Timer.periodic(const Duration(seconds: 2), (timer) async {
+    Timer? boundsPollingTimer;
+    boundsPollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       try {
         final hwnd = _getSmallestFlutterWindow();
         if (hwnd == null) return;
-
-        final rectPtr = calloc<RECT>();
-        GetWindowRect(hwnd, rectPtr);
-        final curX = rectPtr.ref.left;
-        final curY = rectPtr.ref.top;
-        final curW = rectPtr.ref.right - rectPtr.ref.left;
-        final curH = rectPtr.ref.bottom - rectPtr.ref.top;
-        calloc.free(rectPtr);
-
-        final scale = _getIslandScaleFactor(hwnd);
-        final double logicalX = curX / scale;
-        final double logicalY = curY / scale;
-        final double logicalW = curW / scale;
-        final double logicalH = curH / scale;
-
-        final currentBounds = {
-          'left': logicalX,
-          'top': logicalY,
-          'width': logicalW.ceilToDouble(),
-          'height': logicalH.ceilToDouble(),
-        };
-
-        if (lastReportedBounds == null ||
-            lastReportedBounds!['left'] != currentBounds['left'] ||
-            lastReportedBounds!['top'] != currentBounds['top']) {
-          lastReportedBounds = currentBounds;
-          StorageService.saveIslandBounds('island-1', currentBounds).catchError((_) {});
+        
+        // Isolate 生命周期检查（可选）：如果窗口已失效，直接自毁计时器
+        if (IsWindow(hwnd) == 0) {
+          timer.cancel();
+          return;
         }
+
+        using((arena) {
+          final rectPtr = arena<RECT>();
+          if (GetWindowRect(hwnd, rectPtr) != 0) {
+            final curX = rectPtr.ref.left;
+            final curY = rectPtr.ref.top;
+            final curW = rectPtr.ref.right - rectPtr.ref.left;
+            final curH = rectPtr.ref.bottom - rectPtr.ref.top;
+
+            final scale = _getIslandScaleFactor(hwnd);
+            final double logicalX = curX / scale;
+            final double logicalY = curY / scale;
+            final double logicalW = curW / scale;
+            final double logicalH = curH / scale;
+
+            final currentBounds = {
+              'left': logicalX,
+              'top': logicalY,
+              'width': logicalW.ceilToDouble(),
+              'height': logicalH.ceilToDouble(),
+            };
+
+            if (lastReportedBounds == null ||
+                lastReportedBounds!['left'] != currentBounds['left'] ||
+                lastReportedBounds!['top'] != currentBounds['top']) {
+              lastReportedBounds = currentBounds;
+              StorageService.saveIslandBounds('island-1', currentBounds).catchError((_) {});
+            }
+          }
+        });
       } catch (_) {}
     });
 
@@ -428,58 +439,61 @@ int? _getSmallestFlutterWindow() {
 
     final lpEnumFunc =
     NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
-      final pidPtr = calloc<Uint32>();
-      GetWindowThreadProcessId(hwnd, pidPtr);
-      final pid = pidPtr.value;
-      calloc.free(pidPtr);
+      using((arena) {
+        final pidPtr = arena<Uint32>();
+        GetWindowThreadProcessId(hwnd, pidPtr);
+        final pid = pidPtr.value;
 
-      if (pid == currentPid && IsWindowVisible(hwnd) != 0) {
-        bool isIgnored = false;
-        try {
-          final classNamePtr = calloc<Uint16>(256).cast<Utf16>();
-          GetClassName(hwnd, classNamePtr, 256);
-          final className = classNamePtr.toDartString();
-          calloc.free(classNamePtr);
+        if (pid == currentPid && IsWindowVisible(hwnd) != 0) {
+          bool isIgnored = false;
+          try {
+            final classNamePtr = arena<Uint16>(256).cast<Utf16>();
+            GetClassName(hwnd, classNamePtr, 256);
+            final className = classNamePtr.toDartString();
 
-          final lowerClass = className.toLowerCase();
+            final lowerClass = className.toLowerCase();
 
-          if (!lowerClass.contains('flutter') && className != 'Window Class') {
+            if (!lowerClass.contains('flutter') && className != 'Window Class') {
+              isIgnored = true;
+            }
+            if (lowerClass.contains('ime') || lowerClass.contains('sogou')) {
+              isIgnored = true;
+            }
+          } catch (_) {
             isIgnored = true;
           }
-          if (lowerClass.contains('ime') || lowerClass.contains('sogou')) {
-            isIgnored = true;
-          }
-        } catch (_) {
-          isIgnored = true;
-        }
 
-        if (!isIgnored) {
-          foundHwnds.add(hwnd);
+          if (!isIgnored) {
+            foundHwnds.add(hwnd);
+          }
         }
-      }
+      });
       return 1;
     }, exceptionalReturn: 0);
 
-    EnumWindows(lpEnumFunc.nativeFunction, 0);
-    lpEnumFunc.close();
+    try {
+      EnumWindows(lpEnumFunc.nativeFunction, 0);
+    } finally {
+      lpEnumFunc.close();
+    }
 
     if (foundHwnds.isNotEmpty) {
       int? bestHwnd;
       int minArea = 999999999;
       for (final h in foundHwnds) {
-        final rectPtr = calloc<RECT>();
-        GetWindowRect(h, rectPtr);
-        final w = rectPtr.ref.right - rectPtr.ref.left;
-        final hSize = rectPtr.ref.bottom - rectPtr.ref.top;
-        calloc.free(rectPtr);
-        final area = w * hSize;
+        using((arena) {
+          final rectPtr = arena<RECT>();
+          if (GetWindowRect(h, rectPtr) != 0) {
+            final w = rectPtr.ref.right - rectPtr.ref.left;
+            final hSize = rectPtr.ref.bottom - rectPtr.ref.top;
+            final area = w * hSize;
 
-        // 这里取消了 w > 800 的过滤！它会抓出所有合法的 Flutter 窗口中最小的那个。
-        // 既然主窗口是 1920x1080，灵动岛即使还没缩小时也是 1200x900，完美避开主窗口。
-        if (area > 0 && area < minArea) {
-          minArea = area;
-          bestHwnd = h;
-        }
+            if (area > 0 && area < minArea) {
+              minArea = area;
+              bestHwnd = h;
+            }
+          }
+        });
       }
       return bestHwnd;
     }
@@ -529,22 +543,25 @@ void _resizeCurrentWindow(int targetW, int targetH) {
     final int physicalW = (targetW * scale).ceil();
     final int physicalH = (targetH * scale).ceil();
 
-    final rectPtr = calloc<RECT>();
-    GetWindowRect(hwnd, rectPtr);
-    final curX = rectPtr.ref.left;
-    final curY = rectPtr.ref.top;
-    final curW = rectPtr.ref.right - rectPtr.ref.left;
-    calloc.free(rectPtr);
+    using((arena) {
+      final rectPtr = arena<RECT>();
+      if (GetWindowRect(hwnd, rectPtr) != 0) {
+        final curX = rectPtr.ref.left;
+        final curY = rectPtr.ref.top;
+        final curW = rectPtr.ref.right - rectPtr.ref.left;
 
-    int newX = curX;
-    int newY = curY;
-    if (curW > 0 && curW != physicalW) {
-      newX = curX - ((physicalW - curW) ~/ 2);
-    }
-    const int HWND_TOPMOST = -1;
-    const int SWP_NOACTIVATE = 0x0010;
+        int newX = curX;
+        int newY = curY;
+        if (curW > 0 && curW != physicalW) {
+          newX = curX - ((physicalW - curW) ~/ 2);
+        }
+        const int HWND_TOPMOST = -1;
+        const int SWP_NOACTIVATE = 0x0010;
 
-    SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH, SWP_NOACTIVATE);
+        SetWindowPos(
+            hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH, SWP_NOACTIVATE);
+      }
+    });
   } catch (e) {
     debugPrint('[Island] resize failed: $e');
   }

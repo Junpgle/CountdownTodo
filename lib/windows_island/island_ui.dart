@@ -50,6 +50,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   bool _transitioning = false;
   int _transitionVersion = 0;
   Timer? _hoverDebounce;
+  Timer? _payloadDebounce;
   bool _isHovered = false;
 
   WindowController? _windowController;
@@ -122,12 +123,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   @override
   void dispose() {
     _hoverDebounce?.cancel();
+    _payloadDebounce?.cancel();
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _timeNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
     _sizeController.dispose();
+    _windowController?.setWindowMethodHandler(null);
     _windowController = null;
     super.dispose();
   }
@@ -158,7 +161,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ── Payload 处理 ──────────────────────────────────────────
 
   void _onNotifierPayload() {
-    if (mounted) _applyPayload(widget.payloadNotifier!.value);
+    _payloadDebounce?.cancel();
+    _payloadDebounce = Timer(const Duration(milliseconds: 50), () {
+      if (mounted) _applyPayload(widget.payloadNotifier?.value);
+    });
   }
 
   void _applyPayload(Map<String, dynamic>? payload) {
@@ -262,7 +268,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _countdownTimer = null;
 
     if (!_isFocusing) {
-      _updateDisplayTime(); // Refresh to show clock when not focusing
+      _updateDisplayTime();
+      // 非专注状态下，降低频率至每分钟更新一次时钟即可
+      _countdownTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        _updateDisplayTime();
+      });
       return;
     }
 
