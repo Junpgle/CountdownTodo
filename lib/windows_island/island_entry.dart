@@ -433,7 +433,7 @@ Future<void> islandMain(List<String> args) async {
               final rawMap = Map<String, dynamic>.from(m);
               final dynamic mmRaw =
                   rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
-              if (mmRaw is! Map) return;
+              if (mmRaw is! Map) return null;
 
               final mm = Map<String, dynamic>.from(mmRaw);
               if (mm['handshake'] == 'ping') {
@@ -492,6 +492,43 @@ Future<void> islandMain(List<String> args) async {
             final h = (a['height'] as num?)?.toInt() ?? 56;
             Future.microtask(() => _resizeCurrentWindow(w, h));
           }
+        }
+
+        if (call.method == 'setWindowPosition') {
+          final a = call.arguments as Map?;
+          if (a != null) {
+            final left = (a['left'] as num?)?.toInt() ?? 0;
+            final top = (a['top'] as num?)?.toInt() ?? 0;
+            Future.microtask(() => _moveCurrentWindow(left, top));
+          }
+        }
+
+        if (call.method == 'getWindowRect') {
+          try {
+            final hwnd = _getSmallestFlutterWindow();
+            if (hwnd != null) {
+              RECT? result;
+              using((arena) {
+                final rectPtr = arena<RECT>();
+                if (GetWindowRect(hwnd, rectPtr) != 0) {
+                  result = rectPtr.ref;
+                }
+              });
+              if (result != null) {
+                return {
+                  'left': result!.left.toDouble(),
+                  'top': result!.top.toDouble(),
+                  'right': result!.right.toDouble(),
+                  'bottom': result!.bottom.toDouble(),
+                  'width': (result!.right - result!.left).toDouble(),
+                  'height': (result!.bottom - result!.top).toDouble(),
+                };
+              }
+            }
+          } catch (e) {
+            debugPrint('[Island] getWindowRect error: $e');
+          }
+          return null;
         }
       } catch (e) {}
       return null;
@@ -1048,5 +1085,32 @@ void _resizeCurrentWindow(int targetW, int targetH) {
     });
   } catch (e) {
     debugPrint('[Island] resize failed: $e');
+  }
+}
+
+void _moveCurrentWindow(int targetX, int targetY) {
+  final hwnd = _getSmallestFlutterWindow();
+  if (hwnd == null) return;
+  try {
+    final scale = _getIslandScaleFactor(hwnd);
+    final int physicalX = (targetX * scale).ceil();
+    final int physicalY = (targetY * scale).ceil();
+
+    using((arena) {
+      final rectPtr = arena<RECT>();
+      if (GetWindowRect(hwnd, rectPtr) != 0) {
+        final curW = rectPtr.ref.right - rectPtr.ref.left;
+        final curH = rectPtr.ref.bottom - rectPtr.ref.top;
+
+        const int HWND_TOPMOST = -1;
+        const int SWP_NOACTIVATE = 0x0010;
+        const int SWP_NOSIZE = 0x0001;
+
+        SetWindowPos(hwnd, HWND_TOPMOST, physicalX, physicalY, curW, curH,
+            SWP_NOACTIVATE | SWP_NOSIZE);
+      }
+    });
+  } catch (e) {
+    debugPrint('[Island] move failed: $e');
   }
 }
