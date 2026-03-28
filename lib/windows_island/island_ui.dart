@@ -168,7 +168,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _applyPayload(Map<String, dynamic>? payload) {
-    debugPrint('[IslandUI] _applyPayload called: state=${payload?['state']}, _isFocusing will be=${payload?['state'] == 'focusing'}, currentTimer active=${_countdownTimer?.isActive}');
+    debugPrint(
+        '[IslandUI] _applyPayload called: state=${payload?['state']}, _isFocusing will be=${payload?['state'] == 'focusing'}, currentTimer active=${_countdownTimer?.isActive}');
     if (payload == null || !mounted) return;
     _currentPayload = payload;
 
@@ -176,14 +177,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final String stateStr = payload['state']?.toString() ?? 'idle';
 
     final int endMs = focusData?['endMs'] ?? 0;
-    
+
     // 关键修正：直接信任 state 字段，忽略残留数据
     _isFocusing = stateStr == 'focusing';
 
     final IslandState nextStateCandidate = _computeNextState(stateStr);
-    
+
     final tl = focusData?['timeLabel']?.toString() ?? '';
-    debugPrint('[IslandUI] 收到 payload: state=$stateStr, endMs=$endMs, timeLabel=$tl, _isFocusing=$_isFocusing');
+    debugPrint(
+        '[IslandUI] 收到 payload: state=$stateStr, endMs=$endMs, timeLabel=$tl, _isFocusing=$_isFocusing');
     debugPrint('[IslandUI] 计算结果: nextState=$nextStateCandidate');
 
     if (mounted) {
@@ -225,7 +227,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _onHoverEnter() {
     _hoverDebounce?.cancel();
     _isHovered = true;
-    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
+    _hoverDebounce = Timer(const Duration(milliseconds: 200), () {
       if (!_isHovered || !mounted) return;
       if (_state == IslandState.idle || _state == IslandState.focusing) {
         _savedStateBeforeHover = _state;
@@ -237,7 +239,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _onHoverExit() {
     _hoverDebounce?.cancel();
     _isHovered = false;
-    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
+    _hoverDebounce = Timer(const Duration(milliseconds: 200), () {
       if (_isHovered || !mounted) return;
       if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
         _transitionToState(_savedStateBeforeHover!);
@@ -344,7 +346,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final Size toSize = _targetSizeFor(nextState);
 
     debugPrint('[IslandUI] 状态切换 [$myVersion]: $_state -> $nextState');
-    
+
     // 1) 先更新逻辑状态（让内容切换）
     setState(() {
       _state = nextState;
@@ -384,17 +386,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   void _doPostTransitionCorrection(int version) {
     if (!mounted || _transitionVersion != version) return;
-
-    if (_isHovered &&
-        _state != IslandState.hoverWide &&
-        (_state == IslandState.idle || _state == IslandState.focusing)) {
-      _savedStateBeforeHover = _state;
-      _transitionToState(IslandState.hoverWide);
-    } else if (!_isHovered && _state == IslandState.hoverWide) {
-      final saved = _savedStateBeforeHover;
-      _savedStateBeforeHover = null;
-      if (saved != null) _transitionToState(saved);
-    }
+    // 🚀 不再自动切换状态，避免与 hover 事件形成循环
+    // hover 状态由 _onHoverEnter/_onHoverExit 通过 debounce 控制
   }
 
   // ── Build ─────────────────────────────────────────────────
