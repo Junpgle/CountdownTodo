@@ -305,8 +305,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     // 处理复制链接数据
     final rawCopiedLinkData = payload['copiedLinkData'];
     if (rawCopiedLinkData != null && stateStr == 'copied_link') {
-      _copiedLinkData = Map<String, dynamic>.from(rawCopiedLinkData as Map);
-      _startCopiedLinkTimer();
+      try {
+        _copiedLinkData = Map<String, dynamic>.from(rawCopiedLinkData as Map);
+      } catch (e) {
+        _copiedLinkData = null;
+      }
+      if (_copiedLinkData != null) {
+        _startCopiedLinkTimer();
+      }
     }
 
     if (nextStateCandidate != _state) {
