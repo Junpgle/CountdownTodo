@@ -37,9 +37,11 @@ class FloatWindowService {
   }
 
   static void _initClipboardListener() {
+    debugPrint('[FloatWindow] _initClipboardListener called');
     _clipboardService = ClipboardService();
     _clipboardService!.startListening();
     _clipboardService!.onUrlCopied.listen((url) {
+      debugPrint('[FloatWindow] URL received from stream: $url');
       if (url == _lastCopiedUrl) return;
       _lastCopiedUrl = url;
       _showCopiedLinkIsland(url);
@@ -49,6 +51,8 @@ class FloatWindowService {
   static Future<void> _showCopiedLinkIsland(String url) async {
     try {
       final displayUrl = _truncateUrlForDisplay(url);
+      debugPrint('[FloatWindow] Attempting to send payload for: $displayUrl');
+
       final payload = {
         'state': 'copied_link',
         'copiedLinkData': {
@@ -56,6 +60,15 @@ class FloatWindowService {
           'displayUrl': displayUrl,
         },
       };
+
+      final winId = IslandManager().getCachedWindowId('island-1');
+      debugPrint('[FloatWindow] island-1 windowId: $winId');
+
+      if (winId == null) {
+        debugPrint('[FloatWindow] Island not found, attempting to create');
+        await IslandManager().createIsland('island-1');
+      }
+
       await IslandManager().sendStructuredPayload('island-1', payload);
       debugPrint('[FloatWindow] Sent copied_link payload: $displayUrl');
     } catch (e) {
