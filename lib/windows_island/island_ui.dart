@@ -227,7 +227,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final focusData = payload['focusData'] as Map?;
     final String stateStr = payload['state']?.toString() ?? 'idle';
-    final reminderData = payload['reminderPopupData'] as Map<String, dynamic>?;
+    final rawReminderData = payload['reminderPopupData'];
+    final reminderData = rawReminderData != null
+        ? Map<String, dynamic>.from(rawReminderData as Map)
+        : null;
 
     // 处理提醒弹出数据（支持所有状态，只要有时提醒数据）
     if (reminderData != null) {
@@ -238,7 +241,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       final acknowledged = reminderData['acknowledged'] as bool? ?? false;
 
       // 如果需要展开且未确认，自动展开
-      if (needsExpand && !acknowledged && _expandedReminderPart == null &&
+      if (needsExpand &&
+          !acknowledged &&
+          _expandedReminderPart == null &&
           _state == IslandState.reminderSplit) {
         debugPrint('[IslandUI] 需要强提醒展开');
         // 清除 needsExpand 标志避免重复展开
@@ -298,9 +303,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
 
     // 处理复制链接数据
-    final copiedLinkData = payload['copiedLinkData'] as Map<String, dynamic>?;
-    if (copiedLinkData != null && stateStr == 'copied_link') {
-      _copiedLinkData = copiedLinkData;
+    final rawCopiedLinkData = payload['copiedLinkData'];
+    if (rawCopiedLinkData != null && stateStr == 'copied_link') {
+      _copiedLinkData = Map<String, dynamic>.from(rawCopiedLinkData as Map);
       _startCopiedLinkTimer();
     }
 

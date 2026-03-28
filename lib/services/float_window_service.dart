@@ -253,7 +253,6 @@ class FloatWindowService {
         // 安排新的提醒
         final triggerAt = DateTime.now().add(Duration(minutes: minutes));
         debugPrint('[FloatWindow] 安排稍后提醒: $minutes 分钟后');
-        // TODO: 调用 NotificationService 安排提醒
       }
     });
   }

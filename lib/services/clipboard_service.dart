@@ -50,7 +50,7 @@ class ClipboardService {
       if (hData == 0) {
         return null;
       }
-      final pData = GlobalLock(hData);
+      final pData = Pointer<Uint8>.fromAddress(hData);
       if (pData == nullptr) {
         return null;
       }
@@ -58,7 +58,7 @@ class ClipboardService {
         final text = pData.cast<Utf16>().toDartString();
         return text;
       } finally {
-        GlobalUnlock(hData);
+        GlobalUnlock(Pointer.fromAddress(hData));
       }
     } finally {
       CloseClipboard();
@@ -88,8 +88,6 @@ class ClipboardService {
         if (content == null || content.isEmpty) return;
 
         final isNew = content != _lastClipboardContent;
-        debugPrint(
-            '[ClipboardService] Clipboard check: ${content.length > 20 ? "..." : ""}, isNew=$isNew');
 
         if (!isNew) return;
         _lastClipboardContent = content;
