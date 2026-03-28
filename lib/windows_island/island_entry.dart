@@ -617,7 +617,6 @@ Future<void> islandMain(List<String> args) async {
     Timer(const Duration(seconds: 5), () async {
       debugPrint('[Island] 立即检查提醒');
       await _checkAndShowReminder();
-      }
     });
 
     runApp(MaterialApp(
