@@ -79,69 +79,123 @@ Future<void> _initFfi() async {
 
 /// 检查未来20分钟内的提醒事项
 Future<Map<String, dynamic>?> _checkUpcomingReminder() async {
-  final username = await StorageService.getLoginSession() ?? 'default';
   final now = DateTime.now();
   final allReminders = <Map<String, dynamic>>[];
 
-  debugPrint('[Island] 检查提醒: username=$username, now=$now');
+  debugPrint('[Island] 检查提醒: now=$now');
 
-  // 检查待办
+  // 检查待办 - 优先从共享文件读取
   try {
-    final todos = await StorageService.getTodos(username);
-    debugPrint('[Island] 获取到 ${todos.length} 个待办');
-    for (final t
-        in todos.where((t) => !t.isDone && !t.isDeleted && t.dueDate != null)) {
+    // 尝试从共享文件读取待办
+    List<Map<String, dynamic>> todoMaps = [];
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/island_todos.json');
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final List<dynamic> decoded = jsonDecode(content);
+        todoMaps = decoded.cast<Map<String, dynamic>>();
+        debugPrint('[Island] 从共享文件获取到 ${todoMaps.length} 个待办');
+      }
+    } catch (e) {
+      debugPrint('[Island] 读取共享文件失败: $e');
+    }
+
+    // 如果共享文件没有数据，回退到 StorageService
+    if (todoMaps.isEmpty) {
+      final username = await StorageService.getLoginSession() ?? 'default';
+      final todos = await StorageService.getTodos(username);
+      debugPrint('[Island] 从 StorageService 获取到 ${todos.length} 个待办');
+      todoMaps = todos
+          .map((t) => {
+                'id': t.id,
+                'title': t.title,
+                'remark': t.remark,
+                'dueDate': t.dueDate?.millisecondsSinceEpoch,
+                'createdDate': t.createdDate,
+                'createdAt': t.createdAt,
+                'isDone': t.isDone,
+                'isDeleted': t.isDeleted,
+              })
+          .toList();
+    }
+
+    // 过滤有效待办
+    final activeTodos = todoMaps
+        .where((t) =>
+            !(t['isDone'] as bool? ?? false) &&
+            !(t['isDeleted'] as bool? ?? false) &&
+            t['dueDate'] != null)
+        .toList();
+    debugPrint('[Island] 有效待办数量: ${activeTodos.length}');
+
+    for (final t in activeTodos) {
       // 计算开始时间
       DateTime? startTime;
-      if (t.createdDate != null) {
+      final createdDate = t['createdDate'] as int?;
+      final createdAt = t['createdAt'] as int? ?? 0;
+      if (createdDate != null) {
         startTime =
-            DateTime.fromMillisecondsSinceEpoch(t.createdDate!, isUtc: true)
+            DateTime.fromMillisecondsSinceEpoch(createdDate, isUtc: true)
                 .toLocal();
       } else {
-        startTime =
-            DateTime.fromMillisecondsSinceEpoch(t.createdAt, isUtc: true)
-                .toLocal();
+        startTime = DateTime.fromMillisecondsSinceEpoch(createdAt, isUtc: true)
+            .toLocal();
       }
+
+      final title = t['title']?.toString() ?? '';
+      final remark = t['remark']?.toString() ?? '';
+      final dueDateMs = t['dueDate'] as int?;
+      final id = t['id']?.toString() ?? '';
+
+      if (dueDateMs == null) continue;
+      final dueDate =
+          DateTime.fromMillisecondsSinceEpoch(dueDateMs, isUtc: true).toLocal();
 
       // 创建今日的开始时间
       final todayStartTime = DateTime(
           now.year, now.month, now.day, startTime.hour, startTime.minute);
 
-      // 检查开始时间是否在20分钟内
+      // 检查开始时间是否在30分钟内（只显示未来30分钟内的，已过去的不显示）
       final startDiff = todayStartTime.difference(now).inMinutes;
-      if (startDiff >= 0 && startDiff <= 20) {
+      debugPrint(
+          '[Island] 检查待办: $title, 开始时间=$todayStartTime, startDiff=$startDiff');
+      // 只显示还没开始的提醒（startDiff > -1），已过期的忽略
+      if (startDiff >= 0 && startDiff <= 30) {
         allReminders.add({
           'type': 'todo',
-          'title': t.title,
-          'subtitle': t.remark ?? '',
+          'title': title,
+          'subtitle': remark,
           'startTime':
               '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
           'endTime':
-              '${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}',
+              '${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}',
           'minutesUntil': startDiff,
           'isEnding': false,
-          'itemId': t.id,
+          'itemId': id,
         });
-        debugPrint('[Island] 找到待办提醒(开始): ${t.title}, 还有 $startDiff 分钟开始');
+        debugPrint('[Island] 找到待办提醒(开始): $title, 还有 $startDiff 分钟开始');
         continue;
       }
 
-      // 检查结束时间是否在20分钟内
-      final endDiff = t.dueDate!.difference(now).inMinutes;
-      if (endDiff >= 0 && endDiff <= 20) {
+      // 检查结束时间是否在30分钟内（只显示未来30分钟内的，已过期的忽略）
+      final endDiff = dueDate.difference(now).inMinutes;
+      debugPrint('[Island] 检查待办结束: $title, 结束时间=$dueDate, endDiff=$endDiff');
+      // 只显示还没结束的提醒（endDiff > -1），已过期的忽略
+      if (endDiff >= 0 && endDiff <= 30) {
         allReminders.add({
           'type': 'todo',
-          'title': t.title,
-          'subtitle': t.remark ?? '',
+          'title': title,
+          'subtitle': remark,
           'startTime':
               '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
           'endTime':
-              '${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}',
+              '${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}',
           'minutesUntil': endDiff,
           'isEnding': true,
-          'itemId': t.id,
+          'itemId': id,
         });
-        debugPrint('[Island] 找到待办提醒(结束): ${t.title}, 还有 $endDiff 分钟结束');
+        debugPrint('[Island] 找到待办提醒(结束): $title, 还有 $endDiff 分钟结束');
       }
     }
   } catch (e) {
@@ -196,14 +250,28 @@ void _setupReminderExpireTimer(Map<String, dynamic> reminder,
   final minutesUntil = reminder['minutesUntil'] as int? ?? 0;
   final itemId = reminder['itemId']?.toString();
 
-  // 计算过期时间：当前时间 + minutesUntil 分钟
-  final expireDuration = Duration(minutes: minutesUntil);
+  // 如果提醒已经过期（minutesUntil <= 0），不显示或立即过期
+  if (minutesUntil <= 0) {
+    debugPrint('[Island] 提醒已过期，不显示: $itemId');
+    // 立即恢复到之前的状态
+    final currentState = payloadNotifier.value?['state']?.toString();
+    if (currentState == 'reminder_split' ||
+        currentState == 'reminder_capsule' ||
+        currentState == 'reminder_popup') {
+      final prevState = currentState == 'reminder_split' ? 'focusing' : 'idle';
+      payloadNotifier.value = {
+        ...payloadNotifier.value ?? {},
+        'state': prevState,
+      };
+    }
+    return;
+  }
 
-  debugPrint('[Island] 设置提醒过期定时器: $itemId, ${minutesUntil}分钟后过期');
+  // 显示到指定时间后过期
+  final displayMinutes = minutesUntil;
+  final expireDuration = Duration(minutes: displayMinutes);
 
-  // 取消之前的定时器
-  // 注意：这里假设有一个全局变量来存储定时器，需要在 islandMain 中添加
-  // 暂时先不处理取消逻辑
+  debugPrint('[Island] 设置提醒过期定时器: $itemId, ${displayMinutes}分钟后过期');
 
   // 设置新的定时器
   Timer(expireDuration, () {
@@ -575,28 +643,61 @@ Future<void> islandMain(List<String> args) async {
     Future<void> _checkAndShowReminder() async {
       try {
         final reminder = await _checkUpcomingReminder();
-        debugPrint('[Island] 检查提醒结果: $reminder');
+        final currentState =
+            payloadNotifier.value?['state']?.toString() ?? 'idle';
+        final currentReminderData = payloadNotifier.value?['reminderPopupData']
+            as Map<String, dynamic>?;
+        final currentMinutesUntil =
+            currentReminderData?['minutesUntil'] as int?;
+
+        debugPrint(
+            '[Island] 检查提醒结果: $reminder, lastShownId=$_lastShownReminderId, acknowledged=$_acknowledgedReminders, currentMinutesUntil=$currentMinutesUntil');
+
         if (reminder != null) {
           final itemId = reminder['itemId']?.toString();
-          if (itemId != null &&
-              _lastShownReminderId != itemId &&
-              !_acknowledgedReminders.contains(itemId)) {
-            _lastShownReminderId = itemId;
+          final newMinutesUntil = reminder['minutesUntil'] as int?;
+
+          // 检查是否需要更新显示
+          bool needUpdate = false;
+
+          if (itemId != null && !_acknowledgedReminders.contains(itemId)) {
+            // 情况1：新提醒 或 同一个提醒但 minutesUntil 变了
+            if (_lastShownReminderId != itemId) {
+              // 新提醒
+              needUpdate = true;
+            } else if (currentMinutesUntil != null &&
+                newMinutesUntil != null &&
+                currentMinutesUntil != newMinutesUntil) {
+              // 同一个提醒但倒计时变了，需要实时更新
+              needUpdate = true;
+            }
+          }
+
+          // 如果需要更新（显示新提醒或更新当前提醒的 minutesUntil）
+          if (needUpdate) {
+            _lastShownReminderId = itemId!;
             _currentReminder = reminder;
-            final currentState =
-                payloadNotifier.value?['state']?.toString() ?? 'idle';
             _stateBeforeReminder =
                 currentState == 'focusing' ? 'focusing' : 'idle';
             final String targetState = currentState == 'focusing'
                 ? 'reminder_split'
                 : 'reminder_capsule';
+
+            // 如果当前不是提醒状态，切换到提醒状态
+            // 如果当前已经是提醒状态，只更新数据（保持状态）
+            final bool isAlreadyReminderState =
+                currentState == 'reminder_split' ||
+                    currentState == 'reminder_capsule' ||
+                    currentState == 'reminder_popup';
+
             final currentPayload = payloadNotifier.value ?? {};
             payloadNotifier.value = {
               ...currentPayload,
-              'state': targetState,
+              'state': isAlreadyReminderState ? currentState : targetState,
               'reminderPopupData': reminder,
             };
-            debugPrint('[Island] 触发提醒弹出: $itemId, state: $targetState');
+            debugPrint(
+                '[Island] 触发/更新提醒: $itemId, state=${isAlreadyReminderState ? currentState : targetState}, minutesUntil=$newMinutesUntil');
             _setupReminderExpireTimer(reminder, payloadNotifier);
           }
         }
@@ -605,10 +706,10 @@ Future<void> islandMain(List<String> args) async {
       }
     }
 
-    // 提醒检查定时器：每分钟检查一次未来20分钟内的提醒
+    // 提醒检查定时器：每10秒检查一次未来20分钟内的提醒（更频繁检查）
     debugPrint('[Island] 启动提醒检查定时器');
     _reminderCheckTimer =
-        Timer.periodic(const Duration(minutes: 1), (timer) async {
+        Timer.periodic(const Duration(seconds: 10), (timer) async {
       debugPrint('[Island] 提醒检查定时器触发');
       await _checkAndShowReminder();
     });
@@ -717,8 +818,12 @@ Future<void> islandMain(List<String> args) async {
                   }
 
                   if (action == 'check_reminder') {
+                    debugPrint('[Island] check_reminder action received');
+                    // 清除之前的显示记录，允许重新显示
+                    _lastShownReminderId = null;
                     // 立即检查提醒
-                    _checkAndShowReminder();
+                    await _checkAndShowReminder();
+                    debugPrint('[Island] check_reminder completed');
                     return;
                   }
 

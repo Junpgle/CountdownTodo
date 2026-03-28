@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:io';
-// dart:convert removed
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter/services.dart';
@@ -362,8 +363,15 @@ class FloatWindowService {
         _lastMode = mode ?? _lastMode;
       }
     } else {
-      // No explicit endMs provided: keep the last-known session values.
-      // (Some callers call update() without args to force a re-send.)
+      // No explicit endMs provided: only keep old session values if focus was NOT cleared (endMs > 0).
+      // This prevents race condition where home's _loadAllData() sends old focus data
+      // after pomodoro's clearFocus() has set endMs to 0.
+      if (_lastEndMs == 0) {
+        // Focus was cleared - do not re-send old focus data
+        _lastTitle = '';
+        _lastTags = const [];
+      }
+      // Otherwise, keep the last-known session values for re-send.
     }
 
     print(
@@ -907,5 +915,34 @@ class FloatWindowService {
         await update(forceReset: true);
       } catch (_) {}
     } catch (_) {}
+  }
+
+  /// 通知 Island 立即检查提醒（当待办新增/修改时调用）
+  static Future<void> triggerReminderCheck() async {
+    debugPrint('[FloatWindow] >>> triggerReminderCheck called');
+    try {
+      final islandId = 'island-1';
+      final winId = IslandManager().getCachedWindowId(islandId);
+      debugPrint('[FloatWindow] winId for island-1: $winId');
+      if (winId != null) {
+        // 通过文件 IPC 发送 check_reminder action
+        final dir = await getApplicationSupportDirectory();
+        final filePath = '${dir.path}/island_action.json';
+        debugPrint('[FloatWindow] Writing to: $filePath');
+        final file = File(filePath);
+        await file.writeAsString(jsonEncode({
+          'action': 'check_reminder',
+          'windowId': winId,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }));
+        debugPrint(
+            '[FloatWindow] Triggered Island reminder check successfully');
+      } else {
+        debugPrint(
+            '[FloatWindow] Island window not found, cannot trigger reminder check');
+      }
+    } catch (e) {
+      debugPrint('[FloatWindow] Failed to trigger reminder check: $e');
+    }
   }
 }

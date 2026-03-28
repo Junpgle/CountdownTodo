@@ -1099,51 +1099,45 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final isReminderExpanded = _expandedReminderPart == 'reminder';
 
-    return GestureDetector(
-      key: const ValueKey('reminderSplit'),
-      behavior: HitTestBehavior.translucent,
-      onPanStart: (_) => _startDragging(),
-      onTap: () {
-        if (_expandedReminderPart != null) {
-          // 再次点击空白区域，收回两个胶囊
-          _expandedReminderPart = null;
-          setState(() {});
-        }
-      },
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // 左侧：专注胶囊
-          GestureDetector(
-            onTap: () {
-              if (_expandedReminderPart == 'focusing') {
-                _expandedReminderPart = null;
-              } else {
-                _expandedReminderPart = 'focusing';
-              }
-              setState(() {});
-            },
-            child: _buildSplitFocusingCapsule(
-                isExpanded: _expandedReminderPart == 'focusing'),
-          ),
-          const SizedBox(width: 12),
-          // 右侧：提醒胶囊（分离）
-          GestureDetector(
-            onTap: () {
-              if (_expandedReminderPart == 'reminder') {
-                _expandedReminderPart = null;
-              } else {
-                _expandedReminderPart = 'reminder';
-                _savedStateBeforeReminder = IslandState.reminderSplit;
-              }
-              setState(() {});
-            },
-            child: isReminderExpanded
-                ? _buildReminderPopupCompact()
-                : _buildSplitReminderCapsule(typeIcon, title, statusText),
-          ),
-        ],
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // 左侧：专注胶囊
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            debugPrint('[IslandUI] 专注胶囊点击, 当前状态: $_expandedReminderPart');
+            if (_expandedReminderPart == 'focusing') {
+              _expandedReminderPart = null;
+            } else {
+              _expandedReminderPart = 'focusing';
+            }
+            setState(() {});
+            debugPrint('[IslandUI] 设置后状态: $_expandedReminderPart');
+          },
+          child: _buildSplitFocusingCapsule(
+              isExpanded: _expandedReminderPart == 'focusing'),
+        ),
+        const SizedBox(width: 12),
+        // 右侧：提醒胶囊（分离）
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            debugPrint('[IslandUI] 提醒胶囊点击, 当前状态: $_expandedReminderPart');
+            if (_expandedReminderPart == 'reminder') {
+              _expandedReminderPart = null;
+            } else {
+              _expandedReminderPart = 'reminder';
+              _savedStateBeforeReminder = IslandState.reminderSplit;
+            }
+            setState(() {});
+            debugPrint('[IslandUI] 设置后状态: $_expandedReminderPart');
+          },
+          child: isReminderExpanded
+              ? _buildReminderPopupCompact()
+              : _buildSplitReminderCapsule(typeIcon, title, statusText),
+        ),
+      ],
     );
   }
 
@@ -1190,7 +1184,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           ),
           const SizedBox(width: 4),
           Text(
-            '$minutesUntil',
+            '${minutesUntil}min',
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 10,
