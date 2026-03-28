@@ -13,6 +13,7 @@ enum IslandState {
   finishConfirm,
   abandonConfirm,
   finishFinal,
+  reminderPopup, // 新增：提醒事项弹出状态
 }
 
 class IslandUI extends StatefulWidget {
@@ -54,6 +55,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Timer? _minStayTimer;
   bool _isHovered = false;
   bool _canShrink = true; // 防止刚展开就收缩
+
+  // 提醒弹出相关状态
+  Map<String, dynamic>? _reminderPopupData;
+  IslandState? _savedStateBeforeReminder;
 
   WindowController? _windowController;
 
@@ -158,6 +163,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return IslandState.abandonConfirm;
       case 'finish_final':
         return IslandState.finishFinal;
+      case 'reminder_popup':
+        return IslandState.reminderPopup;
       default:
         return _isFocusing ? IslandState.focusing : IslandState.idle;
     }
@@ -180,6 +187,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final focusData = payload['focusData'] as Map?;
     final String stateStr = payload['state']?.toString() ?? 'idle';
+
+    // 处理提醒弹出数据
+    if (stateStr == 'reminder_popup') {
+      final reminderData =
+          payload['reminderPopupData'] as Map<String, dynamic>?;
+      if (reminderData != null) {
+        _reminderPopupData = reminderData;
+      }
+    }
 
     final int endMs = focusData?['endMs'] ?? 0;
 
@@ -215,6 +231,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
 
     if (nextStateCandidate != _state) {
+      // 保存当前状态以便在提醒弹出后恢复
+      if (nextStateCandidate == IslandState.reminderPopup &&
+          _state != IslandState.reminderPopup) {
+        _savedStateBeforeReminder = _state;
+      }
+
       if (_state == IslandState.hoverWide &&
           (nextStateCandidate == IslandState.idle ||
               nextStateCandidate == IslandState.focusing)) {
@@ -337,7 +359,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   //  核心状态切换 —— 窗口 resize 只在这里调一次
   // ══════════════════════════════════════════════════════════════
 
-  static Size _targetSizeFor(IslandState s) {
+  Size _targetSizeFor(IslandState s) {
     switch (s) {
       case IslandState.focusing:
         return const Size(100, 46);
@@ -351,6 +373,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.abandonConfirm:
       case IslandState.finishFinal:
         return const Size(260, 130);
+      case IslandState.reminderPopup:
+        // 根据内容自适应高度
+        final hasSubtitle = _reminderPopupData != null &&
+            (_reminderPopupData!['subtitle']?.toString().isNotEmpty ?? false);
+        return Size(320, hasSubtitle ? 180 : 150);
       default:
         return const Size(120, 34);
     }
@@ -488,6 +515,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return _buildConfirm(mode: 'abandon');
       case IslandState.finishFinal:
         return _buildConfirm(mode: 'final');
+      case IslandState.reminderPopup:
+        return _buildReminderPopup();
     }
   }
 
@@ -896,6 +925,118 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  Widget _buildReminderPopup() {
+    final data = _reminderPopupData;
+    if (data == null) return const SizedBox.shrink();
+
+    final type = data['type']?.toString() ?? 'todo';
+    final title = data['title']?.toString() ?? '';
+    final subtitle = data['subtitle']?.toString() ?? '';
+    final startTime = data['startTime']?.toString() ?? '';
+    final endTime = data['endTime']?.toString() ?? '';
+    final minutesUntil = data['minutesUntil'] as int? ?? 0;
+    final isEnding = data['isEnding'] as bool? ?? false;
+
+    final typeIcon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
+    final typeLabel = type == 'course' ? '课程' : (type == 'todo' ? '待办' : '倒计时');
+    final statusText =
+        isEnding ? '还有 $minutesUntil 分钟结束' : '还有 $minutesUntil 分钟开始';
+
+    return GestureDetector(
+      key: const ValueKey('reminderPopup'),
+      onPanStart: (_) => _startDragging(),
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 大标题
+            Text(
+              '$typeIcon $typeLabel：$title',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            // 副标题（地点/备注）
+            if (subtitle.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 6),
+            // 时间和状态
+            Text(
+              '$startTime ~ $endTime  |  $statusText',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // 按钮
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDesignBtn(
+                    label: '好的',
+                    color: const Color(0xFF4CAF50),
+                    onTap: _onReminderOk,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDesignBtn(
+                    label: '稍后提醒',
+                    color: const Color(0xFFFF9800),
+                    onTap: _onReminderLater,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onReminderOk() {
+    // 通知主应用记录已确认的提醒 ID
+    final itemId = _reminderPopupData?['itemId']?.toString();
+    if (itemId != null) {
+      widget.onAction?.call('reminder_ok', 0);
+    }
+    // 恢复之前的状态
+    final prevState = _savedStateBeforeReminder ?? IslandState.idle;
+    _savedStateBeforeReminder = null;
+    _reminderPopupData = null;
+    _transitionToState(prevState);
+  }
+
+  void _onReminderLater() {
+    // 通知主应用打开稍后提醒选择框
+    widget.onAction?.call('remind_later', 0);
+    // 恢复之前的状态
+    final prevState = _savedStateBeforeReminder ?? IslandState.idle;
+    _savedStateBeforeReminder = null;
+    _reminderPopupData = null;
+    _transitionToState(prevState);
   }
 
   Widget _buildDesignBtn({
