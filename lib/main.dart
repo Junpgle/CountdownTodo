@@ -13,6 +13,7 @@ import 'screens/feature_guide_screen.dart';
 import 'storage_service.dart';
 import 'services/api_service.dart';
 import 'services/float_window_service.dart';
+import 'services/window_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 import 'windows_island/island_manager.dart';
@@ -20,12 +21,32 @@ import 'windows_island/island_ui.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
+typedef CloseDialogCallback = Future<bool> Function();
+CloseDialogCallback? _onShowCloseDialog;
+
+void registerCloseDialogCallback(CloseDialogCallback callback) {
+  _onShowCloseDialog = callback;
+}
+
+Future<bool> showCloseDialog() async {
+  debugPrint(
+      '[Main] showCloseDialog called, callback: ${_onShowCloseDialog != null}');
+  if (_onShowCloseDialog != null) {
+    final result = await _onShowCloseDialog!();
+    debugPrint('[Main] Dialog result: $result');
+    return result;
+  }
+  debugPrint('[Main] No callback registered, allowing close');
+  return true;
+}
+
 // 全局绕过 SSL 证书校验，修复 Cloudflare D1 旧服务器 HandshakeException
 class MyHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
     return super.createHttpClient(context)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
   }
 }
 
@@ -50,6 +71,9 @@ Future<void> main(List<String> args) async {
 
   // 初始化 FloatWindowService（注册 native handler）
   FloatWindowService.init();
+
+  // 初始化 WindowService（监听窗口关闭事件）
+  WindowService.init();
 
   // Register island entry as a tear-off so the desktop_multi_window plugin
   // can start a new Dart isolate using this symbol name. The plugin expects
@@ -81,7 +105,44 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    registerCloseDialogCallback(_showCloseConfirmDialog);
     _initializeApp();
+  }
+
+  Future<bool> _showCloseConfirmDialog() async {
+    if (!mounted) return true;
+
+    final context = appNavigatorKey.currentContext;
+    if (context == null) {
+      debugPrint('[Main] appNavigatorKey.currentContext is null');
+      return true;
+    }
+
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('关闭确认'),
+          content: const Text('选择操作：'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('最小化到托盘'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('退出程序'),
+            ),
+          ],
+        ),
+      );
+      return result ?? false;
+    } catch (e) {
+      debugPrint('[Main] Dialog error: $e');
+      return true;
+    }
   }
 
   // 将所有耗时的初始化工作放到异步方法中
@@ -120,7 +181,8 @@ class _MyAppState extends State<MyApp> {
       }
     }
 
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       if (Platform.isWindows) {
         WindowsVideoPlayer.registerWith();
       }
@@ -162,7 +224,6 @@ class _MyAppState extends State<MyApp> {
     return ValueListenableBuilder<String>(
       valueListenable: StorageService.themeNotifier,
       builder: (context, themeModeString, child) {
-
         // 将设置中的字符串映射为 Flutter 引擎识别的 ThemeMode
         ThemeMode currentThemeMode;
         switch (themeModeString) {
@@ -212,27 +273,27 @@ class _MyAppState extends State<MyApp> {
             Locale('en', 'US'),
           ],
 
-            // 🚀 添加这一段
-              routes: {
+          // 🚀 添加这一段
+          routes: {
             '/login': (context) => const LoginScreen(),
             '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
             '/dev/island': (context) => const IslandDebugPage(),
           },
 
-              // Inject an in-layout island overlay when needed via builder so it
-              // sits above all routes. The overlay listens to
-              // FloatWindowService.debugPayload to show an in-app island when
-              // multi-window features are unavailable.
-              builder: (context, child) {
-                return Stack(
-                  children: [
-                    child ?? const SizedBox.shrink(),
-                    // In-layout island overlay
-                    const SizedBox.expand(child: SizedBox()),
-                    InLayoutIslandOverlay(),
-                  ],
-                );
-              },
+          // Inject an in-layout island overlay when needed via builder so it
+          // sits above all routes. The overlay listens to
+          // FloatWindowService.debugPayload to show an in-app island when
+          // multi-window features are unavailable.
+          builder: (context, child) {
+            return Stack(
+              children: [
+                child ?? const SizedBox.shrink(),
+                // In-layout island overlay
+                const SizedBox.expand(child: SizedBox()),
+                InLayoutIslandOverlay(),
+              ],
+            );
+          },
 
           // 路由控制：加载中 → 升级引导 → 主页/登录
           // 若有进行中的番茄钟，先进主页，再由主页自动 push 番茄钟（保留返回栈）

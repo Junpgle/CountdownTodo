@@ -61,7 +61,8 @@ Future<void> _initFfi() async {
           // 只有当窗口切实被 Flutter 缩小后，才将其锁定为灵动岛并透明化。
           // 这完美避开了把主程序变透明的风险。
           if (w <= 800 && hSize <= 600) {
-            debugPrint('[Island] HWND found and shrunk on attempt $i: $hwnd (${w}x${hSize})');
+            debugPrint(
+                '[Island] HWND found and shrunk on attempt $i: $hwnd (${w}x${hSize})');
             _islandHwndCache = hwnd;
             _applyWin32FramelessTransparentImpl(hwnd);
             return;
@@ -71,11 +72,15 @@ Future<void> _initFfi() async {
     }
     await Future.delayed(const Duration(milliseconds: 100));
   }
-  debugPrint('[Island] WARNING: Valid shrunk HWND not found after 100 attempts');
+  debugPrint(
+      '[Island] WARNING: Valid shrunk HWND not found after 100 attempts');
 }
 
 @pragma('vm:entry-point')
 Future<void> islandMain(List<String> args) async {
+  // 🚀 重置 HWND 缓存，确保每次新窗口启动时都能正确获取窗口句柄
+  _islandHwndCache = null;
+
   // 🚀 终极修复 1：必须在最外层直接调用 ensureInitialized
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -91,17 +96,63 @@ Future<void> islandMain(List<String> args) async {
   };
 
   final ValueNotifier<Map<String, dynamic>?> payloadNotifier =
-  ValueNotifier(IslandPayload.fromMap(null).toMap());
+      ValueNotifier(IslandPayload.fromMap(null).toMap());
 
   Map<String, dynamic>? lastReportedBounds;
+  bool _boundsSaveEnabled = false;
+  bool _boundsSaveReady = false;
+  bool _isDragging = false;
+  bool _needsSaveAfterDrag = false;
+
+  Future<void> _restoreWindowPosition() async {
+    try {
+      final bounds = await StorageService.getIslandBounds('island-1');
+      if (bounds != null && bounds.isNotEmpty) {
+        final left = (bounds['left'] as num?)?.toDouble();
+        final top = (bounds['top'] as num?)?.toDouble();
+        final width = (bounds['width'] as num?)?.toDouble() ?? 160.0;
+        final height = (bounds['height'] as num?)?.toDouble() ?? 56.0;
+
+        if (left != null && top != null) {
+          final hwnd = _getSmallestFlutterWindow();
+          if (hwnd != null) {
+            using((arena) {
+              final rectPtr = arena<RECT>();
+              rectPtr.ref.left = left.toInt();
+              rectPtr.ref.top = top.toInt();
+              rectPtr.ref.right = (left + width).toInt();
+              rectPtr.ref.bottom = (top + height).toInt();
+              SetWindowPos(
+                  hwnd,
+                  0,
+                  rectPtr.ref.left,
+                  rectPtr.ref.top,
+                  rectPtr.ref.right - rectPtr.ref.left,
+                  rectPtr.ref.bottom - rectPtr.ref.top,
+                  0x0041);
+            });
+            debugPrint('[Island] Win32 API 恢复窗口位置: left=$left, top=$top');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[Island] 恢复窗口位置失败: $e');
+    }
+  }
 
   try {
     final controller = await WindowController.fromCurrentEngine();
     try {
-      await controller.invokeMethod(
-          'setFrame', {'x': 0.0, 'y': 0.0, 'width': 160.0, 'height': 56.0});
+      // 只设置大小，不设置位置，避免覆盖保存的位置
+      await controller
+          .invokeMethod('setFrame', {'width': 160.0, 'height': 56.0});
       await controller.invokeMethod('setAlwaysOnTop', true);
     } catch (_) {}
+
+    // 延迟恢复窗口位置，确保窗口已完全初始化
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _restoreWindowPosition();
+    });
 
     // 后台轮询，绝不阻塞 runApp 渲染
     _initFfi();
@@ -112,18 +163,17 @@ Future<void> islandMain(List<String> args) async {
     const globalChannel = MethodChannel('mixin.one/desktop_multi_window');
     globalChannel.setMethodCallHandler((call) async {
       final fromWindowId =
-      (call.arguments is Map) ? call.arguments['windowId'] : 0;
+          (call.arguments is Map) ? call.arguments['windowId'] : 0;
       debugPrint(
           '[Island] >>> GLOBAL CALL: "${call.method}" from=$fromWindowId args=${call.arguments}');
 
-      if (call.method == 'postWindowMessage' ||
-          call.method == 'updateState') {
+      if (call.method == 'postWindowMessage' || call.method == 'updateState') {
         final m = call.arguments as Map?;
         if (m != null) {
           try {
             final rawMap = Map<String, dynamic>.from(m);
             final dynamic mmRaw =
-            rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
+                rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
             if (mmRaw is! Map) return null;
 
             final mm = Map<String, dynamic>.from(mmRaw);
@@ -141,7 +191,7 @@ Future<void> islandMain(List<String> args) async {
               debugPrint('[Island] ✅ payload applied: state=${mm['state']}');
             } else if (mm.containsKey('legacy') && mm['legacy'] is Map) {
               payloadNotifier.value =
-              Map<String, dynamic>.from(mm['legacy'] as Map);
+                  Map<String, dynamic>.from(mm['legacy'] as Map);
             } else {
               final dto = IslandPayload.fromMap(mm);
               payloadNotifier.value = dto.toMap();
@@ -166,7 +216,7 @@ Future<void> islandMain(List<String> args) async {
             try {
               final rawMap = Map<String, dynamic>.from(m);
               final dynamic mmRaw =
-              rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
+                  rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
               if (mmRaw is! Map) return;
 
               final mm = Map<String, dynamic>.from(mmRaw);
@@ -178,22 +228,23 @@ Future<void> islandMain(List<String> args) async {
                 debugPrint('[Island] responded handshake_pong to host');
               }
               if (mm.containsKey('legacy') && mm['legacy'] is Map) {
-                payloadNotifier.value =
-                Map<String, dynamic>.from(mm['legacy']);
+                payloadNotifier.value = Map<String, dynamic>.from(mm['legacy']);
               } else if (mm.containsKey('focusData') ||
                   mm.containsKey('state')) {
                 try {
                   final structured = Map<String, dynamic>.from(mm);
                   payloadNotifier.value = structured;
                 } catch (e) {
-                  debugPrint('[Island] failed to apply structured payload directly: $e');
+                  debugPrint(
+                      '[Island] failed to apply structured payload directly: $e');
                 }
               } else {
                 try {
                   final dto = IslandPayload.fromMap(mm);
                   payloadNotifier.value = dto.toMap();
                 } catch (e) {
-                  debugPrint('[Island] failed to parse payload in handler as DTO: $e');
+                  debugPrint(
+                      '[Island] failed to parse payload in handler as DTO: $e');
                 }
               }
             } catch (e) {
@@ -209,6 +260,11 @@ Future<void> islandMain(List<String> args) async {
               const int HTCAPTION = 2;
               ReleaseCapture();
               PostMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+              _isDragging = true;
+              _needsSaveAfterDrag = true;
+              Timer(const Duration(milliseconds: 500), () {
+                _isDragging = false;
+              });
             }
           } catch (e) {}
         }
@@ -239,6 +295,8 @@ Future<void> islandMain(List<String> args) async {
             final height = ib['height'];
             final left = ib['left'];
             final top = ib['top'];
+            debugPrint(
+                '[Island] 读取到 initialBounds: left=$left, top=$top, width=$width, height=$height');
             if (width is num && height is num && left is num && top is num) {
               Future.microtask(() async {
                 for (int i = 0; i < 20; i++) {
@@ -249,10 +307,13 @@ Future<void> islandMain(List<String> args) async {
                     final phyH = (height * scale).ceil();
                     final phyLeft = (left * scale).toInt();
                     final phyTop = (top * scale).toInt();
+                    debugPrint(
+                        '[Island] 设置窗口位置: phyLeft=$phyLeft, phyTop=$phyTop, phyW=$phyW, phyH=$phyH, scale=$scale');
                     const int HWND_TOPMOST = -1;
                     const int SWP_NOACTIVATE = 0x0010;
-                    SetWindowPos(hw, HWND_TOPMOST, phyLeft, phyTop, phyW,
-                        phyH, SWP_NOACTIVATE);
+                    final result = SetWindowPos(hw, HWND_TOPMOST, phyLeft,
+                        phyTop, phyW, phyH, SWP_NOACTIVATE);
+                    debugPrint('[Island] SetWindowPos result: $result');
                     break;
                   }
                   await Future.delayed(const Duration(milliseconds: 100));
@@ -260,7 +321,9 @@ Future<void> islandMain(List<String> args) async {
               });
             }
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[Island] 位置恢复失败: $e');
+        }
         if (payloadCandidate != null) {
           Map<String, dynamic>? payloadMap;
           if (payloadCandidate is Map) {
@@ -284,11 +347,24 @@ Future<void> islandMain(List<String> args) async {
     } catch (_) {}
 
     Timer? boundsPollingTimer;
-    boundsPollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+
+    // 延迟 3 秒后再启用位置保存，确保窗口已完全初始化
+    Timer(const Duration(seconds: 3), () {
+      _boundsSaveEnabled = true;
+      debugPrint('[Island] 位置保存已启用');
+      // 再延迟 2 秒后允许保存，确保窗口位置稳定
+      Timer(const Duration(seconds: 2), () {
+        _boundsSaveReady = true;
+        debugPrint('[Island] 位置保存已就绪');
+      });
+    });
+
+    boundsPollingTimer =
+        Timer.periodic(const Duration(seconds: 2), (timer) async {
       try {
         final hwnd = _getSmallestFlutterWindow();
         if (hwnd == null) return;
-        
+
         // Isolate 生命周期检查（可选）：如果窗口已失效，直接自毁计时器
         if (IsWindow(hwnd) == 0) {
           timer.cancel();
@@ -316,11 +392,23 @@ Future<void> islandMain(List<String> args) async {
               'height': logicalH.ceilToDouble(),
             };
 
-            if (lastReportedBounds == null ||
-                lastReportedBounds!['left'] != currentBounds['left'] ||
-                lastReportedBounds!['top'] != currentBounds['top']) {
+            final lastLeft = lastReportedBounds?['left'] as double?;
+            final lastTop = lastReportedBounds?['top'] as double?;
+            if (_boundsSaveEnabled &&
+                _boundsSaveReady &&
+                !_isDragging &&
+                (lastReportedBounds == null ||
+                    lastLeft == null ||
+                    lastTop == null ||
+                    (lastLeft - logicalX).abs() > 1.0 ||
+                    (lastTop - logicalY).abs() > 1.0)) {
               lastReportedBounds = currentBounds;
-              StorageService.saveIslandBounds('island-1', currentBounds).catchError((_) {});
+              if (_needsSaveAfterDrag) {
+                _needsSaveAfterDrag = false;
+                debugPrint('[Island] 拖拽后保存窗口位置: $currentBounds');
+                StorageService.saveIslandBounds('island-1', currentBounds)
+                    .catchError((_) {});
+              }
             }
           }
         });
@@ -349,11 +437,10 @@ Future<void> islandMain(List<String> args) async {
                       final legacy = current['legacy'] as Map?;
                       if (legacy != null && legacy['isLocal'] is bool) {
                         syncMode =
-                        (legacy['isLocal'] as bool) ? 'local' : 'remote';
+                            (legacy['isLocal'] as bool) ? 'local' : 'remote';
                       }
                     } else if (current.containsKey('focusData')) {
-                      final fd =
-                      current['focusData'] as Map<String, dynamic>?;
+                      final fd = current['focusData'] as Map<String, dynamic>?;
                       if (fd != null && fd['syncMode'] != null) {
                         syncMode = fd['syncMode']?.toString() ?? 'local';
                       }
@@ -382,8 +469,8 @@ Future<void> islandMain(List<String> args) async {
               builder: (context, val, child) {
                 if (val == null || (val.isEmpty)) {
                   return Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.35),
                         borderRadius: BorderRadius.circular(8)),
@@ -409,7 +496,6 @@ Future<void> islandMain(List<String> args) async {
         }));
       } catch (_) {}
     });
-
   } catch (e) {
     debugPrint('[Island] initialization failed: $e');
     runApp(MaterialApp(
@@ -438,7 +524,7 @@ int? _getSmallestFlutterWindow() {
     final foundHwnds = <int>[];
 
     final lpEnumFunc =
-    NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
+        NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
       using((arena) {
         final pidPtr = arena<Uint32>();
         GetWindowThreadProcessId(hwnd, pidPtr);
@@ -453,7 +539,8 @@ int? _getSmallestFlutterWindow() {
 
             final lowerClass = className.toLowerCase();
 
-            if (!lowerClass.contains('flutter') && className != 'Window Class') {
+            if (!lowerClass.contains('flutter') &&
+                className != 'Window Class') {
               isIgnored = true;
             }
             if (lowerClass.contains('ime') || lowerClass.contains('sogou')) {
@@ -558,8 +645,8 @@ void _resizeCurrentWindow(int targetW, int targetH) {
         const int HWND_TOPMOST = -1;
         const int SWP_NOACTIVATE = 0x0010;
 
-        SetWindowPos(
-            hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH, SWP_NOACTIVATE);
+        SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH,
+            SWP_NOACTIVATE);
       }
     });
   } catch (e) {

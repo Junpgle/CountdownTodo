@@ -51,7 +51,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   int _transitionVersion = 0;
   Timer? _hoverDebounce;
   Timer? _payloadDebounce;
+  Timer? _minStayTimer;
   bool _isHovered = false;
+  bool _canShrink = true; // 防止刚展开就收缩
 
   WindowController? _windowController;
 
@@ -59,6 +61,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   //  关键：记录当前窗口实际大小，避免重复调用平台通道
   // ══════════════════════════════════════════════════════════════
   Size _currentWindowSize = const Size(120, 34);
+
+  bool _isDragging = false;
 
   Future<WindowController> _getController() async {
     _windowController ??= await WindowController.fromCurrentEngine();
@@ -72,12 +76,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     _splitController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 200),
     );
 
     _sizeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 200),
     );
     // ╔══════════════════════════════════════════════════════════╗
     // ║  不再 addListener —— 这就是闪退的根源                   ║
@@ -90,7 +94,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       end: const Size(120, 34),
     ).animate(CurvedAnimation(
       parent: _sizeController,
-      curve: Curves.easeInOutQuart,
+      curve: Curves.easeOutCubic,
     ));
 
     widget.payloadNotifier?.addListener(_onNotifierPayload);
@@ -124,6 +128,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void dispose() {
     _hoverDebounce?.cancel();
     _payloadDebounce?.cancel();
+    _minStayTimer?.cancel();
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _timeNotifier.dispose();
@@ -168,7 +173,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _applyPayload(Map<String, dynamic>? payload) {
-    debugPrint('[IslandUI] _applyPayload called: state=${payload?['state']}, _isFocusing will be=${payload?['state'] == 'focusing'}, currentTimer active=${_countdownTimer?.isActive}');
+    debugPrint(
+        '[IslandUI] _applyPayload called: state=${payload?['state']}, _isFocusing will be=${payload?['state'] == 'focusing'}, currentTimer active=${_countdownTimer?.isActive}');
     if (payload == null || !mounted) return;
     _currentPayload = payload;
 
@@ -176,14 +182,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final String stateStr = payload['state']?.toString() ?? 'idle';
 
     final int endMs = focusData?['endMs'] ?? 0;
-    
+
     // 关键修正：直接信任 state 字段，忽略残留数据
     _isFocusing = stateStr == 'focusing';
 
     final IslandState nextStateCandidate = _computeNextState(stateStr);
-    
+
     final tl = focusData?['timeLabel']?.toString() ?? '';
-    debugPrint('[IslandUI] 收到 payload: state=$stateStr, endMs=$endMs, timeLabel=$tl, _isFocusing=$_isFocusing');
+    debugPrint(
+        '[IslandUI] 收到 payload: state=$stateStr, endMs=$endMs, timeLabel=$tl, _isFocusing=$_isFocusing');
     debugPrint('[IslandUI] 计算结果: nextState=$nextStateCandidate');
 
     if (mounted) {
@@ -225,11 +232,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _onHoverEnter() {
     _hoverDebounce?.cancel();
     _isHovered = true;
-    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
+    _canShrink = false; // 展开后禁止立即收缩
+    _hoverDebounce = Timer(const Duration(milliseconds: 100), () {
       if (!_isHovered || !mounted) return;
       if (_state == IslandState.idle || _state == IslandState.focusing) {
         _savedStateBeforeHover = _state;
         _transitionToState(IslandState.hoverWide);
+        // 展开后 400ms 内禁止收缩
+        _minStayTimer?.cancel();
+        _minStayTimer = Timer(const Duration(milliseconds: 400), () {
+          _canShrink = true;
+        });
       }
     });
   }
@@ -237,13 +250,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _onHoverExit() {
     _hoverDebounce?.cancel();
     _isHovered = false;
-    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
+    _hoverDebounce = Timer(const Duration(milliseconds: 120), () {
       if (_isHovered || !mounted) return;
-      if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
-        _transitionToState(_savedStateBeforeHover!);
-        _savedStateBeforeHover = null;
+      // 如果还在最小停留期内，延迟检查
+      if (!_canShrink) {
+        _hoverDebounce = Timer(const Duration(milliseconds: 200), () {
+          if (_isHovered || !mounted) return;
+          _doShrinkIfNeeded();
+        });
+        return;
       }
+      _doShrinkIfNeeded();
     });
+  }
+
+  void _doShrinkIfNeeded() {
+    if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
+      _transitionToState(_savedStateBeforeHover!);
+      _savedStateBeforeHover = null;
+    }
   }
 
   // ── 倒计时 ────────────────────────────────────────────────
@@ -317,7 +342,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.focusing:
         return const Size(100, 46);
       case IslandState.hoverWide:
-        return const Size(380, 34);
+        return const Size(380, 46); // 高度与 focusing 保持一致
       case IslandState.splitAlert:
         return const Size(300, 36);
       case IslandState.stackedCard:
@@ -344,7 +369,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final Size toSize = _targetSizeFor(nextState);
 
     debugPrint('[IslandUI] 状态切换 [$myVersion]: $_state -> $nextState');
-    
+
     // 1) 先更新逻辑状态（让内容切换）
     setState(() {
       _state = nextState;
@@ -363,15 +388,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       end: toSize,
     ).animate(CurvedAnimation(
       parent: _sizeController,
-      curve: Curves.easeInOutQuart,
+      curve: Curves.easeOutCubic,
     ));
 
-    // 4) 只有当前版本才触发 native resize
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (_transitionVersion == myVersion) {
-        _resizeWindowOnce(toSize);
-      }
-    });
+    // 4) 立即触发 native resize，不等待 postFrameCallback
+    _resizeWindowOnce(toSize);
 
     // 5) 播放 Flutter 内部的尺寸动画
     _sizeController.forward(from: 0).then((_) {
@@ -384,17 +405,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   void _doPostTransitionCorrection(int version) {
     if (!mounted || _transitionVersion != version) return;
-
-    if (_isHovered &&
-        _state != IslandState.hoverWide &&
-        (_state == IslandState.idle || _state == IslandState.focusing)) {
-      _savedStateBeforeHover = _state;
-      _transitionToState(IslandState.hoverWide);
-    } else if (!_isHovered && _state == IslandState.hoverWide) {
-      final saved = _savedStateBeforeHover;
-      _savedStateBeforeHover = null;
-      if (saved != null) _transitionToState(saved);
-    }
+    // 🚀 不再自动切换状态，避免与 hover 事件形成循环
+    // hover 状态由 _onHoverEnter/_onHoverExit 通过 debounce 控制
   }
 
   // ── Build ─────────────────────────────────────────────────
@@ -913,9 +925,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _startDragging() async {
+    _isDragging = true;
     try {
       final controller = await _getController();
       await controller.invokeMethod('startDragging');
-    } catch (_) {}
+
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _isDragging = false;
+      });
+    } catch (_) {
+      _isDragging = false;
+    }
   }
 }
