@@ -57,13 +57,31 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
 
-    // 专门接收“点击完成”按钮的广播接收器
+    // 专门接收"点击完成"按钮的广播接收器
     private val todoActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d(TAG, "✅ Received MARK_DONE intent: $intent")
             if (intent?.action == "com.math_quiz.MARK_DONE") {
                 methodChannel?.invokeMethod("markCurrentTodoDone", null)
                 Log.d(TAG, "✅ Invoked markCurrentTodoDone to Flutter")
+            }
+        }
+    }
+
+    // 专门接收番茄钟按钮事件的广播接收器
+    private val pomodoroActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                "com.math_quiz.POMODORO_FINISH_EARLY" -> {
+                    Log.d(TAG, "🍅 Received POMODORO_FINISH_EARLY intent")
+                    methodChannel?.invokeMethod("pomodoroFinishEarly", null)
+                    Log.d(TAG, "🍅 Invoked pomodoroFinishEarly to Flutter")
+                }
+                "com.math_quiz.POMODORO_ABANDON" -> {
+                    Log.d(TAG, "🍅 Received POMODORO_ABANDON intent")
+                    methodChannel?.invokeMethod("pomodoroAbandon", null)
+                    Log.d(TAG, "🍅 Invoked pomodoroAbandon to Flutter")
+                }
             }
         }
     }
@@ -85,7 +103,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             registerReceiver(todoActionReceiver, filter)
         }
 
-        Log.d(TAG, "🚀 Broadcast receiver registered: ${todoActionReceiver::class.java.simpleName}")
+        // 注册番茄钟按钮接收器
+        val pomodoroFilter = IntentFilter().apply {
+            addAction("com.math_quiz.POMODORO_FINISH_EARLY")
+            addAction("com.math_quiz.POMODORO_ABANDON")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(pomodoroActionReceiver, pomodoroFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(pomodoroActionReceiver, pomodoroFilter)
+        }
+
+        Log.d(TAG, "🚀 Broadcast receiver registered: ${todoActionReceiver::class.java.simpleName}, ${pomodoroActionReceiver::class.java.simpleName}")
     }
 
     override fun onDestroy() {
@@ -97,6 +126,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 注销广播接收器并清空 channel，防内存泄漏
         unregisterReceiver(todoActionReceiver)
+        unregisterReceiver(pomodoroActionReceiver)
         methodChannel = null
     }
 
@@ -621,6 +651,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             isTodo         = false,
             shortText      = shortText,
             iconResId      = iconResId,
+            channelId      = POMODORO_CHANNEL_ID,
             notificationId = POMODORO_NOTIFICATION_ID,
             islandBizTag   = POMODORO_ISLAND_BIZ_TAG
         )
@@ -931,6 +962,44 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
 
         // ==========================================
+        //  为番茄钟添加「提前完成」和「放弃专注」按钮
+        // ==========================================
+        var pomodoroFinishPendingIntent: PendingIntent? = null
+        var pomodoroAbandonPendingIntent: PendingIntent? = null
+        
+        if (channelId == POMODORO_CHANNEL_ID && isOngoing) {
+            // 提前完成
+            val finishIntent = Intent("com.math_quiz.POMODORO_FINISH_EARLY").apply {
+                setPackage(packageName)
+            }
+            pomodoroFinishPendingIntent = PendingIntent.getBroadcast(
+                this, 101, finishIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            )
+            val finishAction = NotificationCompat.Action.Builder(
+                IconCompat.createWithResource(this, R.drawable.ic_done),
+                "提前完成",
+                pomodoroFinishPendingIntent
+            ).build()
+            builder.addAction(finishAction)
+
+            // 放弃专注
+            val abandonIntent = Intent("com.math_quiz.POMODORO_ABANDON").apply {
+                setPackage(packageName)
+            }
+            pomodoroAbandonPendingIntent = PendingIntent.getBroadcast(
+                this, 102, abandonIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            )
+            val abandonAction = NotificationCompat.Action.Builder(
+                IconCompat.createWithResource(this, R.drawable.ic_cancel),
+                "放弃专注",
+                pomodoroAbandonPendingIntent
+            ).build()
+            builder.addAction(abandonAction)
+        }
+
+        // ==========================================
         //  小米 HyperOS 超级岛 (Dynamic Island) 适配
         // ==========================================
         try {
@@ -967,6 +1036,26 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         1
                     )
                     hyperBuilder.addAction(doneAction)
+                }
+
+                if (pomodoroFinishPendingIntent != null) {
+                    val finishAction = HyperAction(
+                        "btn_finish",
+                        "提前完成",
+                        pomodoroFinishPendingIntent,
+                        1
+                    )
+                    hyperBuilder.addAction(finishAction)
+                }
+                
+                if (pomodoroAbandonPendingIntent != null) {
+                    val abandonAction = HyperAction(
+                        "btn_abandon",
+                        "放弃专注",
+                        pomodoroAbandonPendingIntent,
+                        2
+                    )
+                    hyperBuilder.addAction(abandonAction)
                 }
 
                 extras.putString("miui.focus.param", hyperBuilder.buildJsonParam())
