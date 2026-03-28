@@ -2,12 +2,13 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' hide window; // For Rect
+import 'dart:ui' hide window;
 import 'dart:ffi' hide Size;
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:win32/win32.dart' hide Size;
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'island_ui.dart';
 import 'island_payload.dart';
 import '../storage_service.dart';
@@ -46,6 +47,13 @@ const int TRUE = 1;
 Future<File> _getActionFile() async {
   final dir = await getApplicationSupportDirectory();
   return File('${dir.path}/island_action.json');
+}
+
+Future<void> _launchUrl(String url) async {
+  final uri = Uri.parse(url);
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 }
 
 /// 后台轮询等待 HWND 出现并缩小后，应用透明设置
@@ -156,12 +164,12 @@ Future<Map<String, dynamic>?> _checkUpcomingReminder() async {
       final todayStartTime = DateTime(
           now.year, now.month, now.day, startTime.hour, startTime.minute);
 
-      // 检查开始时间是否在30分钟内（只显示未来30分钟内的，已过去的不显示）
+      // 检查开始时间是否在20分钟内（强提醒窗口）
       final startDiff = todayStartTime.difference(now).inMinutes;
       debugPrint(
           '[Island] 检查待办: $title, 开始时间=$todayStartTime, startDiff=$startDiff');
-      // 只显示还没开始的提醒（startDiff > -1），已过期的忽略
-      if (startDiff >= 0 && startDiff <= 30) {
+      // 只显示未来20分钟内的提醒（强提醒）
+      if (startDiff >= 0 && startDiff <= 20) {
         allReminders.add({
           'type': 'todo',
           'title': title,
@@ -178,11 +186,11 @@ Future<Map<String, dynamic>?> _checkUpcomingReminder() async {
         continue;
       }
 
-      // 检查结束时间是否在30分钟内（只显示未来30分钟内的，已过期的忽略）
+      // 检查结束时间是否在20分钟内（强提醒窗口）
       final endDiff = dueDate.difference(now).inMinutes;
       debugPrint('[Island] 检查待办结束: $title, 结束时间=$dueDate, endDiff=$endDiff');
-      // 只显示还没结束的提醒（endDiff > -1），已过期的忽略
-      if (endDiff >= 0 && endDiff <= 30) {
+      // 只显示未来20分钟内的结束提醒（强提醒）
+      if (endDiff >= 0 && endDiff <= 20) {
         allReminders.add({
           'type': 'todo',
           'title': title,
@@ -686,9 +694,11 @@ Future<void> islandMain(List<String> args) async {
             as Map<String, dynamic>?;
         final currentMinutesUntil =
             currentReminderData?['minutesUntil'] as int?;
+        final isCurrentlyAcknowledged =
+            currentReminderData?['acknowledged'] as bool? ?? false;
 
         debugPrint(
-            '[Island] 检查提醒结果: $reminder, lastShownId=$_lastShownReminderId, acknowledged=$_acknowledgedReminders, currentMinutesUntil=$currentMinutesUntil');
+            '[Island] 检查提醒结果: $reminder, lastShownId=$_lastShownReminderId, acknowledged=$_acknowledgedReminders, currentMinutesUntil=$currentMinutesUntil, isAcknowledged=$isCurrentlyAcknowledged');
 
         if (reminder != null) {
           final itemId = reminder['itemId']?.toString();
@@ -696,16 +706,22 @@ Future<void> islandMain(List<String> args) async {
 
           // 检查是否需要更新显示
           bool needUpdate = false;
+          bool needStrongExpand = false;
 
-          if (itemId != null && !_acknowledgedReminders.contains(itemId)) {
-            // 情况1：新提醒 或 同一个提醒但 minutesUntil 变了
-            if (_lastShownReminderId != itemId) {
-              // 新提醒
-              needUpdate = true;
-            } else if (currentMinutesUntil != null &&
+          if (itemId != null) {
+            final isNewReminder = _lastShownReminderId != itemId;
+            final isSameButChanged = currentMinutesUntil != null &&
                 newMinutesUntil != null &&
-                currentMinutesUntil != newMinutesUntil) {
-              // 同一个提醒但倒计时变了，需要实时更新
+                currentMinutesUntil != newMinutesUntil;
+
+            // 检查是否需要强提醒展开（未确认且是新提醒或时间变了）
+            if (!isCurrentlyAcknowledged &&
+                (isNewReminder || isSameButChanged)) {
+              needStrongExpand = true;
+            }
+
+            // 只要提醒存在且未过期就需要更新
+            if (isNewReminder || isSameButChanged) {
               needUpdate = true;
             }
           }
@@ -716,26 +732,39 @@ Future<void> islandMain(List<String> args) async {
             _currentReminder = reminder;
             _stateBeforeReminder =
                 currentState == 'focusing' ? 'focusing' : 'idle';
-            final String targetState = currentState == 'focusing'
-                ? 'reminder_split'
-                : 'reminder_capsule';
 
-            // 如果当前不是提醒状态，切换到提醒状态
-            // 如果当前已经是提醒状态，只更新数据（保持状态）
+            // 根据当前状态决定目标状态
             final bool isAlreadyReminderState =
                 currentState == 'reminder_split' ||
                     currentState == 'reminder_capsule' ||
                     currentState == 'reminder_popup';
 
+            String targetState;
+            if (!isAlreadyReminderState) {
+              // 首次进入提醒状态
+              targetState = currentState == 'focusing'
+                  ? 'reminder_split'
+                  : 'reminder_capsule';
+            } else {
+              // 已经在提醒状态，保持
+              targetState = currentState;
+            }
+
+            // 合并提醒数据，保留 acknowledged 状态
+            final updatedReminder = {
+              ...reminder,
+              'acknowledged': isCurrentlyAcknowledged,
+              'needsExpand': needStrongExpand,
+            };
+
             final currentPayload = payloadNotifier.value ?? {};
             payloadNotifier.value = {
               ...currentPayload,
-              'state': isAlreadyReminderState ? currentState : targetState,
-              'reminderPopupData': reminder,
+              'state': targetState,
+              'reminderPopupData': updatedReminder,
             };
             debugPrint(
-                '[Island] 触发/更新提醒: $itemId, state=${isAlreadyReminderState ? currentState : targetState}, minutesUntil=$newMinutesUntil');
-            _setupReminderExpireTimer(reminder, payloadNotifier);
+                '[Island] 触发/更新提醒: $itemId, state=$targetState, needsExpand=$needStrongExpand, minutesUntil=$newMinutesUntil');
           }
         }
       } catch (e) {
@@ -781,12 +810,17 @@ Future<void> islandMain(List<String> args) async {
                     if (itemId != null) {
                       _acknowledgedReminders.add(itemId);
                     }
-                    // 恢复之前的状态
-                    final prevState = _stateBeforeReminder ?? 'idle';
-                    _stateBeforeReminder = null;
+                    // 保持在 reminder_split 状态，设置 acknowledged 标志
+                    final currentPayload = payloadNotifier.value ?? {};
+                    final currentReminder = currentPayload['reminderPopupData']
+                        as Map<String, dynamic>?;
+                    final updatedReminder = {
+                      ...?currentReminder,
+                      'acknowledged': true,
+                    };
                     payloadNotifier.value = {
-                      ...payloadNotifier.value ?? {},
-                      'state': prevState,
+                      ...currentPayload,
+                      'reminderPopupData': updatedReminder,
                     };
                     // 写入 action 文件通知主应用
                     try {
@@ -802,13 +836,7 @@ Future<void> islandMain(List<String> args) async {
                   }
 
                   if (action == 'remind_later') {
-                    // 恢复之前的状态
-                    final prevState = _stateBeforeReminder ?? 'idle';
-                    _stateBeforeReminder = null;
-                    payloadNotifier.value = {
-                      ...payloadNotifier.value ?? {},
-                      'state': prevState,
-                    };
+                    // 保持在 reminder_split 状态，提醒主应用用户选择稍后提醒时间
                     // 写入 action 文件通知主应用打开稍后提醒选择框
                     try {
                       final file = await _getActionFile();
@@ -822,7 +850,7 @@ Future<void> islandMain(List<String> args) async {
                   }
 
                   if (action == 'snooze_reminder') {
-                    // snooze 后重新显示提醒
+                    // snooze 后重新显示提醒（强提醒展开）
                     final currentPayload = payloadNotifier.value ?? {};
                     final reminderData = currentPayload['reminderPopupData']
                         as Map<String, dynamic>?;
@@ -831,12 +859,14 @@ Future<void> islandMain(List<String> args) async {
                     if (reminderData != null) {
                       // 清除之前的显示标记，允许重新显示
                       _lastShownReminderId = null;
-                      // 更新提醒时间
+                      // 更新提醒时间，标记需要强提醒展开
                       final updatedReminder = {
                         ...reminderData,
                         'minutesUntil': newMinutes,
+                        'acknowledged': false,
+                        'needsExpand': true,
                       };
-                      // 重新显示提醒胶囊
+                      // 重新显示提醒
                       final currentState =
                           payloadNotifier.value?['state']?.toString() ?? 'idle';
                       final targetState = currentState == 'focusing'
@@ -847,6 +877,7 @@ Future<void> islandMain(List<String> args) async {
                         'state': targetState,
                         'reminderPopupData': updatedReminder,
                       };
+                      debugPrint('[Island] snooze提醒: $newMinutes分钟后强提醒展开');
                       // 设置新的过期检查定时器
                       _setupReminderExpireTimer(
                           updatedReminder, payloadNotifier);
@@ -861,6 +892,21 @@ Future<void> islandMain(List<String> args) async {
                     // 立即检查提醒
                     await _checkAndShowReminder();
                     debugPrint('[Island] check_reminder completed');
+                    return;
+                  }
+
+                  if (action == 'open_link') {
+                    final currentPayload = payloadNotifier.value ?? {};
+                    final copiedLinkData = currentPayload['copiedLinkData']
+                        as Map<String, dynamic>?;
+                    final url = copiedLinkData?['url']?.toString();
+                    if (url != null) {
+                      try {
+                        await _launchUrl(url);
+                      } catch (e) {
+                        debugPrint('[Island] open_link failed: $e');
+                      }
+                    }
                     return;
                   }
 

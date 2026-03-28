@@ -13,9 +13,10 @@ enum IslandState {
   finishConfirm,
   abandonConfirm,
   finishFinal,
-  reminderPopup, // 提醒事项大卡片状态
-  reminderSplit, // 从专注态分裂出新胶囊
-  reminderCapsule, // 提醒胶囊常驻显示
+  reminderPopup,
+  reminderSplit,
+  reminderCapsule,
+  copiedLink,
 }
 
 class IslandUI extends StatefulWidget {
@@ -61,7 +62,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // 提醒弹出相关状态
   Map<String, dynamic>? _reminderPopupData;
   IslandState? _savedStateBeforeReminder;
-  String? _expandedReminderPart; // 'focusing' 或 'reminder'
+  String? _expandedReminderPart;
+
+  // 复制链接相关状态
+  Map<String, dynamic>? _copiedLinkData;
+  IslandState? _savedStateBeforeCopiedLink;
+  Timer? _copiedLinkTimer;
 
   WindowController? _windowController;
 
@@ -139,6 +145,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _minStayTimer?.cancel();
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    _copiedLinkTimer?.cancel();
     _timeNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
@@ -174,7 +181,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     });
   }
 
-
   IslandState _computeNextState(String stateStr) {
     switch (stateStr) {
       case 'idle':
@@ -197,6 +203,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return IslandState.reminderSplit;
       case 'reminder_capsule':
         return IslandState.reminderCapsule;
+      case 'copied_link':
+        return IslandState.copiedLink;
       default:
         return _isFocusing ? IslandState.focusing : IslandState.idle;
     }
@@ -219,18 +227,39 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final focusData = payload['focusData'] as Map?;
     final String stateStr = payload['state']?.toString() ?? 'idle';
+    final reminderData = payload['reminderPopupData'] as Map<String, dynamic>?;
 
-    // 处理提醒弹出数据（支持所有提醒相关状态）
-    if (stateStr == 'reminder_popup' ||
-        stateStr == 'reminder_split' ||
-        stateStr == 'reminder_capsule') {
-      final reminderData =
-          payload['reminderPopupData'] as Map<String, dynamic>?;
-      if (reminderData != null) {
-        _reminderPopupData = reminderData;
+    // 处理提醒弹出数据（支持所有状态，只要有时提醒数据）
+    if (reminderData != null) {
+      _reminderPopupData = reminderData;
+
+      // 检查是否需要强提醒展开
+      final needsExpand = reminderData['needsExpand'] as bool? ?? false;
+      final acknowledged = reminderData['acknowledged'] as bool? ?? false;
+
+      // 如果需要展开且未确认，自动展开
+      if (needsExpand && !acknowledged && _expandedReminderPart == null &&
+          _state == IslandState.reminderSplit) {
+        debugPrint('[IslandUI] 需要强提醒展开');
+        // 清除 needsExpand 标志避免重复展开
+        _reminderPopupData = {
+          ...reminderData,
+          'needsExpand': false,
+        };
+        // 延迟展开确保窗口大小已调整
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            setState(() {
+              _expandedReminderPart = 'reminder';
+            });
+            _resizeWithAnimation(_targetSizeFor(IslandState.reminderSplit));
+          }
+        });
       }
-    } else {
-      // 非提醒状态，清除展开状态
+    } else if (stateStr != 'reminder_popup' &&
+        stateStr != 'reminder_split' &&
+        stateStr != 'reminder_capsule') {
+      // 非提醒状态且没有提醒数据时，清除展开状态
       _expandedReminderPart = null;
     }
 
@@ -268,11 +297,24 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       });
     }
 
+    // 处理复制链接数据
+    final copiedLinkData = payload['copiedLinkData'] as Map<String, dynamic>?;
+    if (copiedLinkData != null && stateStr == 'copied_link') {
+      _copiedLinkData = copiedLinkData;
+      _startCopiedLinkTimer();
+    }
+
     if (nextStateCandidate != _state) {
       // 保存当前状态以便在提醒弹出后恢复
       if (nextStateCandidate == IslandState.reminderPopup &&
           _state != IslandState.reminderPopup) {
         _savedStateBeforeReminder = _state;
+      }
+
+      // 保存当前状态以便在复制链接提醒后恢复
+      if (nextStateCandidate == IslandState.copiedLink &&
+          _state != IslandState.copiedLink) {
+        _savedStateBeforeCopiedLink = _state;
       }
 
       if (_state == IslandState.hoverWide &&
@@ -425,8 +467,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         }
         return const Size(480, 46);
       case IslandState.reminderCapsule:
-        // 胶囊状态：显示提醒胶囊
         return const Size(160, 46);
+      case IslandState.copiedLink:
+        return const Size(340, 46);
       default:
         return const Size(120, 34);
     }
@@ -591,6 +634,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return _buildReminderSplit();
       case IslandState.reminderCapsule:
         return _buildReminderCapsule();
+      case IslandState.copiedLink:
+        return _buildCopiedLink();
     }
   }
 
@@ -1091,42 +1136,26 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _onReminderOk() {
-    // 通知主应用记录已确认的提醒 ID
     final itemId = _reminderPopupData?['itemId']?.toString();
     if (itemId != null) {
       widget.onAction?.call('reminder_ok', 0);
     }
-    // 如果之前是专注状态，转到胶囊状态；否则恢复之前的状态
-    final prevState = _savedStateBeforeReminder ?? IslandState.idle;
-    if (prevState == IslandState.focusing) {
-      _savedStateBeforeReminder = IslandState.focusing;
-      _transitionToState(IslandState.reminderSplit);
-    } else if (prevState == IslandState.reminderSplit ||
-        prevState == IslandState.reminderCapsule) {
-      _transitionToState(prevState);
-    } else {
-      _savedStateBeforeReminder = null;
-      _reminderPopupData = null;
-      _transitionToState(IslandState.reminderCapsule);
-    }
+    _reminderPopupData = {
+      ..._reminderPopupData ?? {},
+      'acknowledged': true,
+    };
+    setState(() {
+      _expandedReminderPart = null;
+    });
+    _transitionToState(IslandState.reminderCapsule);
   }
 
   void _onReminderLater() {
-    // 通知主应用打开稍后提醒选择框
     widget.onAction?.call('remind_later', 0);
-    // 如果之前是专注状态，转到胶囊状态；否则恢复之前的状态
-    final prevState = _savedStateBeforeReminder ?? IslandState.idle;
-    if (prevState == IslandState.focusing) {
-      _savedStateBeforeReminder = IslandState.focusing;
-      _transitionToState(IslandState.reminderSplit);
-    } else if (prevState == IslandState.reminderSplit ||
-        prevState == IslandState.reminderCapsule) {
-      _transitionToState(prevState);
-    } else {
-      _savedStateBeforeReminder = null;
-      _reminderPopupData = null;
-      _transitionToState(IslandState.reminderCapsule);
-    }
+    setState(() {
+      _expandedReminderPart = null;
+    });
+    _transitionToState(IslandState.reminderCapsule);
   }
 
   /// 构建分裂状态：点击切换展开/收起
@@ -1144,21 +1173,36 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final isExpanded = _expandedReminderPart != null;
 
-    // 两个胶囊始终在顶部
+    // 两个胶囊始终在顶部，每个可单独点击展开
     final capsulesRow = Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildSplitFocusingCapsule(isExpanded: false),
-        const SizedBox(width: 12),
+        // 专注胶囊点击
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
-            if (isExpanded) {
-              debugPrint('[IslandUI] 点击收起');
+            if (isExpanded && _expandedReminderPart == 'focusing') {
+              debugPrint('[IslandUI] 点击专注胶囊收起');
               setState(() => _expandedReminderPart = null);
             } else {
-              debugPrint('[IslandUI] 点击展开');
-              setState(() => _expandedReminderPart = 'split');
+              debugPrint('[IslandUI] 点击专注胶囊展开');
+              setState(() => _expandedReminderPart = 'focusing');
+            }
+            _resizeWithAnimation(_targetSizeFor(IslandState.reminderSplit));
+          },
+          child: _buildSplitFocusingCapsule(isExpanded: false),
+        ),
+        const SizedBox(width: 12),
+        // 提醒胶囊点击
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (isExpanded && _expandedReminderPart == 'reminder') {
+              debugPrint('[IslandUI] 点击提醒胶囊收起');
+              setState(() => _expandedReminderPart = null);
+            } else {
+              debugPrint('[IslandUI] 点击提醒胶囊展开');
+              setState(() => _expandedReminderPart = 'reminder');
             }
             _resizeWithAnimation(_targetSizeFor(IslandState.reminderSplit));
           },
@@ -1174,11 +1218,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       );
     }
 
-    // 展开时：Stack 让胶囊绝对固定在顶部，卡片在其下方
+    // 展开时：Stack 让胶囊固定在顶部，根据展开类型显示对应卡片
+    final expandedCard = _expandedReminderPart == 'focusing'
+        ? _buildSplitFocusingExpanded()
+        : _buildSplitReminderExpanded();
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // 胶囊行 —— 固定在顶部，不参与纵向流动
+        // 胶囊行 —— 固定在顶部
         Positioned(
           top: 0,
           left: 0,
@@ -1191,7 +1239,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           top: 46 + 8, // 胶囊高度 + 间距
           left: 8,
           right: 8,
-          child: _buildSplitReminderExpanded(),
+          child: expandedCard,
         ),
       ],
     );
@@ -1541,6 +1589,117 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCopiedLink() {
+    final data = _copiedLinkData;
+    if (data == null) return const SizedBox.shrink();
+
+    final url = data['url']?.toString() ?? '';
+    final displayUrl = data['displayUrl']?.toString() ?? _truncateUrl(url);
+
+    return GestureDetector(
+      key: const ValueKey('copiedLink'),
+      onPanStart: (_) => _startDragging(),
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            const Text('🔗', style: TextStyle(fontSize: 14)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '已复制: $displayUrl',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildMiniBtn(
+              label: '打开',
+              color: const Color(0xFF4CAF50),
+              onTap: () => _onOpenLink(),
+            ),
+            const SizedBox(width: 6),
+            _buildMiniBtn(
+              label: '✕',
+              color: Colors.white.withOpacity(0.2),
+              onTap: () => _onDismissLink(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _truncateUrl(String url) {
+    if (url.length <= 25) return url;
+    return '${url.substring(0, 25)}...';
+  }
+
+  void _onOpenLink() {
+    _copiedLinkTimer?.cancel();
+    final url = _copiedLinkData?['url']?.toString();
+    if (url != null) {
+      widget.onAction?.call('open_link', 0);
+    }
+    _restorePreviousState();
+  }
+
+  void _onDismissLink() {
+    _copiedLinkTimer?.cancel();
+    _restorePreviousState();
+  }
+
+  void _restorePreviousState() {
+    if (_savedStateBeforeCopiedLink != null) {
+      _transitionToState(_savedStateBeforeCopiedLink!);
+      _savedStateBeforeCopiedLink = null;
+    } else {
+      _transitionToState(IslandState.idle);
+    }
+    _copiedLinkData = null;
+  }
+
+  void _startCopiedLinkTimer() {
+    _copiedLinkTimer?.cancel();
+    _copiedLinkTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted && _state == IslandState.copiedLink) {
+        _restorePreviousState();
+      }
+    });
+  }
+
+  Widget _buildMiniBtn({
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(13),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            fontSize: 11,
           ),
         ),
       ),

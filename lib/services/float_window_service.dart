@@ -16,13 +16,15 @@ import 'pomodoro_sync_service.dart';
 import '../windows_island/island_payload.dart';
 import '../windows_island/island_manager.dart';
 import '../windows_island/island_channel.dart';
+import 'clipboard_service.dart';
 
 class FloatWindowService {
-  // Channel used to communicate with a desktop multi-window host (guarded).
-  // Use the same channel name as the desktop_multi_window plugin expects.
   static const _dmwChannel = MethodChannel('mixin.one/desktop_multi_window');
 
   static bool _processingAction = false;
+
+  static ClipboardService? _clipboardService;
+  static String? _lastCopiedUrl;
 
   static bool _initialized = false;
   static Future<void> init() async {
@@ -31,6 +33,50 @@ class FloatWindowService {
     try {
       importIslandChannelAndSubscribe();
     } catch (_) {}
+    _initClipboardListener();
+  }
+
+  static void _initClipboardListener() {
+    _clipboardService = ClipboardService();
+    _clipboardService!.startListening();
+    _clipboardService!.onUrlCopied.listen((url) {
+      if (url == _lastCopiedUrl) return;
+      _lastCopiedUrl = url;
+      _showCopiedLinkIsland(url);
+    });
+  }
+
+  static Future<void> _showCopiedLinkIsland(String url) async {
+    try {
+      final displayUrl = _truncateUrlForDisplay(url);
+      final payload = {
+        'state': 'copied_link',
+        'copiedLinkData': {
+          'url': url,
+          'displayUrl': displayUrl,
+        },
+      };
+      await IslandManager().sendStructuredPayload('island-1', payload);
+      debugPrint('[FloatWindow] Sent copied_link payload: $displayUrl');
+    } catch (e) {
+      debugPrint('[FloatWindow] Failed to show copied link island: $e');
+    }
+  }
+
+  static String _truncateUrlForDisplay(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final host = uri.host;
+      if (host.length > 20) {
+        return '${host.substring(0, 20)}...';
+      }
+      return host;
+    } catch (_) {
+      if (url.length > 25) {
+        return '${url.substring(0, 25)}...';
+      }
+      return url;
+    }
   }
 
   static void importIslandChannelAndSubscribe() {
