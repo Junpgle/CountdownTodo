@@ -2,15 +2,17 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' hide window; // For Rect
+import 'dart:ui' hide window;
 import 'dart:ffi' hide Size;
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:win32/win32.dart' hide Size;
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'island_ui.dart';
 import 'island_payload.dart';
 import '../storage_service.dart';
+import '../services/course_service.dart';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 
@@ -47,6 +49,23 @@ Future<File> _getActionFile() async {
   return File('${dir.path}/island_action.json');
 }
 
+Future<void> _launchUrl(String url) async {
+  try {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  } catch (e) {
+    debugPrint('[Island] url_launcher failed: $e, trying Process');
+    try {
+      final result = await Process.run('cmd', ['/c', 'start', '', url]);
+      debugPrint('[Island] Process.run result: ${result.exitCode}');
+    } catch (e2) {
+      debugPrint('[Island] Process.run failed: $e2');
+    }
+  }
+}
+
 /// 后台轮询等待 HWND 出现并缩小后，应用透明设置
 Future<void> _initFfi() async {
   for (int i = 0; i < 100; i++) {
@@ -74,6 +93,221 @@ Future<void> _initFfi() async {
   }
   debugPrint(
       '[Island] WARNING: Valid shrunk HWND not found after 100 attempts');
+}
+
+/// 检查未来20分钟内的提醒事项
+Future<Map<String, dynamic>?> _checkUpcomingReminder() async {
+  final now = DateTime.now();
+  final allReminders = <Map<String, dynamic>>[];
+
+  debugPrint('[Island] 检查提醒: now=$now');
+
+  // 检查待办 - 优先从共享文件读取
+  try {
+    // 尝试从共享文件读取待办
+    List<Map<String, dynamic>> todoMaps = [];
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/island_todos.json');
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final List<dynamic> decoded = jsonDecode(content);
+        todoMaps = decoded.cast<Map<String, dynamic>>();
+        debugPrint('[Island] 从共享文件获取到 ${todoMaps.length} 个待办');
+      }
+    } catch (e) {
+      debugPrint('[Island] 读取共享文件失败: $e');
+    }
+
+    // 如果共享文件没有数据，回退到 StorageService
+    if (todoMaps.isEmpty) {
+      final username = await StorageService.getLoginSession() ?? 'default';
+      final todos = await StorageService.getTodos(username);
+      debugPrint('[Island] 从 StorageService 获取到 ${todos.length} 个待办');
+      todoMaps = todos
+          .map((t) => {
+                'id': t.id,
+                'title': t.title,
+                'remark': t.remark,
+                'dueDate': t.dueDate?.millisecondsSinceEpoch,
+                'createdDate': t.createdDate,
+                'createdAt': t.createdAt,
+                'isDone': t.isDone,
+                'isDeleted': t.isDeleted,
+              })
+          .toList();
+    }
+
+    // 过滤有效待办
+    final activeTodos = todoMaps
+        .where((t) =>
+            !(t['isDone'] as bool? ?? false) &&
+            !(t['isDeleted'] as bool? ?? false) &&
+            t['dueDate'] != null)
+        .toList();
+    debugPrint('[Island] 有效待办数量: ${activeTodos.length}');
+
+    for (final t in activeTodos) {
+      // 计算开始时间
+      DateTime? startTime;
+      final createdDate = t['createdDate'] as int?;
+      final createdAt = t['createdAt'] as int? ?? 0;
+      if (createdDate != null) {
+        startTime =
+            DateTime.fromMillisecondsSinceEpoch(createdDate, isUtc: true)
+                .toLocal();
+      } else {
+        startTime = DateTime.fromMillisecondsSinceEpoch(createdAt, isUtc: true)
+            .toLocal();
+      }
+
+      final title = t['title']?.toString() ?? '';
+      final remark = t['remark']?.toString() ?? '';
+      final dueDateMs = t['dueDate'] as int?;
+      final id = t['id']?.toString() ?? '';
+
+      if (dueDateMs == null) continue;
+      final dueDate =
+          DateTime.fromMillisecondsSinceEpoch(dueDateMs, isUtc: true).toLocal();
+
+      // 创建今日的开始时间
+      final todayStartTime = DateTime(
+          now.year, now.month, now.day, startTime.hour, startTime.minute);
+
+      // 检查开始时间是否在20分钟内（强提醒窗口）
+      final startDiff = todayStartTime.difference(now).inMinutes;
+      debugPrint(
+          '[Island] 检查待办: $title, 开始时间=$todayStartTime, startDiff=$startDiff');
+      // 只显示未来20分钟内的提醒（强提醒）
+      if (startDiff >= 0 && startDiff <= 20) {
+        allReminders.add({
+          'type': 'todo',
+          'title': title,
+          'subtitle': remark,
+          'startTime':
+              '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
+          'endTime':
+              '${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}',
+          'minutesUntil': startDiff,
+          'isEnding': false,
+          'itemId': id,
+        });
+        debugPrint('[Island] 找到待办提醒(开始): $title, 还有 $startDiff 分钟开始');
+        continue;
+      }
+
+      // 检查结束时间是否在20分钟内（强提醒窗口）
+      final endDiff = dueDate.difference(now).inMinutes;
+      debugPrint('[Island] 检查待办结束: $title, 结束时间=$dueDate, endDiff=$endDiff');
+      // 只显示未来20分钟内的结束提醒（强提醒）
+      if (endDiff >= 0 && endDiff <= 20) {
+        allReminders.add({
+          'type': 'todo',
+          'title': title,
+          'subtitle': remark,
+          'startTime':
+              '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
+          'endTime':
+              '${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}',
+          'minutesUntil': endDiff,
+          'isEnding': true,
+          'itemId': id,
+        });
+        debugPrint('[Island] 找到待办提醒(结束): $title, 还有 $endDiff 分钟结束');
+      }
+    }
+  } catch (e) {
+    debugPrint('[Island] 检查待办失败: $e');
+  }
+
+  // 检查课程
+  try {
+    final courses = await CourseService.getAllCourses();
+    debugPrint('[Island] 获取到 ${courses.length} 个课程');
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    debugPrint('[Island] 今日日期: $todayStr');
+    for (final c in courses.where((c) => c.date == todayStr)) {
+      debugPrint('[Island] 检查课程: ${c.courseName}, startTime=${c.startTime}');
+      final startHour = c.startTime ~/ 100;
+      final startMin = c.startTime % 100;
+      final courseStart =
+          DateTime(now.year, now.month, now.day, startHour, startMin);
+      final diff = courseStart.difference(now).inMinutes;
+      debugPrint('[Island] 课程开始时间: $courseStart, 还有 $diff 分钟');
+      if (diff >= 0 && diff <= 20) {
+        allReminders.add({
+          'type': 'course',
+          'title': c.courseName,
+          'subtitle': c.roomName,
+          'startTime': c.formattedStartTime,
+          'endTime': c.formattedEndTime,
+          'minutesUntil': diff,
+          'isEnding': false,
+          'itemId': '${c.date}_${c.startTime}',
+        });
+      }
+    }
+  } catch (e) {
+    debugPrint('[Island] 检查课程失败: $e');
+  }
+
+  debugPrint('[Island] 找到 ${allReminders.length} 个提醒');
+  if (allReminders.isEmpty) return null;
+
+  // 按时间排序，最近的先弹
+  allReminders.sort(
+      (a, b) => (a['minutesUntil'] as int).compareTo(b['minutesUntil'] as int));
+  debugPrint('[Island] 返回最近的提醒: ${allReminders.first}');
+  return allReminders.first;
+}
+
+/// 设置提醒过期检查定时器
+void _setupReminderExpireTimer(Map<String, dynamic> reminder,
+    ValueNotifier<Map<String, dynamic>?> payloadNotifier) {
+  final minutesUntil = reminder['minutesUntil'] as int? ?? 0;
+  final itemId = reminder['itemId']?.toString();
+
+  // 如果提醒已经过期（minutesUntil <= 0），不显示或立即过期
+  if (minutesUntil <= 0) {
+    debugPrint('[Island] 提醒已过期，不显示: $itemId');
+    // 立即恢复到之前的状态
+    final currentState = payloadNotifier.value?['state']?.toString();
+    if (currentState == 'reminder_split' ||
+        currentState == 'reminder_capsule' ||
+        currentState == 'reminder_popup') {
+      final prevState = currentState == 'reminder_split' ? 'focusing' : 'idle';
+      payloadNotifier.value = {
+        ...payloadNotifier.value ?? {},
+        'state': prevState,
+      };
+    }
+    return;
+  }
+
+  // 显示到指定时间后过期
+  final displayMinutes = minutesUntil;
+  final expireDuration = Duration(minutes: displayMinutes);
+
+  debugPrint('[Island] 设置提醒过期定时器: $itemId, ${displayMinutes}分钟后过期');
+
+  // 设置新的定时器
+  Timer(expireDuration, () {
+    debugPrint('[Island] 提醒过期: $itemId');
+    final currentState = payloadNotifier.value?['state']?.toString();
+
+    // 如果当前状态是提醒相关状态，恢复到之前的状态
+    if (currentState == 'reminder_split' ||
+        currentState == 'reminder_capsule' ||
+        currentState == 'reminder_popup') {
+      final prevState = currentState == 'reminder_split' ? 'focusing' : 'idle';
+      payloadNotifier.value = {
+        ...payloadNotifier.value ?? {},
+        'state': prevState,
+      };
+      debugPrint('[Island] 提醒过期，恢复状态: $prevState');
+    }
+  });
 }
 
 @pragma('vm:entry-point')
@@ -217,7 +451,7 @@ Future<void> islandMain(List<String> args) async {
               final rawMap = Map<String, dynamic>.from(m);
               final dynamic mmRaw =
                   rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
-              if (mmRaw is! Map) return;
+              if (mmRaw is! Map) return null;
 
               final mm = Map<String, dynamic>.from(mmRaw);
               if (mm['handshake'] == 'ping') {
@@ -276,6 +510,43 @@ Future<void> islandMain(List<String> args) async {
             final h = (a['height'] as num?)?.toInt() ?? 56;
             Future.microtask(() => _resizeCurrentWindow(w, h));
           }
+        }
+
+        if (call.method == 'setWindowPosition') {
+          final a = call.arguments as Map?;
+          if (a != null) {
+            final left = (a['left'] as num?)?.toInt() ?? 0;
+            final top = (a['top'] as num?)?.toInt() ?? 0;
+            Future.microtask(() => _moveCurrentWindow(left, top));
+          }
+        }
+
+        if (call.method == 'getWindowRect') {
+          try {
+            final hwnd = _getSmallestFlutterWindow();
+            if (hwnd != null) {
+              RECT? result;
+              using((arena) {
+                final rectPtr = arena<RECT>();
+                if (GetWindowRect(hwnd, rectPtr) != 0) {
+                  result = rectPtr.ref;
+                }
+              });
+              if (result != null) {
+                return {
+                  'left': result!.left.toDouble(),
+                  'top': result!.top.toDouble(),
+                  'right': result!.right.toDouble(),
+                  'bottom': result!.bottom.toDouble(),
+                  'width': (result!.right - result!.left).toDouble(),
+                  'height': (result!.bottom - result!.top).toDouble(),
+                };
+              }
+            }
+          } catch (e) {
+            debugPrint('[Island] getWindowRect error: $e');
+          }
+          return null;
         }
       } catch (e) {}
       return null;
@@ -348,6 +619,14 @@ Future<void> islandMain(List<String> args) async {
 
     Timer? boundsPollingTimer;
 
+    // 提醒弹出相关变量
+    Timer? _reminderCheckTimer;
+    Timer? _reminderExpireTimer; // 检查提醒是否过期
+    final Set<String> _acknowledgedReminders = {};
+    String? _lastShownReminderId;
+    String? _stateBeforeReminder;
+    Map<String, dynamic>? _currentReminder; // 当前显示的提醒
+
     // 延迟 3 秒后再启用位置保存，确保窗口已完全初始化
     Timer(const Duration(seconds: 3), () {
       _boundsSaveEnabled = true;
@@ -415,6 +694,108 @@ Future<void> islandMain(List<String> args) async {
       } catch (_) {}
     });
 
+    // 检查并显示提醒的公共方法
+    Future<void> _checkAndShowReminder() async {
+      try {
+        final reminder = await _checkUpcomingReminder();
+        final currentState =
+            payloadNotifier.value?['state']?.toString() ?? 'idle';
+        final currentReminderData = payloadNotifier.value?['reminderPopupData']
+            as Map<String, dynamic>?;
+        final currentMinutesUntil =
+            currentReminderData?['minutesUntil'] as int?;
+        final isCurrentlyAcknowledged =
+            currentReminderData?['acknowledged'] as bool? ?? false;
+
+        debugPrint(
+            '[Island] 检查提醒结果: $reminder, lastShownId=$_lastShownReminderId, acknowledged=$_acknowledgedReminders, currentMinutesUntil=$currentMinutesUntil, isAcknowledged=$isCurrentlyAcknowledged');
+
+        if (reminder != null) {
+          final itemId = reminder['itemId']?.toString();
+          final newMinutesUntil = reminder['minutesUntil'] as int?;
+
+          // 检查是否需要更新显示
+          bool needUpdate = false;
+          bool needStrongExpand = false;
+
+          if (itemId != null) {
+            final isNewReminder = _lastShownReminderId != itemId;
+            final isSameButChanged = currentMinutesUntil != null &&
+                newMinutesUntil != null &&
+                currentMinutesUntil != newMinutesUntil;
+
+            // 检查是否需要强提醒展开（未确认且是新提醒或时间变了）
+            if (!isCurrentlyAcknowledged &&
+                (isNewReminder || isSameButChanged)) {
+              needStrongExpand = true;
+            }
+
+            // 只要提醒存在且未过期就需要更新
+            if (isNewReminder || isSameButChanged) {
+              needUpdate = true;
+            }
+          }
+
+          // 如果需要更新（显示新提醒或更新当前提醒的 minutesUntil）
+          if (needUpdate) {
+            _lastShownReminderId = itemId!;
+            _currentReminder = reminder;
+            _stateBeforeReminder =
+                currentState == 'focusing' ? 'focusing' : 'idle';
+
+            // 根据当前状态决定目标状态
+            final bool isAlreadyReminderState =
+                currentState == 'reminder_split' ||
+                    currentState == 'reminder_capsule' ||
+                    currentState == 'reminder_popup';
+
+            String targetState;
+            if (!isAlreadyReminderState) {
+              // 首次进入提醒状态
+              targetState = currentState == 'focusing'
+                  ? 'reminder_split'
+                  : 'reminder_capsule';
+            } else {
+              // 已经在提醒状态，保持
+              targetState = currentState;
+            }
+
+            // 合并提醒数据，保留 acknowledged 状态
+            final updatedReminder = {
+              ...reminder,
+              'acknowledged': isCurrentlyAcknowledged,
+              'needsExpand': needStrongExpand,
+            };
+
+            final currentPayload = payloadNotifier.value ?? {};
+            payloadNotifier.value = {
+              ...currentPayload,
+              'state': targetState,
+              'reminderPopupData': updatedReminder,
+            };
+            debugPrint(
+                '[Island] 触发/更新提醒: $itemId, state=$targetState, needsExpand=$needStrongExpand, minutesUntil=$newMinutesUntil');
+          }
+        }
+      } catch (e) {
+        debugPrint('[Island] 检查提醒失败: $e');
+      }
+    }
+
+    // 提醒检查定时器：每10秒检查一次未来20分钟内的提醒（更频繁检查）
+    debugPrint('[Island] 启动提醒检查定时器');
+    _reminderCheckTimer =
+        Timer.periodic(const Duration(seconds: 10), (timer) async {
+      debugPrint('[Island] 提醒检查定时器触发');
+      await _checkAndShowReminder();
+    });
+
+    // 立即检查一次提醒
+    Timer(const Duration(seconds: 5), () async {
+      debugPrint('[Island] 立即检查提醒');
+      await _checkAndShowReminder();
+    });
+
     runApp(MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -430,6 +811,115 @@ Future<void> islandMain(List<String> args) async {
               initialPayload: payloadNotifier.value,
               onAction: (action, [modifiedSecs]) async {
                 try {
+                  // 处理提醒相关 action
+                  if (action == 'reminder_ok') {
+                    // 记录已确认的提醒 ID
+                    final itemId = payloadNotifier.value?['reminderPopupData']
+                            ?['itemId']
+                        ?.toString();
+                    if (itemId != null) {
+                      _acknowledgedReminders.add(itemId);
+                    }
+                    // 保持在 reminder_split 状态，设置 acknowledged 标志
+                    final currentPayload = payloadNotifier.value ?? {};
+                    final currentReminder = currentPayload['reminderPopupData']
+                        as Map<String, dynamic>?;
+                    final updatedReminder = {
+                      ...?currentReminder,
+                      'acknowledged': true,
+                    };
+                    payloadNotifier.value = {
+                      ...currentPayload,
+                      'reminderPopupData': updatedReminder,
+                    };
+                    // 写入 action 文件通知主应用
+                    try {
+                      final file = await _getActionFile();
+                      await file.writeAsString(jsonEncode({
+                        'action': action,
+                        'itemId': itemId,
+                        'windowId': controller.windowId,
+                        'timestamp': DateTime.now().millisecondsSinceEpoch,
+                      }));
+                    } catch (_) {}
+                    return;
+                  }
+
+                  if (action == 'remind_later') {
+                    // 保持在 reminder_split 状态，提醒主应用用户选择稍后提醒时间
+                    // 写入 action 文件通知主应用打开稍后提醒选择框
+                    try {
+                      final file = await _getActionFile();
+                      await file.writeAsString(jsonEncode({
+                        'action': action,
+                        'windowId': controller.windowId,
+                        'timestamp': DateTime.now().millisecondsSinceEpoch,
+                      }));
+                    } catch (_) {}
+                    return;
+                  }
+
+                  if (action == 'snooze_reminder') {
+                    // snooze 后重新显示提醒（强提醒展开）
+                    final currentPayload = payloadNotifier.value ?? {};
+                    final reminderData = currentPayload['reminderPopupData']
+                        as Map<String, dynamic>?;
+                    final newMinutes =
+                        currentPayload['snoozeMinutes'] as int? ?? 5;
+                    if (reminderData != null) {
+                      // 清除之前的显示标记，允许重新显示
+                      _lastShownReminderId = null;
+                      // 更新提醒时间，标记需要强提醒展开
+                      final updatedReminder = {
+                        ...reminderData,
+                        'minutesUntil': newMinutes,
+                        'acknowledged': false,
+                        'needsExpand': true,
+                      };
+                      // 重新显示提醒
+                      final currentState =
+                          payloadNotifier.value?['state']?.toString() ?? 'idle';
+                      final targetState = currentState == 'focusing'
+                          ? 'reminder_split'
+                          : 'reminder_capsule';
+                      payloadNotifier.value = {
+                        ...payloadNotifier.value ?? {},
+                        'state': targetState,
+                        'reminderPopupData': updatedReminder,
+                      };
+                      debugPrint('[Island] snooze提醒: $newMinutes分钟后强提醒展开');
+                      // 设置新的过期检查定时器
+                      _setupReminderExpireTimer(
+                          updatedReminder, payloadNotifier);
+                    }
+                    return;
+                  }
+
+                  if (action == 'check_reminder') {
+                    debugPrint('[Island] check_reminder action received');
+                    // 清除之前的显示记录，允许重新显示
+                    _lastShownReminderId = null;
+                    // 立即检查提醒
+                    await _checkAndShowReminder();
+                    debugPrint('[Island] check_reminder completed');
+                    return;
+                  }
+
+                  if (action == 'open_link') {
+                    final currentPayload = payloadNotifier.value ?? {};
+                    final copiedLinkData = currentPayload['copiedLinkData']
+                        as Map<String, dynamic>?;
+                    final url = copiedLinkData?['url']?.toString();
+                    if (url != null) {
+                      try {
+                        await _launchUrl(url);
+                      } catch (e) {
+                        debugPrint('[Island] open_link failed: $e');
+                      }
+                    }
+                    return;
+                  }
+
                   final current = payloadNotifier.value;
                   String syncMode = 'local';
                   if (current != null) {
@@ -651,5 +1141,32 @@ void _resizeCurrentWindow(int targetW, int targetH) {
     });
   } catch (e) {
     debugPrint('[Island] resize failed: $e');
+  }
+}
+
+void _moveCurrentWindow(int targetX, int targetY) {
+  final hwnd = _getSmallestFlutterWindow();
+  if (hwnd == null) return;
+  try {
+    final scale = _getIslandScaleFactor(hwnd);
+    final int physicalX = (targetX * scale).ceil();
+    final int physicalY = (targetY * scale).ceil();
+
+    using((arena) {
+      final rectPtr = arena<RECT>();
+      if (GetWindowRect(hwnd, rectPtr) != 0) {
+        final curW = rectPtr.ref.right - rectPtr.ref.left;
+        final curH = rectPtr.ref.bottom - rectPtr.ref.top;
+
+        const int HWND_TOPMOST = -1;
+        const int SWP_NOACTIVATE = 0x0010;
+        const int SWP_NOSIZE = 0x0001;
+
+        SetWindowPos(hwnd, HWND_TOPMOST, physicalX, physicalY, curW, curH,
+            SWP_NOACTIVATE | SWP_NOSIZE);
+      }
+    });
+  } catch (e) {
+    debugPrint('[Island] move failed: $e');
   }
 }

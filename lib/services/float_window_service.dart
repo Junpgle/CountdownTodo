@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
-// dart:convert removed
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import '../main.dart' show appNavigatorKey;
 import '../storage_service.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
@@ -13,13 +16,15 @@ import 'pomodoro_sync_service.dart';
 import '../windows_island/island_payload.dart';
 import '../windows_island/island_manager.dart';
 import '../windows_island/island_channel.dart';
+import 'clipboard_service.dart';
 
 class FloatWindowService {
-  // Channel used to communicate with a desktop multi-window host (guarded).
-  // Use the same channel name as the desktop_multi_window plugin expects.
   static const _dmwChannel = MethodChannel('mixin.one/desktop_multi_window');
-  
+
   static bool _processingAction = false;
+
+  static ClipboardService? _clipboardService;
+  static String? _lastCopiedUrl;
 
   static bool _initialized = false;
   static Future<void> init() async {
@@ -28,6 +33,63 @@ class FloatWindowService {
     try {
       importIslandChannelAndSubscribe();
     } catch (_) {}
+    _initClipboardListener();
+  }
+
+  static void _initClipboardListener() {
+    debugPrint('[FloatWindow] _initClipboardListener called');
+    _clipboardService = ClipboardService();
+    _clipboardService!.startListening();
+    _clipboardService!.onUrlCopied.listen((url) {
+      debugPrint('[FloatWindow] URL received from stream: $url');
+      if (url == _lastCopiedUrl) return;
+      _lastCopiedUrl = url;
+      _showCopiedLinkIsland(url);
+    });
+  }
+
+  static Future<void> _showCopiedLinkIsland(String url) async {
+    try {
+      final displayUrl = _truncateUrlForDisplay(url);
+      debugPrint('[FloatWindow] Attempting to send payload for: $displayUrl');
+
+      final payload = {
+        'state': 'copied_link',
+        'copiedLinkData': {
+          'url': url,
+          'displayUrl': displayUrl,
+        },
+      };
+
+      final winId = IslandManager().getCachedWindowId('island-1');
+      debugPrint('[FloatWindow] island-1 windowId: $winId');
+
+      if (winId == null) {
+        debugPrint('[FloatWindow] Island not found, attempting to create');
+        await IslandManager().createIsland('island-1');
+      }
+
+      await IslandManager().sendStructuredPayload('island-1', payload);
+      debugPrint('[FloatWindow] Sent copied_link payload: $displayUrl');
+    } catch (e) {
+      debugPrint('[FloatWindow] Failed to show copied link island: $e');
+    }
+  }
+
+  static String _truncateUrlForDisplay(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final host = uri.host;
+      if (host.length > 20) {
+        return '${host.substring(0, 20)}...';
+      }
+      return host;
+    } catch (_) {
+      if (url.length > 25) {
+        return '${url.substring(0, 25)}...';
+      }
+      return url;
+    }
   }
 
   static void importIslandChannelAndSubscribe() {
@@ -40,19 +102,34 @@ class FloatWindowService {
           final winId = event['windowId']?.toString();
           final action = event['action']?.toString();
           final payload = event['payload'] as Map<String, dynamic>?;
-          debugPrint('[FloatWindow] Island action from $winId: $action payload=$payload');
+          debugPrint(
+              '[FloatWindow] Island action from $winId: $action payload=$payload');
           if (action == 'finish') {
-            final modifiedSecs = event['modifiedSecs'] ?? payload?['modifiedSecs'] ?? 0;
+            final modifiedSecs =
+                event['modifiedSecs'] ?? payload?['modifiedSecs'] ?? 0;
             _handleAction('finish', (modifiedSecs is int) ? modifiedSecs : 0);
           } else if (action == 'abandon') {
             _handleAction('abandon', 0);
+          } else if (action == 'reminder_ok') {
+            // 提醒已确认，记录到存储
+            final reminderData =
+                payload?['reminderPopupData'] as Map<String, dynamic>?;
+            final itemId = reminderData?['itemId']?.toString() ??
+                event['itemId']?.toString();
+            if (itemId != null) {
+              _saveAcknowledgedReminder(itemId);
+            }
+          } else if (action == 'remind_later') {
+            // 打开主窗口并显示稍后提醒选择框
+            _handleRemindLater();
           } else if (action == 'bounds_changed') {
             try {
               final bounds = payload?['bounds'] as Map<String, dynamic>?;
               if (bounds != null) {
                 // Use a fixed logical ID for the primary island to ensure persistence stability
                 StorageService.saveIslandBounds('island-1', bounds);
-                debugPrint('[FloatWindow] saved island bounds for island-1: $bounds');
+                debugPrint(
+                    '[FloatWindow] saved island bounds for island-1: $bounds');
               }
             } catch (e) {
               debugPrint('[FloatWindow] failed to save bounds: $e');
@@ -68,12 +145,133 @@ class FloatWindowService {
     } catch (_) {}
   }
 
+  /// 保存已确认的提醒 ID 到存储
+  static Future<void> _saveAcknowledgedReminder(String itemId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'acknowledged_reminder_ids';
+      final List<String> ids = prefs.getStringList(key) ?? [];
+      if (!ids.contains(itemId)) {
+        ids.add(itemId);
+        await prefs.setStringList(key, ids);
+        debugPrint('[FloatWindow] 已保存确认提醒 ID: $itemId');
+      }
+    } catch (e) {
+      debugPrint('[FloatWindow] 保存确认提醒 ID 失败: $e');
+    }
+  }
+
+  /// 处理稍后提醒 action
+  static Future<void> _handleRemindLater() async {
+    debugPrint('[FloatWindow] _handleRemindLater called');
+    try {
+      await windowManager.ensureInitialized();
+      debugPrint('[FloatWindow] windowManager initialized');
+      await windowManager.show();
+      debugPrint('[FloatWindow] windowManager.show() done');
+      await windowManager.focus();
+      debugPrint('[FloatWindow] windowManager.focus() done');
+
+      // 稍后显示对话框，确保窗口已完全显示
+      Timer(const Duration(milliseconds: 500), () {
+        debugPrint('[FloatWindow] Timer fired, calling _showSnoozeDialog');
+        _showSnoozeDialog();
+      });
+    } catch (e) {
+      debugPrint('[FloatWindow] 处理稍后提醒失败: $e');
+    }
+  }
+
+  /// 显示稍后提醒选择对话框
+  static void _showSnoozeDialog() {
+    debugPrint('[FloatWindow] _showSnoozeDialog called');
+    final context = appNavigatorKey.currentContext;
+    debugPrint('[FloatWindow] context is null: ${context == null}');
+    if (context == null) {
+      debugPrint('[FloatWindow] context is null, cannot show dialog');
+      return;
+    }
+
+    final TextEditingController customController = TextEditingController();
+    debugPrint('[FloatWindow] Showing snooze dialog');
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('稍后提醒'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildSnoozeChip(dialogContext, '5 分钟', 5),
+                _buildSnoozeChip(dialogContext, '10 分钟', 10),
+                _buildSnoozeChip(dialogContext, '15 分钟', 15),
+                _buildSnoozeChip(dialogContext, '30 分钟', 30),
+                _buildSnoozeChip(dialogContext, '1 小时', 60),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: customController,
+              decoration: const InputDecoration(
+                labelText: '自定义时长（分钟）',
+                border: OutlineInputBorder(),
+                hintText: '输入 1-1440',
+              ),
+              keyboardType: TextInputType.number,
+              onSubmitted: (value) {
+                final minutes = int.tryParse(value);
+                if (minutes != null && minutes > 0 && minutes <= 1440) {
+                  Navigator.of(dialogContext).pop(minutes);
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              final minutes = int.tryParse(customController.text);
+              if (minutes != null && minutes > 0 && minutes <= 1440) {
+                Navigator.of(dialogContext).pop(minutes);
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    ).then((minutes) {
+      customController.dispose();
+      if (minutes != null && minutes is int) {
+        // 安排新的提醒
+        final triggerAt = DateTime.now().add(Duration(minutes: minutes));
+        debugPrint('[FloatWindow] 安排稍后提醒: $minutes 分钟后');
+      }
+    });
+  }
+
+  static Widget _buildSnoozeChip(
+      BuildContext context, String label, int minutes) {
+    return ActionChip(
+      label: Text(label),
+      onPressed: () => Navigator.of(context).pop(minutes),
+    );
+  }
+
   // Development helper: when running in debug, allow an in-layout island
   // to be shown using the same update payload logic (does not create
   // a separate native window). This helps during development before
   // the desktop_multi_window integration is completed.
-  static ValueNotifier<Map<String, dynamic>?> debugPayload = ValueNotifier(null);
-  
+  static ValueNotifier<Map<String, dynamic>?> debugPayload =
+      ValueNotifier(null);
+
   static bool isWorkbenchMounted = false;
   static int _actionVersion = 0;
 
@@ -85,13 +283,15 @@ class FloatWindowService {
     _processingAction = true;
     final int myVersion = ++_actionVersion;
 
-    debugPrint('[FloatWindow] _handleAction: action=$action, secs=$secs, isWorkbenchMounted=$isWorkbenchMounted');
+    debugPrint(
+        '[FloatWindow] _handleAction: action=$action, secs=$secs, isWorkbenchMounted=$isWorkbenchMounted');
 
     if (isWorkbenchMounted) {
       try {
         final isFocused = await windowManager.isFocused();
         if (isFocused) {
-          debugPrint('[FloatWindow] action $action skipped: workbench is focused');
+          debugPrint(
+              '[FloatWindow] action $action skipped: workbench is focused');
           _processingAction = false;
           return;
         }
@@ -127,7 +327,8 @@ class FloatWindowService {
     // 3. 后台保存记录
     if (action == 'finish') {
       final isCountUp = saved.mode == TimerMode.countUp;
-      final actualSecs = isCountUp ? secs : ((now - saved.sessionStartMs) ~/ 1000);
+      final actualSecs =
+          isCountUp ? secs : ((now - saved.sessionStartMs) ~/ 1000);
 
       final record = PomodoroRecord(
         uuid: saved.sessionUuid,
@@ -161,7 +362,6 @@ class FloatWindowService {
     debugPrint('[FloatWindow] $action done');
     _processingAction = false;
   }
-
 
   static int _lastEndMs = 0;
   static String _lastTitle = '';
@@ -197,8 +397,10 @@ class FloatWindowService {
     final prevModeSnapshot = _lastMode;
 
     // Debug: log incoming request and previous cached state
-    print('[FloatWindow] update called with endMs=$endMs title=$title tags=$tags isLocal=$isLocal mode=$mode forceReset=$forceReset');
-    print('[FloatWindow] prev snapshot _lastEndMs=$prevEndMsSnapshot _lastIsLocal=$prevIsLocalSnapshot _lastMode=$prevModeSnapshot');
+    print(
+        '[FloatWindow] update called with endMs=$endMs title=$title tags=$tags isLocal=$isLocal mode=$mode forceReset=$forceReset');
+    print(
+        '[FloatWindow] prev snapshot _lastEndMs=$prevEndMsSnapshot _lastIsLocal=$prevIsLocalSnapshot _lastMode=$prevModeSnapshot');
 
     if (endMs != null) {
       if (endMs == 0) {
@@ -219,12 +421,19 @@ class FloatWindowService {
         _lastMode = mode ?? _lastMode;
       }
     } else {
-      // No explicit endMs provided: keep the last-known session values.
-      // (Some callers call update() without args to force a re-send.)
+      // No explicit endMs provided: only keep old session values if focus was NOT cleared (endMs > 0).
+      // This prevents race condition where home's _loadAllData() sends old focus data
+      // after pomodoro's clearFocus() has set endMs to 0.
+      if (_lastEndMs == 0) {
+        // Focus was cleared - do not re-send old focus data
+        _lastTitle = '';
+        _lastTags = const [];
+      }
+      // Otherwise, keep the last-known session values for re-send.
     }
 
-    print('[FloatWindow] resulting _lastEndMs=$_lastEndMs _lastIsLocal=$_lastIsLocal _lastMode=$_lastMode');
-
+    print(
+        '[FloatWindow] resulting _lastEndMs=$_lastEndMs _lastIsLocal=$_lastIsLocal _lastMode=$_lastMode');
 
     final prefs = await SharedPreferences.getInstance();
     try {
@@ -244,10 +453,11 @@ class FloatWindowService {
       }
       return;
     }
-    
+
     // Priority sorting system for island slots
     final defaultPriority = ['course', 'countdown', 'todo'];
-    final priorityList = prefs.getStringList('island_slot_priority') ?? defaultPriority;
+    final priorityList =
+        prefs.getStringList('island_slot_priority') ?? defaultPriority;
 
     String leftStr = '';
     String rightStr = '';
@@ -283,7 +493,7 @@ class FloatWindowService {
         // Focus mode. topBarLeft and right remain fallback handled...
       }
     }
-    
+
     // Aggregate reminders only if explicitly requested
     if (reminderQueue == null) {
       if (includeReminders) {
@@ -301,7 +511,8 @@ class FloatWindowService {
 
     try {
       final shouldForceReset = forceReset || (prevEndMs == 0 && _lastEndMs > 0);
-      print('[FloatWindow] shouldForceReset=$shouldForceReset (prevEndMs=$prevEndMs now=$_lastEndMs)');
+      print(
+          '[FloatWindow] shouldForceReset=$shouldForceReset (prevEndMs=$prevEndMs now=$_lastEndMs)');
 
       final payload = <String, Object>{
         'endMs': _lastEndMs,
@@ -330,30 +541,53 @@ class FloatWindowService {
         'endMs': (payload['endMs'] is int) ? payload['endMs'] as int : 0,
         'title': (payload['title'] is String) ? payload['title'] as String : '',
         'tags': (payload['tags'] is List)
-            ? (payload['tags'] as List).map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList()
+            ? (payload['tags'] as List)
+                .map((e) => e?.toString() ?? '')
+                .where((e) => e.isNotEmpty)
+                .toList()
             : <String>[],
-        'isLocal': (payload['isLocal'] is bool) ? payload['isLocal'] as bool : true,
+        'isLocal':
+            (payload['isLocal'] is bool) ? payload['isLocal'] as bool : true,
         'mode': (payload['mode'] is int) ? payload['mode'] as int : 0,
         'style': (payload['style'] is int) ? payload['style'] as int : 0,
         'left': (payload['left'] is String) ? payload['left'] as String : '',
         'right': (payload['right'] is String) ? payload['right'] as String : '',
-        'forceReset': (payload['forceReset'] is bool) ? payload['forceReset'] as bool : false,
-        'topBarLeft': (payload['topBarLeft'] is String) ? payload['topBarLeft'] as String : '',
-        'topBarRight': (payload['topBarRight'] is String) ? payload['topBarRight'] as String : '',
+        'forceReset': (payload['forceReset'] is bool)
+            ? payload['forceReset'] as bool
+            : false,
+        'topBarLeft': (payload['topBarLeft'] is String)
+            ? payload['topBarLeft'] as String
+            : '',
+        'topBarRight': (payload['topBarRight'] is String)
+            ? payload['topBarRight'] as String
+            : '',
         'reminderQueue': (payload['reminderQueue'] is List)
             ? (payload['reminderQueue'] as List).map((item) {
                 if (item is Map) {
-                  return Map<String, String>.from(item.map((k, v) => MapEntry(k.toString(), v?.toString() ?? '')));
+                  return Map<String, String>.from(item.map(
+                      (k, v) => MapEntry(k.toString(), v?.toString() ?? '')));
                 }
                 return <String, String>{};
               }).toList()
             : <Map<String, String>>[],
-        'detail_type': (payload['detail_type'] is String) ? payload['detail_type'] as String : '',
-        'detail_title': (payload['detail_title'] is String) ? payload['detail_title'] as String : '',
-        'detail_subtitle': (payload['detail_subtitle'] is String) ? payload['detail_subtitle'] as String : '',
-        'detail_location': (payload['detail_location'] is String) ? payload['detail_location'] as String : '',
-        'detail_time': (payload['detail_time'] is String) ? payload['detail_time'] as String : '',
-        'detail_note': (payload['detail_note'] is String) ? payload['detail_note'] as String : '',
+        'detail_type': (payload['detail_type'] is String)
+            ? payload['detail_type'] as String
+            : '',
+        'detail_title': (payload['detail_title'] is String)
+            ? payload['detail_title'] as String
+            : '',
+        'detail_subtitle': (payload['detail_subtitle'] is String)
+            ? payload['detail_subtitle'] as String
+            : '',
+        'detail_location': (payload['detail_location'] is String)
+            ? payload['detail_location'] as String
+            : '',
+        'detail_time': (payload['detail_time'] is String)
+            ? payload['detail_time'] as String
+            : '',
+        'detail_note': (payload['detail_note'] is String)
+            ? payload['detail_note'] as String
+            : '',
       };
 
       // Convert to typed DTO (legacy) and build structured island payload
@@ -408,25 +642,28 @@ class FloatWindowService {
           'rightSlot': (p.topBarRight.isNotEmpty) ? p.topBarRight : p.right,
         };
 
-                // Check whether host supports transparent windows for this island
-                final bool transparentSupported = IslandManager().getTransparentSupport('island-1');
+        // Check whether host supports transparent windows for this island
+        final bool transparentSupported =
+            IslandManager().getTransparentSupport('island-1');
 
-                return {
+        return {
           'state': state,
           'theme': prefs.getString('theme') ?? 'system',
           'focusData': focusData,
           'reminderData': reminderData,
           'dashboardData': dashboardData,
-                  'transparentSupported': transparentSupported,
+          'transparentSupported': transparentSupported,
           // include legacy flattened payload for compatibility
           'legacy': p.toMap(),
         };
       }
 
-      print('[FloatWindow] showFloat payload: endMs=${payload['endMs']} mode=${payload['mode']} isLocal=${payload['isLocal']} style=${payload['style']} forceReset=${payload['forceReset']}');
+      print(
+          '[FloatWindow] showFloat payload: endMs=${payload['endMs']} mode=${payload['mode']} isLocal=${payload['isLocal']} style=${payload['style']} forceReset=${payload['forceReset']}');
 
       // If style==1 (灵动岛 / Island) try to deliver using Dart IslandManager
-      final int styleInt = (payload['style'] is int) ? payload['style'] as int : 0;
+      final int styleInt =
+          (payload['style'] is int) ? payload['style'] as int : 0;
       if (Platform.isWindows && styleInt == 1) {
         try {
           final islandId = 'island-1';
@@ -436,13 +673,15 @@ class FloatWindowService {
           if (winId == null) {
             final nowMs = DateTime.now().millisecondsSinceEpoch;
             if (nowMs - _lastIslandCreateAttemptMs < _islandCreateCooldownMs) {
-              debugPrint('[FloatWindow] creation cooldown active, checking if window appeared...');
+              debugPrint(
+                  '[FloatWindow] creation cooldown active, checking if window appeared...');
               // If we skipped create but the window is now actually up, winId might still be null here
-              // so we re-fetch from cache. 
+              // so we re-fetch from cache.
               winId = IslandManager().getCachedWindowId(islandId);
             } else {
               _lastIslandCreateAttemptMs = nowMs;
-              debugPrint('[FloatWindow] IslandManager.createIsland -> islandId=$islandId');
+              debugPrint(
+                  '[FloatWindow] IslandManager.createIsland -> islandId=$islandId');
               winId = await IslandManager().createIsland(islandId);
             }
           }
@@ -450,17 +689,25 @@ class FloatWindowService {
           // If we have (or just created) a window id, post the structured payload
           if (winId != null) {
             final structured = buildIslandStructuredPayload(dto);
-            debugPrint('[FloatWindow] 发送 payload 到岛: state=${structured['state']}, endMs=${(structured['focusData'] as Map?)?['endMs']}, timeLabel=${(structured['focusData'] as Map?)?['timeLabel']}');
-            debugPrint('[FloatWindow] about to send to island: state=${structured['state']}');
-            final sent = await IslandManager().sendStructuredPayload(islandId, structured);
-            debugPrint('[FloatWindow] send result: $sent, state sent=${structured['state']}');
+            debugPrint(
+                '[FloatWindow] 发送 payload 到岛: state=${structured['state']}, endMs=${(structured['focusData'] as Map?)?['endMs']}, timeLabel=${(structured['focusData'] as Map?)?['timeLabel']}');
+            debugPrint(
+                '[FloatWindow] about to send to island: state=${structured['state']}');
+            final sent = await IslandManager()
+                .sendStructuredPayload(islandId, structured);
+            debugPrint(
+                '[FloatWindow] send result: $sent, state sent=${structured['state']}');
             if (sent) {
-              debugPrint('[FloatWindow] posted structured payload to island window id=$winId');
+              debugPrint(
+                  '[FloatWindow] posted structured payload to island window id=$winId');
               // Clear any in-layout debug payload when native island is active
-              try { debugPayload.value = null; } catch (_) {}
+              try {
+                debugPayload.value = null;
+              } catch (_) {}
               return;
             } else {
-              debugPrint('[FloatWindow] sendStructuredPayload failed for window id=$winId');
+              debugPrint(
+                  '[FloatWindow] sendStructuredPayload failed for window id=$winId');
             }
           }
         } catch (e) {
@@ -510,7 +757,8 @@ class FloatWindowService {
             return a.dueDate!.compareTo(b.dueDate!);
           });
           final t = active.first;
-          final time = t.dueDate != null ? DateFormat('MM-dd').format(t.dueDate!) : '';
+          final time =
+              t.dueDate != null ? DateFormat('MM-dd').format(t.dueDate!) : '';
           final display = isLeft
               ? (time.isNotEmpty ? '[$time] ${t.title}' : t.title)
               : (time.isNotEmpty ? '${t.title} [$time]' : t.title);
@@ -540,7 +788,8 @@ class FloatWindowService {
                 if (dashboard['title'] == '今日课程') {
                   final endHour = c.endTime ~/ 100;
                   final endMin = c.endTime % 100;
-                  final courseEnd = DateTime(now.year, now.month, now.day, endHour, endMin);
+                  final courseEnd =
+                      DateTime(now.year, now.month, now.day, endHour, endMin);
                   return now.isBefore(courseEnd);
                 }
                 return true;
@@ -552,11 +801,13 @@ class FloatWindowService {
                 // ✅ 判断课程是否正在进行
                 final startHour = c.startTime ~/ 100;
                 final startMin = c.startTime % 100;
-                final courseStart = DateTime(now.year, now.month, now.day, startHour, startMin);
+                final courseStart =
+                    DateTime(now.year, now.month, now.day, startHour, startMin);
 
                 final bool isOngoing = now.isAfter(courseStart);
 
-                final time = isOngoing ? c.formattedEndTime : c.formattedStartTime;
+                final time =
+                    isOngoing ? c.formattedEndTime : c.formattedStartTime;
                 final timeLabel = isOngoing ? '结束' : '开始';
 
                 final display = isLeft
@@ -581,8 +832,9 @@ class FloatWindowService {
             final records = await PomodoroService.getRecords();
             if (records.isNotEmpty) {
               final r = records.first;
-              final time = DateFormat('HH:mm')
-                  .format(DateTime.fromMillisecondsSinceEpoch(r.endTime ?? r.startTime));
+              final time = DateFormat('HH:mm').format(
+                  DateTime.fromMillisecondsSinceEpoch(
+                      r.endTime ?? r.startTime));
               final title = r.todoTitle ?? '专注';
               return {
                 'display': isLeft ? '[$time] $title' : '$title [$time]',
@@ -600,13 +852,16 @@ class FloatWindowService {
           try {
             final cds = await StorageService.getCountdowns(username);
             final now = DateTime.now();
-            final active = cds.where((c) => !c.isDeleted && c.targetDate.isAfter(now)).toList();
+            final active = cds
+                .where((c) => !c.isDeleted && c.targetDate.isAfter(now))
+                .toList();
             active.sort((a, b) => a.targetDate.compareTo(b.targetDate));
             if (active.isNotEmpty) {
               final c = active.first;
               final days = c.targetDate.difference(now).inDays;
               final info = '${days}天';
-              final display = isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
+              final display =
+                  isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
               return {
                 'display': display,
                 'type': 'countdown',
@@ -635,9 +890,13 @@ class FloatWindowService {
       // Upcoming todos for today
       final todos = await StorageService.getTodos(username);
       final now = DateTime.now();
-      final active = todos.where((t) => !t.isDone && !t.isDeleted && t.dueDate != null).toList();
+      final active = todos
+          .where((t) => !t.isDone && !t.isDeleted && t.dueDate != null)
+          .toList();
       for (var t in active) {
-        if (t.dueDate!.year == now.year && t.dueDate!.month == now.month && t.dueDate!.day == now.day) {
+        if (t.dueDate!.year == now.year &&
+            t.dueDate!.month == now.month &&
+            t.dueDate!.day == now.day) {
           queue.add({
             'text': t.title,
             'type': 'todo',
@@ -663,7 +922,8 @@ class FloatWindowService {
           try {
             final b = await windowManager.getBounds();
             final newTop = (b.top - 120).toInt();
-            await windowManager.setBounds(Rect.fromLTWH(b.left, newTop.toDouble(), b.width, b.height));
+            await windowManager.setBounds(
+                Rect.fromLTWH(b.left, newTop.toDouble(), b.width, b.height));
           } catch (_) {}
           await windowManager.focus();
         } catch (_) {}
@@ -699,8 +959,9 @@ class FloatWindowService {
               'width': w.toInt(),
               'height': h.toInt(),
             });
-            
-            debugPrint('[FloatWindow] Reset island position to center: $left, $top');
+
+            debugPrint(
+                '[FloatWindow] Reset island position to center: $left, $top');
           } catch (e) {
             debugPrint('[FloatWindow] Failed to reset island position: $e');
           }
@@ -713,5 +974,33 @@ class FloatWindowService {
       } catch (_) {}
     } catch (_) {}
   }
-}
 
+  /// 通知 Island 立即检查提醒（当待办新增/修改时调用）
+  static Future<void> triggerReminderCheck() async {
+    debugPrint('[FloatWindow] >>> triggerReminderCheck called');
+    try {
+      final islandId = 'island-1';
+      final winId = IslandManager().getCachedWindowId(islandId);
+      debugPrint('[FloatWindow] winId for island-1: $winId');
+      if (winId != null) {
+        // 通过文件 IPC 发送 check_reminder action
+        final dir = await getApplicationSupportDirectory();
+        final filePath = '${dir.path}/island_action.json';
+        debugPrint('[FloatWindow] Writing to: $filePath');
+        final file = File(filePath);
+        await file.writeAsString(jsonEncode({
+          'action': 'check_reminder',
+          'windowId': winId,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }));
+        debugPrint(
+            '[FloatWindow] Triggered Island reminder check successfully');
+      } else {
+        debugPrint(
+            '[FloatWindow] Island window not found, cannot trigger reminder check');
+      }
+    } catch (e) {
+      debugPrint('[FloatWindow] Failed to trigger reminder check: $e');
+    }
+  }
+}
