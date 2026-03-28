@@ -11,12 +11,13 @@ import 'models.dart';
 import 'services/api_service.dart';
 
 class StorageService {
-      static SharedPreferences? _prefs;
-      static Future<SharedPreferences> get prefs async {
-        if (_prefs != null) return _prefs!;
-        _prefs = await SharedPreferences.getInstance();
-        return _prefs!;
-      }
+  static SharedPreferences? _prefs;
+  static Future<SharedPreferences> get prefs async {
+    if (_prefs != null) return _prefs!;
+    _prefs = await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
   // --- 常量定义 ---
   static const String KEY_USERS = "users_data";
   static const String KEY_LEADERBOARD = "leaderboard_data";
@@ -41,7 +42,8 @@ class StorageService {
   static const String KEY_TIME_LOGS = "user_time_logs";
   static const String KEY_SERVER_CHOICE = "app_server_choice";
 
-  static const String KEY_LOCAL_SCREEN_TIME = "local_screen_time_pending_upload";
+  static const String KEY_LOCAL_SCREEN_TIME =
+      "local_screen_time_pending_upload";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -62,7 +64,10 @@ class StorageService {
     return deviceId;
   }
 
-  /// 核心：获取“人话”版的设备型号与类型 (手机/平板/PC)
+  static Future<String> getDeviceFriendlyName() async =>
+      _getDetailedDeviceName();
+
+  /// 核心：获取"人话"版的设备型号与类型 (手机/平板/PC)
   static Future<String> _getDetailedDeviceName() async {
     DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     String model = "Unknown Device";
@@ -600,7 +605,8 @@ class StorageService {
     // 检查缓存是否是今天的
     int? lastSyncMs = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
     if (lastSyncMs != null) {
-      DateTime lastSyncDate = DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
+      DateTime lastSyncDate =
+          DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
       DateTime now = DateTime.now();
 
       // 如果缓存日期不是今天，说明缓存已过期，返回空列表触发新的同步
@@ -697,13 +703,13 @@ class StorageService {
   }
 
   static Future<bool> syncData(
-      String username, {
-        bool syncTodos = true,
-        bool syncCountdowns = true,
-        bool forceFullSync = false,
-        BuildContext? context,
-        bool syncTimeLogs = true,
-      }) async {
+    String username, {
+    bool syncTodos = true,
+    bool syncCountdowns = true,
+    bool forceFullSync = false,
+    BuildContext? context,
+    bool syncTimeLogs = true,
+  }) async {
     // 1. 状态锁：防止重复进入
     if (!syncTodos && !syncCountdowns && !syncTimeLogs) return false;
     if (_isSyncing) return false;
@@ -718,7 +724,8 @@ class StorageService {
       // 2. 环境信息准备
       final String deviceId = await _getUniqueDeviceId(username);
       final String friendlyName = await _getDetailedDeviceName();
-      final int lastSyncTime = forceFullSync ? 0 : (prefs.getInt('last_sync_time_$username') ?? 0);
+      final int lastSyncTime =
+          forceFullSync ? 0 : (prefs.getInt('last_sync_time_$username') ?? 0);
 
       // 3. 准备增量数据包 (Todos, Countdowns, TimeLogs)
       List<TodoItem> allLocalTodos = await getTodos(username);
@@ -761,7 +768,8 @@ class StorageService {
                     })
                 .toList(),
           };
-          debugPrint("🚀 准备同步本机屏幕时间 ($finalDate): ${localScreenStats.length} 条数据");
+          debugPrint(
+              "🚀 准备同步本机屏幕时间 ($finalDate): ${localScreenStats.length} 条数据");
         } catch (se) {
           debugPrint("屏幕时间 payload 构造失败: $se");
         }
@@ -798,8 +806,13 @@ class StorageService {
         TodoItem sItem = TodoItem.fromJson(raw);
         int index = allLocalTodos.indexWhere((l) => l.id == sItem.id);
         if (index == -1) {
-          if (!sItem.isDeleted) { allLocalTodos.add(sItem); hasChanges = true; }
-        } else if (sItem.isDeleted || sItem.version > allLocalTodos[index].version || sItem.updatedAt > allLocalTodos[index].updatedAt) {
+          if (!sItem.isDeleted) {
+            allLocalTodos.add(sItem);
+            hasChanges = true;
+          }
+        } else if (sItem.isDeleted ||
+            sItem.version > allLocalTodos[index].version ||
+            sItem.updatedAt > allLocalTodos[index].updatedAt) {
           allLocalTodos[index] = sItem;
           hasChanges = true;
         }
@@ -811,8 +824,13 @@ class StorageService {
         CountdownItem sItem = CountdownItem.fromJson(raw);
         int index = allLocalCountdowns.indexWhere((l) => l.id == sItem.id);
         if (index == -1) {
-          if (!sItem.isDeleted) { allLocalCountdowns.add(sItem); hasChanges = true; }
-        } else if (sItem.isDeleted || sItem.version > allLocalCountdowns[index].version || sItem.updatedAt > allLocalCountdowns[index].updatedAt) {
+          if (!sItem.isDeleted) {
+            allLocalCountdowns.add(sItem);
+            hasChanges = true;
+          }
+        } else if (sItem.isDeleted ||
+            sItem.version > allLocalCountdowns[index].version ||
+            sItem.updatedAt > allLocalCountdowns[index].updatedAt) {
           allLocalCountdowns[index] = sItem;
           hasChanges = true;
         }
@@ -824,8 +842,13 @@ class StorageService {
         TimeLogItem sItem = TimeLogItem.fromJson(raw);
         int index = allLocalTimeLogs.indexWhere((l) => l.id == sItem.id);
         if (index == -1) {
-          if (!sItem.isDeleted) { allLocalTimeLogs.add(sItem); hasChanges = true; }
-        } else if (sItem.isDeleted || sItem.version > allLocalTimeLogs[index].version || sItem.updatedAt > allLocalTimeLogs[index].updatedAt) {
+          if (!sItem.isDeleted) {
+            allLocalTimeLogs.add(sItem);
+            hasChanges = true;
+          }
+        } else if (sItem.isDeleted ||
+            sItem.version > allLocalTimeLogs[index].version ||
+            sItem.updatedAt > allLocalTimeLogs[index].updatedAt) {
           allLocalTimeLogs[index] = sItem;
           hasChanges = true;
         }
@@ -839,7 +862,8 @@ class StorageService {
       }
 
       // 8. 更新同步水位线
-      int newSyncTime = response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
+      int newSyncTime =
+          response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
       await prefs.setInt('last_sync_time_$username', newSyncTime);
 
       // 如果屏幕时间同步成功，可以在这里刷新 UI 用的 Cache 数据（如果后端有返回最新的聚合数据）
@@ -847,16 +871,62 @@ class StorageService {
         await saveScreenTimeCache(response['screen_time_results']);
       }
 
+      return hasChanges;
     } catch (e) {
-      debugPrint("同步异常: $e");
-      if (context != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("同步失败: $e")));
-      }
-      rethrow;
+      debugPrint("syncData error: $e");
+      return false;
     } finally {
       _isSyncing = false;
     }
-    return hasChanges;
+  }
+
+  static Future<bool> syncScreenTimeAlone(
+      String username, String deviceName) async {
+    final prefs = await SharedPreferences.getInstance();
+    int? userId = prefs.getInt('current_user_id');
+    if (userId == null) {
+      debugPrint("syncScreenTimeAlone: user not logged in");
+      return false;
+    }
+
+    try {
+      final localPackage = await getLocalScreenTimeMap();
+      final apps = localPackage['apps'] as List<dynamic>?;
+      final date = localPackage['date'] as String?;
+
+      if (apps == null || apps.isEmpty || date == null) {
+        debugPrint("syncScreenTimeAlone: no data to upload");
+        return false;
+      }
+
+      final formattedApps = apps
+          .where((e) => e is Map)
+          .map((e) => {
+                'app_name': e['app_name']?.toString() ?? 'Unknown',
+                'duration': (e['duration'] is int) ? e['duration'] : 0,
+              })
+          .toList();
+
+      final success = await ApiService.uploadScreenTime(
+        userId: userId,
+        deviceName: deviceName,
+        date: date,
+        apps: formattedApps,
+      );
+
+      if (success) {
+        await prefs.remove(KEY_LOCAL_SCREEN_TIME);
+        debugPrint(
+            "✅ syncScreenTimeAlone: success, ${formattedApps.length} apps uploaded");
+        return true;
+      } else {
+        debugPrint("syncScreenTimeAlone failed");
+        return false;
+      }
+    } catch (e) {
+      debugPrint("syncScreenTimeAlone error: $e");
+      return false;
+    }
   }
 
   // ==========================================
@@ -931,7 +1001,8 @@ class StorageService {
     return File('${dir.path}/island_bounds_$islandId.json');
   }
 
-  static Future<void> saveIslandBounds(String islandId, Map<String, dynamic> bounds) async {
+  static Future<void> saveIslandBounds(
+      String islandId, Map<String, dynamic> bounds) async {
     try {
       final file = await _islandBoundsFile(islandId);
       await file.writeAsString(jsonEncode(bounds));

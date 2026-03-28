@@ -217,7 +217,13 @@ export default {
       if (url.pathname === "/api/sync" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
 
-        const payload = await request.json();
+        let payload;
+        try {
+          payload = await request.json();
+        } catch (e) {
+          return errorResponse("请求体 JSON 格式错误", 400);
+        }
+        
         const { user_id, last_sync_time = 0, device_id, screen_time } = payload;
         const todos = payload.todos || payload.todos_changes || payload.todosChanges || [];
         const countdowns = payload.countdowns || payload.countdowns_changes || payload.countdownsChanges || [];
@@ -225,6 +231,8 @@ export default {
 
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
         if (!device_id) return errorResponse("缺少 device_id", 400);
+        
+        console.log(`[SYNC] userId=${user_id} deviceId=${device_id} todos=${todos.length} countdowns=${countdowns.length} timeLogs=${timeLogs.length} screenTime=${screen_time ? 'present' : 'empty'}`);
 
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
@@ -510,7 +518,20 @@ export default {
       // --------------------------
       if (url.pathname === "/api/screen_time" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const { user_id, device_name, record_date, apps } = await request.json();
+        
+        let body;
+        try {
+          body = await request.json();
+        } catch (e) {
+          return errorResponse("请求体 JSON 格式错误", 400);
+        }
+        
+        const { user_id, device_name, record_date, apps } = body;
+        if (!user_id) return errorResponse("缺少 user_id", 400);
+        if (!device_name) return errorResponse("缺少 device_name", 400);
+        if (!record_date) return errorResponse("缺少 record_date", 400);
+        if (!apps || !Array.isArray(apps)) return errorResponse("缺少 apps 数组", 400);
+        
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
 
         const now = Date.now();
