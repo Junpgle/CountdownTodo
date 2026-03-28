@@ -56,6 +56,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
+    // 保存待处理的番茄钟动作（在methodChannel初始化前）
+    private var pendingPomodoroAction: String? = null
 
     // 专门接收"点击完成"按钮的广播接收器
     private val todoActionReceiver = object : BroadcastReceiver() {
@@ -71,24 +73,29 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     // 专门接收番茄钟按钮事件的广播接收器
     private val pomodoroActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
-                "com.math_quiz.POMODORO_FINISH_EARLY" -> {
-                    Log.d(TAG, "🍅 Received POMODORO_FINISH_EARLY intent")
-                    methodChannel?.invokeMethod("pomodoroFinishEarly", null)
-                    Log.d(TAG, "🍅 Invoked pomodoroFinishEarly to Flutter")
-                }
-                "com.math_quiz.POMODORO_ABANDON" -> {
-                    Log.d(TAG, "🍅 Received POMODORO_ABANDON intent")
-                    methodChannel?.invokeMethod("pomodoroAbandon", null)
-                    Log.d(TAG, "🍅 Invoked pomodoroAbandon to Flutter")
-                }
+            Log.d(TAG, "🍅 pomodoroActionReceiver received: ${intent?.action}")
+
+            if (context == null) {
+                Log.e(TAG, "🍅 Context is null, cannot start activity")
+                return
             }
+
+            // 打开 App
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra("pomodoro_action", intent?.action)
+            }
+            context.startActivity(openAppIntent)
+            Log.d(TAG, "🍅 Started MainActivity with action: ${intent?.action}")
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         HomeWidgetPlugin.getData(this)
+
+        // 处理从通知栏传来的番茄钟动作
+        handlePomodoroActionFromIntent(intent)
 
         // 注册 Shizuku 权限请求与生命周期监听器
         Shizuku.addRequestPermissionResultListener(this)
@@ -115,6 +122,39 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
 
         Log.d(TAG, "🚀 Broadcast receiver registered: ${todoActionReceiver::class.java.simpleName}, ${pomodoroActionReceiver::class.java.simpleName}")
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handlePomodoroActionFromIntent(intent)
+    }
+
+    private fun handlePomodoroActionFromIntent(intent: Intent?) {
+        val action = intent?.getStringExtra("pomodoro_action") ?: return
+        Log.d(TAG, "🍅 handlePomodoroActionFromIntent: $action")
+        // 清除 extra，防止重复处理
+        intent.removeExtra("pomodoro_action")
+
+        if (methodChannel != null) {
+            notifyFlutterPomodoroAction(action)
+        } else {
+            // methodChannel还未初始化，保存待处理
+            pendingPomodoroAction = action
+            Log.d(TAG, "🍅 Saved pending action: $action")
+        }
+    }
+
+    private fun notifyFlutterPomodoroAction(action: String) {
+        when (action) {
+            "com.math_quiz.POMODORO_FINISH_EARLY" -> {
+                methodChannel?.invokeMethod("pomodoroFinishEarly", null)
+                Log.d(TAG, "🍅 Invoked pomodoroFinishEarly to Flutter")
+            }
+            "com.math_quiz.POMODORO_ABANDON" -> {
+                methodChannel?.invokeMethod("pomodoroAbandon", null)
+                Log.d(TAG, "🍅 Invoked pomodoroAbandon to Flutter")
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -182,6 +222,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 赋值给全局变量
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+
+        // 处理待处理的番茄钟动作
+        pendingPomodoroAction?.let { action ->
+            Log.d(TAG, "🍅 Processing pending action: $action")
+            notifyFlutterPomodoroAction(action)
+            pendingPomodoroAction = null
+        }
 
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -968,13 +1015,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         var pomodoroAbandonPendingIntent: PendingIntent? = null
         
         if (channelId == POMODORO_CHANNEL_ID && isOngoing) {
-            // 提前完成
-            val finishIntent = Intent("com.math_quiz.POMODORO_FINISH_EARLY").apply {
-                setPackage(packageName)
+            // 提前完成 - 直接启动Activity
+            val finishIntent = Intent(this, MainActivity::class.java).apply {
+                putExtra("pomodoro_action", "com.math_quiz.POMODORO_FINISH_EARLY")
             }
-            pomodoroFinishPendingIntent = PendingIntent.getBroadcast(
+            pomodoroFinishPendingIntent = PendingIntent.getActivity(
                 this, 101, finishIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val finishAction = NotificationCompat.Action.Builder(
                 IconCompat.createWithResource(this, R.drawable.ic_done),
@@ -983,13 +1030,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             ).build()
             builder.addAction(finishAction)
 
-            // 放弃专注
-            val abandonIntent = Intent("com.math_quiz.POMODORO_ABANDON").apply {
-                setPackage(packageName)
+            // 放弃专注 - 直接启动Activity
+            val abandonIntent = Intent(this, MainActivity::class.java).apply {
+                putExtra("pomodoro_action", "com.math_quiz.POMODORO_ABANDON")
             }
-            pomodoroAbandonPendingIntent = PendingIntent.getBroadcast(
+            pomodoroAbandonPendingIntent = PendingIntent.getActivity(
                 this, 102, abandonIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val abandonAction = NotificationCompat.Action.Builder(
                 IconCompat.createWithResource(this, R.drawable.ic_cancel),

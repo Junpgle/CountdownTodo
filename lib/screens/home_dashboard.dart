@@ -129,12 +129,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           case "markCurrentTodoDone":
             _markCurrentTodoDone();
             break;
-          case "pomodoroFinishEarly":
-            _handlePomodoroFinishEarly();
-            break;
-          case "pomodoroAbandon":
-            _handlePomodoroAbandon();
-            break;
+          // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
         }
       });
     }
@@ -866,70 +861,6 @@ class _HomeDashboardState extends State<HomeDashboard>
               content: Text('已完成: ${currentTodo.title}'),
               duration: const Duration(seconds: 1)),
         );
-      }
-    }
-  }
-
-  Future<void> _handlePomodoroFinishEarly() async {
-    debugPrint('[HomeDashboard] 收到番茄钟提前完成事件');
-    final saved = await PomodoroService.loadRunState();
-    if (saved != null) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final actualSeconds = ((now - saved.sessionStartMs) / 1000).round();
-
-      // 保存记录
-      final record = PomodoroRecord(
-        uuid: saved.sessionUuid,
-        todoUuid: saved.todoUuid,
-        todoTitle: saved.todoTitle,
-        tagUuids: saved.tagUuids,
-        startTime: saved.sessionStartMs,
-        endTime: now,
-        plannedDuration: saved.plannedFocusSeconds,
-        actualDuration: actualSeconds,
-        status: PomodoroRecordStatus.completed,
-      );
-      await PomodoroService.addRecord(record);
-
-      // 清理状态
-      await PomodoroService.clearRunState();
-      await NotificationService.cancelNotification();
-      NotificationService.cancelReminder(40001);
-      NotificationService.cancelReminder(40002);
-      PomodoroSyncService().sendStopSignal();
-      await FloatWindowService.update(endMs: 0, isLocal: true);
-
-      // 提示用户
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('番茄钟已提前完成'), duration: Duration(seconds: 2)),
-        );
-        // 刷新页面状态
-        setState(() {});
-      }
-    }
-  }
-
-  Future<void> _handlePomodoroAbandon() async {
-    debugPrint('[HomeDashboard] 收到番茄钟放弃事件');
-    final saved = await PomodoroService.loadRunState();
-    if (saved != null) {
-      // 清理状态（不保存记录）
-      await PomodoroService.clearRunState();
-      await NotificationService.cancelNotification();
-      NotificationService.cancelReminder(40001);
-      NotificationService.cancelReminder(40002);
-      PomodoroSyncService().sendStopSignal();
-      await FloatWindowService.update(endMs: 0, isLocal: true);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('已放弃本次专注'), duration: Duration(seconds: 2)),
-        );
-        // 刷新页面状态
-        setState(() {});
       }
     }
   }
