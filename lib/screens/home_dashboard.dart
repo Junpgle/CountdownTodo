@@ -125,7 +125,12 @@ class _HomeDashboardState extends State<HomeDashboard>
       const platform = MethodChannel(
           'com.math_quiz.junpgle.com.math_quiz_app/notifications');
       platform.setMethodCallHandler((call) async {
-        if (call.method == "markCurrentTodoDone") _markCurrentTodoDone();
+        switch (call.method) {
+          case "markCurrentTodoDone":
+            _markCurrentTodoDone();
+            break;
+          // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
+        }
       });
     }
 
@@ -207,7 +212,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (saved.phase == PomodoroPhase.focusing ||
             saved.phase == PomodoroPhase.breaking) {
           final isCountUp = saved.mode == TimerMode.countUp;
-          final remaining = isCountUp ? 1 : saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
+          final remaining = isCountUp
+              ? 1
+              : saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
           if (remaining > 0) {
             debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
@@ -245,7 +252,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     } catch (_) {}
 
     await _syncService.ensureConnected(
-        userIdInt.toString(), 'flutter_$_deviceId', appVersion: appVersion);
+        userIdInt.toString(), 'flutter_$_deviceId',
+        appVersion: appVersion);
   }
 
   // FloatWindow channel is now handled by FloatWindowService
@@ -257,7 +265,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (signal.sourceDevice == 'flutter_$_deviceId') return;
 
     switch (signal.action) {
-    // 🚀 新增：拦截云端的更新推送
+      // 🚀 新增：拦截云端的更新推送
       case 'UPDATE_AVAILABLE':
         if (!_hasShownUpdate && mounted && signal.manifestData != null) {
           _hasShownUpdate = true;
@@ -267,7 +275,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           if (!mounted) return;
 
           // 复用强大的 UpdateService 弹窗
-          UpdateService.showUpdateDialog(context, manifest, packageInfo.version, hasUpdate: true);
+          UpdateService.showUpdateDialog(context, manifest, packageInfo.version,
+              hasUpdate: true);
         }
         break;
 
@@ -277,11 +286,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         final isCountUp = signal.mode == 1;
         final endMs = signal.targetEndMs;
         if (endMs == null) return;
-        
+
         int rem = 0;
         if (isCountUp) {
-          final timestamp = signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
-          rem = ((DateTime.now().millisecondsSinceEpoch - timestamp) / 1000).floor();
+          final timestamp =
+              signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
+          rem = ((DateTime.now().millisecondsSinceEpoch - timestamp) / 1000)
+              .floor();
         } else {
           rem = ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
           if (rem <= 0) return;
@@ -341,13 +352,11 @@ class _HomeDashboardState extends State<HomeDashboard>
           }
         });
         if (isCountUp) {
-           _startRemotePomodoroTicker(_remotePomodoro!.targetEndMs ?? 0, true);
+          _startRemotePomodoroTicker(_remotePomodoro!.targetEndMs ?? 0, true);
         }
         break;
     }
   }
-
-
 
   void _startRemotePomodoroTicker(int targetEndMs, bool isCountUp) {
     _remotePomodoroTicker?.cancel();
@@ -360,7 +369,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         setState(() => _remotePomodoroRemaining++);
       } else {
         final rem =
-            ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+            ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000)
+                .ceil();
         if (rem <= 0) {
           _remotePomodoroTicker?.cancel();
           if (mounted) setState(() => _remotePomodoro = null);
@@ -382,13 +392,15 @@ class _HomeDashboardState extends State<HomeDashboard>
     _localPomodoroSub?.cancel();
     _localPomodoroSub = PomodoroService.onRunStateChanged.listen((saved) {
       if (!mounted) return;
-      if (saved != null && (saved.phase == PomodoroPhase.focusing || saved.phase == PomodoroPhase.breaking)) {
+      if (saved != null &&
+          (saved.phase == PomodoroPhase.focusing ||
+              saved.phase == PomodoroPhase.breaking)) {
         final now = DateTime.now().millisecondsSinceEpoch;
         final isCountUp = saved.mode == TimerMode.countUp;
-        final rem = isCountUp 
-          ? ((now - saved.sessionStartMs) / 1000).floor()
-          : ((saved.targetEndMs - now) / 1000).ceil();
-        
+        final rem = isCountUp
+            ? ((now - saved.sessionStartMs) / 1000).floor()
+            : ((saved.targetEndMs - now) / 1000).ceil();
+
         setState(() {
           _localPomodoro = saved;
           _localPomodoroRemaining = rem;
@@ -406,13 +418,14 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 初始加载一次
     PomodoroService.loadRunState().then((saved) {
       if (!mounted || saved == null) return;
-      if (saved.phase == PomodoroPhase.focusing || saved.phase == PomodoroPhase.breaking) {
+      if (saved.phase == PomodoroPhase.focusing ||
+          saved.phase == PomodoroPhase.breaking) {
         final now = DateTime.now().millisecondsSinceEpoch;
         final isCountUp = saved.mode == TimerMode.countUp;
-        final rem = isCountUp 
-          ? ((now - saved.sessionStartMs) / 1000).floor()
-          : ((saved.targetEndMs - now) / 1000).ceil();
-          
+        final rem = isCountUp
+            ? ((now - saved.sessionStartMs) / 1000).floor()
+            : ((saved.targetEndMs - now) / 1000).ceil();
+
         setState(() {
           _localPomodoro = saved;
           _localPomodoroRemaining = rem;
@@ -462,13 +475,18 @@ class _HomeDashboardState extends State<HomeDashboard>
       );
     }
     if (_remotePomodoro != null) {
-      final deviceLabel = _remotePomodoro!.sourceDevice?.replaceFirst('flutter_', '').substring(0, 8) ?? '其他设备';
+      final deviceLabel = _remotePomodoro!.sourceDevice
+              ?.replaceFirst('flutter_', '')
+              .substring(0, 8) ??
+          '其他设备';
       return _buildFocusCard(
         isLight: isLight,
         isLocal: false,
         title: _remotePomodoro!.todoTitle,
         remaining: _remotePomodoroRemaining,
-        mode: _remotePomodoro!.mode == 1 ? TimerMode.countUp : TimerMode.countdown,
+        mode: _remotePomodoro!.mode == 1
+            ? TimerMode.countUp
+            : TimerMode.countdown,
         label: '$deviceLabel 正在专注',
       );
     }
@@ -492,7 +510,8 @@ class _HomeDashboardState extends State<HomeDashboard>
             ? '$m 分钟'
             : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
 
-    final baseColor = isLocal ? const Color(0xFF4F46E5) : const Color(0xFFFF6B6B);
+    final baseColor =
+        isLocal ? const Color(0xFF4F46E5) : const Color(0xFFFF6B6B);
 
     return GestureDetector(
       onTap: () async {
@@ -554,8 +573,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             ),
             const SizedBox(width: 4),
             Icon(Icons.chevron_right,
-                color: isLight ? Colors.white70 : baseColor,
-                size: 18),
+                color: isLight ? Colors.white70 : baseColor, size: 18),
           ],
         ),
       ),
@@ -982,7 +1000,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
               // 2. 彻底关闭弹窗并切断路由栈，回到登录页
               Navigator.of(ctx).pop();
-              Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+              Navigator.pushNamedAndRemoveUntil(
+                  context, '/login', (route) => false);
             },
             child: const Text("重新登录"),
           ),
@@ -1107,7 +1126,6 @@ class _HomeDashboardState extends State<HomeDashboard>
           msg.contains("无效的Token") || // 适配你日志中的大写 T
           msg.contains("INVALID_TOKEN") ||
           msg.contains("401")) {
-
         if (mounted) {
           _showTokenExpiredDialog();
         }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/pomodoro_service.dart';
 import 'pomodoro/widgets/fading_indexed_stack.dart';
 import 'pomodoro/views/workbench_view.dart';
@@ -9,9 +10,11 @@ import 'pomodoro/views/stats_view.dart';
 // ══════════════════════════════════════════════════════════════
 class PomodoroScreen extends StatefulWidget {
   final String username;
+
   /// 0 = 工作台（默认），1 = 统计看板
   final int initialTab;
-  const PomodoroScreen({super.key, required this.username, this.initialTab = 0});
+  const PomodoroScreen(
+      {super.key, required this.username, this.initialTab = 0});
 
   @override
   State<PomodoroScreen> createState() => _PomodoroScreenState();
@@ -23,23 +26,30 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   PomodoroPhase _currentPhase = PomodoroPhase.idle;
   bool _workbenchReady = false;
   final _statsKey = GlobalKey<PomodoroStatsState>();
-  final GlobalKey<PomodoroWorkbenchState> _workbenchKey = GlobalKey<PomodoroWorkbenchState>();
+  final GlobalKey<PomodoroWorkbenchState> _workbenchKey =
+      GlobalKey<PomodoroWorkbenchState>();
   bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
-    debugPrint('[PomodoroScreen] initState start; initialTab=${widget.initialTab} username=${widget.username}');
-    _tabController = TabController(
-        length: 2, vsync: this, initialIndex: widget.initialTab);
+    debugPrint(
+        '[PomodoroScreen] initState start; initialTab=${widget.initialTab} username=${widget.username}');
+    _tabController =
+        TabController(length: 2, vsync: this, initialIndex: widget.initialTab);
     _tabController.addListener(() {
       if (_disposed || !mounted) return;
-      debugPrint('[PomodoroScreen] TabController listener: index=${_tabController.index} indexIsChanging=${_tabController.indexIsChanging}');
+      debugPrint(
+          '[PomodoroScreen] TabController listener: index=${_tabController.index} indexIsChanging=${_tabController.indexIsChanging}');
       if (_tabController.index == 1 && !_tabController.indexIsChanging) {
-        try { _statsKey.currentState?.reload(); } catch (_) {}
+        try {
+          _statsKey.currentState?.reload();
+        } catch (_) {}
       }
       if (_tabController.index == 0 && !_tabController.indexIsChanging) {
-        try { _workbenchKey.currentState?.reload(); } catch (_) {}
+        try {
+          _workbenchKey.currentState?.reload();
+        } catch (_) {}
       }
       if (mounted && !_disposed) setState(() {});
     });
@@ -47,10 +57,39 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     // If initial tab is workbench, trigger a reload after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_disposed || !mounted) return;
-      debugPrint('[PomodoroScreen] postFrameCallback firing; initialTab=${widget.initialTab}');
+      debugPrint(
+          '[PomodoroScreen] postFrameCallback firing; initialTab=${widget.initialTab}');
       if (widget.initialTab == 0) {
-        try { _workbenchKey.currentState?.reload(); } catch (_) {}
-        debugPrint('[PomodoroScreen] requested workbench reload from postFrameCallback');
+        try {
+          _workbenchKey.currentState?.reload();
+        } catch (_) {}
+        debugPrint(
+            '[PomodoroScreen] requested workbench reload from postFrameCallback');
+      }
+    });
+
+    // 监听通知栏按钮事件
+    _setupMethodChannelListener();
+  }
+
+  void _setupMethodChannelListener() {
+    const platform =
+        MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+    platform.setMethodCallHandler((call) async {
+      debugPrint('[PomodoroScreen] Received method call: ${call.method}');
+      if (!mounted || _disposed) return;
+
+      switch (call.method) {
+        case 'pomodoroFinishEarly':
+          debugPrint(
+              '[PomodoroScreen] Triggering finishEarly from notification');
+          _workbenchKey.currentState?.handleFinishEarly();
+          break;
+        case 'pomodoroAbandon':
+          debugPrint(
+              '[PomodoroScreen] Triggering abandonFocus from notification');
+          _workbenchKey.currentState?.handleAbandonFocus();
+          break;
       }
     });
   }
@@ -66,19 +105,20 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   Widget build(BuildContext context) {
     // isFocusingOrWatching controls AppBar / bottom tab visibility (when focusing/remote watching)
     // Keep existing logic for those UI parts but compute more explicit helpers for landscape stats.
-    final bool isTimerRunning = _currentPhase == PomodoroPhase.focusing
-        || _currentPhase == PomodoroPhase.breaking
-        || _currentPhase == PomodoroPhase.remoteWatching;
+    final bool isTimerRunning = _currentPhase == PomodoroPhase.focusing ||
+        _currentPhase == PomodoroPhase.breaking ||
+        _currentPhase == PomodoroPhase.remoteWatching;
 
     // Keep previous readiness gating for AppBar/tab hiding behavior
     final isFocusingOrWatching = !_workbenchReady || isTimerRunning;
 
     // Show the compact landscape stats column only when timer is idle or finished
-    final bool showLandscapeStats = _currentPhase == PomodoroPhase.idle
-        || _currentPhase == PomodoroPhase.finished;
+    final bool showLandscapeStats = _currentPhase == PomodoroPhase.idle ||
+        _currentPhase == PomodoroPhase.finished;
 
     final int tabIndex = _tabController.index;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     // Landscape: use a two-column layout (big timer/workbench left, stats/controls right)
     if (isLandscape) {
@@ -91,9 +131,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               Expanded(
                 flex: 3,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   alignment: Alignment.center,
-                      child: Stack(                          // ← 改成 Stack
+                  child: Stack(
+                    // ← 改成 Stack
                     children: [
                       PomodoroWorkbench(
                         key: _workbenchKey,
@@ -109,7 +151,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                           }
                         },
                       ),
-                      if (Navigator.canPop(context))     // ← 返回按钮叠在左上角
+                      if (Navigator.canPop(context)) // ← 返回按钮叠在左上角
                         Positioned(
                           top: 0,
                           left: 0,
@@ -128,10 +170,16 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               if (showLandscapeStats)
                 Container(
                   width: 300, // Reduced width for more focus on workbench
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.02),
-                    border: Border(left: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surface
+                        .withValues(alpha: 0.02),
+                    border: Border(
+                        left: BorderSide(
+                            color: Theme.of(context).dividerColor, width: 0.5)),
                   ),
                   child: SafeArea(
                     top: false,
@@ -143,16 +191,24 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('番茄统计', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                              Text('番茄统计',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.bold)),
                               ToggleButtons(
                                 isSelected: [tabIndex == 0, tabIndex == 1],
                                 onPressed: (i) {
                                   _tabController.animateTo(i);
                                   setState(() {});
                                 },
-                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                constraints: const BoxConstraints(
+                                    minWidth: 32, minHeight: 32),
                                 borderRadius: BorderRadius.circular(8),
-                                children: const [Icon(Icons.timer_outlined, size: 18), Icon(Icons.bar_chart_rounded, size: 18)],
+                                children: const [
+                                  Icon(Icons.timer_outlined, size: 18),
+                                  Icon(Icons.bar_chart_rounded, size: 18)
+                                ],
                               ),
                             ],
                           ),
@@ -162,26 +218,41 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                           // Always show stats summary (same widget used in portrait tab)
                           Card(
                             elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
                             child: Padding(
                               padding: const EdgeInsets.all(4),
-                              child: PomodoroStats(key: _statsKey, username: widget.username, isCompact: true),
+                              child: PomodoroStats(
+                                  key: _statsKey,
+                                  username: widget.username,
+                                  isCompact: true),
                             ),
                           ),
 
                           const SizedBox(height: 12),
 
                           // quick actions / next items placeholder
-                          Text('待办与会话', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+                          Text('待办与会话',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 8),
                           // keep a compact list area so the right column isn't empty
                           Container(
                             height: 120,
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.02),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withValues(alpha: 0.02),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Center(child: Text('最近的待办 / 会话', style: Theme.of(context).textTheme.labelSmall)),
+                            child: Center(
+                                child: Text('最近的待办 / 会话',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall)),
                           ),
 
                           const SizedBox(height: 16),
@@ -190,15 +261,19 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                           FilledButton.tonalIcon(
                             onPressed: () => _tabController.animateTo(0),
                             icon: const Icon(Icons.play_arrow, size: 18),
-                            label: const Text('工作台', style: TextStyle(fontSize: 12)),
-                            style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                            label: const Text('工作台',
+                                style: TextStyle(fontSize: 12)),
+                            style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact),
                           ),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
                             onPressed: () => _tabController.animateTo(1),
                             icon: const Icon(Icons.bar_chart_rounded, size: 18),
-                            label: const Text('统计详情', style: TextStyle(fontSize: 12)),
-                            style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+                            label: const Text('统计详情',
+                                style: TextStyle(fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact),
                           ),
                           const SizedBox(height: 24),
                         ],
@@ -277,11 +352,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 const Expanded(
                   child: Center(
                     child: Text('🍅 番茄钟',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                if (Navigator.canPop(context))
-                  const SizedBox(width: 48),
+                if (Navigator.canPop(context)) const SizedBox(width: 48),
               ],
             ),
           ),
