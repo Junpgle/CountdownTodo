@@ -190,6 +190,40 @@ Future<Map<String, dynamic>?> _checkUpcomingReminder() async {
   return allReminders.first;
 }
 
+/// 设置提醒过期检查定时器
+void _setupReminderExpireTimer(Map<String, dynamic> reminder,
+    ValueNotifier<Map<String, dynamic>?> payloadNotifier) {
+  final minutesUntil = reminder['minutesUntil'] as int? ?? 0;
+  final itemId = reminder['itemId']?.toString();
+
+  // 计算过期时间：当前时间 + minutesUntil 分钟
+  final expireDuration = Duration(minutes: minutesUntil);
+
+  debugPrint('[Island] 设置提醒过期定时器: $itemId, ${minutesUntil}分钟后过期');
+
+  // 取消之前的定时器
+  // 注意：这里假设有一个全局变量来存储定时器，需要在 islandMain 中添加
+  // 暂时先不处理取消逻辑
+
+  // 设置新的定时器
+  Timer(expireDuration, () {
+    debugPrint('[Island] 提醒过期: $itemId');
+    final currentState = payloadNotifier.value?['state']?.toString();
+
+    // 如果当前状态是提醒相关状态，恢复到之前的状态
+    if (currentState == 'reminder_split' ||
+        currentState == 'reminder_capsule' ||
+        currentState == 'reminder_popup') {
+      final prevState = currentState == 'reminder_split' ? 'focusing' : 'idle';
+      payloadNotifier.value = {
+        ...payloadNotifier.value ?? {},
+        'state': prevState,
+      };
+      debugPrint('[Island] 提醒过期，恢复状态: $prevState');
+    }
+  });
+}
+
 @pragma('vm:entry-point')
 Future<void> islandMain(List<String> args) async {
   // 🚀 重置 HWND 缓存，确保每次新窗口启动时都能正确获取窗口句柄
@@ -464,9 +498,11 @@ Future<void> islandMain(List<String> args) async {
 
     // 提醒弹出相关变量
     Timer? _reminderCheckTimer;
+    Timer? _reminderExpireTimer; // 检查提醒是否过期
     final Set<String> _acknowledgedReminders = {};
     String? _lastShownReminderId;
     String? _stateBeforeReminder;
+    Map<String, dynamic>? _currentReminder; // 当前显示的提醒
 
     // 延迟 3 秒后再启用位置保存，确保窗口已完全初始化
     Timer(const Duration(seconds: 3), () {
@@ -535,11 +571,8 @@ Future<void> islandMain(List<String> args) async {
       } catch (_) {}
     });
 
-    // 提醒检查定时器：每分钟检查一次未来20分钟内的提醒
-    debugPrint('[Island] 启动提醒检查定时器');
-    _reminderCheckTimer =
-        Timer.periodic(const Duration(minutes: 1), (timer) async {
-      debugPrint('[Island] 提醒检查定时器触发');
+    // 检查并显示提醒的公共方法
+    Future<void> _checkAndShowReminder() async {
       try {
         final reminder = await _checkUpcomingReminder();
         debugPrint('[Island] 检查提醒结果: $reminder');
@@ -549,58 +582,41 @@ Future<void> islandMain(List<String> args) async {
               _lastShownReminderId != itemId &&
               !_acknowledgedReminders.contains(itemId)) {
             _lastShownReminderId = itemId;
-            // 保存当前状态以便恢复
+            _currentReminder = reminder;
             final currentState =
                 payloadNotifier.value?['state']?.toString() ?? 'idle';
             _stateBeforeReminder =
                 currentState == 'focusing' ? 'focusing' : 'idle';
-            // 发送 reminder_popup 状态
+            final String targetState = currentState == 'focusing'
+                ? 'reminder_split'
+                : 'reminder_capsule';
             final currentPayload = payloadNotifier.value ?? {};
             payloadNotifier.value = {
               ...currentPayload,
-              'state': 'reminder_popup',
+              'state': targetState,
               'reminderPopupData': reminder,
             };
-            debugPrint('[Island] 触发提醒弹出: $itemId');
-          } else {
-            debugPrint(
-                '[Island] 提醒已显示或已确认: itemId=$itemId, lastShown=$_lastShownReminderId, acknowledged=$_acknowledgedReminders');
+            debugPrint('[Island] 触发提醒弹出: $itemId, state: $targetState');
+            _setupReminderExpireTimer(reminder, payloadNotifier);
           }
-        } else {
-          debugPrint('[Island] 未找到未来20分钟内的提醒');
         }
       } catch (e) {
         debugPrint('[Island] 检查提醒失败: $e');
       }
+    }
+
+    // 提醒检查定时器：每分钟检查一次未来20分钟内的提醒
+    debugPrint('[Island] 启动提醒检查定时器');
+    _reminderCheckTimer =
+        Timer.periodic(const Duration(minutes: 1), (timer) async {
+      debugPrint('[Island] 提醒检查定时器触发');
+      await _checkAndShowReminder();
     });
 
     // 立即检查一次提醒
     Timer(const Duration(seconds: 5), () async {
       debugPrint('[Island] 立即检查提醒');
-      try {
-        final reminder = await _checkUpcomingReminder();
-        debugPrint('[Island] 立即检查结果: $reminder');
-        if (reminder != null) {
-          final itemId = reminder['itemId']?.toString();
-          if (itemId != null &&
-              _lastShownReminderId != itemId &&
-              !_acknowledgedReminders.contains(itemId)) {
-            _lastShownReminderId = itemId;
-            final currentState =
-                payloadNotifier.value?['state']?.toString() ?? 'idle';
-            _stateBeforeReminder =
-                currentState == 'focusing' ? 'focusing' : 'idle';
-            final currentPayload = payloadNotifier.value ?? {};
-            payloadNotifier.value = {
-              ...currentPayload,
-              'state': 'reminder_popup',
-              'reminderPopupData': reminder,
-            };
-            debugPrint('[Island] 立即触发提醒弹出: $itemId');
-          }
-        }
-      } catch (e) {
-        debugPrint('[Island] 立即检查提醒失败: $e');
+      await _checkAndShowReminder();
       }
     });
 
@@ -665,6 +681,45 @@ Future<void> islandMain(List<String> args) async {
                         'timestamp': DateTime.now().millisecondsSinceEpoch,
                       }));
                     } catch (_) {}
+                    return;
+                  }
+
+                  if (action == 'snooze_reminder') {
+                    // snooze 后重新显示提醒
+                    final currentPayload = payloadNotifier.value ?? {};
+                    final reminderData = currentPayload['reminderPopupData']
+                        as Map<String, dynamic>?;
+                    final newMinutes =
+                        currentPayload['snoozeMinutes'] as int? ?? 5;
+                    if (reminderData != null) {
+                      // 清除之前的显示标记，允许重新显示
+                      _lastShownReminderId = null;
+                      // 更新提醒时间
+                      final updatedReminder = {
+                        ...reminderData,
+                        'minutesUntil': newMinutes,
+                      };
+                      // 重新显示提醒胶囊
+                      final currentState =
+                          payloadNotifier.value?['state']?.toString() ?? 'idle';
+                      final targetState = currentState == 'focusing'
+                          ? 'reminder_split'
+                          : 'reminder_capsule';
+                      payloadNotifier.value = {
+                        ...payloadNotifier.value ?? {},
+                        'state': targetState,
+                        'reminderPopupData': updatedReminder,
+                      };
+                      // 设置新的过期检查定时器
+                      _setupReminderExpireTimer(
+                          updatedReminder, payloadNotifier);
+                    }
+                    return;
+                  }
+
+                  if (action == 'check_reminder') {
+                    // 立即检查提醒
+                    _checkAndShowReminder();
                     return;
                   }
 

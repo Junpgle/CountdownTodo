@@ -13,7 +13,9 @@ enum IslandState {
   finishConfirm,
   abandonConfirm,
   finishFinal,
-  reminderPopup, // 新增：提醒事项弹出状态
+  reminderPopup, // 提醒事项大卡片状态
+  reminderSplit, // 从专注态分裂出新胶囊
+  reminderCapsule, // 提醒胶囊常驻显示
 }
 
 class IslandUI extends StatefulWidget {
@@ -59,6 +61,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // 提醒弹出相关状态
   Map<String, dynamic>? _reminderPopupData;
   IslandState? _savedStateBeforeReminder;
+  String? _expandedReminderPart; // 'focusing' 或 'reminder'
 
   WindowController? _windowController;
 
@@ -165,6 +168,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return IslandState.finishFinal;
       case 'reminder_popup':
         return IslandState.reminderPopup;
+      case 'reminder_split':
+        return IslandState.reminderSplit;
+      case 'reminder_capsule':
+        return IslandState.reminderCapsule;
       default:
         return _isFocusing ? IslandState.focusing : IslandState.idle;
     }
@@ -188,19 +195,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final focusData = payload['focusData'] as Map?;
     final String stateStr = payload['state']?.toString() ?? 'idle';
 
-    // 处理提醒弹出数据
-    if (stateStr == 'reminder_popup') {
+    // 处理提醒弹出数据（支持所有提醒相关状态）
+    if (stateStr == 'reminder_popup' ||
+        stateStr == 'reminder_split' ||
+        stateStr == 'reminder_capsule') {
       final reminderData =
           payload['reminderPopupData'] as Map<String, dynamic>?;
       if (reminderData != null) {
         _reminderPopupData = reminderData;
       }
+    } else {
+      // 非提醒状态，清除展开状态
+      _expandedReminderPart = null;
     }
 
     final int endMs = focusData?['endMs'] ?? 0;
 
     // 关键修正：直接信任 state 字段，忽略残留数据
-    _isFocusing = stateStr == 'focusing';
+    // reminder_split 也需要显示专注倒计时
+    _isFocusing = stateStr == 'focusing' || stateStr == 'reminder_split';
 
     final IslandState nextStateCandidate = _computeNextState(stateStr);
 
@@ -378,6 +391,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         final hasSubtitle = _reminderPopupData != null &&
             (_reminderPopupData!['subtitle']?.toString().isNotEmpty ?? false);
         return Size(320, hasSubtitle ? 180 : 150);
+      case IslandState.reminderSplit:
+        // 分裂状态：显示两个胶囊，宽度增加
+        return const Size(480, 46);
+      case IslandState.reminderCapsule:
+        // 胶囊状态：显示提醒胶囊
+        return const Size(160, 46);
       default:
         return const Size(120, 34);
     }
@@ -440,7 +459,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = const Color(0xFF1C1C1E);
+    // reminderSplit 状态使用透明背景，让两个胶囊独立显示
+    final bgColor = _state == IslandState.reminderSplit
+        ? Colors.transparent
+        : const Color(0xFF1C1C1E);
     final borderColor = Colors.black.withOpacity(0.5);
 
     return Material(
@@ -463,11 +485,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     _state == IslandState.stackedCard ||
                             _state == IslandState.finishConfirm ||
                             _state == IslandState.abandonConfirm ||
-                            _state == IslandState.finishFinal
+                            _state == IslandState.finishFinal ||
+                            _state == IslandState.reminderSplit
                         ? 20
                         : 28,
                   ),
-                  border: Border.all(color: borderColor, width: 0.8),
+                  border: _state == IslandState.reminderSplit
+                      ? null
+                      : Border.all(color: borderColor, width: 0.8),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.4),
@@ -517,6 +542,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return _buildConfirm(mode: 'final');
       case IslandState.reminderPopup:
         return _buildReminderPopup();
+      case IslandState.reminderSplit:
+        return _buildReminderSplit();
+      case IslandState.reminderCapsule:
+        return _buildReminderCapsule();
     }
   }
 
@@ -1022,21 +1051,294 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (itemId != null) {
       widget.onAction?.call('reminder_ok', 0);
     }
-    // 恢复之前的状态
+    // 如果之前是专注状态，转到胶囊状态；否则恢复之前的状态
     final prevState = _savedStateBeforeReminder ?? IslandState.idle;
-    _savedStateBeforeReminder = null;
-    _reminderPopupData = null;
-    _transitionToState(prevState);
+    if (prevState == IslandState.focusing) {
+      _savedStateBeforeReminder = IslandState.focusing;
+      _transitionToState(IslandState.reminderSplit);
+    } else if (prevState == IslandState.reminderSplit ||
+        prevState == IslandState.reminderCapsule) {
+      _transitionToState(prevState);
+    } else {
+      _savedStateBeforeReminder = null;
+      _reminderPopupData = null;
+      _transitionToState(IslandState.reminderCapsule);
+    }
   }
 
   void _onReminderLater() {
     // 通知主应用打开稍后提醒选择框
     widget.onAction?.call('remind_later', 0);
-    // 恢复之前的状态
+    // 如果之前是专注状态，转到胶囊状态；否则恢复之前的状态
     final prevState = _savedStateBeforeReminder ?? IslandState.idle;
-    _savedStateBeforeReminder = null;
-    _reminderPopupData = null;
-    _transitionToState(prevState);
+    if (prevState == IslandState.focusing) {
+      _savedStateBeforeReminder = IslandState.focusing;
+      _transitionToState(IslandState.reminderSplit);
+    } else if (prevState == IslandState.reminderSplit ||
+        prevState == IslandState.reminderCapsule) {
+      _transitionToState(prevState);
+    } else {
+      _savedStateBeforeReminder = null;
+      _reminderPopupData = null;
+      _transitionToState(IslandState.reminderCapsule);
+    }
+  }
+
+  /// 构建分裂状态：两个分离的胶囊，中间透明，可分别点击展开
+  Widget _buildReminderSplit() {
+    final data = _reminderPopupData;
+    if (data == null) return const SizedBox.shrink();
+
+    final type = data['type']?.toString() ?? 'todo';
+    final title = data['title']?.toString() ?? '';
+    final minutesUntil = data['minutesUntil'] as int? ?? 0;
+    final isEnding = data['isEnding'] as bool? ?? false;
+
+    final typeIcon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
+    final statusText = isEnding ? '${minutesUntil}min' : '${minutesUntil}min';
+
+    final isReminderExpanded = _expandedReminderPart == 'reminder';
+
+    return GestureDetector(
+      key: const ValueKey('reminderSplit'),
+      behavior: HitTestBehavior.translucent,
+      onPanStart: (_) => _startDragging(),
+      onTap: () {
+        if (_expandedReminderPart != null) {
+          // 再次点击空白区域，收回两个胶囊
+          _expandedReminderPart = null;
+          setState(() {});
+        }
+      },
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 左侧：专注胶囊
+          GestureDetector(
+            onTap: () {
+              if (_expandedReminderPart == 'focusing') {
+                _expandedReminderPart = null;
+              } else {
+                _expandedReminderPart = 'focusing';
+              }
+              setState(() {});
+            },
+            child: _buildSplitFocusingCapsule(
+                isExpanded: _expandedReminderPart == 'focusing'),
+          ),
+          const SizedBox(width: 12),
+          // 右侧：提醒胶囊（分离）
+          GestureDetector(
+            onTap: () {
+              if (_expandedReminderPart == 'reminder') {
+                _expandedReminderPart = null;
+              } else {
+                _expandedReminderPart = 'reminder';
+                _savedStateBeforeReminder = IslandState.reminderSplit;
+              }
+              setState(() {});
+            },
+            child: isReminderExpanded
+                ? _buildReminderPopupCompact()
+                : _buildSplitReminderCapsule(typeIcon, title, statusText),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 提醒胶囊展开时的紧凑大卡片
+  Widget _buildReminderPopupCompact() {
+    final data = _reminderPopupData;
+    if (data == null) return const SizedBox.shrink();
+
+    final type = data['type']?.toString() ?? 'todo';
+    final title = data['title']?.toString() ?? '';
+    final subtitle = data['subtitle']?.toString() ?? '';
+    final startTime = data['startTime']?.toString() ?? '';
+    final endTime = data['endTime']?.toString() ?? '';
+    final minutesUntil = data['minutesUntil'] as int? ?? 0;
+    final isEnding = data['isEnding'] as bool? ?? false;
+
+    final typeIcon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
+    final timeText = isEnding ? '已超时 $minutesUntil 分钟' : '$minutesUntil 分钟后开始';
+
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF9800).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(typeIcon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 80),
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$minutesUntil',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 分裂状态下的专注胶囊（独立样式）
+  Widget _buildSplitFocusingCapsule({bool isExpanded = false}) {
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6366F1).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('🎯', style: TextStyle(fontSize: 12)),
+          const SizedBox(width: 6),
+          ValueListenableBuilder<String>(
+            valueListenable: _timeNotifier,
+            builder: (context, time, _) => Text(
+              time,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 分裂状态下的提醒胶囊（独立样式）
+  Widget _buildSplitReminderCapsule(
+      String typeIcon, String title, String statusText) {
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF9800).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(typeIcon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 60),
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            statusText,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建提醒胶囊状态：常驻显示的提醒胶囊
+  Widget _buildReminderCapsule() {
+    final data = _reminderPopupData;
+    if (data == null) return const SizedBox.shrink();
+
+    final type = data['type']?.toString() ?? 'todo';
+    final title = data['title']?.toString() ?? '';
+    final minutesUntil = data['minutesUntil'] as int? ?? 0;
+    final isEnding = data['isEnding'] as bool? ?? false;
+
+    final typeIcon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
+    final statusText = isEnding ? '${minutesUntil}min' : '${minutesUntil}min';
+
+    return GestureDetector(
+      key: const ValueKey('reminderCapsule'),
+      onPanStart: (_) => _startDragging(),
+      onTap: () {
+        // 点击展开大卡片
+        _savedStateBeforeReminder = IslandState.reminderCapsule;
+        _transitionToState(IslandState.reminderPopup);
+      },
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Container(
+          height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF9800).withOpacity(0.9),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                typeIcon,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                statusText,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildDesignBtn({

@@ -52,7 +52,10 @@ class FloatWindowService {
             _handleAction('abandon', 0);
           } else if (action == 'reminder_ok') {
             // 提醒已确认，记录到存储
-            final itemId = event['itemId']?.toString();
+            final reminderData =
+                payload?['reminderPopupData'] as Map<String, dynamic>?;
+            final itemId = reminderData?['itemId']?.toString() ??
+                event['itemId']?.toString();
             if (itemId != null) {
               _saveAcknowledgedReminder(itemId);
             }
@@ -100,13 +103,18 @@ class FloatWindowService {
 
   /// 处理稍后提醒 action
   static Future<void> _handleRemindLater() async {
+    debugPrint('[FloatWindow] _handleRemindLater called');
     try {
       await windowManager.ensureInitialized();
+      debugPrint('[FloatWindow] windowManager initialized');
       await windowManager.show();
+      debugPrint('[FloatWindow] windowManager.show() done');
       await windowManager.focus();
+      debugPrint('[FloatWindow] windowManager.focus() done');
 
       // 稍后显示对话框，确保窗口已完全显示
-      Timer(const Duration(milliseconds: 300), () {
+      Timer(const Duration(milliseconds: 500), () {
+        debugPrint('[FloatWindow] Timer fired, calling _showSnoozeDialog');
         _showSnoozeDialog();
       });
     } catch (e) {
@@ -116,10 +124,16 @@ class FloatWindowService {
 
   /// 显示稍后提醒选择对话框
   static void _showSnoozeDialog() {
+    debugPrint('[FloatWindow] _showSnoozeDialog called');
     final context = appNavigatorKey.currentContext;
-    if (context == null) return;
+    debugPrint('[FloatWindow] context is null: ${context == null}');
+    if (context == null) {
+      debugPrint('[FloatWindow] context is null, cannot show dialog');
+      return;
+    }
 
     final TextEditingController customController = TextEditingController();
+    debugPrint('[FloatWindow] Showing snooze dialog');
 
     showDialog(
       context: context,
