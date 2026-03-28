@@ -51,7 +51,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   int _transitionVersion = 0;
   Timer? _hoverDebounce;
   Timer? _payloadDebounce;
+  Timer? _minStayTimer;
   bool _isHovered = false;
+  bool _canShrink = true; // 防止刚展开就收缩
 
   WindowController? _windowController;
 
@@ -124,6 +126,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void dispose() {
     _hoverDebounce?.cancel();
     _payloadDebounce?.cancel();
+    _minStayTimer?.cancel();
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _timeNotifier.dispose();
@@ -227,11 +230,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _onHoverEnter() {
     _hoverDebounce?.cancel();
     _isHovered = true;
-    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
+    _canShrink = false; // 展开后禁止立即收缩
+    _hoverDebounce = Timer(const Duration(milliseconds: 100), () {
       if (!_isHovered || !mounted) return;
       if (_state == IslandState.idle || _state == IslandState.focusing) {
         _savedStateBeforeHover = _state;
         _transitionToState(IslandState.hoverWide);
+        // 展开后 400ms 内禁止收缩
+        _minStayTimer?.cancel();
+        _minStayTimer = Timer(const Duration(milliseconds: 400), () {
+          _canShrink = true;
+        });
       }
     });
   }
@@ -239,13 +248,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _onHoverExit() {
     _hoverDebounce?.cancel();
     _isHovered = false;
-    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
+    _hoverDebounce = Timer(const Duration(milliseconds: 120), () {
       if (_isHovered || !mounted) return;
-      if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
-        _transitionToState(_savedStateBeforeHover!);
-        _savedStateBeforeHover = null;
+      // 如果还在最小停留期内，延迟检查
+      if (!_canShrink) {
+        _hoverDebounce = Timer(const Duration(milliseconds: 200), () {
+          if (_isHovered || !mounted) return;
+          _doShrinkIfNeeded();
+        });
+        return;
       }
+      _doShrinkIfNeeded();
     });
+  }
+
+  void _doShrinkIfNeeded() {
+    if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
+      _transitionToState(_savedStateBeforeHover!);
+      _savedStateBeforeHover = null;
+    }
   }
 
   // ── 倒计时 ────────────────────────────────────────────────
@@ -319,7 +340,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.focusing:
         return const Size(100, 46);
       case IslandState.hoverWide:
-        return const Size(380, 34);
+        return const Size(380, 46); // 高度与 focusing 保持一致
       case IslandState.splitAlert:
         return const Size(300, 36);
       case IslandState.stackedCard:
