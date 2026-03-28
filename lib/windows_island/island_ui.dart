@@ -72,12 +72,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     _splitController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 200),
     );
 
     _sizeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 200),
     );
     // ╔══════════════════════════════════════════════════════════╗
     // ║  不再 addListener —— 这就是闪退的根源                   ║
@@ -90,7 +90,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       end: const Size(120, 34),
     ).animate(CurvedAnimation(
       parent: _sizeController,
-      curve: Curves.easeInOutQuart,
+      curve: Curves.easeOutCubic,
     ));
 
     widget.payloadNotifier?.addListener(_onNotifierPayload);
@@ -227,7 +227,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _onHoverEnter() {
     _hoverDebounce?.cancel();
     _isHovered = true;
-    _hoverDebounce = Timer(const Duration(milliseconds: 200), () {
+    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
       if (!_isHovered || !mounted) return;
       if (_state == IslandState.idle || _state == IslandState.focusing) {
         _savedStateBeforeHover = _state;
@@ -239,7 +239,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _onHoverExit() {
     _hoverDebounce?.cancel();
     _isHovered = false;
-    _hoverDebounce = Timer(const Duration(milliseconds: 200), () {
+    _hoverDebounce = Timer(const Duration(milliseconds: 80), () {
       if (_isHovered || !mounted) return;
       if (_state == IslandState.hoverWide && _savedStateBeforeHover != null) {
         _transitionToState(_savedStateBeforeHover!);
@@ -365,15 +365,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       end: toSize,
     ).animate(CurvedAnimation(
       parent: _sizeController,
-      curve: Curves.easeInOutQuart,
+      curve: Curves.easeOutCubic,
     ));
 
-    // 4) 只有当前版本才触发 native resize
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (_transitionVersion == myVersion) {
-        _resizeWindowOnce(toSize);
-      }
-    });
+    // 4) 立即触发 native resize，不等待 postFrameCallback
+    _resizeWindowOnce(toSize);
 
     // 5) 播放 Flutter 内部的尺寸动画
     _sizeController.forward(from: 0).then((_) {
