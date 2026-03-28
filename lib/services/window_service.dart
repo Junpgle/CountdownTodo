@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import '../windows_island/island_manager.dart';
+import '../main.dart';
 
 class WindowService with WindowListener {
   static const _keyX = 'main_window_x';
@@ -29,7 +31,8 @@ class WindowService with WindowListener {
       final int? h = prefs.getInt(_keyH);
       if (x != null && y != null && w != null && h != null) {
         try {
-          await windowManager.setBounds(Rect.fromLTWH(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()));
+          await windowManager.setBounds(Rect.fromLTWH(
+              x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()));
         } catch (_) {}
       }
 
@@ -66,20 +69,41 @@ class WindowService with WindowListener {
   }
 
   // Unused listeners
-  @override void onWindowClose() async {
-    try {
-      await IslandManager().destroyCachedIsland('island-1')
-          .timeout(const Duration(milliseconds: 1500), onTimeout: () {});
-    } catch (_) {}
-    windowManager.destroy();
-  }
-  @override void onWindowEnterFullScreen() {}
-  @override void onWindowLeaveFullScreen() {}
-  @override void onWindowMaximize() {}
-  @override void onWindowUnmaximize() {}
-  @override void onWindowMinimize() {}
-  @override void onWindowRestore() {}
-  @override void onWindowFocus() {}
-  @override void onWindowBlur() {}
-}
+  @override
+  void onWindowClose() async {
+    debugPrint('[WindowService] onWindowClose called');
+    final shouldExit = await showCloseDialog();
+    debugPrint('[WindowService] showCloseDialog returned: $shouldExit');
 
+    if (shouldExit) {
+      debugPrint('[WindowService] Exiting, destroying island first');
+      try {
+        await IslandManager()
+            .destroyCachedIsland('island-1')
+            .timeout(const Duration(milliseconds: 500), onTimeout: () {});
+      } catch (_) {}
+      debugPrint('[WindowService] Calling exit(0)');
+      exit(0);
+    } else {
+      debugPrint('[WindowService] Minimizing to tray');
+      await windowManager.minimize();
+    }
+  }
+
+  @override
+  void onWindowEnterFullScreen() {}
+  @override
+  void onWindowLeaveFullScreen() {}
+  @override
+  void onWindowMaximize() {}
+  @override
+  void onWindowUnmaximize() {}
+  @override
+  void onWindowMinimize() {}
+  @override
+  void onWindowRestore() {}
+  @override
+  void onWindowFocus() {}
+  @override
+  void onWindowBlur() {}
+}

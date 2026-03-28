@@ -108,12 +108,15 @@ Future<void> islandMain(List<String> args) async {
     try {
       final bounds = await StorageService.getIslandBounds('island-1');
       if (bounds != null && bounds.isNotEmpty) {
-        final left = (bounds['left'] as num?)?.toDouble();
-        final top = (bounds['top'] as num?)?.toDouble();
+        final centerX = (bounds['centerX'] as num?)?.toDouble();
+        final centerY = (bounds['centerY'] as num?)?.toDouble();
         final width = (bounds['width'] as num?)?.toDouble() ?? 160.0;
         final height = (bounds['height'] as num?)?.toDouble() ?? 56.0;
 
-        if (left != null && top != null) {
+        if (centerX != null && centerY != null) {
+          final left = centerX - width / 2;
+          final top = centerY - height / 2;
+
           final hwnd = _getSmallestFlutterWindow();
           if (hwnd != null) {
             using((arena) {
@@ -131,7 +134,8 @@ Future<void> islandMain(List<String> args) async {
                   rectPtr.ref.bottom - rectPtr.ref.top,
                   0x0041);
             });
-            debugPrint('[Island] Win32 API 恢复窗口位置: left=$left, top=$top');
+            debugPrint(
+                '[Island] Win32 API 恢复窗口位置: centerX=$centerX, centerY=$centerY, left=$left, top=$top');
           }
         }
       }
@@ -385,23 +389,26 @@ Future<void> islandMain(List<String> args) async {
             final double logicalW = curW / scale;
             final double logicalH = curH / scale;
 
+            final centerX = logicalX + logicalW / 2;
+            final centerY = logicalY + logicalH / 2;
+
             final currentBounds = {
-              'left': logicalX,
-              'top': logicalY,
+              'centerX': centerX,
+              'centerY': centerY,
               'width': logicalW.ceilToDouble(),
               'height': logicalH.ceilToDouble(),
             };
 
-            final lastLeft = lastReportedBounds?['left'] as double?;
-            final lastTop = lastReportedBounds?['top'] as double?;
+            final lastCenterX = lastReportedBounds?['centerX'] as double?;
+            final lastCenterY = lastReportedBounds?['centerY'] as double?;
             if (_boundsSaveEnabled &&
                 _boundsSaveReady &&
                 !_isDragging &&
                 (lastReportedBounds == null ||
-                    lastLeft == null ||
-                    lastTop == null ||
-                    (lastLeft - logicalX).abs() > 1.0 ||
-                    (lastTop - logicalY).abs() > 1.0)) {
+                    lastCenterX == null ||
+                    lastCenterY == null ||
+                    (lastCenterX - centerX).abs() > 1.0 ||
+                    (lastCenterY - centerY).abs() > 1.0)) {
               lastReportedBounds = currentBounds;
               if (_needsSaveAfterDrag) {
                 _needsSaveAfterDrag = false;
