@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "2.3.0",
+  "version_name": "2.3.7",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 2.3.0",
-    "description":"灵动岛支持多种状态\n默认态，仅仅展示时间\n默认态鼠标移入，展示时间+两侧展开内容（支持用户按优先级排序显示）（支持显示课程表、待办、倒计时）\n专注态，展示正计时/倒计时+计时器\n专注态+鼠标移入，展示计时器+两侧内容，同上\n专注态+鼠标点击，灵动岛交互，支持岛内结束专注",
+    "title": "版本更新 2.3.7",
+    "description":"上图就是桃岭六道湾！我要炫耀！皖南川藏线太刺激了！修复了一些已知问题，提升了稳定性和性能，具体日志请看更新后第一页",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe"
   },
@@ -19,6 +19,19 @@
   },
   "changelog_history": [
     {
+      "version_name": "2.3.7",
+      "date": "2026-03-28",
+      "items": [
+        "【修复】修复了屏幕使用时间异常的问题",
+        "【修复】修复了反复切入灵动岛闪退的问题",
+        "【优化】灵动岛展开关闭动画优化，提升流畅度",
+        "【优化】灵动岛位置可以记忆了",
+        "【新增】Windows端灵动岛番茄钟通知新增支持完成操作",
+        "【新增】Android端灵动岛番茄钟通知新增支持完成操作",
+        "【新增】Windows灵动岛专注态来通知自动变成两个岛",
+        "【新增】Windows灵动岛新增剪贴板网址打开功能"
+      ]
+    },{
       "version_name": "2.3.0",
       "date": "2026-03-27",
       "items": [
