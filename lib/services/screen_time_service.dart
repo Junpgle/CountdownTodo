@@ -31,7 +31,8 @@ class ScreenTimeService {
     List<dynamic> cachedData = await StorageService.getScreenTimeCache();
 
     // 如果是桌面端且无缓存，必须同步一次
-    bool isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    bool isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
     if (isDesktop && cachedData.isEmpty) {
       await _performBackgroundSync(userId);
@@ -59,50 +60,62 @@ class ScreenTimeService {
       String? username = await StorageService.getLoginSession();
       if (username == null) return;
 
+      bool hasScreenTimeData = false;
+
       // 1. 获取本机干干净净的数据，存入【专用上传缓存】
       if (Platform.isAndroid) {
-        if (!(await checkPermission())) return;
-        final dynamic stats = await _channel.invokeMethod('getScreenTimeData');
-        
-        // 🚀 适配 Android 返回的新格式: { "date": "yyyy-MM-dd", "apps": [...] }
-        if (stats is Map && stats['apps'] != null) {
-          await StorageService.saveLocalScreenTime(stats); 
-        } else if (stats is List && stats.isNotEmpty) {
-          // 向后兼容旧格式
-          String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-          await StorageService.saveLocalScreenTime({
-            'date': today,
-            'apps': stats
-          });
+        bool hasPermission = await checkPermission();
+        if (!hasPermission) {
+          debugPrint("⚠️ Android 屏幕使用权限未授予，跳过屏幕时间采集，其他数据继续同步");
+        } else {
+          final dynamic stats =
+              await _channel.invokeMethod('getScreenTimeData');
+
+          // 🚀 适配 Android 返回的新格式: { "date": "yyyy-MM-dd", "apps": [...] }
+          if (stats is Map && stats['apps'] != null) {
+            await StorageService.saveLocalScreenTime(stats);
+            hasScreenTimeData = true;
+          } else if (stats is List && stats.isNotEmpty) {
+            // 向后兼容旧格式
+            String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+            await StorageService.saveLocalScreenTime(
+                {'date': today, 'apps': stats});
+            hasScreenTimeData = true;
+          }
         }
       } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        final List<Map<String, dynamic>> apps = await TaiService.getTodayStats();
+        final List<Map<String, dynamic>> apps =
+            await TaiService.getTodayStats();
         if (apps.isNotEmpty) {
           String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-          await StorageService.saveLocalScreenTime({
-            'date': today,
-            'apps': apps
-          });
+          await StorageService.saveLocalScreenTime(
+              {'date': today, 'apps': apps});
         }
       }
 
       // 2. 将本机纯净数据推送到云端
+      // 🚀 优先使用独立的 /api/screen_time 接口上传屏幕时间数据
+      if (Platform.isAndroid && hasScreenTimeData) {
+        String deviceName = await StorageService.getDeviceFriendlyName();
+        await StorageService.syncScreenTimeAlone(username, deviceName);
+      }
+
       await StorageService.syncData(username);
-      debugPrint("📤 本机屏幕时间已推送到云端");
-      
+      debugPrint("📤 本机数据已推送到云端");
+
       // 🚀 只要推送成功，即便云端还没聚合好，也更新本地同步水位线，防止 2 分钟死循环
       await StorageService.updateLastScreenTimeSync();
 
       // 3. 强制向云端索要多端聚合后的“完美总表”
       String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      List<dynamic> cloudStats = await ApiService.fetchScreenTime(userId, today);
+      List<dynamic> cloudStats =
+          await ApiService.fetchScreenTime(userId, today);
 
       if (cloudStats.isNotEmpty) {
         // 4. 用云端总表覆盖【UI显示缓存】
-        await StorageService.saveScreenTimeCache(cloudStats); 
+        await StorageService.saveScreenTimeCache(cloudStats);
         debugPrint("📥 成功拉取云端聚合数据，准备刷新 UI！");
       }
-
     } catch (e) {
       debugPrint("屏幕时间后台同步失败: $e");
     }
