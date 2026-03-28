@@ -62,6 +62,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ══════════════════════════════════════════════════════════════
   Size _currentWindowSize = const Size(120, 34);
 
+  bool _isDragging = false;
+
   Future<WindowController> _getController() async {
     _windowController ??= await WindowController.fromCurrentEngine();
     return _windowController!;
@@ -923,9 +925,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _startDragging() async {
+    _isDragging = true;
     try {
       final controller = await _getController();
       await controller.invokeMethod('startDragging');
-    } catch (_) {}
+
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _isDragging = false;
+      });
+    } catch (_) {
+      _isDragging = false;
+    }
   }
 }
