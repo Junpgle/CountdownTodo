@@ -50,9 +50,19 @@ Future<File> _getActionFile() async {
 }
 
 Future<void> _launchUrl(String url) async {
-  final uri = Uri.parse(url);
-  if (await canLaunchUrl(uri)) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  try {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  } catch (e) {
+    debugPrint('[Island] url_launcher failed: $e, trying Process');
+    try {
+      final result = await Process.run('cmd', ['/c', 'start', '', url]);
+      debugPrint('[Island] Process.run result: ${result.exitCode}');
+    } catch (e2) {
+      debugPrint('[Island] Process.run failed: $e2');
+    }
   }
 }
 
