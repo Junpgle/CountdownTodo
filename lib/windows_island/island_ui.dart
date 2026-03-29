@@ -3,8 +3,13 @@ import 'package:flutter/scheduler.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'dart:async';
 import 'dart:ui';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'island_config.dart';
 import 'island_state_stack.dart';
+import '../storage_service.dart';
+
+// 导入鼠标事件类型
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
 
 // Re-export IslandState for backward compatibility
 export 'island_state_stack.dart' show IslandState;
@@ -51,11 +56,41 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   bool _transitioning = false;
   int _transitionVersion = 0;
 
-  // ── Hover 相关
-  Timer? _hoverDebounce;
-  Timer? _minStayTimer;
-  bool _isHovered = false;
-  bool _canShrink = true;
+  // ── 强提醒动画
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+  late Animation<Color?> _colorAnimation;
+  bool _isPulsing = false;
+
+  // ── 卡片轮播相关
+  Timer? _carouselAutoReturnTimer;
+  int _currentCardIndex = 0;
+  final List<Map<String, dynamic>> _cards = [];
+
+  // ── 系统控制超时返回
+  Timer? _systemControlAutoReturnTimer;
+
+  // 启动系统控制自动返回定时器
+  void _startSystemControlAutoReturnTimer() {
+    _systemControlAutoReturnTimer?.cancel();
+    _systemControlAutoReturnTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted &&
+          (_stack.current == IslandState.musicPlayer ||
+              _stack.current == IslandState.volumeControl ||
+              _stack.current == IslandState.brightnessControl)) {
+        // 返回到快速控制面板
+        _stack.pop(_stack.current);
+        _stack.push(IslandState.quickControls, data: _currentPayload);
+        _animateToState(IslandState.quickControls);
+      }
+    });
+  }
+
+  // 重置系统控制自动返回定时器
+  void _resetSystemControlAutoReturnTimer() {
+    _systemControlAutoReturnTimer?.cancel();
+    _startSystemControlAutoReturnTimer();
+  }
 
   // ── Payload 防抖
   Timer? _payloadDebounce;
@@ -102,6 +137,32 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       curve: Curves.easeOutCubic,
     ));
 
+    // 初始化脉冲动画控制器
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+
+    // 脉冲动画：缩放效果
+    _pulseAnimation = TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
+    ]).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+
+    // 颜色闪烁动画
+    _colorAnimation = ColorTween(
+      begin: IslandConfig.focusColor,
+      end: IslandConfig.warningColor,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+
     widget.payloadNotifier?.addListener(_onNotifierPayload);
 
     if (widget.initialPayload != null) {
@@ -113,8 +174,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _hoverDebounce?.cancel();
-    _minStayTimer?.cancel();
     _payloadDebounce?.cancel();
     _countdownTimer?.cancel();
     _autoDismissTimer?.cancel();
@@ -123,6 +182,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
     _sizeController.dispose();
+    _pulseController.dispose(); // 清理脉冲动画控制器
     _windowController?.setWindowMethodHandler(null);
     super.dispose();
   }
@@ -152,9 +212,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     _sizeAnimation =
         Tween<Size>(begin: fromSize, end: toSize).animate(CurvedAnimation(
-      parent: _sizeController,
-      curve: Curves.easeOutCubic,
-    ));
+          parent: _sizeController,
+          curve: Curves.easeOutCubic,
+        ));
 
     _resizeWindowOnce(toSize);
     setState(() {}); // 触发 _buildContent() 读取 _stack.current
@@ -224,7 +284,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final nextBase = _computeBaseState(stateStr);
 
     debugPrint(
-        '[IslandUI] applyPayload: $stateStr, current: ${_stack.current}, isProtected: ${_stack.isProtected}');
+        '[IslandUI] applyPayload: $stateStr, current: ${_stack
+            .current}, isProtected: ${_stack.isProtected}');
 
     // ① 受保护状态：只更新数据，不切换状态
     if (_stack.isProtected) {
@@ -234,11 +295,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
 
     // ② 处理 copiedLink overlay
-    final copiedLinkData = payload['copiedLinkData'] as Map<String, dynamic>?;
-    if (copiedLinkData != null && stateStr == 'copied_link') {
+    final copiedLinkDataRaw = payload['copiedLinkData'];
+    if (copiedLinkDataRaw != null && stateStr == 'copied_link') {
+      final copiedLinkData = Map<String, dynamic>.from(
+          copiedLinkDataRaw as Map);
       _pushWithAutoDismiss(
         IslandState.copiedLink,
-        data: payload,
+        data: {...payload, 'copiedLinkData': copiedLinkData},
         duration: IslandConfig.copiedLinkDismissDuration,
       );
       return;
@@ -343,15 +406,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       _parseTimeLabel(tl);
     } else if (endMs > 0) {
       _remainingSecs =
-          (((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).round())
+          (((endMs - DateTime
+              .now()
+              .millisecondsSinceEpoch) / 1000).round())
               .clamp(0, 999999);
     }
   }
 
   // ── 自动消失 ─────────────────────────────────────────────────────────────
 
-  void _pushWithAutoDismiss(
-    IslandState state, {
+  void _pushWithAutoDismiss(IslandState state, {
     Map<String, dynamic>? data,
     required Duration duration,
   }) {
@@ -367,59 +431,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     });
   }
 
-  // ── Hover 处理 ───────────────────────────────────────────────────────────
+  // ── Hover 处理（已移除）───────────────────────────────────────────────────
 
-  void _onHoverEnter() {
-    _hoverDebounce?.cancel();
-    _isHovered = true;
-    _canShrink = false;
-    _hoverDebounce = Timer(IslandConfig.hoverEnterDelay, () {
-      if (!_isHovered || !mounted) return;
-      // reminderSplit / reminderCapsule / reminderPopup 状态下禁止 hover 展开
-      // 也只在栈顶就是 base（即没有其他 overlay）时才展开
-      final cur = _stack.current;
-      final base = _stack.base;
-      final isReminderState = cur == IslandState.reminderSplit ||
-          cur == IslandState.reminderCapsule ||
-          cur == IslandState.reminderPopup;
-      final isBaseVisible = cur == base; // 栈顶 == 栈底，没有 overlay
-      if (!isReminderState &&
-          isBaseVisible &&
-          (base == IslandState.idle || base == IslandState.focusing)) {
-        _stack.push(IslandState.hoverWide, data: _currentPayload);
-        _animateToState(IslandState.hoverWide);
-        _minStayTimer?.cancel();
-        _minStayTimer = Timer(IslandConfig.hoverMinStay, () {
-          _canShrink = true;
-        });
-      } else {
-        // 不展开时也要重置 _canShrink，否则后续 exit 会卡住
-        _canShrink = true;
-      }
-    });
-  }
-
-  void _onHoverExit() {
-    _hoverDebounce?.cancel();
-    _isHovered = false;
-    _hoverDebounce = Timer(IslandConfig.hoverExitDelay, () {
-      if (_isHovered || !mounted) return;
-      if (!_canShrink) {
-        _hoverDebounce = Timer(const Duration(milliseconds: 200), () {
-          if (!_isHovered) _doShrink();
-        });
-        return;
-      }
-      _doShrink();
-    });
-  }
-
-  void _doShrink() {
-    if (_stack.current == IslandState.hoverWide) {
-      final restored = _stack.pop(IslandState.hoverWide);
-      _animateToState(restored);
-    }
-  }
+  // void _onHoverEnter() { ... }
+  // void _onHoverExit() { ... }
+  // void _doShrink() { ... }
 
   // ── 时间处理 ─────────────────────────────────────────────────────────────
 
@@ -461,18 +477,22 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (!_isFocusing) {
       final now = DateTime.now();
       _timeNotifier.value =
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(
+          2, '0')}';
       return;
     }
     _timeNotifier.value =
-        '${(_remainingSecs ~/ 60).toString().padLeft(2, '0')}:${(_remainingSecs % 60).toString().padLeft(2, '0')}';
+    '${(_remainingSecs ~/ 60).toString().padLeft(2, '0')}:${(_remainingSecs %
+        60).toString().padLeft(2, '0')}';
   }
 
   // ── 尺寸配置 ─────────────────────────────────────────────────────────────
 
   Size _targetSizeFor(IslandState s) {
     final hasSub =
-        _reminderPopupData?['subtitle']?.toString().isNotEmpty ?? false;
+        _reminderPopupData?['subtitle']
+            ?.toString()
+            .isNotEmpty ?? false;
     switch (s) {
       case IslandState.idle:
         return const Size(120, 34);
@@ -494,14 +514,29 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         if (_expandedReminderPart != null) {
           // 展开态：根据展开的是哪侧决定高度
           final hasSub =
-              _reminderPopupData?['subtitle']?.toString().isNotEmpty ?? false;
+              _reminderPopupData?['subtitle']
+                  ?.toString()
+                  .isNotEmpty ?? false;
           return Size(320, hasSub ? 340 : 300);
         }
         return const Size(480, 46);
       case IslandState.reminderCapsule:
         return const Size(160, 46);
       case IslandState.copiedLink:
-        return const Size(340, 46);
+      // 双层布局：主岛高度 + 间距 + 副岛高度
+        final mainHeight = _isFocusing ? 46.0 : 34.0;
+        return Size(340, mainHeight + 4 + 46);
+    // 系统控制状态
+      case IslandState.quickControls:
+        return const Size(300, 80);
+      case IslandState.musicPlayer:
+        return const Size(380, 120);
+      case IslandState.volumeControl:
+        return const Size(320, 100);
+      case IslandState.brightnessControl:
+        return const Size(320, 100);
+      case IslandState.cardCarousel:
+        return const Size(400, 50);
     }
   }
 
@@ -518,48 +553,47 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     return Material(
       color: Colors.transparent,
-      child: MouseRegion(
-        onEnter: (_) => _onHoverEnter(),
-        onExit: (_) => _onHoverExit(),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: AnimatedBuilder(
-            animation: _sizeController,
-            builder: (_, __) => Container(
-              width: _sizeAnimation.value.width,
-              height: _sizeAnimation.value.height,
-              decoration: BoxDecoration(
-                color:
-                    isTransparent ? Colors.transparent : IslandConfig.bgColor,
-                borderRadius: BorderRadius.circular(isCard
-                    ? IslandConfig.cardRadius
-                    : IslandConfig.capsuleRadius),
-                border: isTransparent
-                    ? null
-                    : Border.all(
-                        color: Colors.black.withOpacity(0.5), width: 0.8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.4),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: AnimatedSwitcher(
-                duration: IslandConfig.switchDuration,
-                transitionBuilder: (child, anim) => FadeTransition(
-                  opacity: anim,
-                  child: ScaleTransition(
-                    scale: Tween<double>(begin: 0.92, end: 1.0).animate(anim),
-                    child: child,
-                  ),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: AnimatedBuilder(
+          animation: _sizeController,
+          builder: (_, __) =>
+              Container(
+                width: _sizeAnimation.value.width,
+                height: _sizeAnimation.value.height,
+                decoration: BoxDecoration(
+                  color:
+                  isTransparent ? Colors.transparent : IslandConfig.bgColor,
+                  borderRadius: BorderRadius.circular(isCard
+                      ? IslandConfig.cardRadius
+                      : IslandConfig.capsuleRadius),
+                  border: isTransparent
+                      ? null
+                      : Border.all(
+                      color: Colors.black.withOpacity(0.5), width: 0.8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: _buildContent(),
+                clipBehavior: Clip.antiAlias,
+                child: AnimatedSwitcher(
+                  duration: IslandConfig.switchDuration,
+                  transitionBuilder: (child, anim) =>
+                      FadeTransition(
+                        opacity: anim,
+                        child: ScaleTransition(
+                          scale: Tween<double>(begin: 0.92, end: 1.0).animate(
+                              anim),
+                          child: child,
+                        ),
+                      ),
+                  child: _buildContent(),
+                ),
               ),
-            ),
-          ),
         ),
       ),
     );
@@ -591,6 +625,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return _buildReminderSplit();
       case IslandState.reminderCapsule:
         return _buildReminderCapsule();
+    // 系统控制状态
+      case IslandState.quickControls:
+        return _buildQuickControls();
+      case IslandState.musicPlayer:
+        return _buildMusicPlayer();
+      case IslandState.volumeControl:
+        return _buildVolumeControl();
+      case IslandState.brightnessControl:
+        return _buildBrightnessControl();
+      case IslandState.cardCarousel:
+        return _buildCardCarousel();
     }
   }
 
@@ -612,14 +657,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               alignment: Alignment.center,
               child: ValueListenableBuilder<String>(
                 valueListenable: _timeNotifier,
-                builder: (_, t, __) => Text(
-                  t,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
+                builder: (_, t, __) =>
+                    Text(
+                      t,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
               ),
             ),
           ),
@@ -630,32 +676,161 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── Idle ─────────────────────────────────────────────────────────────────
 
-  Widget _buildIdle() => GestureDetector(
+  Widget _buildIdle() =>
+      GestureDetector(
         key: const ValueKey('idle'),
+        behavior: HitTestBehavior.translucent,
         onTap: () {
+          // 点击：如果正在专注，切换到专注状态；否则展开卡片轮播
           if (_isFocusing) {
             _stack.replaceBase(IslandState.focusing, data: _currentPayload);
             _animateToState(IslandState.focusing);
           } else {
-            _stack.push(IslandState.hoverWide, data: _currentPayload);
-            _animateToState(IslandState.hoverWide);
+            // 非专注状态展开卡片轮播
+            _initCards();
+            _stack.push(IslandState.cardCarousel, data: _currentPayload);
+            _animateToState(IslandState.cardCarousel);
+            _startCarouselAutoReturnTimer();
           }
         },
-        onPanStart: (_) => _startDrag(),
-        child: Container(
-          color: Colors.transparent,
-          alignment: Alignment.center,
-          child: ValueListenableBuilder<String>(
-            valueListenable: _timeNotifier,
-            builder: (_, time, __) => Text(
-              time,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.0,
-              ),
-            ),
+        onLongPress: () {
+          // 长按：打开快速控制面板
+          _stack.push(IslandState.quickControls, data: _currentPayload);
+          _animateToState(IslandState.quickControls);
+        },
+        onVerticalDragUpdate: (details) {
+          // 垂直拖动切换卡片
+          if (_isFocusing) {
+            // 专注状态下，向上拖动展开详情
+            if (details.delta.dy < 0) {
+              _stack.push(IslandState.stackedCard, data: _currentPayload);
+              _animateToState(IslandState.stackedCard);
+            }
+          } else {
+            // 非专注状态下，拖动切换卡片
+            _initCards().then((_) {
+              if (mounted && _cards.length > 1) {
+                setState(() {
+                  if (details.delta.dy < 0) {
+                    // 向上拖动：下一张卡片
+                    _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
+                  } else {
+                    // 向下拖动：上一张卡片
+                    _currentCardIndex = (_currentCardIndex - 1 + _cards.length) % _cards.length;
+                  }
+                });
+                // 保持小胶囊状态轮播，不展开大卡片
+                _resetCarouselAutoReturnTimer();
+              }
+            });
+          }
+        },
+        child: Listener(
+          onPointerSignal: (pointerSignal) {
+            // 鼠标滚轮事件处理
+            if (pointerSignal is PointerScrollEvent && !_isFocusing) {
+              final delta = pointerSignal.scrollDelta.dy;
+              if (delta != 0) {
+                _initCards().then((_) {
+                  if (mounted && _cards.length > 1) {
+                    setState(() {
+                      if (delta > 0) {
+                        // 向下滚动：下一张卡片
+                        _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
+                      } else {
+                        // 向上滚动：上一张卡片
+                        _currentCardIndex = (_currentCardIndex - 1 + _cards.length) % _cards.length;
+                      }
+                    });
+                    _resetCarouselAutoReturnTimer();
+                  }
+                });
+              }
+            }
+          },
+          child: Container(
+            color: Colors.transparent,
+            alignment: Alignment.center,
+            child: _isFocusing
+                ? ValueListenableBuilder<String>(
+                    valueListenable: _timeNotifier,
+                    builder: (_, time, __) => Text(
+                      time,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  )
+                : FutureBuilder<void>(
+                    future: _initCards(),
+                    builder: (context, snapshot) {
+                      if (_cards.isEmpty) {
+                        return ValueListenableBuilder<String>(
+                          valueListenable: _timeNotifier,
+                          builder: (_, time, __) => Text(
+                            time,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        );
+                      }
+                      final card = _cards[_currentCardIndex];
+                      final icon = card['icon'] as String;
+                      final title = card['title'] as String;
+                      final subtitle = card['subtitle'] as String;
+                      final color = card['color'] as Color;
+                      
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(icon, style: const TextStyle(fontSize: 12)),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (subtitle.isNotEmpty)
+                                    Text(
+                                      subtitle,
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontSize: 9,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
           ),
         ),
       );
@@ -665,6 +840,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Widget _buildFocusing() {
     final fd = _currentPayload?['focusData'] as Map?;
     final title = fd?['title']?.toString() ?? '专注事项';
+
     return GestureDetector(
       key: const ValueKey('focusing'),
       onTap: () {
@@ -672,37 +848,93 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         _animateToState(IslandState.stackedCard);
       },
       onPanStart: (_) => _startDrag(),
-      child: Container(
-        color: Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
+      child: AnimatedBuilder(
+        animation: _pulseController,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _isPulsing ? _pulseAnimation.value : 1.0,
+            child: Container(
+              color: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: _isPulsing
+                          ? _colorAnimation.value?.withOpacity(0.7) ??
+                          Colors.white70
+                          : Colors.white70,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  ValueListenableBuilder<String>(
+                    valueListenable: _timeNotifier,
+                    builder: (_, time, __) {
+                      // 检测倒计时是否结束
+                      if (_isCountdown && _remainingSecs == 0 && !_isPulsing) {
+                        // 触发番茄钟结束强提醒
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _triggerPomodoroAlert();
+                        });
+                      }
+
+                      return Text(
+                        time,
+                        style: TextStyle(
+                          color: _isPulsing
+                              ? _colorAnimation.value ?? Colors.white
+                              : Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-              overflow: TextOverflow.ellipsis,
             ),
-            ValueListenableBuilder<String>(
-              valueListenable: _timeNotifier,
-              builder: (_, time, __) => Text(
-                time,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
+  }
+
+  // 触发番茄钟结束强提醒
+  void _triggerPomodoroAlert() {
+    if (_isPulsing || !mounted) return;
+
+    setState(() {
+      _isPulsing = true;
+    });
+
+    // 启动脉冲动画，循环3次
+    _pulseController.repeat(count: 3).then((_) {
+      if (mounted) {
+        setState(() {
+          _isPulsing = false;
+        });
+
+        // 动画结束后自动展开番茄钟结束卡片
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && _stack.current == IslandState.focusing) {
+            _showPomodoroFinishedCard();
+          }
+        });
+      }
+    });
+  }
+
+  // 显示番茄钟结束卡片
+  void _showPomodoroFinishedCard() {
+    // 这里可以push一个新的状态来显示番茄钟结束卡片
+    // 暂时使用现有的stackedCard状态
+    _stack.push(IslandState.stackedCard, data: _currentPayload);
+    _animateToState(IslandState.stackedCard);
   }
 
   // ── HoverWide ────────────────────────────────────────────────────────────
@@ -750,14 +982,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               ),
               child: ValueListenableBuilder<String>(
                 valueListenable: _timeNotifier,
-                builder: (_, t, __) => Text(
-                  t,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
+                builder: (_, t, __) =>
+                    Text(
+                      t,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
               ),
             ),
             Expanded(
@@ -803,16 +1036,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           children: [
             ValueListenableBuilder<String>(
               valueListenable: _timeNotifier,
-              builder: (_, t, __) => Text(
-                '$t | $title',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
+              builder: (_, t, __) =>
+                  Text(
+                    '$t | $title',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
             ),
             if (tags.isNotEmpty)
               Text(
@@ -860,8 +1094,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     String text = mode == 'finish'
         ? '确认完成?'
         : mode == 'abandon'
-            ? '确认放弃?'
-            : '专注完成';
+        ? '确认放弃?'
+        : '专注完成';
     String ok = mode == 'final' ? '好的' : '确认';
     String cancel = '手滑了';
     final fd = _currentPayload?['focusData'] as Map?;
@@ -890,7 +1124,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 14),
           if (mode == 'final')
-            // FinishFinal: 好的 → clearToIdle
+          // FinishFinal: 好的 → clearToIdle
             _btn(ok, IslandConfig.successColor, () {
               _stack.clearToIdle();
               _animateToState(IslandState.idle);
@@ -916,24 +1150,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       _animateToState(restored);
                     }),
                   ),
-                ] else ...[
-                  // AbandonConfirm: 手滑了 → pop，回到 stackedCard
-                  Expanded(
-                    child: _btn(cancel, IslandConfig.successColor, () {
-                      final restored = _stack.pop(IslandState.abandonConfirm);
-                      _animateToState(restored);
-                    }),
-                  ),
-                  const SizedBox(width: 12),
-                  // AbandonConfirm: 确认 → 发 action，清栈到 idle
-                  Expanded(
-                    child: _btn(ok, IslandConfig.dangerColor, () {
-                      widget.onAction?.call('abandon', 0);
-                      _stack.clearToIdle();
-                      _animateToState(IslandState.idle);
-                    }),
-                  ),
-                ],
+                ] else
+                  ...[
+                    // AbandonConfirm: 手滑了 → pop，回到 stackedCard
+                    Expanded(
+                      child: _btn(cancel, IslandConfig.successColor, () {
+                        final restored = _stack.pop(IslandState.abandonConfirm);
+                        _animateToState(restored);
+                      }),
+                    ),
+                    const SizedBox(width: 12),
+                    // AbandonConfirm: 确认 → 发 action，清栈到 idle
+                    Expanded(
+                      child: _btn(ok, IslandConfig.dangerColor, () {
+                        widget.onAction?.call('abandon', 0);
+                        _stack.clearToIdle();
+                        _animateToState(IslandState.idle);
+                      }),
+                    ),
+                  ],
               ],
             ),
         ],
@@ -941,7 +1176,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
   }
 
-  // ── CopiedLink ───────────────────────────────────────────────────────────
+  // ── CopiedLink（双层灵动岛设计）──────────────────────────────────────────
 
   Widget _buildCopiedLink() {
     final d = _currentPayload?['copiedLinkData'] as Map?;
@@ -950,46 +1185,162 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final display = d['displayUrl']?.toString() ??
         (url.length > 25 ? '${url.substring(0, 25)}...' : url);
 
-    return GestureDetector(
+    return Column(
       key: const ValueKey('copiedLink'),
-      onPanStart: (_) => _startDrag(),
-      child: Container(
-        color: Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          children: [
-            const Text('🔗', style: TextStyle(fontSize: 14)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '已复制: $display',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-                overflow: TextOverflow.ellipsis,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 主岛：保持当前状态（时钟或专注）
+        _buildMainIslandContent(),
+        const SizedBox(height: 4),
+        // 副岛：链接提示
+        GestureDetector(
+          onPanStart: (_) => _startDrag(),
+          child: Container(
+            width: 340,
+            height: 46,
+            decoration: BoxDecoration(
+              color: IslandConfig.bgColor,
+              borderRadius: BorderRadius.circular(IslandConfig.capsuleRadius),
+              border: Border.all(
+                color: Colors.black.withOpacity(0.5),
+                width: 0.8,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            // 打开 → 发 action，pop copiedLink
-            _miniBtn('打开', IslandConfig.successColor, () {
-              widget.onAction?.call('open_link', 0, url);
-              _autoDismissTimer?.cancel();
-              final restored = _stack.pop(IslandState.copiedLink);
-              _animateToState(restored);
-            }),
-            const SizedBox(width: 6),
-            // ✕ → pop copiedLink
-            _miniBtn('✕', Colors.white.withOpacity(0.2), () {
-              _autoDismissTimer?.cancel();
-              final restored = _stack.pop(IslandState.copiedLink);
-              _animateToState(restored);
-            }),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                const Text('🔗', style: TextStyle(fontSize: 14)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '已复制: $display',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // 打开 → 发 action，pop copiedLink
+                _miniBtn('打开', IslandConfig.successColor, () {
+                  widget.onAction?.call('open_link', 0, url);
+                  _autoDismissTimer?.cancel();
+                  final restored = _stack.pop(IslandState.copiedLink);
+                  _animateToState(restored);
+                }),
+                const SizedBox(width: 6),
+                // ✕ → pop copiedLink
+                _miniBtn('✕', Colors.white.withOpacity(0.2), () {
+                  _autoDismissTimer?.cancel();
+                  final restored = _stack.pop(IslandState.copiedLink);
+                  _animateToState(restored);
+                }),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 构建主岛内容（时钟或专注状态）
+  Widget _buildMainIslandContent() {
+    if (_isFocusing) {
+      // 专注状态：显示任务名和时间
+      final fd = _currentPayload?['focusData'] as Map?;
+      final title = fd?['title']?.toString() ?? '专注事项';
+      return Container(
+        width: 100,
+        height: 46,
+        decoration: BoxDecoration(
+          color: IslandConfig.bgColor,
+          borderRadius: BorderRadius.circular(IslandConfig.capsuleRadius),
+          border: Border.all(
+            color: Colors.black.withOpacity(0.5),
+            width: 0.8,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
-      ),
-    );
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            ValueListenableBuilder<String>(
+              valueListenable: _timeNotifier,
+              builder: (_, time, __) =>
+                  Text(
+                    time,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // 时钟状态：只显示时间
+      return Container(
+        width: 120,
+        height: 34,
+        decoration: BoxDecoration(
+          color: IslandConfig.bgColor,
+          borderRadius: BorderRadius.circular(IslandConfig.capsuleRadius),
+          border: Border.all(
+            color: Colors.black.withOpacity(0.5),
+            width: 0.8,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: ValueListenableBuilder<String>(
+          valueListenable: _timeNotifier,
+          builder: (_, time, __) =>
+              Text(
+                time,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                ),
+              ),
+        ),
+      );
+    }
   }
 
   // ── ReminderPopup ────────────────────────────────────────────────────────
@@ -1000,7 +1351,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final type = d['type']?.toString() ?? 'todo';
     final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
-    final label = type == 'course' ? '课程' : (type == 'todo' ? '待办' : '倒计时');
+    final label = type == 'course' ? '课程' : (type == 'todo'
+        ? '待办'
+        : '倒计时');
     final mins = d['minutesUntil'] as int? ?? 0;
     final isEnd = d['isEnding'] as bool? ?? false;
     final status = isEnd ? '还有 $mins 分钟结束' : '还有 $mins 分钟开始';
@@ -1026,7 +1379,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            if ((d['subtitle'] ?? '').toString().isNotEmpty)
+            if ((d['subtitle'] ?? '')
+                .toString()
+                .isNotEmpty)
               Text(
                 d['subtitle'],
                 style: const TextStyle(color: Colors.white70, fontSize: 11),
@@ -1055,9 +1410,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     if (itemId != null) {
                       _acknowledgedReminderIds.add(itemId);
                     }
+                    // 清除提醒数据并回到 idle 状态
                     _reminderPopupData = null;
-                    final restored = _stack.pop(IslandState.reminderPopup);
-                    _animateToState(restored);
+                    _stack.clearToIdle();
+                    _animateToState(IslandState.idle);
                   }),
                 ),
                 const SizedBox(width: 12),
@@ -1070,9 +1426,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     if (itemId != null) {
                       _acknowledgedReminderIds.add(itemId);
                     }
+                    // 清除提醒数据并回到 idle 状态
                     _reminderPopupData = null;
-                    final restored = _stack.pop(IslandState.reminderPopup);
-                    _animateToState(restored);
+                    _stack.clearToIdle();
+                    _animateToState(IslandState.idle);
                   }),
                 ),
               ],
@@ -1120,7 +1477,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             Future.microtask(() => _animateToState(IslandState.reminderSplit));
           },
           child:
-              _capsule(icon, '${d['title']} $mins', IslandConfig.warningColor),
+          _capsule(icon, '${d['title']} $mins', IslandConfig.warningColor),
         ),
       ],
     );
@@ -1131,18 +1488,23 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
 
     final card =
-        expanded == 'focusing' ? _expandedFocusing() : _expandedReminder();
+    expanded == 'focusing' ? _expandedFocusing() : _expandedReminder();
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
         Positioned(
-            top: 0, left: 0, right: 0, height: 46, child: Center(child: row)),
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 46,
+            child: Center(child: row)),
         Positioned(top: 54, left: 8, right: 8, child: card),
       ],
     );
   }
 
-  Widget _capsule(String icon, String text, Color color) => Container(
+  Widget _capsule(String icon, String text, Color color) =>
+      Container(
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
@@ -1189,15 +1551,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         children: [
           ValueListenableBuilder<String>(
             valueListenable: _timeNotifier,
-            builder: (_, t, __) => Text(
-              '$t | $title',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
+            builder: (_, t, __) =>
+                Text(
+                  '$t | $title',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -1231,7 +1594,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     final type = d['type']?.toString() ?? 'todo';
     final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
-    final label = type == 'course' ? '课程' : (type == 'todo' ? '待办' : '倒计时');
+    final label = type == 'course' ? '课程' : (type == 'todo'
+        ? '待办'
+        : '倒计时');
     final mins = d['minutesUntil'] as int? ?? 0;
     final isEnd = d['isEnding'] as bool? ?? false;
     final status = isEnd ? '还有 $mins 分钟结束' : '还有 $mins 分钟开始';
@@ -1259,7 +1624,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          if ((d['subtitle'] ?? '').toString().isNotEmpty)
+          if ((d['subtitle'] ?? '')
+              .toString()
+              .isNotEmpty)
             Text(
               d['subtitle'],
               style: const TextStyle(color: Colors.white70, fontSize: 11),
@@ -1359,7 +1726,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         ),
       );
 
-  Widget _btn(String label, Color color, VoidCallback onTap) => GestureDetector(
+  Widget _btn(String label, Color color, VoidCallback onTap) =>
+      GestureDetector(
         onTap: onTap,
         child: Container(
           height: 36,
@@ -1389,5 +1757,696 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     } catch (_) {
       _isDragging = false;
     }
+  }
+
+  // ── 卡片轮播相关方法 ────────────────────────────────────────────────────
+
+  // 初始化卡片列表
+  Future<void> _initCards() async {
+    _cards.clear();
+    _currentCardIndex = 0;
+
+    try {
+      // 获取当前用户名
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('current_login_user') ?? '';
+
+      if (username.isEmpty) {
+        _addDefaultCard();
+        return;
+      }
+
+      final now = DateTime.now();
+
+      // 添加待办事项卡片 - 只显示最紧急的一个
+      try {
+        final todos = await StorageService.getTodos(username);
+        final activeTodos = todos.where((todo) =>
+        !todo.isDeleted && !todo.isDone).toList();
+        // 按到期时间排序，今天的优先
+        activeTodos.sort((a, b) {
+          if (a.dueDate == null && b.dueDate == null) return 0;
+          if (a.dueDate == null) return 1;
+          if (b.dueDate == null) return -1;
+          return a.dueDate!.compareTo(b.dueDate!);
+        });
+        if (activeTodos.isNotEmpty) {
+          final todo = activeTodos.first;
+          String subtitle = '';
+          if (todo.dueDate != null) {
+            final diff = todo.dueDate!.difference(now);
+            if (diff.inDays > 0) {
+              subtitle = '${diff.inDays}天后到期';
+            } else if (diff.inHours > 0) {
+              subtitle = '${diff.inHours}小时后到期';
+            } else if (diff.inMinutes > 0) {
+              subtitle = '${diff.inMinutes}分钟后到期';
+            } else {
+              subtitle = '已到期';
+            }
+          }
+          _cards.add({
+            'type': 'todo',
+            'icon': '📝',
+            'title': todo.title,
+            'subtitle': subtitle,
+            'color': IslandConfig.focusColor,
+          });
+        }
+      } catch (e) {
+        debugPrint('[IslandUI] 读取待办失败: $e');
+      }
+
+      // 添加倒计时卡片 - 只显示最近未过的一个（排除已过时的）
+      try {
+        final countdowns = await StorageService.getCountdowns(username);
+        final activeCountdowns = countdowns
+            .where((cd) => !cd.isDeleted && cd.targetDate.isAfter(now))
+            .toList();
+        // 按目标时间排序
+        activeCountdowns.sort((a, b) => a.targetDate.compareTo(b.targetDate));
+        if (activeCountdowns.isNotEmpty) {
+          final countdown = activeCountdowns.first;
+          final diff = countdown.targetDate.difference(now);
+          String subtitle;
+          if (diff.inDays > 0) {
+            subtitle = '还有${diff.inDays}天';
+          } else if (diff.inHours > 0) {
+            subtitle = '还有${diff.inHours}小时';
+          } else if (diff.inMinutes > 0) {
+            subtitle = '还有${diff.inMinutes}分钟';
+          } else {
+            subtitle = '时间到';
+          }
+          _cards.add({
+            'type': 'countdown',
+            'icon': '⏰',
+            'title': countdown.title,
+            'subtitle': subtitle,
+            'color': IslandConfig.dangerColor,
+          });
+        }
+      } catch (e) {
+        debugPrint('[IslandUI] 读取倒计时失败: $e');
+      }
+
+      // 添加课程卡片 - 只显示下一个上课的课程
+      try {
+        final courses = _currentPayload?['courses'] as List? ?? [];
+        if (courses.isNotEmpty) {
+          final course = courses.first;
+          _cards.add({
+            'type': 'course',
+            'icon': '📚',
+            'title': course['title'] ?? '课程',
+            'subtitle': course['subtitle'] ?? course['time'] ?? '',
+            'color': IslandConfig.warningColor,
+          });
+        }
+      } catch (e) {
+        debugPrint('[IslandUI] 读取课程失败: $e');
+      }
+
+      // 添加专注时长卡片
+      try {
+        final focusSessions = _currentPayload?['focusSessions'] as List? ?? [];
+        if (focusSessions.isNotEmpty) {
+          final session = focusSessions.first;
+          _cards.add({
+            'type': 'focus',
+            'icon': '🎯',
+            'title': session['title'] ?? '专注时长',
+            'subtitle': session['subtitle'] ?? '',
+            'color': IslandConfig.focusColor,
+          });
+        }
+      } catch (e) {
+        debugPrint('[IslandUI] 读取专注时长失败: $e');
+      }
+    } catch (e) {
+      debugPrint('[IslandUI] 初始化卡片失败: $e');
+    }
+
+    // 如果没有卡片，添加默认卡片
+    if (_cards.isEmpty) {
+      _addDefaultCard();
+    }
+  }
+
+  void _addDefaultCard() {
+    _cards.add({
+      'type': 'default',
+      'icon': '📋',
+      'title': '暂无内容',
+      'subtitle': '点击添加待办或课程',
+      'color': Colors.white54,
+    });
+  }
+
+  // 启动自动返回定时器
+  void _startCarouselAutoReturnTimer() {
+    _carouselAutoReturnTimer?.cancel();
+    _carouselAutoReturnTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _stack.current == IslandState.cardCarousel) {
+        _stack.pop(IslandState.cardCarousel);
+        _animateToState(IslandState.idle);
+      }
+    });
+  }
+
+  // 重置自动返回定时器
+  void _resetCarouselAutoReturnTimer() {
+    _carouselAutoReturnTimer?.cancel();
+    _startCarouselAutoReturnTimer();
+  }
+
+  // 切换到下一张卡片
+  void _nextCard() {
+    if (_cards.isEmpty) return;
+    setState(() {
+      _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
+    });
+    _resetCarouselAutoReturnTimer();
+  }
+
+  // 切换到上一张卡片
+  void _previousCard() {
+    if (_cards.isEmpty) return;
+    setState(() {
+      _currentCardIndex =
+          (_currentCardIndex - 1 + _cards.length) % _cards.length;
+    });
+    _resetCarouselAutoReturnTimer();
+  }
+
+  // 构建卡片并排平铺
+  Widget _buildCardCarousel() {
+    if (_cards.isEmpty) {
+      return const Center(
+        child: Text(
+          '暂无卡片',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      key: const ValueKey('cardCarousel'),
+      onTap: () {
+        // 点击空白处返回
+        _stack.pop(IslandState.cardCarousel);
+        _animateToState(IslandState.idle);
+      },
+      onPanStart: (_) => _startDrag(),
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: _cards.asMap().entries.map((entry) {
+            final index = entry.key;
+            final card = entry.value;
+            final icon = card['icon'] as String;
+            final title = card['title'] as String;
+            final color = card['color'] as Color;
+
+            return GestureDetector(
+              onTap: () {
+                // 点击卡片：根据类型执行不同操作
+                final type = card['type'] as String;
+                if (type == 'todo' || type == 'course' || type == 'countdown' ||
+                    type == 'focus') {
+                  // 展开详细信息
+                  _stack.pop(IslandState.cardCarousel);
+                  _stack.push(IslandState.stackedCard, data: _currentPayload);
+                  _animateToState(IslandState.stackedCard);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$icon $title',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  // ── 系统控制UI ─────────────────────────────────────────────────────────
+
+  // 快速控制面板
+  Widget _buildQuickControls() {
+    return GestureDetector(
+      key: const ValueKey('quickControls'),
+      onTap: () {
+        // 点击空白处返回
+        _stack.pop(IslandState.quickControls);
+        _animateToState(_stack.current);
+      },
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _quickControlBtn('🎵', '音乐', IslandConfig.focusColor, () {
+              _stack.push(IslandState.musicPlayer, data: _currentPayload);
+              _animateToState(IslandState.musicPlayer);
+            }),
+            _quickControlBtn('🔊', '音量', IslandConfig.focusColor, () {
+              _stack.push(IslandState.volumeControl, data: _currentPayload);
+              _animateToState(IslandState.volumeControl);
+            }),
+            _quickControlBtn('☀️', '亮度', IslandConfig.warningColor, () {
+              _stack.push(IslandState.brightnessControl, data: _currentPayload);
+              _animateToState(IslandState.brightnessControl);
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _quickControlBtn(String icon, String label, Color color,
+      VoidCallback onTap) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 80,
+          height: 60,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withOpacity(0.5),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                icon,
+                style: const TextStyle(fontSize: 20),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  // 音乐播放器（包含歌词显示）
+  Widget _buildMusicPlayer() {
+    final musicData = _currentPayload?['musicData'] as Map?;
+    final title = musicData?['title']?.toString() ?? '未知歌曲';
+    final artist = musicData?['artist']?.toString() ?? '未知艺术家';
+    final isPlaying = musicData?['isPlaying'] as bool? ?? false;
+    final currentTime = musicData?['currentTime']?.toString() ?? '0:00';
+    final totalTime = musicData?['totalTime']?.toString() ?? '0:00';
+    final lyrics = musicData?['lyrics']?.toString() ?? '';
+    final currentLyricIndex = musicData?['currentLyricIndex'] as int? ?? 0;
+
+    return GestureDetector(
+      key: const ValueKey('musicPlayer'),
+      onTap: () {
+        // 点击空白处返回到快速控制面板
+        _stack.pop(IslandState.musicPlayer);
+        _stack.push(IslandState.quickControls, data: _currentPayload);
+        _animateToState(IslandState.quickControls);
+      },
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 歌曲信息和控制按钮
+            Row(
+              children: [
+                // 专辑封面占位符
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: IslandConfig.focusColor.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.music_note,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // 歌曲信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        artist,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      // 进度条
+                      Row(
+                        children: [
+                          Text(
+                            currentTime,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                            ),
+                          ),
+                          Expanded(
+                            child: Container(
+                              height: 4,
+                              margin: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                              child: FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: _calculateProgress(
+                                    currentTime, totalTime),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: IslandConfig.focusColor,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            totalTime,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // 控制按钮
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _miniBtn('⏮', Colors.white.withOpacity(0.2), () {
+                      widget.onAction?.call('music_prev');
+                    }),
+                    const SizedBox(width: 8),
+                    _miniBtn(
+                      isPlaying ? '⏸' : '▶',
+                      IslandConfig.focusColor,
+                          () {
+                        widget.onAction?.call('music_toggle');
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    _miniBtn('⏭', Colors.white.withOpacity(0.2), () {
+                      widget.onAction?.call('music_next');
+                    }),
+                  ],
+                ),
+              ],
+            ),
+            // 歌词显示区域
+            if (lyrics.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      '🎵 歌词',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ..._buildLyricsLines(lyrics, currentLyricIndex),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 计算播放进度
+  double _calculateProgress(String current, String total) {
+    try {
+      final currentParts = current.split(':');
+      final totalParts = total.split(':');
+
+      if (currentParts.length == 2 && totalParts.length == 2) {
+        final currentSeconds = int.parse(currentParts[0]) * 60 +
+            int.parse(currentParts[1]);
+        final totalSeconds = int.parse(totalParts[0]) * 60 +
+            int.parse(totalParts[1]);
+
+        if (totalSeconds > 0) {
+          return (currentSeconds / totalSeconds).clamp(0.0, 1.0);
+        }
+      }
+    } catch (_) {}
+    return 0.0;
+  }
+
+  // 构建歌词行
+  List<Widget> _buildLyricsLines(String lyrics, int currentIndex) {
+    final lines = lyrics.split('\n');
+    final widgets = <Widget>[];
+
+    for (int i = 0; i < lines.length && i < 3; i++) {
+      final line = lines[i].trim();
+      if (line.isNotEmpty) {
+        final isCurrentLine = i == currentIndex;
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Text(
+              line,
+              style: TextStyle(
+                color: isCurrentLine ? Colors.white : Colors.white70,
+                fontSize: isCurrentLine ? 12 : 11,
+                fontWeight: isCurrentLine ? FontWeight.bold : FontWeight.normal,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        );
+      }
+    }
+
+    return widgets;
+  }
+
+  // 音量控制
+  Widget _buildVolumeControl() {
+    final volumeData = _currentPayload?['volumeData'] as Map?;
+    final currentVolume = (volumeData?['currentVolume'] as num?)?.toDouble() ??
+        0.75;
+    final isMuted = volumeData?['isMuted'] as bool? ?? false;
+
+    return GestureDetector(
+      key: const ValueKey('volumeControl'),
+      onTap: () {
+        // 点击空白处返回到快速控制面板
+        _stack.pop(IslandState.volumeControl);
+        _stack.push(IslandState.quickControls, data: _currentPayload);
+        _animateToState(IslandState.quickControls);
+      },
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  '🔊',
+                  style: TextStyle(fontSize: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    '音量',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${(currentVolume * 100).round()}%',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // 音量滑块
+            Row(
+              children: [
+                _miniBtn(
+                  isMuted ? '🔇' : '🔈',
+                  Colors.white.withOpacity(0.2),
+                      () {
+                    widget.onAction?.call('volume_mute');
+                  },
+                ),
+                Expanded(
+                  child: Slider(
+                    value: currentVolume,
+                    onChanged: (value) {
+                      widget.onAction?.call('volume_set', (value * 100).round());
+                    },
+                    activeColor: IslandConfig.focusColor,
+                    inactiveColor: Colors.white.withOpacity(0.2),
+                  ),
+                ),
+                _miniBtn('🔊', Colors.white.withOpacity(0.2), () {
+                  widget.onAction?.call('volume_max');
+                }),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 亮度控制
+  Widget _buildBrightnessControl() {
+    final brightnessData = _currentPayload?['brightnessData'] as Map?;
+    final currentBrightness = (brightnessData?['currentBrightness'] as num?)
+        ?.toDouble() ?? 0.70;
+
+    return GestureDetector(
+      key: const ValueKey('brightnessControl'),
+      onTap: () {
+        // 点击空白处返回到快速控制面板
+        _stack.pop(IslandState.brightnessControl);
+        _stack.push(IslandState.quickControls, data: _currentPayload);
+        _animateToState(IslandState.quickControls);
+      },
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  '☀️',
+                  style: TextStyle(fontSize: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    '亮度',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${(currentBrightness * 100).round()}%',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // 亮度滑块
+            Row(
+              children: [
+                _miniBtn('🌙', Colors.white.withOpacity(0.2), () {
+                  widget.onAction?.call('brightness_min');
+                }),
+                Expanded(
+                  child: Slider(
+                    value: currentBrightness,
+                    onChanged: (value) {
+                      widget.onAction?.call(
+                          'brightness_set', (value * 100).round());
+                    },
+                    activeColor: IslandConfig.warningColor,
+                    inactiveColor: Colors.white.withOpacity(0.2),
+                  ),
+                ),
+                _miniBtn('☀️', Colors.white.withOpacity(0.2), () {
+                  widget.onAction?.call('brightness_max');
+                }),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

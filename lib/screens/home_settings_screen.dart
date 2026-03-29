@@ -121,7 +121,11 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     _storageManagementHandler = StorageManagementHandler(
       context: context,
-      onUpdateCacheSize: (val) => setState(() => _cacheSizeStr = val),
+      onUpdateCacheSize: (val) {
+        if (mounted) {
+          setState(() => _cacheSizeStr = val);
+        }
+      },
       showLoading: (msg) => _showLoadingDialog(context, msg),
       closeLoading: () => _closeLoadingDialog(context),
       showMessage: (msg) => ScaffoldMessenger.of(context)
