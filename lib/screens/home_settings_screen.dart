@@ -21,6 +21,7 @@ import 'feature_guide_screen.dart';
 import '../services/course_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
+import '../services/island_data_provider.dart';
 import '../windows_island/island_manager.dart';
 
 // 引入拆分的设置组件
@@ -46,7 +47,7 @@ import 'settings/handlers/storage_management_handler.dart';
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
   final SendPort? send =
-  IsolateNameServer.lookupPortByName('downloader_send_port');
+      IsolateNameServer.lookupPortByName('downloader_send_port');
   send?.send([id, status, progress]);
 }
 
@@ -59,7 +60,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   static const platform =
-  MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   final ReceivePort _port = ReceivePort();
 
   String _islandStatus = "点击检测设备是否支持";
@@ -96,7 +97,6 @@ class _SettingsPageState extends State<SettingsPage> {
   final Map<String, PermissionStatus?> _permissionStatuses = {};
   bool _isCheckingPermissions = false;
 
-
   @override
   void initState() {
     super.initState();
@@ -104,7 +104,8 @@ class _SettingsPageState extends State<SettingsPage> {
       context: context,
       semesterStart: _semesterStart,
       onRescheduleReminders: _rescheduleReminders,
-      showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+      showMessage: (msg) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg))),
     );
     _permissionHandler = PermissionHandler(
       context: context,
@@ -123,7 +124,8 @@ class _SettingsPageState extends State<SettingsPage> {
       onUpdateCacheSize: (val) => setState(() => _cacheSizeStr = val),
       showLoading: (msg) => _showLoadingDialog(context, msg),
       closeLoading: () => _closeLoadingDialog(context),
-      showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+      showMessage: (msg) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg))),
     );
 
     _loadSettings().then((_) {
@@ -133,7 +135,8 @@ class _SettingsPageState extends State<SettingsPage> {
         context: context,
         semesterStart: _semesterStart,
         onRescheduleReminders: _rescheduleReminders,
-        showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+        showMessage: (msg) => ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg))),
       );
     });
     _setupDownloadListener();
@@ -170,8 +173,8 @@ class _SettingsPageState extends State<SettingsPage> {
     bool useCache = false;
     if (cachedDataStr != null && lastSyncTime != null) {
       final DateTime lastSync =
-      DateTime.fromMillisecondsSinceEpoch(lastSyncTime, isUtc: true)
-          .toLocal();
+          DateTime.fromMillisecondsSinceEpoch(lastSyncTime, isUtc: true)
+              .toLocal();
       if (DateTime.now().difference(lastSync).inMinutes < 5) {
         useCache = true;
         try {
@@ -226,7 +229,6 @@ class _SettingsPageState extends State<SettingsPage> {
         });
     }
   }
-
 
   void _setupDownloadListener() {
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -320,13 +322,13 @@ class _SettingsPageState extends State<SettingsPage> {
       if (_userId != null) {
         final startMs = _semesterStart != null
             ? DateTime(_semesterStart!.year, _semesterStart!.month,
-            _semesterStart!.day)
-            .millisecondsSinceEpoch
+                    _semesterStart!.day)
+                .millisecondsSinceEpoch
             : null;
         final endMs = _semesterEnd != null
             ? DateTime(
-            _semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
-            .millisecondsSinceEpoch
+                    _semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
+                .millisecondsSinceEpoch
             : null;
         ApiService.uploadUserSettings(
             semesterStartMs: startMs, semesterEndMs: endMs);
@@ -363,9 +365,12 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (changed == true) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 灵动岛优先级已更新')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('✅ 灵动岛优先级已更新')));
       }
-      FloatWindowService.update(); // trigger a re-render
+      FloatWindowService
+          .invalidateCache(); // invalidate all caches including priority
+      FloatWindowService.update(forceReset: true); // trigger a re-render
     }
   }
 
@@ -411,8 +416,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-
-
   Future<void> _testCourseNotification() async {
     final dashboardData = await CourseService.getDashboardCourses();
     List<CourseItem> courses =
@@ -433,7 +436,7 @@ class _SettingsPageState extends State<SettingsPage> {
         courseName: testCourse.courseName,
         room: testCourse.roomName,
         timeStr:
-        '${testCourse.formattedStartTime} - ${testCourse.formattedEndTime}',
+            '${testCourse.formattedStartTime} - ${testCourse.formattedEndTime}',
         teacher: testCourse.teacherName,
       );
       if (mounted) {
@@ -519,20 +522,20 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     bool confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("上传课表到云端"),
-        content: const Text("这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text("取消")),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text("上传")),
-        ],
-      ),
-    ) ??
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("上传课表到云端"),
+            content: const Text("这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text("取消")),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text("上传")),
+            ],
+          ),
+        ) ??
         false;
 
     if (!confirm) return;
@@ -544,12 +547,12 @@ class _SettingsPageState extends State<SettingsPage> {
     if (result['success'] == true) {
       final startMs = _semesterStart != null
           ? DateTime(_semesterStart!.year, _semesterStart!.month,
-          _semesterStart!.day)
-          .millisecondsSinceEpoch
+                  _semesterStart!.day)
+              .millisecondsSinceEpoch
           : null;
       final endMs = _semesterEnd != null
           ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
-          .millisecondsSinceEpoch
+              .millisecondsSinceEpoch
           : null;
       await ApiService.uploadUserSettings(
           semesterStartMs: startMs, semesterEndMs: endMs);
@@ -607,7 +610,8 @@ class _SettingsPageState extends State<SettingsPage> {
       final coursesFuture = ApiService.fetchCourses(_userId!);
 
       final results = await Future.wait([userSettingsFuture, coursesFuture]);
-      final Map<String, dynamic>? userSettings = results[0] as Map<String, dynamic>?;
+      final Map<String, dynamic>? userSettings =
+          results[0] as Map<String, dynamic>?;
       final List<dynamic> data = results[1] as List<dynamic>;
 
       if (!mounted) return;
@@ -617,12 +621,16 @@ class _SettingsPageState extends State<SettingsPage> {
         final prefs = await SharedPreferences.getInstance();
 
         if (userSettings['semester_start'] != null) {
-          _semesterStart = DateTime.fromMillisecondsSinceEpoch(userSettings['semester_start']);
-          await prefs.setString(StorageService.KEY_SEMESTER_START, _semesterStart!.toIso8601String());
+          _semesterStart = DateTime.fromMillisecondsSinceEpoch(
+              userSettings['semester_start']);
+          await prefs.setString(StorageService.KEY_SEMESTER_START,
+              _semesterStart!.toIso8601String());
         }
         if (userSettings['semester_end'] != null) {
-          _semesterEnd = DateTime.fromMillisecondsSinceEpoch(userSettings['semester_end']);
-          await prefs.setString(StorageService.KEY_SEMESTER_END, _semesterEnd!.toIso8601String());
+          _semesterEnd =
+              DateTime.fromMillisecondsSinceEpoch(userSettings['semester_end']);
+          await prefs.setString(
+              StorageService.KEY_SEMESTER_END, _semesterEnd!.toIso8601String());
         }
 
         // 刷新页面状态，让 UI 立刻响应云端拉取下来的新日期
@@ -734,23 +742,23 @@ class _SettingsPageState extends State<SettingsPage> {
     bool confirm = force;
     if (!force) {
       confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text("退出账号"),
-          content: const Text("确定要退出当前账号吗？"),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text("取消")),
-            FilledButton(
-              style:
-              FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text("退出"),
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text("退出账号"),
+              content: const Text("确定要退出当前账号吗？"),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text("取消")),
+                FilledButton(
+                  style:
+                      FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text("退出"),
+                ),
+              ],
             ),
-          ],
-        ),
-      ) ??
+          ) ??
           false;
     }
 
@@ -760,7 +768,7 @@ class _SettingsPageState extends State<SettingsPage> {
         Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (route) => false);
+            (route) => false);
       }
     }
   }
@@ -812,7 +820,6 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -888,23 +895,29 @@ class _SettingsPageState extends State<SettingsPage> {
           onServerChoiceChanged: (val) async {
             if (val != null && val != _serverChoice) {
               final confirm = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('切换服务器'),
-                  content: const Text('不同服务器的登录凭证不互通，切换后需要重新登录。\n\n确定要切换吗？'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('切换并重新登录')),
-                  ],
-                ),
-              ) ?? false;
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('切换服务器'),
+                      content:
+                          const Text('不同服务器的登录凭证不互通，切换后需要重新登录。\n\n确定要切换吗？'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('取消')),
+                        FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('切换并重新登录')),
+                      ],
+                    ),
+                  ) ??
+                  false;
 
               if (confirm && mounted) {
                 await StorageService.saveServerChoice(val);
                 await StorageService.clearLoginSession();
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (route) => false,
+                  (route) => false,
                 );
               }
             }
@@ -920,37 +933,65 @@ class _SettingsPageState extends State<SettingsPage> {
           taiDbPath: _taiDbPath,
           onPickTaiDatabase: _pickTaiDatabase,
           floatWindowStyle: _floatWindowStyle,
-          onFloatWindowStyleChanged: Platform.isWindows ? (val) async {
-            if (val == null) return;
-            setState(() => _floatWindowStyle = val);
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setInt('float_window_style', val);
-            if (val == 2) {
-              // Immediately destroy the island window when toggling OFF
-              try {
-                await IslandManager().destroyCachedIsland('island-1');
-              } catch (_) {}
-            } else {
-              // Toggling ON: update() will create the island
-              try {
-                await FloatWindowService.update(forceReset: true);
-              } catch (_) {}
-            }
-          } : null,
-          onForceRefreshPressed: Platform.isWindows ? () async {
-                    // Clear saved position so island resets to screen center
+          onFloatWindowStyleChanged: Platform.isWindows
+              ? (val) async {
+                  if (val == null) return;
+                  debugPrint('[Settings] Float window style changed: $val');
+                  setState(() => _floatWindowStyle = val);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setInt('float_window_style', val);
+                  if (val == 2) {
+                    // Immediately destroy the island window when toggling OFF
+                    debugPrint('[Settings] Destroying island (OFF)');
                     try {
-                      await StorageService.saveIslandBounds('island-1', {});
-                    } catch (_) {}
-                    // Destroy current island and recreate at center
-                    try {
+                      IslandDataProvider().invalidateCache();
                       await IslandManager().destroyCachedIsland('island-1');
-                    } catch (_) {}
+                      debugPrint('[Settings] Island destroyed');
+                    } catch (e) {
+                      debugPrint('[Settings] Destroy error: $e');
+                    }
+                  } else {
+                    // Toggling ON: invalidate cache, destroy old island, and create new one
+                    debugPrint('[Settings] Creating island (ON)');
+                    try {
+                      IslandDataProvider().invalidateCache();
+                      await IslandManager().destroyCachedIsland('island-1');
+                      final winId =
+                          await IslandManager().createIsland('island-1');
+                      debugPrint('[Settings] Island created, winId: $winId');
+                    } catch (e) {
+                      debugPrint('[Settings] Create error: $e');
+                    }
+                    // Also trigger update to show content
                     try {
                       await FloatWindowService.update(forceReset: true);
-                    } catch (_) {}
-          } : null,
-          onIslandPriorityPressed: Platform.isWindows ? _showIslandPriorityDialog : null,
+                      debugPrint('[Settings] FloatWindowService.update called');
+                    } catch (e) {
+                      debugPrint('[Settings] Update error: $e');
+                    }
+                  }
+                }
+              : null,
+          onForceRefreshPressed: Platform.isWindows
+              ? () async {
+                  // Clear saved position so island resets to screen center
+                  try {
+                    await StorageService.saveIslandBounds('island-1', {});
+                  } catch (_) {}
+                  // Invalidate cache and recreate island at center
+                  try {
+                    IslandDataProvider().invalidateCache();
+                  } catch (_) {}
+                  try {
+                    await IslandManager().destroyCachedIsland('island-1');
+                  } catch (_) {}
+                  try {
+                    await FloatWindowService.update(forceReset: true);
+                  } catch (_) {}
+                }
+              : null,
+          onIslandPriorityPressed:
+              Platform.isWindows ? _showIslandPriorityDialog : null,
         ),
         PermissionSection(
           permissionDefs: PermissionHandler.permissionDefs,
@@ -973,7 +1014,7 @@ class _SettingsPageState extends State<SettingsPage> {
               context,
               MaterialPageRoute(
                 builder: (context) =>
-                const FeatureGuideScreen(isManualReview: true),
+                    const FeatureGuideScreen(isManualReview: true),
               ),
             );
           },
@@ -1022,8 +1063,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   onNoCourseBehaviorChanged: (val) {
                     if (val != null) {
                       setState(() => _noCourseBehavior = val);
-                      SharedPreferences.getInstance()
-                          .then((prefs) => prefs.setString('no_course_behavior', val));
+                      SharedPreferences.getInstance().then((prefs) =>
+                          prefs.setString('no_course_behavior', val));
                     }
                   },
                 ),
@@ -1065,23 +1106,30 @@ class _SettingsPageState extends State<SettingsPage> {
                   onServerChoiceChanged: (val) async {
                     if (val != null && val != _serverChoice) {
                       final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('切换服务器'),
-                          content: const Text('不同服务器的登录凭证不互通，切换后需要重新登录。\n\n确定要切换吗？'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('切换并重新登录')),
-                          ],
-                        ),
-                      ) ?? false;
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('切换服务器'),
+                              content: const Text(
+                                  '不同服务器的登录凭证不互通，切换后需要重新登录。\n\n确定要切换吗？'),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('取消')),
+                                FilledButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('切换并重新登录')),
+                              ],
+                            ),
+                          ) ??
+                          false;
 
                       if (confirm && mounted) {
                         await StorageService.saveServerChoice(val);
                         await StorageService.clearLoginSession();
                         Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                              (route) => false,
+                          MaterialPageRoute(
+                              builder: (_) => const LoginScreen()),
+                          (route) => false,
                         );
                       }
                     }
@@ -1090,38 +1138,88 @@ class _SettingsPageState extends State<SettingsPage> {
                   onThemeModeChanged: (val) {
                     if (val != null) {
                       setState(() => _themeMode = val);
-                      StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, val);
+                      StorageService.saveAppSetting(
+                          StorageService.KEY_THEME_MODE, val);
                       StorageService.themeNotifier.value = val;
                     }
                   },
                   taiDbPath: _taiDbPath,
                   onPickTaiDatabase: _pickTaiDatabase,
                   floatWindowStyle: _floatWindowStyle,
-                  onFloatWindowStyleChanged: Platform.isWindows ? (val) async {
-                    if (val == null) return;
-                    setState(() => _floatWindowStyle = val);
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setInt('float_window_style', val);
-                    if (val == 2) {
-                      await prefs.setBool('float_window_enabled', false);
-                    } else {
-                      await prefs.setBool('float_window_enabled', true);
-                    }
-                    try {
-                      await FloatWindowService.update(forceReset: true);
-                    } catch (_) {}
-                  } : null,
-                  onForceRefreshPressed: Platform.isWindows ? () async {
-                    await FloatWindowService.resetPositions();
-                  } : null,
-                  onIslandPriorityPressed: Platform.isWindows ? _showIslandPriorityDialog : null,
+                  onFloatWindowStyleChanged: Platform.isWindows
+                      ? (val) async {
+                          if (val == null) return;
+                          debugPrint(
+                              '[Settings] Float window style changed: $val');
+                          setState(() => _floatWindowStyle = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setInt('float_window_style', val);
+                          if (val == 2) {
+                            // Immediately destroy the island window when toggling OFF
+                            debugPrint('[Settings] Destroying island (OFF)');
+                            try {
+                              IslandDataProvider().invalidateCache();
+                              await IslandManager()
+                                  .destroyCachedIsland('island-1');
+                              debugPrint('[Settings] Island destroyed');
+                            } catch (e) {
+                              debugPrint('[Settings] Destroy error: $e');
+                            }
+                          } else {
+                            // Toggling ON: invalidate cache, destroy old island, and create new one
+                            debugPrint('[Settings] Creating island (ON)');
+                            try {
+                              IslandDataProvider().invalidateCache();
+                              await IslandManager()
+                                  .destroyCachedIsland('island-1');
+                              final winId = await IslandManager()
+                                  .createIsland('island-1');
+                              debugPrint(
+                                  '[Settings] Island created, winId: $winId');
+                            } catch (e) {
+                              debugPrint('[Settings] Create error: $e');
+                            }
+                            // Also trigger update to show content
+                            try {
+                              await FloatWindowService.update(forceReset: true);
+                              debugPrint(
+                                  '[Settings] FloatWindowService.update called');
+                            } catch (e) {
+                              debugPrint('[Settings] Update error: $e');
+                            }
+                          }
+                        }
+                      : null,
+                  onForceRefreshPressed: Platform.isWindows
+                      ? () async {
+                          debugPrint('[Settings] Force refresh pressed');
+                          try {
+                            await StorageService.saveIslandBounds(
+                                'island-1', {});
+                          } catch (_) {}
+                          try {
+                            IslandDataProvider().invalidateCache();
+                          } catch (_) {}
+                          try {
+                            await IslandManager()
+                                .destroyCachedIsland('island-1');
+                          } catch (_) {}
+                          try {
+                            await FloatWindowService.update(forceReset: true);
+                            debugPrint('[Settings] Force refresh done');
+                          } catch (_) {}
+                        }
+                      : null,
+                  onIslandPriorityPressed:
+                      Platform.isWindows ? _showIslandPriorityDialog : null,
                 ),
                 PermissionSection(
                   permissionDefs: PermissionHandler.permissionDefs,
                   permissionStatuses: _permissionStatuses,
                   isCheckingPermissions: _isCheckingPermissions,
                   onCheckAllPermissions: _permissionHandler.checkAllPermissions,
-                  onRequestOrOpenPermission: _permissionHandler.requestOrOpenPermission,
+                  onRequestOrOpenPermission:
+                      _permissionHandler.requestOrOpenPermission,
                 ),
                 AdvancedSection(
                   onShowMigrationDialog: _showMigrationDialog,
@@ -1137,13 +1235,14 @@ class _SettingsPageState extends State<SettingsPage> {
                       context,
                       MaterialPageRoute(
                         builder: (context) =>
-                        const FeatureGuideScreen(isManualReview: true),
+                            const FeatureGuideScreen(isManualReview: true),
                       ),
                     );
                   },
                   cacheSizeStr: _cacheSizeStr,
                   onClearCache: _storageManagementHandler.clearCache,
-                  onShowStorageAnalysis: _storageManagementHandler.showStorageAnalysis,
+                  onShowStorageAnalysis:
+                      _storageManagementHandler.showStorageAnalysis,
                   isCheckingUpdate: _isCheckingUpdate,
                   onCheckUpdates: _checkUpdatesAndNotices,
                   onLogout: () => _handleLogout(force: false),

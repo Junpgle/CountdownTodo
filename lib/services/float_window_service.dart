@@ -410,7 +410,9 @@ class FloatWindowService {
 
     // Check if island is enabled
     final style = await _dataProvider.getStyle();
+    debugPrint('[FloatWindow] update: style=$style, forceReset=$forceReset');
     if (style != 1) {
+      debugPrint('[FloatWindow] style != 1, destroying island');
       try {
         await IslandManager().destroyCachedIsland('island-1');
       } catch (_) {}

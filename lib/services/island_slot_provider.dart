@@ -65,6 +65,8 @@ class IslandSlotProvider {
           return await _getRecordSlot(isLeft);
         case 'countdown':
           return await _getCountdownSlot(isLeft);
+        case 'focus':
+          return await _getFocusSlot(isLeft);
         default:
           return const IslandSlotData.empty();
       }
@@ -81,7 +83,7 @@ class IslandSlotProvider {
     final active = todos.where((t) => !t.isDone && !t.isDeleted).toList();
 
     if (active.isEmpty) {
-      return const IslandSlotData(display: '无待办', type: 'todo');
+      return const IslandSlotData(display: '', type: 'todo');
     }
 
     active.sort((a, b) {
@@ -185,9 +187,11 @@ class IslandSlotProvider {
     try {
       final username = await StorageService.getLoginSession() ?? 'default';
       final cds = await StorageService.getCountdowns(username);
+      debugPrint('[IslandSlotProvider] getCountdowns: ${cds.length} items');
       final now = DateTime.now();
       final active =
           cds.where((c) => !c.isDeleted && c.targetDate.isAfter(now)).toList();
+      debugPrint('[IslandSlotProvider] active countdowns: ${active.length}');
       active.sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
       if (active.isNotEmpty) {
@@ -195,6 +199,7 @@ class IslandSlotProvider {
         final days = c.targetDate.difference(now).inDays;
         final info = '${days}天';
         final display = isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
+        debugPrint('[IslandSlotProvider] countdown display: $display');
         return IslandSlotData(
           display: display,
           type: 'countdown',
@@ -203,8 +208,60 @@ class IslandSlotProvider {
           detailNote: '还有${days}天',
         );
       }
+    } catch (e) {
+      debugPrint('[IslandSlotProvider] countdown error: $e');
+    }
+    return const IslandSlotData(display: '', type: 'countdown');
+  }
+
+  /// Get focus time slot data (today's total focus, or yesterday if none)
+  static Future<IslandSlotData> _getFocusSlot(bool isLeft) async {
+    try {
+      final records = await PomodoroService.getRecords();
+      final now = DateTime.now();
+      final todayStart =
+          DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+      final yesterdayStart = todayStart - 86400000; // 24 hours in ms
+
+      // Calculate today's focus time
+      int todayFocusSeconds = 0;
+      for (final r in records) {
+        if (r.startTime >= todayStart &&
+            r.status == PomodoroRecordStatus.completed) {
+          todayFocusSeconds += r.actualDuration ?? 0;
+        }
+      }
+
+      // If no focus today, calculate yesterday's
+      int displaySeconds = todayFocusSeconds;
+      String label = '今日';
+      if (todayFocusSeconds == 0) {
+        for (final r in records) {
+          if (r.startTime >= yesterdayStart &&
+              r.startTime < todayStart &&
+              r.status == PomodoroRecordStatus.completed) {
+            displaySeconds += r.actualDuration ?? 0;
+          }
+        }
+        label = '昨日';
+      }
+
+      if (displaySeconds > 0) {
+        final hours = displaySeconds ~/ 3600;
+        final minutes = (displaySeconds % 3600) ~/ 60;
+        final timeStr = hours > 0 ? '${hours}h${minutes}m' : '${minutes}m';
+        final display = isLeft ? '[$label] $timeStr' : '$timeStr [$label]';
+
+        return IslandSlotData(
+          display: display,
+          type: 'focus',
+          detailTitle: '$label专注',
+          detailTime: timeStr,
+          detailNote: '共$displaySeconds秒',
+        );
+      }
     } catch (_) {}
-    return const IslandSlotData(display: '专注时钟', type: 'countdown');
+    return const IslandSlotData(display: '', type: 'focus');
   }
 
   /// Get reminder queue for todos due today

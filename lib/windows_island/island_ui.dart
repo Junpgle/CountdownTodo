@@ -64,6 +64,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Map<String, dynamic>? _reminderPopupData;
   String? _expandedReminderPart;
   Timer? _snoozeTimer;
+  final Set<String> _acknowledgedReminderIds = {}; // 已确认的提醒ID
 
   // ── 窗口控制
   WindowController? _windowController;
@@ -255,17 +256,40 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     // ④ 处理 reminderSplit（专注中收到提醒）
     if (stateStr == 'reminder_split') {
       final rd = payload['reminderPopupData'];
-      if (rd != null) _reminderPopupData = Map<String, dynamic>.from(rd as Map);
+      if (rd != null) {
+        final rdMap = Map<String, dynamic>.from(rd as Map);
+        final itemId = rdMap['itemId']?.toString();
+        // 检查是否已确认过此提醒
+        if (itemId != null && _acknowledgedReminderIds.contains(itemId)) {
+          debugPrint('[IslandUI] Skipping acknowledged reminder: $itemId');
+          return;
+        }
+        _reminderPopupData = rdMap;
+      }
+      final isNewReminder = _stack.current != IslandState.reminderSplit;
       _stack.replaceTop(IslandState.reminderSplit, data: payload);
-      _animateToState(IslandState.reminderSplit);
       _updateFocusTimer(payload);
+      if (isNewReminder) {
+        // 首次出现：强提醒，自动展开提醒卡片
+        _expandedReminderPart = 'reminder';
+      }
+      _animateToState(IslandState.reminderSplit);
       return;
     }
 
     // ⑤ 处理 reminderCapsule（非专注状态的提醒胶囊）
     if (stateStr == 'reminder_capsule') {
       final rd = payload['reminderPopupData'];
-      if (rd != null) _reminderPopupData = Map<String, dynamic>.from(rd as Map);
+      if (rd != null) {
+        final rdMap = Map<String, dynamic>.from(rd as Map);
+        final itemId = rdMap['itemId']?.toString();
+        // 检查是否已确认过此提醒
+        if (itemId != null && _acknowledgedReminderIds.contains(itemId)) {
+          debugPrint('[IslandUI] Skipping acknowledged reminder: $itemId');
+          return;
+        }
+        _reminderPopupData = rdMap;
+      }
       _stack.replaceBase(IslandState.reminderCapsule, data: payload);
       _animateToState(IslandState.reminderCapsule);
       return;
@@ -279,17 +303,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           ..._reminderPopupData!,
           'minutesUntil': mins,
           'acknowledged': false,
-          'needsExpand': true,
         };
-        final ts = _isFocusing
-            ? IslandState.reminderSplit
-            : IslandState.reminderCapsule;
         if (_isFocusing) {
-          _stack.replaceTop(ts, data: payload);
+          // 专注中：强提醒，展开提醒卡片
+          _expandedReminderPart = 'reminder';
+          _stack.replaceTop(IslandState.reminderSplit, data: payload);
+          _animateToState(IslandState.reminderSplit);
         } else {
-          _stack.replaceBase(ts, data: payload);
+          // 非专注：直接弹出 reminderPopup
+          _stack.push(IslandState.reminderPopup, data: payload);
+          _animateToState(IslandState.reminderPopup);
         }
-        _animateToState(ts);
       }
       return;
     }
@@ -351,15 +375,26 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _canShrink = false;
     _hoverDebounce = Timer(IslandConfig.hoverEnterDelay, () {
       if (!_isHovered || !mounted) return;
-      // 只在 idle 或 focusing 时展开 hover
+      // reminderSplit / reminderCapsule / reminderPopup 状态下禁止 hover 展开
+      // 也只在栈顶就是 base（即没有其他 overlay）时才展开
+      final cur = _stack.current;
       final base = _stack.base;
-      if (base == IslandState.idle || base == IslandState.focusing) {
+      final isReminderState = cur == IslandState.reminderSplit ||
+          cur == IslandState.reminderCapsule ||
+          cur == IslandState.reminderPopup;
+      final isBaseVisible = cur == base; // 栈顶 == 栈底，没有 overlay
+      if (!isReminderState &&
+          isBaseVisible &&
+          (base == IslandState.idle || base == IslandState.focusing)) {
         _stack.push(IslandState.hoverWide, data: _currentPayload);
         _animateToState(IslandState.hoverWide);
         _minStayTimer?.cancel();
         _minStayTimer = Timer(IslandConfig.hoverMinStay, () {
           _canShrink = true;
         });
+      } else {
+        // 不展开时也要重置 _canShrink，否则后续 exit 会卡住
+        _canShrink = true;
       }
     });
   }
@@ -456,7 +491,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.reminderPopup:
         return Size(320, hasSub ? 180 : 150);
       case IslandState.reminderSplit:
-        if (_expandedReminderPart != null) return Size(320, hasSub ? 340 : 300);
+        if (_expandedReminderPart != null) {
+          // 展开态：根据展开的是哪侧决定高度
+          final hasSub =
+              _reminderPopupData?['subtitle']?.toString().isNotEmpty ?? false;
+          return Size(320, hasSub ? 340 : 300);
+        }
         return const Size(480, 46);
       case IslandState.reminderCapsule:
         return const Size(160, 46);
@@ -964,6 +1004,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final mins = d['minutesUntil'] as int? ?? 0;
     final isEnd = d['isEnding'] as bool? ?? false;
     final status = isEnd ? '还有 $mins 分钟结束' : '还有 $mins 分钟开始';
+    final itemId = d['itemId']?.toString();
 
     return GestureDetector(
       key: const ValueKey('reminderPopup'),
@@ -1004,19 +1045,32 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             const SizedBox(height: 12),
             Row(
               children: [
-                // 好的 → 发 action，pop reminderPopup
+                // 好的 → 发 action，标记已确认，pop reminderPopup
                 Expanded(
                   child: _btn('好的', IslandConfig.successColor, () {
+                    debugPrint(
+                        '[IslandUI] reminder_ok clicked (popup), itemId=$itemId');
                     widget.onAction?.call('reminder_ok', 0);
+                    // 标记此提醒已确认
+                    if (itemId != null) {
+                      _acknowledgedReminderIds.add(itemId);
+                    }
+                    _reminderPopupData = null;
                     final restored = _stack.pop(IslandState.reminderPopup);
                     _animateToState(restored);
                   }),
                 ),
                 const SizedBox(width: 12),
-                // 稍后提醒 → 发 action，pop reminderPopup
+                // 稍后提醒 → 发 action，标记已确认，pop 回 reminderCapsule
                 Expanded(
                   child: _btn('稍后提醒', IslandConfig.warningColor, () {
+                    debugPrint('[IslandUI] remind_later clicked (popup)');
                     widget.onAction?.call('remind_later', 0);
+                    // 标记此提醒已确认
+                    if (itemId != null) {
+                      _acknowledgedReminderIds.add(itemId);
+                    }
+                    _reminderPopupData = null;
                     final restored = _stack.pop(IslandState.reminderPopup);
                     _animateToState(restored);
                   }),
@@ -1044,19 +1098,26 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () {
-            setState(() => _expandedReminderPart =
-                expanded == 'focusing' ? null : 'focusing');
-            _animateToState(_stack.current);
+            final newExpanded = expanded == 'focusing' ? null : 'focusing';
+            setState(() {
+              _expandedReminderPart = newExpanded;
+            });
+            // 使用 Future.microtask 延迟执行，避免在 setState 中触发动画
+            Future.microtask(() => _animateToState(IslandState.reminderSplit));
           },
           child: _capsule('🎯', _timeNotifier.value, IslandConfig.focusColor),
         ),
         const SizedBox(width: 12),
         GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () {
-            setState(() => _expandedReminderPart =
-                expanded == 'reminder' ? null : 'reminder');
-            _animateToState(_stack.current);
+            final newExpanded = expanded == 'reminder' ? null : 'reminder';
+            setState(() {
+              _expandedReminderPart = newExpanded;
+            });
+            Future.microtask(() => _animateToState(IslandState.reminderSplit));
           },
           child:
               _capsule(icon, '${d['title']} $mins', IslandConfig.warningColor),
@@ -1174,6 +1235,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final mins = d['minutesUntil'] as int? ?? 0;
     final isEnd = d['isEnding'] as bool? ?? false;
     final status = isEnd ? '还有 $mins 分钟结束' : '还有 $mins 分钟开始';
+    final itemId = d['itemId']?.toString();
 
     return Container(
       width: double.infinity,
@@ -1207,27 +1269,37 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           const SizedBox(height: 12),
           Row(
             children: [
-              // 好的 → 发 action，replaceTop focusing
+              // 好的 → 发 action，标记已确认，恢复 focusing
               Expanded(
                 child: _btn('好的', IslandConfig.successColor, () {
+                  debugPrint('[IslandUI] reminder_ok clicked, itemId=$itemId');
                   widget.onAction?.call('reminder_ok', 0);
-                  _stack.replaceTop(IslandState.focusing,
-                      data: _currentPayload);
+                  // 标记此提醒已确认
+                  if (itemId != null) {
+                    _acknowledgedReminderIds.add(itemId);
+                  }
+                  // 清除提醒数据
                   _reminderPopupData = null;
                   _expandedReminderPart = null;
+                  // 恢复 focusing 状态
+                  _stack.replaceTop(IslandState.focusing,
+                      data: _currentPayload);
                   _animateToState(IslandState.focusing);
                 }),
               ),
               const SizedBox(width: 8),
-              // 稍后提醒 → 发 action，replaceTop focusing
+              // 稍后提醒 → 发 action，收起但保留双胶囊
               Expanded(
                 child: _btn('稍后提醒', IslandConfig.warningColor, () {
+                  debugPrint('[IslandUI] remind_later clicked');
                   widget.onAction?.call('remind_later', 0);
-                  _stack.replaceTop(IslandState.focusing,
-                      data: _currentPayload);
-                  _reminderPopupData = null;
-                  _expandedReminderPart = null;
-                  _animateToState(IslandState.focusing);
+                  // 标记此提醒已确认（稍后会重新触发）
+                  if (itemId != null) {
+                    _acknowledgedReminderIds.add(itemId);
+                  }
+                  // 收起展开卡片，但保持双胶囊状态
+                  setState(() => _expandedReminderPart = null);
+                  _animateToState(IslandState.reminderSplit);
                 }),
               ),
             ],

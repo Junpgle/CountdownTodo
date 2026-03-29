@@ -140,8 +140,11 @@ class IslandDataProvider {
 
     // Get style
     final style = await getStyle();
+    debugPrint(
+        '[IslandDataProvider] buildPayload: style=$style, endMs=$endMs, forceReset=$forceReset');
     if (style != 1) {
       // Island not enabled
+      debugPrint('[IslandDataProvider] style != 1, returning null');
       return null;
     }
 
@@ -154,13 +157,26 @@ class IslandDataProvider {
     IslandSlotData leftSlotData = const IslandSlotData.empty();
     IslandSlotData rightSlotData = const IslandSlotData.empty();
 
-    if (priority.isNotEmpty && slots.containsKey(priority[0])) {
-      leftSlotData = slots[priority[0]]!;
-      leftStr = leftSlotData.display;
+    // Find first slot with data for left position
+    for (int i = 0; i < priority.length; i++) {
+      final type = priority[i];
+      if (slots.containsKey(type) && slots[type]!.isNotEmpty) {
+        leftSlotData = slots[type]!;
+        leftStr = leftSlotData.display;
+        break;
+      }
     }
-    if (priority.length > 1 && slots.containsKey(priority[1])) {
-      rightSlotData = slots[priority[1]]!;
-      rightStr = rightSlotData.display;
+
+    // Find second slot with data for right position
+    for (int i = 0; i < priority.length; i++) {
+      final type = priority[i];
+      if (slots.containsKey(type) &&
+          slots[type]!.isNotEmpty &&
+          slots[type] != leftSlotData) {
+        rightSlotData = slots[type]!;
+        rightStr = rightSlotData.display;
+        break;
+      }
     }
 
     // TopBar overrides

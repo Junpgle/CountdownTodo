@@ -9,18 +9,20 @@ class IslandPriorityDialog extends StatefulWidget {
 }
 
 class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
-  List<String> _items = ['course', 'countdown', 'todo'];
-  
+  List<String> _items = ['course', 'countdown', 'todo', 'focus'];
+
   final Map<String, String> _labels = {
     'course': '课程表',
     'countdown': '倒计时',
     'todo': '待办事项',
+    'focus': '专注时间',
   };
 
   final Map<String, IconData> _icons = {
     'course': Icons.book_outlined,
     'countdown': Icons.timer_outlined,
     'todo': Icons.check_box_outlined,
+    'focus': Icons.psychology_outlined,
   };
 
   @override
@@ -85,8 +87,10 @@ class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
                       child: ListTile(
                         leading: Icon(_icons[_items[i]] ?? Icons.info_outline),
                         title: Text(_labels[_items[i]] ?? _items[i]),
-                        leadingAndTrailingTextStyle: const TextStyle(fontSize: 14),
-                        trailing: const Icon(Icons.drag_handle, color: Colors.grey),
+                        leadingAndTrailingTextStyle:
+                            const TextStyle(fontSize: 14),
+                        trailing:
+                            const Icon(Icons.drag_handle, color: Colors.grey),
                       ),
                     ),
                 ],
