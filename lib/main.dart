@@ -69,9 +69,6 @@ Future<void> main(List<String> args) async {
   // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
   HttpOverrides.global = MyHttpOverrides();
 
-  // 初始化 FloatWindowService（注册 native handler）
-  FloatWindowService.init();
-
   // 初始化 WindowService（监听窗口关闭事件）
   WindowService.init();
 

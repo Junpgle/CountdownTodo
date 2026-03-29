@@ -96,7 +96,7 @@ class QuestionGenerator {
 // 🚀 2. 效率功能：支持 Delta Sync 的数据模型
 // ==========================================
 
-enum RecurrenceType { none, daily, customDays }
+enum RecurrenceType { none, daily, customDays, weekly, monthly, yearly, weekdays }
 
 class TodoItem {
   String id; // 核心：全局唯一 UUID

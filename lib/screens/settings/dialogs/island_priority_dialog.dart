@@ -9,13 +9,22 @@ class IslandPriorityDialog extends StatefulWidget {
 }
 
 class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
-  List<String> _items = ['course', 'countdown', 'todo', 'focus'];
+  List<String> _items = [
+    'course',
+    'countdown',
+    'todo',
+    'focus',
+    'date',
+    'weekday'
+  ];
 
   final Map<String, String> _labels = {
     'course': '课程表',
     'countdown': '倒计时',
     'todo': '待办事项',
     'focus': '专注时间',
+    'date': '公历日期',
+    'weekday': '星期',
   };
 
   final Map<String, IconData> _icons = {
@@ -23,6 +32,8 @@ class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
     'countdown': Icons.timer_outlined,
     'todo': Icons.check_box_outlined,
     'focus': Icons.psychology_outlined,
+    'date': Icons.calendar_today_outlined,
+    'weekday': Icons.calendar_view_week_outlined,
   };
 
   @override

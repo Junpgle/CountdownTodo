@@ -67,6 +67,10 @@ class IslandSlotProvider {
           return await _getCountdownSlot(isLeft);
         case 'focus':
           return await _getFocusSlot(isLeft);
+        case 'date':
+          return await _getDateSlot(isLeft);
+        case 'weekday':
+          return await _getWeekdaySlot(isLeft);
         default:
           return const IslandSlotData.empty();
       }
@@ -74,6 +78,29 @@ class IslandSlotProvider {
       debugPrint('[IslandSlotProvider] Error getting slot $type: $e');
       return const IslandSlotData.empty();
     }
+  }
+
+  /// Get date slot data
+  static Future<IslandSlotData> _getDateSlot(bool isLeft) async {
+    final now = DateTime.now();
+    final display = DateFormat('M月d日').format(now);
+    return IslandSlotData(
+      display: display,
+      type: 'date',
+      detailTitle: display,
+    );
+  }
+
+  /// Get weekday slot data
+  static Future<IslandSlotData> _getWeekdaySlot(bool isLeft) async {
+    final now = DateTime.now();
+    final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    final weekday = weekdays[now.weekday - 1];
+    return IslandSlotData(
+      display: weekday,
+      type: 'weekday',
+      detailTitle: weekday,
+    );
   }
 
   /// Get todo slot data

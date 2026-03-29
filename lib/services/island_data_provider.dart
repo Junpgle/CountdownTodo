@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'island_slot_provider.dart';
 import '../windows_island/island_payload.dart';
@@ -68,7 +69,7 @@ class IslandDataProvider {
     }
     final prefs = await SharedPreferences.getInstance();
     final priority = prefs.getStringList('island_slot_priority') ??
-        ['course', 'countdown', 'todo'];
+        ['course', 'countdown', 'todo', 'focus', 'date', 'weekday'];
     _priorityCache = _CacheEntry(priority);
     return priority;
   }
@@ -96,11 +97,12 @@ class IslandDataProvider {
     final priority = await getSlotPriority();
     final Map<String, IslandSlotData> slots = {};
 
-    for (int i = 0; i < priority.length && i < 2; i++) {
-      final type = priority[i];
-      final isLeft = i == 0;
-      final data = await IslandSlotProvider.getSlotData(type, isLeft: isLeft);
-      slots[type] = data;
+    for (final type in priority) {
+      // Fetch as left to check for content. We'll refine for right slot in buildPayload.
+      final data = await IslandSlotProvider.getSlotData(type, isLeft: true);
+      if (data.isNotEmpty) {
+        slots[type] = data;
+      }
     }
 
     _slotCache = _CacheEntry(slots);
@@ -157,26 +159,39 @@ class IslandDataProvider {
     IslandSlotData leftSlotData = const IslandSlotData.empty();
     IslandSlotData rightSlotData = const IslandSlotData.empty();
 
-    // Find first slot with data for left position
-    for (int i = 0; i < priority.length; i++) {
-      final type = priority[i];
+    // Collect active types based on priority
+    final List<String> activeTypes = [];
+    for (final type in priority) {
       if (slots.containsKey(type) && slots[type]!.isNotEmpty) {
-        leftSlotData = slots[type]!;
-        leftStr = leftSlotData.display;
-        break;
+        activeTypes.add(type);
       }
     }
 
-    // Find second slot with data for right position
-    for (int i = 0; i < priority.length; i++) {
-      final type = priority[i];
-      if (slots.containsKey(type) &&
-          slots[type]!.isNotEmpty &&
-          slots[type] != leftSlotData) {
-        rightSlotData = slots[type]!;
+    // Assign Left Slot
+    if (activeTypes.isNotEmpty) {
+      final leftType = activeTypes[0];
+      leftSlotData = slots[leftType]!;
+      leftStr = leftSlotData.display;
+
+      // Assign Right Slot
+      if (activeTypes.length > 1) {
+        final rightType = activeTypes[1];
+        // Re-fetch/re-format for right position to ensure correct padding/brackets
+        rightSlotData =
+            await IslandSlotProvider.getSlotData(rightType, isLeft: false);
         rightStr = rightSlotData.display;
-        break;
       }
+    }
+
+    // Safety fallbacks if priority list doesn't include enough items with data
+    if (leftStr.isEmpty) {
+      final now = DateTime.now();
+      leftStr = DateFormat('M月d日').format(now);
+    }
+    if (rightStr.isEmpty && leftSlotData.type != 'weekday') {
+      final now = DateTime.now();
+      final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      rightStr = weekdays[now.weekday - 1];
     }
 
     // TopBar overrides

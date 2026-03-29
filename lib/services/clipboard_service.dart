@@ -131,14 +131,14 @@ class ClipboardService {
       final hData = GetClipboardData(CF_UNICODETEXT);
       if (hData == 0) return null;
 
-      final pData = Pointer<Uint8>.fromAddress(hData);
+      final handle = Pointer.fromAddress(hData);
+      final pData = GlobalLock(handle);
       if (pData == nullptr) return null;
 
       try {
-        final text = pData.cast<Utf16>().toDartString();
-        return text;
+        return pData.cast<Utf16>().toDartString();
       } finally {
-        GlobalUnlock(Pointer.fromAddress(hData));
+        GlobalUnlock(handle);
       }
     } finally {
       CloseClipboard();

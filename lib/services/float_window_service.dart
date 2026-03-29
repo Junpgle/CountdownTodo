@@ -61,6 +61,7 @@ class FloatWindowService {
 
   /// Initialize the service
   static Future<void> init() async {
+    if (!Platform.isWindows) return;
     if (_initialized) return;
     _initialized = true;
     try {
