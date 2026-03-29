@@ -56,19 +56,39 @@ class ClipboardService {
     final toParse = hasScheme ? trimmed : 'https://$trimmed';
 
     final uri = Uri.tryParse(toParse);
-    if (uri == null || !uri.hasScheme || !uri.hasAuthority) return false;
+    if (uri == null || !uri.hasScheme) {
+      debugPrint('[ClipboardService] URL parse failed: $trimmed');
+      return false;
+    }
+
+    // Allow URIs without authority for certain schemes (like mailto:)
+    if (!uri.hasAuthority) {
+      // But for http/https, we need authority
+      if (['http', 'https'].contains(uri.scheme.toLowerCase())) {
+        debugPrint('[ClipboardService] HTTP URL without authority: $trimmed');
+        return false;
+      }
+    }
 
     if (!ClipboardConfig.allowedSchemes.contains(uri.scheme.toLowerCase())) {
+      debugPrint('[ClipboardService] Scheme not allowed: ${uri.scheme}');
       return false;
     }
 
     final host = uri.host;
-    if (host.isEmpty) return false;
+    if (host.isEmpty) {
+      debugPrint('[ClipboardService] Empty host: $trimmed');
+      return false;
+    }
 
     // Valid hosts: localhost, IPv4, or domain with at least one dot
     final isValidHost = host == 'localhost' ||
         RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
         RegExp(r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$').hasMatch(host);
+
+    if (!isValidHost) {
+      debugPrint('[ClipboardService] Invalid host: $host');
+    }
 
     return isValidHost;
   }
@@ -141,6 +161,10 @@ class ClipboardService {
   /// Start listening for clipboard changes
   void startListening() async {
     await _initClipboard();
+    if (_pollTimer?.isActive == true) {
+      debugPrint('[ClipboardService] Already listening');
+      return;
+    }
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(ClipboardConfig.pollInterval, (_) {
       try {
@@ -151,16 +175,21 @@ class ClipboardService {
         if (!isNew) return;
 
         _lastClipboardContent = content;
+        debugPrint(
+            '[ClipboardService] New content detected: ${content.length > 50 ? content.substring(0, 50) + "..." : content}');
 
         if (_isValidUrl(content)) {
           final displayUrl = _truncateForDisplay(content);
-          _urlController.add(content);
           debugPrint('[ClipboardService] URL detected: $displayUrl');
+          _urlController.add(content);
+        } else {
+          debugPrint('[ClipboardService] Content is not a valid URL');
         }
       } catch (e) {
         debugPrint('[ClipboardService] Error: $e');
       }
     });
+    debugPrint('[ClipboardService] Started listening');
   }
 
   /// Stop listening for clipboard changes

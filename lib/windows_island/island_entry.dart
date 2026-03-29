@@ -559,6 +559,15 @@ Future<void> islandMain(List<String> args) async {
                     if (url != null) {
                       await _launchUrl(url);
                     }
+                    // 通知主应用刷新岛的状态（恢复到打开链接前的状态）
+                    try {
+                      final file = await _getActionFile();
+                      await file.writeAsString(jsonEncode({
+                        'action': 'link_opened',
+                        'windowId': controller.windowId,
+                        'timestamp': DateTime.now().millisecondsSinceEpoch,
+                      }));
+                    } catch (_) {}
                     return;
                   }
 

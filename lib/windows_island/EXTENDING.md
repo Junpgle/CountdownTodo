@@ -1,6 +1,15 @@
 # 灵动岛模块 - 扩展开发指南
 
-本文档为扩展 Windows 灵动岛模块提供指南，包括新功能、状态和行为的添加方法。
+## 目录
+1. [架构概览](#架构概览)
+2. [用户交互流程](#用户交互流程)
+3. [核心概念](#核心概念)
+4. [扩展点](#扩展点)
+5. [IPC 通信](#ipc-通信)
+6. [最佳实践](#最佳实践)
+7. [问题排查](#问题排查)
+
+---
 
 ## 架构概览
 
@@ -16,19 +25,8 @@ lib/windows_island/
 ├── island_payload.dart       # 数据传输对象
 ├── island_reminder.dart      # 提醒服务
 ├── island_state_handler.dart # 可扩展的状态管理
-├── island_ui.dart            # UI 组件和状态机
+├── island_ui.dart            # UI 组件和状态机（栈式管理）
 └── island_win32.dart         # Win32 API 工具函数
-```
-
-### 服务层结构
-
-```
-lib/services/
-├── clipboard_service.dart    # 剪贴板监听服务
-├── float_window_service.dart # 悬浮窗/岛集成服务
-├── island_data_provider.dart # 岛数据聚合中心（含缓存）
-├── island_slot_provider.dart # 槽位数据获取
-└── snooze_dialog.dart        # 稍后提醒对话框
 ```
 
 ### 数据流
@@ -37,352 +35,438 @@ lib/services/
 HomeDashboard
   └── FloatWindowService.update()
         └── IslandDataProvider.buildPayload()
-              ├── 缓存的 style/priority/theme
-              ├── 缓存的 slot data (30秒有效)
               └── IslandManager.sendStructuredPayload()
                     └── Island Window (island_entry.dart)
-                          └── IslandUI (状态机 + 渲染)
+                          └── IslandUI (栈式状态机)
+                                ├── _pushState()  // 入栈展示
+                                ├── _popState()   // 出栈恢复
+                                └── _replaceState() // 替换当前
 ```
+
+---
+
+## 用户交互流程
+
+### 1. 时钟状态 (Idle)
+
+**初始状态**：灵动岛显示当前时间
+
+```
+┌──────────────┐
+│   14:30      │  ← 点击区域
+└──────────────┘
+```
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 |
+|----------|----------|--------|----------|
+| 点击时钟 | 展开为 hoverWide (显示两侧信息) | `[idle] → [idle, hoverWide]` | 120x34 → 380x46 |
+| 拖动时钟 | 移动窗口位置 | 不变 | 不变 |
+| 悬停时钟 | 展开为 hoverWide (延迟100ms) | `[idle] → [idle, hoverWide]` | 120x34 → 380x46 |
+| 鼠标离开 | 收回为 idle (延迟120ms) | `[idle, hoverWide] → [idle]` | 380x46 → 120x34 |
+
+---
+
+### 2. 专注状态 (Focusing)
+
+**触发条件**：主应用发送 `state: 'focusing'` payload
+
+```
+┌──────────────┐
+│  专注事项    │
+│   25:00      │  ← 点击展开详情
+└──────────────┘
+```
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击胶囊 | 展开为 stackedCard | `[focusing] → [focusing, stackedCard]` | 100x46 → 280x140 | - |
+| 拖动胶囊 | 移动窗口位置 | 不变 | 不变 | - |
+| 悬停 | 展开为 hoverWide | `[focusing] → [focusing, hoverWide]` | 100x46 → 380x46 | - |
+
+**倒计时行为**：
+- 每秒更新 `_remainingSecs`
+- 通过 `_timeNotifier` 更新显示
+- `endMs` 到达时 `_remainingSecs` 归零
+
+---
+
+### 3. 详情卡片 (StackedCard)
+
+**触发条件**：点击专注状态的胶囊
+
+```
+┌────────────────────────┐
+│ 14:30 | 学习任务       │
+│ #学习 #数学            │
+│ ┌──────┐  ┌──────┐     │
+│ │ 完成 │  │ 放弃 │     │
+│ └──────┘  └──────┘     │
+└────────────────────────┘
+```
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击卡片空白区域 | 收回为 focusing | `[focusing, stackedCard] → [focusing]` | 280x140 → 100x46 | - |
+| 点击"完成" | 展开完成确认框 | `[focusing, stackedCard] → [focusing, stackedCard, finishConfirm]` | 280x140 → 260x130 | - |
+| 点击"放弃" | 展开放弃确认框 | `[focusing, stackedCard] → [focusing, stackedCard, abandonConfirm]` | 280x140 → 260x130 | - |
+| 拖动 | 移动窗口 | 不变 | 不变 | - |
+
+---
+
+### 4. 完成确认 (FinishConfirm)
+
+**触发条件**：点击 stackedCard 的"完成"按钮
+
+```
+┌────────────────────────┐
+│      确认完成?          │
+│ 学习任务 | 25:00        │
+│ ┌──────┐  ┌──────┐     │
+│ │ 确认 │  │手滑了│     │
+│ └──────┘  └──────┘     │
+└────────────────────────┘
+```
+
+**受保护状态**：外部 payload 无法覆盖此状态
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击"确认" | 1. 发送 `finish` action<br>2. 弹出确认框<br>3. 展示 finishFinal | `[finishConfirm] → [focusing, finishFinal]` | 260x130 | `finish` + `remainingSecs` |
+| 点击"手滑了" | 返回 stackedCard | `[finishConfirm] → [focusing, stackedCard]` | 260x130 → 280x140 | - |
+
+---
+
+### 5. 放弃确认 (AbandonConfirm)
+
+**触发条件**：点击 stackedCard 的"放弃"按钮
+
+```
+┌────────────────────────┐
+│      确认放弃?          │
+│ 学习任务 | 25:00        │
+│ ┌──────┐  ┌──────┐     │
+│ │手滑了│  │ 确认 │     │  ← 按钮位置相反
+│ └──────┘  └──────┘     │
+└────────────────────────┘
+```
+
+**受保护状态**：外部 payload 无法覆盖此状态
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击"手滑了" | 返回 stackedCard | `[abandonConfirm] → [focusing, stackedCard]` | 260x130 → 280x140 | - |
+| 点击"确认" | 1. 发送 `abandon` action<br>2. 清空栈回到 idle | `[abandonConfirm] → [idle]` | 260x130 → 120x34 | `abandon` |
+
+---
+
+### 6. 完成最终 (FinishFinal)
+
+**触发条件**：完成确认后自动展示
+
+```
+┌────────────────────────┐
+│      专注完成           │
+│ 学习任务 | 25:00        │
+│       ┌──────┐         │
+│       │ 好的 │         │
+│       └──────┘         │
+└────────────────────────┘
+```
+
+**受保护状态**：外部 payload 无法覆盖此状态
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击"好的" | 清空栈回到 idle | `[finishFinal] → [idle]` | 260x130 → 120x34 | - |
+
+---
+
+### 7. 复制链接 (CopiedLink)
+
+**触发条件**：剪贴板检测到 URL，主应用发送 `copiedLinkData`
+
+```
+┌──────────────────────────────────────┐
+│ 🔗 已复制: example.com    [打开] [✕] │
+└──────────────────────────────────────┘
+```
+
+**受保护状态**：外部 payload 无法覆盖此状态
+**自动消失**：10 秒后自动关闭
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击"打开" | 1. 发送 `open_link` action<br>2. 关闭链接提示 | `[focusing, copiedLink] → [focusing]` | 340x46 → 100x46 | `open_link` + `url` |
+| 点击"✕" | 关闭链接提示 | `[focusing, copiedLink] → [focusing]` | 340x46 → 100x46 | - |
+| 等待10秒 | 自动关闭 | `[focusing, copiedLink] → [focusing]` | 340x46 → 100x46 | - |
+| 拖动 | 移动窗口 | 不变 | 不变 | - |
+
+**时序图**：
+```
+剪贴板检测URL
+  │
+  ├─→ FloatWindowService._showCopiedLinkIsland()
+  │     │
+  │     └─→ IslandManager.sendStructuredPayload({state: 'copied_link', copiedLinkData: {...}})
+  │           │
+  │           └─→ IslandUI._pushState(copiedLink, autoDismiss: 10s)
+  │
+  ├─→ 用户点击"打开"
+  │     │
+  │     ├─→ widget.onAction('open_link', 0, url)
+  │     │     │
+  │     │     └─→ FloatWindowService._refreshIslandAfterLinkOpened()
+  │     │
+  │     └─→ _popState(copiedLink)
+  │
+  └─→ 10秒后自动 pop
+```
+
+---
+
+### 8. 提醒胶囊 (ReminderCapsule)
+
+**触发条件**：岛内提醒检查发现待提醒事项
+
+```
+┌────────────────────────┐
+│ 📝 会议 15min          │  ← 点击展开详情
+└────────────────────────┘
+```
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击胶囊 | 展开为 reminderPopup | `[reminderCapsule] → [reminderPopup]` | 160x46 → 320x150+ | - |
+| 拖动 | 移动窗口 | 不变 | 不变 | - |
+
+---
+
+### 9. 提醒弹窗 (ReminderPopup)
+
+**触发条件**：点击 reminderCapsule 或收到强提醒
+
+```
+┌──────────────────────────────────┐
+│ 📝 待办：会议                    │
+│ 301会议室                        │
+│ 14:00 ~ 15:00 | 还有15分钟开始   │
+│ ┌──────┐      ┌──────────┐      │
+│ │ 好的 │      │ 稍后提醒  │      │
+│ └──────┘      └──────────┘      │
+└──────────────────────────────────┘
+```
+
+**受保护状态**：外部 payload 无法覆盖此状态
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击"好的" | 1. 发送 `reminder_ok`<br>2. 关闭弹窗 | `[reminderPopup] → [focusing/idle]` | 恢复原大小 | `reminder_ok` |
+| 点击"稍后提醒" | 1. 发送 `remind_later`<br>2. 关闭弹窗<br>3. 主应用显示选择框 | `[reminderPopup] → [focusing/idle]` | 恢复原大小 | `remind_later` |
+| 拖动 | 移动窗口 | 不变 | 不变 | - |
+
+---
+
+### 10. 双胶囊提醒 (ReminderSplit)
+
+**触发条件**：专注状态下收到提醒
+
+```
+┌──────────────────────────────────────────────┐
+│  🎯 25:00          📝 会议 15min             │  ← 紧凑模式
+└──────────────────────────────────────────────┘
+
+点击右侧胶囊后：
+
+┌──────────────────────────────────────────────┐
+│  🎯 25:00          📝 会议 15min             │
+├──────────────────────────────────────────────┤
+│ 📝 待办：会议                                 │
+│ 301会议室                                     │
+│ 14:00 ~ 15:00 | 还有15分钟开始                │
+│ ┌──────┐                     ┌──────────┐    │
+│ │ 好的 │                     │ 稍后提醒  │    │
+│ └──────┘                     └──────────┘    │
+└──────────────────────────────────────────────┘
+```
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 点击左侧胶囊 | 展开/收起专注详情 | `[reminderSplit]` 不变 | 480x46 ↔ 320x300 | - |
+| 点击右侧胶囊 | 展开/收起提醒详情 | `[reminderSplit]` 不变 | 480x46 ↔ 320x300 | - |
+| 展开后点"好的" | 确认提醒，收起 | `[reminderSplit] → [focusing]` | 320x300 → 100x46 | `reminder_ok` |
+| 展开后点"稍后提醒" | 稍后提醒，收起 | `[reminderSplit] → [focusing]` | 320x300 → 100x46 | `remind_later` |
+
+---
+
+### 11. Hover 展开 (HoverWide)
+
+**触发条件**：鼠标悬停在 idle 或 focusing 状态上
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 待办事项              │ 14:30 │              13:00 课程                   │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+| 用户操作 | 预期行为 | 栈变化 | 窗口大小 | 发送 Action |
+|----------|----------|--------|----------|-------------|
+| 鼠标悬停 | 展开为 hoverWide (延迟100ms) | `[idle] → [idle, hoverWide]` | 120x34 → 380x46 | - |
+| 鼠标离开 | 收回 (延迟120ms) | `[idle, hoverWide] → [idle]` | 380x46 → 120x34 | - |
+| 点击空白区域 | 如果是专注，展开 stackedCard | `[focusing, hoverWide] → [focusing, stackedCard]` | 380x46 → 280x140 | - |
+| 拖动 | 移动窗口 | 不变 | 不变 | - |
+
+---
+
+### 状态转换总览
+
+```
+                          ┌─────────────────┐
+                          │     idle        │
+                          └────────┬────────┘
+                                   │ 点击/悬停
+                                   ▼
+                          ┌─────────────────┐
+                          │   hoverWide     │
+                          └────────┬────────┘
+                                   │ 离开/点击
+                                   ▼
+        ┌────────────────────────────────────────────────┐
+        │                    focusing                    │
+        └───────────────────────┬────────────────────────┘
+                                │ 点击
+                                ▼
+        ┌────────────────────────────────────────────────┐
+        │                  stackedCard                   │
+        └───────┬────────────────────────────┬───────────┘
+                │ 点击完成                    │ 点击放弃
+                ▼                            ▼
+        ┌───────────────┐            ┌───────────────┐
+        │ finishConfirm │            │ abandonConfirm│
+        └───────┬───────┘            └───────┬───────┘
+                │ 确认                       │ 确认
+                ▼                            ▼
+        ┌───────────────┐            ┌───────────────┐
+        │ finishFinal   │            │     idle      │
+        └───────┬───────┘            └───────────────┘
+                │ 点击好的
+                ▼
+        ┌───────────────┐
+        │     idle      │
+        └───────────────┘
+```
+
+---
+
+### 中断场景
+
+| 场景 | 当前状态 | 中断来源 | 行为 |
+|------|----------|----------|------|
+| 专注中复制链接 | focusing | 剪贴板 | push(copiedLink)，10秒后自动恢复 |
+| 专注中收到提醒 | focusing | 提醒检查 | replace(reminderSplit)，用户确认后恢复 |
+| 完成确认中复制链接 | finishConfirm | 剪贴板 | **被阻止**，finishConfirm 是受保护状态 |
+| 弹窗中收到新payload | reminderPopup | 主应用 | **被阻止**，reminderPopup 是受保护状态 |
+
+---
 
 ## 核心概念
 
-### 1. 状态 (States)
+### 栈式状态管理
 
-灵动岛通过有限状态机运行。每个状态定义：
-- 窗口尺寸
-- UI 内容
-- 状态转换规则
+```dart
+// 栈操作 API
+_pushState(state, payload, {autoDismiss})  // 入栈展示
+_popState(expectedState)                    // 出栈恢复
+_replaceState(state, payload)              // 替换栈顶
+_clearToIdle()                             // 清空回 idle
+```
 
-**内置状态：**
+### 受保护状态
 
-| 状态 | 说明 | 尺寸 |
-|------|------|------|
-| `idle` | 默认时钟显示 | 120x34 |
-| `focusing` | 专注计时中 | 100x46 |
-| `hoverWide` | 鼠标悬停展开 | 380x46 |
-| `splitAlert` | 分屏通知 | 300x36 |
-| `stackedCard` | 详细卡片视图 | 280x140 |
-| `reminderPopup` | 提醒弹窗 | 320x150/180 |
-| `reminderSplit` | 双胶囊提醒 | 480x46 或 320x300+ |
-| `reminderCapsule` | 单胶囊提醒 | 160x46 |
-| `copiedLink` | 复制链接通知 | 340x46 |
+```dart
+final protectedStates = [
+  IslandState.finishConfirm,   // 完成确认 - 用户必须选择
+  IslandState.abandonConfirm,  // 放弃确认 - 用户必须选择
+  IslandState.finishFinal,     // 完成最终 - 用户点击后消失
+  IslandState.copiedLink,      // 复制链接 - 超时或用户关闭
+  IslandState.reminderPopup,   // 提醒弹窗 - 用户确认后消失
+];
+```
 
-### 2. 数据载荷 (Payload)
-
-数据通过 `Map<String, dynamic>` 格式传递到灵动岛：
+### 数据载荷结构
 
 ```dart
 {
   'state': 'focusing',           // 目标状态
   'focusData': {
     'title': '任务名称',
-    'endMs': 1234567890,         // 结束时间戳 (毫秒)
-    'timeLabel': '25:00',        // 时间显示
-    'isCountdown': true,         // 是否倒计时
-    'tags': ['学习', '数学'],    // 标签
-    'syncMode': 'local',         // 同步模式
+    'endMs': 1234567890,
+    'timeLabel': '25:00',
+    'isCountdown': true,
+    'tags': ['学习'],
+    'syncMode': 'local',
   },
   'reminderPopupData': {
-    'type': 'todo',              // 类型: 'todo' 或 'course'
+    'type': 'todo',
     'title': '会议',
     'subtitle': '301会议室',
-    'startTime': '14:00',
-    'endTime': '15:00',
-    'minutesUntil': 15,          // 距开始/结束的分钟数
-    'isEnding': false,           // 是否是结束提醒
-    'itemId': 'unique-id',       // 唯一标识
+    'minutesUntil': 15,
+    'isEnding': false,
+    'itemId': 'unique-id',
   },
   'copiedLinkData': {
     'url': 'https://example.com',
-    'displayUrl': 'example.com', // 显示用的简化 URL
+    'displayUrl': 'example.com',
   },
 }
 ```
 
-### 3. 操作 (Actions)
+### 操作列表
 
-用户交互会触发操作，发送回主应用：
+| 操作 | 说明 | 触发时机 | 数据 |
+|------|------|----------|------|
+| `finish` | 专注完成 | 用户确认完成 | remainingSecs |
+| `abandon` | 放弃专注 | 用户确认放弃 | 0 |
+| `reminder_ok` | 确认提醒 | 点击"好的" | - |
+| `remind_later` | 稍后提醒 | 点击"稍后提醒" | - |
+| `open_link` | 打开链接 | 点击"打开" | url |
 
-| 操作 | 说明 | 数据 |
-|------|------|------|
-| `finish` | 专注完成 | remainingSecs |
-| `abandon` | 放弃专注 | 0 |
-| `reminder_ok` | 确认提醒 | - |
-| `remind_later` | 稍后提醒 | - |
-| `open_link` | 打开链接 | url |
-| `check_reminder` | 强制检查提醒 | - |
-| `snooze_reminder` | 延迟提醒 | snoozeMinutes |
+---
 
 ## 扩展点
 
-### 添加自定义状态
+### 添加新状态
 
-**步骤 1：在 `island_config.dart` 中定义状态**
+1. 在 `island_ui.dart` 的 `IslandState` 枚举中添加
+2. 在 `_computeState()` 中添加映射
+3. 在 `_buildContent()` 中添加渲染
+4. 在 `_targetSizeFor()` 中添加尺寸
+5. 决定是否需要受保护
+
+### 添加新的受保护状态
 
 ```dart
-enum IslandStateConfig {
+final protectedStates = [
   // ... 现有状态
-  myCustomState,  // 新增状态
-}
+  IslandState.myNewProtectedState,
+];
 ```
 
-**步骤 2：在 `IslandConfig.sizeForState()` 中添加尺寸配置**
-
-```dart
-case IslandStateConfig.myCustomState:
-  return const Size(200, 100);
-```
-
-**步骤 3：创建状态处理器（可选）**
-
-```dart
-class MyCustomHandler extends IslandStateHandler {
-  @override
-  String get stateId => 'my_custom_state';
-
-  @override
-  IslandStateConfig get configState => IslandStateConfig.myCustomState;
-
-  @override
-  Widget build(
-    BuildContext context,
-    Map<String, dynamic>? payload,
-    IslandStateContext stateContext,
-  ) {
-    return Container(
-      color: Colors.blue,
-      child: Text('自定义状态'),
-    );
-  }
-}
-```
-
-**步骤 4：注册处理器**
-
-```dart
-IslandStateRegistry.register(MyCustomHandler());
-```
-
-### 修改时间常量
-
-所有时间值集中在 `island_config.dart` 中：
-
-```dart
-class IslandConfig {
-  // 鼠标悬停行为
-  static const Duration hoverEnterDelay = Duration(milliseconds: 100);
-  static const Duration hoverExitDelay = Duration(milliseconds: 120);
-  static const Duration hoverMinStay = Duration(milliseconds: 400);
-
-  // 状态切换
-  static const Duration transitionDuration = Duration(milliseconds: 200);
-  static const int transitionDebounceMs = 200;
-
-  // 提醒相关
-  static const Duration reminderCheckInterval = Duration(seconds: 10);
-  static const Duration copiedLinkDismissDuration = Duration(seconds: 10);
-}
-```
-
-### 自定义颜色
-
-```dart
-class IslandConfig {
-  static const Color successColor = Color(0xFF4CAF50);   // 成功绿
-  static const Color dangerColor = Color(0xFFD32F2F);    // 危险红
-  static const Color warningColor = Color(0xFFFF9800);   // 警告橙
-  static const Color focusColor = Color(0xFF6366F1);     // 专注紫
-  static const Color bgColor = Color(0xFF1C1C1E);        // 背景色
-}
-```
-
-### 添加提醒类型
-
-在 `island_reminder.dart` 中扩展提醒检查逻辑：
-
-```dart
-/// 检查自定义提醒源
-static Future<List<Map<String, dynamic>>> _checkCustomReminders(
-  DateTime now,
-) async {
-  final reminders = <Map<String, dynamic>>[];
-
-  // 你的自定义提醒数据源
-  final items = await getCustomReminders();
-  for (final item in items) {
-    final diff = item.startTime.difference(now).inMinutes;
-    if (diff >= 0 && diff <= 20) {
-      reminders.add({
-        'type': 'custom',
-        'title': item.title,
-        'subtitle': item.description,
-        'minutesUntil': diff,
-        'isEnding': false,
-        'itemId': item.id,
-      });
-    }
-  }
-
-  return reminders;
-}
-```
-
-然后在 `checkUpcomingReminder()` 中调用：
-
-```dart
-final customReminders = await _checkCustomReminders(now);
-allReminders.addAll(customReminders);
-```
-
-### Win32 工具函数
-
-使用 `island_win32.dart` 进行窗口操作：
-
-```dart
-import 'island_win32.dart';
-
-// 获取窗口句柄
-final hwnd = getSmallestFlutterWindow();
-
-// 调整窗口大小
-resizeCurrentWindow(200, 100);
-
-// 移动窗口
-moveCurrentWindow(100, 200);
-
-// 获取当前位置
-final rect = getWindowRect();
-
-// 开始拖动
-startWindowDragging();
-
-// 获取 DPI 缩放比例
-final scale = getIslandScaleFactor(hwnd);
-```
-
-## IPC 通信
-
-### 发送数据到灵动岛
-
-从主应用使用 `IslandManager`：
-
-```dart
-final manager = IslandManager();
-await manager.createIsland('island-1');
-
-// 发送数据载荷
-await manager.sendStructuredPayload('island-1', {
-  'state': 'focusing',
-  'focusData': {
-    'title': '学习时间',
-    'endMs': DateTime.now().add(Duration(minutes: 25)).millisecondsSinceEpoch,
-  },
-});
-```
-
-### 接收操作
-
-操作通过 `island_action.json` 文件写入，由 `IslandChannel` 读取：
-
-```dart
-IslandChannel.actionStream.listen((event) {
-  final action = event['action'];
-  final windowId = event['windowId'];
-
-  switch (action) {
-    case 'finish':
-      // 处理专注完成
-      break;
-    case 'reminder_ok':
-      // 处理提醒确认
-      break;
-  }
-});
-```
-
-## 数据缓存机制
-
-### IslandDataProvider 缓存
-
-`IslandDataProvider` 提供智能缓存，减少重复计算：
-
-| 数据类型 | 缓存时长 | 失效方法 |
-|----------|---------|---------|
-| 槽位数据 (todos/courses) | 30秒 | `invalidateSlotCache()` |
-| Style 设置 | 5分钟 | `invalidateCache()` |
-| Priority 列表 | 5分钟 | `invalidateCache()` |
-| Theme | 5分钟 | `invalidateCache()` |
-
-**使用示例：**
-
-```dart
-import '../services/float_window_service.dart';
-
-// 数据变更时刷新槽位缓存
-FloatWindowService.invalidateSlotCache();
-
-// 完全重置缓存
-FloatWindowService.invalidateCache();
-
-// 获取调试信息
-final debugInfo = FloatWindowService.getDebugInfo();
-```
-
-### 变化检测
-
-当以下条件满足时，更新会被跳过：
-- `_lastSentEndMs` 未变化
-- `_lastSentState` 未变化
-- 非强制更新 (`forceReset = false`)
+---
 
 ## 最佳实践
 
-1. **使用常量**：始终使用 `IslandConfig` 管理时间、颜色和尺寸
-2. **状态保护**：切换状态前检查当前状态，防止循环切换
-3. **防抖处理**：用户交互使用适当的防抖延迟
-4. **内存清理**：在 `dispose()` 中取消所有定时器
-5. **错误处理**：异步操作用 try-catch 包裹
-6. **测试调试**：使用 `IslandDebugPage` 测试 UI 状态
+1. **使用栈式 API**：所有临时状态用 `_pushState` / `_popState`
+2. **受保护状态**：需要用户交互的状态添加到 `protectedStates`
+3. **自动消失**：临时通知使用 `autoDismiss` 参数
+4. **错误处理**：栈操作用 try-catch 包裹
 
-## 调试模式
-
-使用调试页面测试状态，无需完整 IPC：
-
-```dart
-import 'package:math_quiz_app/windows_island/island_debug.dart';
-
-// 在应用中
-Navigator.push(context, MaterialPageRoute(
-  builder: (_) => IslandDebugPage(),
-));
-```
+---
 
 ## 问题排查
 
-| 问题 | 解决方案 |
-|------|----------|
-| 窗口不透明 | 检查 `initFfiTransparent()` 中的 Win32 初始化 |
-| 状态不更新 | 验证 payload 格式是否符合预期结构 |
-| 定时器泄漏 | 确保 `dispose()` 取消了所有定时器 |
-| IPC 不工作 | 检查 `island_action.json` 的权限和路径 |
-| 槽位数据不更新 | 调用 `FloatWindowService.invalidateSlotCache()` |
-| 性能问题 | 检查缓存是否生效，使用 `getDebugInfo()` |
-
-## 文件参考
-
-| 文件 | 用途 | 行数 |
-|------|------|------|
-| `island_config.dart` | 常量和配置 | ~170 |
-| `island_win32.dart` | Win32 API 封装 | ~280 |
-| `island_reminder.dart` | 提醒服务 | ~200 |
-| `island_state_handler.dart` | 状态注册器 | ~150 |
-| `island_payload.dart` | 数据模型 | ~130 |
-| `island_entry.dart` | 入口点 | ~350 |
-| `island_ui.dart` | UI 组件 | ~1000 |
-| `island_manager.dart` | 窗口管理器 | ~330 |
-| `island_channel.dart` | IPC 通道 | ~260 |
-| `island_data_provider.dart` | 数据聚合中心 | ~250 |
-| `island_slot_provider.dart` | 槽位数据提供 | ~200 |
-| `clipboard_service.dart` | 剪贴板服务 | ~140 |
-| `float_window_service.dart` | 悬浮窗服务 | ~400 |
-| `snooze_dialog.dart` | 稍后提醒对话框 | ~90 |
+| 问题 | 原因 | 解决方案 |
+|------|------|----------|
+| 按钮无响应 | `setState` 未调用 | 确保 `_pushState` 正常执行 |
+| 完成后窗口异常 | 被外部 payload 覆盖 | 添加到受保护状态列表 |
+| 链接提示不消失 | `autoDismiss` 未设置 | 检查 `_pushState` 参数 |
+| 状态混乱 | 栈操作异常 | 检查 `_popState` 的 expectedState 匹配 |

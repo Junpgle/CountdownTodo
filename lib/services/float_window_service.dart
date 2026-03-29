@@ -96,18 +96,26 @@ class FloatWindowService {
         },
       };
 
-      final winId = IslandManager().getCachedWindowId('island-1');
+      var winId = IslandManager().getCachedWindowId('island-1');
       debugPrint('[FloatWindow] island-1 windowId: $winId');
 
       if (winId == null) {
         debugPrint('[FloatWindow] Island not found, attempting to create');
-        await IslandManager().createIsland('island-1');
+        winId = await IslandManager().createIsland('island-1');
+        debugPrint('[FloatWindow] Created island, windowId: $winId');
+        if (winId == null) {
+          debugPrint('[FloatWindow] Failed to create island');
+          return;
+        }
       }
 
-      await IslandManager().sendStructuredPayload('island-1', payload);
-      debugPrint('[FloatWindow] Sent copied_link payload: $displayUrl');
-    } catch (e) {
-      debugPrint('[FloatWindow] Failed to show copied link island: $e');
+      final sent =
+          await IslandManager().sendStructuredPayload('island-1', payload);
+      debugPrint(
+          '[FloatWindow] Sent copied_link payload: $displayUrl, success: $sent');
+    } catch (e, stackTrace) {
+      debugPrint(
+          '[FloatWindow] Failed to show copied link island: $e\n$stackTrace');
     }
   }
 
@@ -166,6 +174,11 @@ class FloatWindowService {
         case 'remind_later':
           _handleRemindLater();
           break;
+        case 'link_opened':
+          // 链接已打开，刷新岛的状态恢复到之前的数据
+          debugPrint('[FloatWindow] link_opened, refreshing island state');
+          _refreshIslandAfterLinkOpened();
+          break;
         case 'bounds_changed':
           final bounds = payload?['bounds'] as Map<String, dynamic>?;
           if (bounds != null) {
@@ -178,6 +191,26 @@ class FloatWindowService {
       }
     } catch (e) {
       debugPrint('[FloatWindow] Failed to handle island action: $e');
+    }
+  }
+
+  /// 刷新岛的状态（在打开链接后恢复）
+  static Future<void> _refreshIslandAfterLinkOpened() async {
+    try {
+      // 强制刷新槽位缓存
+      _dataProvider.invalidateSlotCache();
+      // 重置上次复制的URL，允许再次检测相同URL
+      _lastCopiedUrl = null;
+
+      // Add delay to let the island restore its state first
+      // before sending a refresh payload
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // 使用当前状态重新更新岛
+      await update(forceReset: true);
+      debugPrint('[FloatWindow] Island state refreshed after link opened');
+    } catch (e) {
+      debugPrint('[FloatWindow] Failed to refresh island after link: $e');
     }
   }
 
@@ -421,22 +454,32 @@ class FloatWindowService {
     try {
       final islandId = 'island-1';
       var winId = IslandManager().getCachedWindowId(islandId);
+      debugPrint(
+          '[FloatWindow] _deliverToIsland: winId=$winId, state=${structured['state']}');
 
       if (winId == null) {
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         if (nowMs - _lastIslandCreateAttemptMs <
             FloatWindowConfig.islandCreateCooldownMs) {
+          debugPrint('[FloatWindow] Cooldown active, waiting...');
+          // Wait a bit and try again
+          await Future.delayed(Duration(milliseconds: 500));
           winId = IslandManager().getCachedWindowId(islandId);
-        } else {
+          debugPrint('[FloatWindow] After wait, winId=$winId');
+        }
+
+        if (winId == null) {
           _lastIslandCreateAttemptMs = nowMs;
           debugPrint('[FloatWindow] Creating island: $islandId');
           winId = await IslandManager().createIsland(islandId);
+          debugPrint('[FloatWindow] Created island: winId=$winId');
         }
       }
 
       if (winId != null) {
         final sent =
             await IslandManager().sendStructuredPayload(islandId, structured);
+        debugPrint('[FloatWindow] sendStructuredPayload result: $sent');
         if (sent) {
           debugPrint(
               '[FloatWindow] Sent payload to island: state=${structured['state']}');
@@ -444,9 +487,12 @@ class FloatWindowService {
             debugPayload.value = null;
           } catch (_) {}
         }
+      } else {
+        debugPrint(
+            '[FloatWindow] Cannot deliver: winId is null after all attempts');
       }
-    } catch (e) {
-      debugPrint('[FloatWindow] Island delivery failed: $e');
+    } catch (e, stackTrace) {
+      debugPrint('[FloatWindow] Island delivery failed: $e\n$stackTrace');
     }
   }
 
