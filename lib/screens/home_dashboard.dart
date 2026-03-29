@@ -1079,7 +1079,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                 'id': t.id,
                 'title': t.title,
                 'remark': t.remark,
-                'dueDate': t.dueDate?.millisecondsSinceEpoch,
+                'dueDate': t.dueDate?.toUtc().millisecondsSinceEpoch,
                 'createdDate': t.createdDate,
                 'createdAt': t.createdAt,
                 'isDone': t.isDone,

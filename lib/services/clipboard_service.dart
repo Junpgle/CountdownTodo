@@ -4,34 +4,68 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
 
+/// Configuration constants for ClipboardService
+class ClipboardConfig {
+  ClipboardConfig._();
+
+  /// Polling interval for clipboard changes
+  static const Duration pollInterval = Duration(milliseconds: 500);
+
+  /// Maximum URL length to consider valid
+  static const int maxUrlLength = 2048;
+
+  /// Maximum display URL length before truncation
+  static const int maxDisplayLength = 30;
+
+  /// Allowed URL schemes
+  static const Set<String> allowedSchemes = {'http', 'https', 'ftp'};
+}
+
+/// Service for monitoring clipboard and detecting copied URLs.
+/// Uses Win32 API for direct clipboard access on Windows.
 class ClipboardService {
+  static final ClipboardService _instance = ClipboardService._internal();
+
+  factory ClipboardService() => _instance;
+
+  ClipboardService._internal();
+
   Timer? _pollTimer;
   String? _lastClipboardContent;
   final _urlController = StreamController<String>.broadcast();
   bool _initialized = false;
 
+  /// Stream of detected URLs from clipboard
   Stream<String> get onUrlCopied => _urlController.stream;
 
+  /// Whether the service is currently listening
+  bool get isListening => _pollTimer?.isActive ?? false;
+
+  /// Whether the service has been initialized
+  bool get isInitialized => _initialized;
+
+  /// Validate if a string is a valid URL
   bool _isValidUrl(String text) {
     final trimmed = text.trim();
-    if (trimmed.isEmpty || trimmed.length > 2048) return false;
+    if (trimmed.isEmpty || trimmed.length > ClipboardConfig.maxUrlLength) {
+      return false;
+    }
 
-    // 没有 scheme 时补上 https:// 再解析
+    // Add scheme if missing before parsing
     final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
     final toParse = hasScheme ? trimmed : 'https://$trimmed';
 
     final uri = Uri.tryParse(toParse);
     if (uri == null || !uri.hasScheme || !uri.hasAuthority) return false;
 
-    // 只允许常见协议
-    if (!['http', 'https', 'ftp'].contains(uri.scheme.toLowerCase())) {
+    if (!ClipboardConfig.allowedSchemes.contains(uri.scheme.toLowerCase())) {
       return false;
     }
 
     final host = uri.host;
     if (host.isEmpty) return false;
 
-    // localhost、IPv4、普通域名（至少有一个点）
+    // Valid hosts: localhost, IPv4, or domain with at least one dot
     final isValidHost = host == 'localhost' ||
         RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
         RegExp(r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$').hasMatch(host);
@@ -39,30 +73,33 @@ class ClipboardService {
     return isValidHost;
   }
 
+  /// Truncate URL for display purposes
   String _truncateForDisplay(String url) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return trimmed;
 
     try {
-      // 与 _isValidUrl 保持一致：没有 scheme 时补上再解析
-      final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
+      final hasScheme =
+          RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
       final uri = Uri.parse(hasScheme ? trimmed : 'https://$trimmed');
 
       final host = uri.host;
       final path = uri.path.isEmpty || uri.path == '/' ? '' : uri.path;
 
-      // 优先显示 host + 部分 path，更有辨识度
       final display = path.isNotEmpty ? '$host$path' : host;
 
-      if (display.length > 30) {
-        return '${display.substring(0, 30)}...';
+      if (display.length > ClipboardConfig.maxDisplayLength) {
+        return '${display.substring(0, ClipboardConfig.maxDisplayLength)}...';
       }
       return display.isNotEmpty ? display : trimmed;
     } catch (_) {
-      return trimmed.length > 30 ? '${trimmed.substring(0, 30)}...' : trimmed;
+      return trimmed.length > ClipboardConfig.maxDisplayLength
+          ? '${trimmed.substring(0, ClipboardConfig.maxDisplayLength)}...'
+          : trimmed;
     }
   }
 
+  /// Get text from Windows clipboard using Win32 API
   String? _getClipboardText() {
     if (IsClipboardFormatAvailable(CF_UNICODETEXT) == 0) {
       return null;
@@ -72,13 +109,11 @@ class ClipboardService {
     }
     try {
       final hData = GetClipboardData(CF_UNICODETEXT);
-      if (hData == 0) {
-        return null;
-      }
+      if (hData == 0) return null;
+
       final pData = Pointer<Uint8>.fromAddress(hData);
-      if (pData == nullptr) {
-        return null;
-      }
+      if (pData == nullptr) return null;
+
       try {
         final text = pData.cast<Utf16>().toDartString();
         return text;
@@ -90,31 +125,31 @@ class ClipboardService {
     }
   }
 
+  /// Initialize clipboard state
   Future<void> _initClipboard() async {
     if (_initialized) return;
     _initialized = true;
     try {
       _lastClipboardContent = _getClipboardText()?.trim();
-      final preview = _lastClipboardContent?.length ?? 0;
-      debugPrint(
-          '[ClipboardService] Initialized, current clipboard: ${preview > 30 ? "..." : ""}');
+      debugPrint('[ClipboardService] Initialized');
     } catch (e) {
       debugPrint('[ClipboardService] Init error: $e');
       _initialized = false;
     }
   }
 
+  /// Start listening for clipboard changes
   void startListening() async {
     await _initClipboard();
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+    _pollTimer = Timer.periodic(ClipboardConfig.pollInterval, (_) {
       try {
         final content = _getClipboardText()?.trim();
         if (content == null || content.isEmpty) return;
 
         final isNew = content != _lastClipboardContent;
-
         if (!isNew) return;
+
         _lastClipboardContent = content;
 
         if (_isValidUrl(content)) {
@@ -128,13 +163,22 @@ class ClipboardService {
     });
   }
 
+  /// Stop listening for clipboard changes
   void stopListening() {
     _pollTimer?.cancel();
     _pollTimer = null;
   }
 
+  /// Reset the last known clipboard content (useful after URL is processed)
+  void resetLastContent() {
+    _lastClipboardContent = _getClipboardText()?.trim();
+  }
+
+  /// Dispose resources
   void dispose() {
     stopListening();
-    _urlController.close();
+    if (!_urlController.isClosed) {
+      _urlController.close();
+    }
   }
 }
