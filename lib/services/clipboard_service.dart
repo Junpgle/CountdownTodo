@@ -15,26 +15,51 @@ class ClipboardService {
   bool _isValidUrl(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty || trimmed.length > 2048) return false;
-    final urlRegex = RegExp(
-      r'^(https?|ftp)://[^\s/$.?#].[^\s]*$',
-      caseSensitive: false,
-    );
-    return urlRegex.hasMatch(trimmed);
+
+    // 没有 scheme 时补上 https:// 再解析
+    final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
+    final toParse = hasScheme ? trimmed : 'https://$trimmed';
+
+    final uri = Uri.tryParse(toParse);
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) return false;
+
+    // 只允许常见协议
+    if (!['http', 'https', 'ftp'].contains(uri.scheme.toLowerCase())) {
+      return false;
+    }
+
+    final host = uri.host;
+    if (host.isEmpty) return false;
+
+    // localhost、IPv4、普通域名（至少有一个点）
+    final isValidHost = host == 'localhost' ||
+        RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
+        RegExp(r'^[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+$').hasMatch(host);
+
+    return isValidHost;
   }
 
   String _truncateForDisplay(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return trimmed;
+
     try {
-      final uri = Uri.parse(url);
+      // 与 _isValidUrl 保持一致：没有 scheme 时补上再解析
+      final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
+      final uri = Uri.parse(hasScheme ? trimmed : 'https://$trimmed');
+
       final host = uri.host;
-      if (host.length > 20) {
-        return '${host.substring(0, 20)}...';
+      final path = uri.path.isEmpty || uri.path == '/' ? '' : uri.path;
+
+      // 优先显示 host + 部分 path，更有辨识度
+      final display = path.isNotEmpty ? '$host$path' : host;
+
+      if (display.length > 30) {
+        return '${display.substring(0, 30)}...';
       }
-      return host;
+      return display.isNotEmpty ? display : trimmed;
     } catch (_) {
-      if (url.length > 25) {
-        return '${url.substring(0, 25)}...';
-      }
-      return url;
+      return trimmed.length > 30 ? '${trimmed.substring(0, 30)}...' : trimmed;
     }
   }
 

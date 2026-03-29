@@ -304,7 +304,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     // 处理复制链接数据
     final rawCopiedLinkData = payload['copiedLinkData'];
-    if (rawCopiedLinkData != null && stateStr == 'copied_link') {
+    if (rawCopiedLinkData != null) {
       try {
         _copiedLinkData = Map<String, dynamic>.from(rawCopiedLinkData as Map);
       } catch (e) {
@@ -313,6 +313,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       if (_copiedLinkData != null) {
         _startCopiedLinkTimer();
       }
+    }
+    // 注意：不在此处清除 _copiedLinkData，由 _restorePreviousState 统一管理
+
+    // 🚀 关键修复：已处于 copiedLink 状态时，忽略后续状态变化，
+    // 避免定时器更新等 payload 覆盖掉链接提示并丢失数据
+    if (_state == IslandState.copiedLink &&
+        nextStateCandidate != IslandState.copiedLink) {
+      // 仍然允许更新倒计时等内部数据，但不切换状态
+      _ensureTimerRunning();
+      return;
     }
 
     if (nextStateCandidate != _state) {
