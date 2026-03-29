@@ -856,8 +856,9 @@ class _HomeDashboardState extends State<HomeDashboard>
       // 将待办数据写入共享文件
       await _saveTodosToSharedFile(allTodos);
 
-      // 通知 Island 检查提醒
+      // 通知 Island 检查提醒并刷新槽位缓存
       FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
 
       _syncTodoNotification();
       await WidgetService.updateTodoWidget(_todos);
@@ -1143,7 +1144,11 @@ class _HomeDashboardState extends State<HomeDashboard>
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('✅ 数据同步完成'), backgroundColor: Colors.green));
         }
-        if (hasChanges) _loadAllData(); // _loadAllData 内部会重新 scheduleAll
+        if (hasChanges) {
+          // 同步后数据有变化，刷新 Island 槽位缓存
+          FloatWindowService.invalidateSlotCache();
+          _loadAllData(); // _loadAllData 内部会重新 scheduleAll
+        }
       }
       // ... 前面代码保持不变
     } catch (e) {
@@ -1406,8 +1411,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                               widget.username, allTodos);
                           // 将待办数据写入共享文件供 Island 读取
                           await _saveTodosToSharedFile(allTodos);
-                          // 通知 Island 检查提醒
+                          // 通知 Island 检查提醒并刷新槽位缓存
                           FloatWindowService.triggerReminderCheck();
+                          FloatWindowService.invalidateSlotCache();
                           _syncTodoNotification();
                           await WidgetService.updateTodoWidget(_todos);
                         },

@@ -11,12 +11,11 @@ import '../main.dart' show appNavigatorKey;
 import '../storage_service.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
-import '../windows_island/island_payload.dart';
 import '../windows_island/island_manager.dart';
 import '../windows_island/island_channel.dart';
 import 'clipboard_service.dart';
 import 'snooze_dialog.dart';
-import 'island_slot_provider.dart';
+import 'island_data_provider.dart';
 
 /// Configuration constants for FloatWindowService
 class FloatWindowConfig {
@@ -36,8 +35,6 @@ class FloatWindowConfig {
 /// Service for managing the floating window (island) integration.
 /// Handles clipboard monitoring, action processing, and island communication.
 class FloatWindowService {
-  static const _dmwChannel = MethodChannel('mixin.one/desktop_multi_window');
-
   static bool _processingAction = false;
   static ClipboardService? _clipboardService;
   static String? _lastCopiedUrl;
@@ -58,6 +55,9 @@ class FloatWindowService {
 
   // Island creation throttling
   static int _lastIslandCreateAttemptMs = 0;
+
+  // Data provider with caching
+  static final _dataProvider = IslandDataProvider();
 
   /// Initialize the service
   static Future<void> init() async {
@@ -332,10 +332,13 @@ class FloatWindowService {
     _lastTags = const [];
     _lastIsLocal = true;
     _lastMode = 0;
+    _dataProvider.resetTrackingState();
   }
 
-  // ── Main Update Method ─────────────────────────────────────────────────
+  // ── Main Update Method (Simplified) ────────────────────────────────────
 
+  /// Update the island with current state.
+  /// This is the main entry point for all island updates.
   static Future<void> update({
     int? endMs,
     String? title,
@@ -372,181 +375,79 @@ class FloatWindowService {
       }
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    try {
-      await prefs.reload();
-    } catch (_) {}
-
-    final style = prefs.getInt('float_window_style') ?? 0;
-
+    // Check if island is enabled
+    final style = await _dataProvider.getStyle();
     if (style != 1) {
-      if (Platform.isWindows) {
-        try {
-          await IslandManager().destroyCachedIsland('island-1');
-        } catch (_) {}
-      }
+      try {
+        await IslandManager().destroyCachedIsland('island-1');
+      } catch (_) {}
       return;
     }
 
-    // Get slot data
-    final defaultPriority = ['course', 'countdown', 'todo'];
-    final priorityList =
-        prefs.getStringList('island_slot_priority') ?? defaultPriority;
-
-    String leftStr = '';
-    String rightStr = '';
-    IslandSlotData leftSlotData = const IslandSlotData.empty();
-    IslandSlotData rightSlotData = const IslandSlotData.empty();
-
-    List<IslandSlotData> validSlots = [];
-    for (String pType in priorityList) {
-      if (validSlots.length >= 2) break;
-      final slotData = await IslandSlotProvider.getSlotData(pType,
-          isLeft: validSlots.isEmpty);
-      if (!slotData.isEmpty) {
-        validSlots.add(slotData);
-      }
-    }
-
-    if (validSlots.isNotEmpty) {
-      leftSlotData = validSlots[0];
-      leftStr = leftSlotData.display;
-    }
-    if (validSlots.length > 1) {
-      rightSlotData = validSlots[1];
-      rightStr = rightSlotData.display;
-    }
-
-    if (_lastEndMs == 0) {
-      topBarLeft ??= leftStr;
-      topBarRight ??= rightStr;
-    }
-
-    // Get reminders if requested
-    if (reminderQueue == null && includeReminders) {
-      reminderQueue = await IslandSlotProvider.getReminderQueue();
-    }
-    reminderQueue ??= <Map<String, String>>[];
-
-    final detailSource = leftSlotData.isNotEmpty ? leftSlotData : rightSlotData;
-
-    // Build payload
-    final shouldForceReset =
-        forceReset || (prevEndMsSnapshot == 0 && _lastEndMs > 0);
-
-    final payload = <String, Object>{
-      'endMs': _lastEndMs,
-      'title': _lastTitle,
-      'tags': _lastTags,
-      'isLocal': _lastIsLocal,
-      'mode': _lastMode,
-      'style': style,
-      'left': leftStr,
-      'right': rightStr,
-      'forceReset': shouldForceReset,
-      'topBarLeft': topBarLeft ?? '',
-      'topBarRight': topBarRight ?? '',
-      'reminderQueue': reminderQueue,
-      'detail_type': detailSource.type,
-      'detail_title': detailSource.detailTitle,
-      'detail_subtitle': detailSource.detailSubtitle,
-      'detail_location': detailSource.detailLocation,
-      'detail_time': detailSource.detailTime,
-      'detail_note': detailSource.detailNote,
-    };
-
-    // Deliver to island
-    final int styleInt =
-        (payload['style'] is int) ? payload['style'] as int : 0;
-    if (Platform.isWindows && styleInt == 1) {
-      try {
-        final islandId = 'island-1';
-        var winId = IslandManager().getCachedWindowId(islandId);
-
-        if (winId == null) {
-          final nowMs = DateTime.now().millisecondsSinceEpoch;
-          if (nowMs - _lastIslandCreateAttemptMs <
-              FloatWindowConfig.islandCreateCooldownMs) {
-            winId = IslandManager().getCachedWindowId(islandId);
-          } else {
-            _lastIslandCreateAttemptMs = nowMs;
-            winId = await IslandManager().createIsland(islandId);
-          }
-        }
-
-        if (winId != null) {
-          final dto = IslandPayload.fromMap(payload);
-          final structured = _buildStructuredPayload(dto, prefs);
-
-          final sent =
-              await IslandManager().sendStructuredPayload(islandId, structured);
-          if (sent) {
-            try {
-              debugPayload.value = null;
-            } catch (_) {}
-            return;
-          }
-        }
-      } catch (e) {
-        debugPrint('[FloatWindow] IslandManager delivery failed: $e');
-      }
-    }
-  }
-
-  static Map<String, dynamic> _buildStructuredPayload(
-      IslandPayload p, SharedPreferences prefs) {
-    final bool isFocusing = p.endMs > 0;
-    final state = isFocusing ? 'focusing' : 'idle';
-
-    final focusData = {
-      'title': p.title,
-      'timeLabel': (() {
-        if (p.endMs > 0) {
-          final now = DateTime.now().millisecondsSinceEpoch;
-          int secs;
-          if (p.mode == 1) {
-            secs = (now - p.endMs) ~/ 1000;
-          } else {
-            secs = (p.endMs - now) ~/ 1000;
-          }
-          if (secs < 0) secs = 0;
-          final mm = (secs ~/ 60).toString().padLeft(2, '0');
-          final ss = (secs % 60).toString().padLeft(2, '0');
-          return '$mm:$ss';
-        }
-        return '';
-      })(),
-      'isCountdown': p.mode != 1,
-      'tags': p.tags,
-      'syncMode': p.isLocal ? 'local' : 'remote',
-      'endMs': p.endMs,
-    };
-
-    final reminderData = p.reminderQueue.isNotEmpty
-        ? {
-            'title': p.reminderQueue.first['text'] ?? '',
-            'location': p.reminderQueue.first['type'] ?? '',
-            'time': p.reminderQueue.first['timeLabel'] ?? '',
-          }
-        : {};
-
-    final dashboardData = {
-      'leftSlot': p.topBarLeft.isNotEmpty ? p.topBarLeft : p.left,
-      'rightSlot': p.topBarRight.isNotEmpty ? p.topBarRight : p.right,
-    };
-
+    // Get transparent support
     final bool transparentSupported =
         IslandManager().getTransparentSupport('island-1');
 
-    return {
-      'state': state,
-      'theme': prefs.getString('theme') ?? 'system',
-      'focusData': focusData,
-      'reminderData': reminderData,
-      'dashboardData': dashboardData,
-      'transparentSupported': transparentSupported,
-      'legacy': p.toMap(),
-    };
+    // Build payload using data provider
+    final shouldForceReset =
+        forceReset || (prevEndMsSnapshot == 0 && _lastEndMs > 0);
+
+    final structured = await _dataProvider.buildPayload(
+      endMs: _lastEndMs,
+      title: _lastTitle,
+      tags: _lastTags,
+      isLocal: _lastIsLocal,
+      mode: _lastMode,
+      forceReset: shouldForceReset,
+      topBarLeft: topBarLeft,
+      topBarRight: topBarRight,
+      reminderQueue: reminderQueue,
+      includeReminders: includeReminders,
+      transparentSupported: transparentSupported,
+    );
+
+    // If null, no update needed
+    if (structured == null) {
+      debugPrint('[FloatWindow] No update needed');
+      return;
+    }
+
+    // Deliver to island
+    await _deliverToIsland(structured);
+  }
+
+  /// Deliver payload to island window
+  static Future<void> _deliverToIsland(Map<String, dynamic> structured) async {
+    try {
+      final islandId = 'island-1';
+      var winId = IslandManager().getCachedWindowId(islandId);
+
+      if (winId == null) {
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        if (nowMs - _lastIslandCreateAttemptMs <
+            FloatWindowConfig.islandCreateCooldownMs) {
+          winId = IslandManager().getCachedWindowId(islandId);
+        } else {
+          _lastIslandCreateAttemptMs = nowMs;
+          debugPrint('[FloatWindow] Creating island: $islandId');
+          winId = await IslandManager().createIsland(islandId);
+        }
+      }
+
+      if (winId != null) {
+        final sent =
+            await IslandManager().sendStructuredPayload(islandId, structured);
+        if (sent) {
+          debugPrint(
+              '[FloatWindow] Sent payload to island: state=${structured['state']}');
+          try {
+            debugPayload.value = null;
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      debugPrint('[FloatWindow] Island delivery failed: $e');
+    }
   }
 
   // ── Position Management ────────────────────────────────────────────────
@@ -627,5 +528,20 @@ class FloatWindowService {
     } catch (e) {
       debugPrint('[FloatWindow] Failed to trigger reminder check: $e');
     }
+  }
+
+  /// Invalidate data cache (call when significant data changes)
+  static void invalidateCache() {
+    _dataProvider.invalidateCache();
+  }
+
+  /// Invalidate only slot cache
+  static void invalidateSlotCache() {
+    _dataProvider.invalidateSlotCache();
+  }
+
+  /// Get debug info
+  static Map<String, dynamic> getDebugInfo() {
+    return _dataProvider.getDebugInfo();
   }
 }

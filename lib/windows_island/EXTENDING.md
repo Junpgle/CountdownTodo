@@ -1,111 +1,139 @@
-# Island Module - Extension Guide
+# 灵动岛模块 - 扩展开发指南
 
-This document provides guidelines for extending the Windows Island module with new features, states, and behaviors.
+本文档为扩展 Windows 灵动岛模块提供指南，包括新功能、状态和行为的添加方法。
 
-## Architecture Overview
+## 架构概览
+
+### 模块结构
 
 ```
 lib/windows_island/
-├── island_config.dart      # Centralized constants and configuration
-├── island_channel.dart     # IPC communication with main app
-├── island_debug.dart       # Debug/testing page
-├── island_entry.dart       # Window entry point (islandMain)
-├── island_manager.dart     # Window lifecycle management
-├── island_payload.dart     # Data transfer objects
-├── island_reminder.dart    # Reminder service
-├── island_state_handler.dart # Extensible state management
-├── island_ui.dart          # UI components and state machine
-└── island_win32.dart       # Win32 API utilities
+├── island_config.dart        # 集中管理的常量和配置
+├── island_channel.dart       # 与主应用的 IPC 通信
+├── island_debug.dart         # 调试/测试页面
+├── island_entry.dart         # 窗口入口点 (islandMain)
+├── island_manager.dart       # 窗口生命周期管理
+├── island_payload.dart       # 数据传输对象
+├── island_reminder.dart      # 提醒服务
+├── island_state_handler.dart # 可扩展的状态管理
+├── island_ui.dart            # UI 组件和状态机
+└── island_win32.dart         # Win32 API 工具函数
 ```
 
-## Key Concepts
+### 服务层结构
 
-### 1. States
+```
+lib/services/
+├── clipboard_service.dart    # 剪贴板监听服务
+├── float_window_service.dart # 悬浮窗/岛集成服务
+├── island_data_provider.dart # 岛数据聚合中心（含缓存）
+├── island_slot_provider.dart # 槽位数据获取
+└── snooze_dialog.dart        # 稍后提醒对话框
+```
 
-The island operates through a finite state machine. Each state defines:
-- Window size
-- UI content
-- Transition rules
+### 数据流
 
-**Built-in states:**
-| State | Description | Size |
-|-------|-------------|------|
-| `idle` | Default clock display | 120x34 |
-| `focusing` | Focus timer active | 100x46 |
-| `hoverWide` | Expanded on hover | 380x46 |
-| `splitAlert` | Split notification | 300x36 |
-| `stackedCard` | Detailed view | 280x140 |
-| `reminderPopup` | Reminder notification | 320x150/180 |
-| `reminderSplit` | Dual capsule reminder | 480x46 or 320x300+ |
-| `reminderCapsule` | Single reminder capsule | 160x46 |
-| `copiedLink` | Copied URL notification | 340x46 |
+```
+HomeDashboard
+  └── FloatWindowService.update()
+        └── IslandDataProvider.buildPayload()
+              ├── 缓存的 style/priority/theme
+              ├── 缓存的 slot data (30秒有效)
+              └── IslandManager.sendStructuredPayload()
+                    └── Island Window (island_entry.dart)
+                          └── IslandUI (状态机 + 渲染)
+```
 
-### 2. Payload
+## 核心概念
 
-Data is passed to the island via `Map<String, dynamic>` payloads:
+### 1. 状态 (States)
+
+灵动岛通过有限状态机运行。每个状态定义：
+- 窗口尺寸
+- UI 内容
+- 状态转换规则
+
+**内置状态：**
+
+| 状态 | 说明 | 尺寸 |
+|------|------|------|
+| `idle` | 默认时钟显示 | 120x34 |
+| `focusing` | 专注计时中 | 100x46 |
+| `hoverWide` | 鼠标悬停展开 | 380x46 |
+| `splitAlert` | 分屏通知 | 300x36 |
+| `stackedCard` | 详细卡片视图 | 280x140 |
+| `reminderPopup` | 提醒弹窗 | 320x150/180 |
+| `reminderSplit` | 双胶囊提醒 | 480x46 或 320x300+ |
+| `reminderCapsule` | 单胶囊提醒 | 160x46 |
+| `copiedLink` | 复制链接通知 | 340x46 |
+
+### 2. 数据载荷 (Payload)
+
+数据通过 `Map<String, dynamic>` 格式传递到灵动岛：
 
 ```dart
 {
-  'state': 'focusing',           // Target state
+  'state': 'focusing',           // 目标状态
   'focusData': {
-    'title': 'Task Name',
-    'endMs': 1234567890,
-    'timeLabel': '25:00',
-    'isCountdown': true,
-    'tags': ['study', 'math'],
-    'syncMode': 'local',
+    'title': '任务名称',
+    'endMs': 1234567890,         // 结束时间戳 (毫秒)
+    'timeLabel': '25:00',        // 时间显示
+    'isCountdown': true,         // 是否倒计时
+    'tags': ['学习', '数学'],    // 标签
+    'syncMode': 'local',         // 同步模式
   },
   'reminderPopupData': {
-    'type': 'todo',              // or 'course'
-    'title': 'Meeting',
-    'subtitle': 'Room 301',
+    'type': 'todo',              // 类型: 'todo' 或 'course'
+    'title': '会议',
+    'subtitle': '301会议室',
     'startTime': '14:00',
     'endTime': '15:00',
-    'minutesUntil': 15,
-    'isEnding': false,
-    'itemId': 'unique-id',
+    'minutesUntil': 15,          // 距开始/结束的分钟数
+    'isEnding': false,           // 是否是结束提醒
+    'itemId': 'unique-id',       // 唯一标识
   },
   'copiedLinkData': {
     'url': 'https://example.com',
-    'displayUrl': 'example.com',
+    'displayUrl': 'example.com', // 显示用的简化 URL
   },
 }
 ```
 
-### 3. Actions
+### 3. 操作 (Actions)
 
-User interactions trigger actions sent back to the main app:
+用户交互会触发操作，发送回主应用：
 
-| Action | Description | Data |
-|--------|-------------|------|
-| `finish` | Focus completed | remainingSecs |
-| `abandon` | Focus abandoned | 0 |
-| `reminder_ok` | Reminder acknowledged | - |
-| `remind_later` | Snooze requested | - |
-| `open_link` | Open URL | url |
-| `check_reminder` | Force check reminders | - |
+| 操作 | 说明 | 数据 |
+|------|------|------|
+| `finish` | 专注完成 | remainingSecs |
+| `abandon` | 放弃专注 | 0 |
+| `reminder_ok` | 确认提醒 | - |
+| `remind_later` | 稍后提醒 | - |
+| `open_link` | 打开链接 | url |
+| `check_reminder` | 强制检查提醒 | - |
+| `snooze_reminder` | 延迟提醒 | snoozeMinutes |
 
-## Extension Points
+## 扩展点
 
-### Adding a Custom State
+### 添加自定义状态
 
-1. **Define the state** in `island_config.dart`:
+**步骤 1：在 `island_config.dart` 中定义状态**
 
 ```dart
 enum IslandStateConfig {
-  // ... existing states
-  myCustomState,
+  // ... 现有状态
+  myCustomState,  // 新增状态
 }
 ```
 
-2. **Add size configuration** in `IslandConfig.sizeForState()`:
+**步骤 2：在 `IslandConfig.sizeForState()` 中添加尺寸配置**
 
 ```dart
 case IslandStateConfig.myCustomState:
   return const Size(200, 100);
 ```
 
-3. **Create a state handler** (optional):
+**步骤 3：创建状态处理器（可选）**
 
 ```dart
 class MyCustomHandler extends IslandStateHandler {
@@ -116,63 +144,70 @@ class MyCustomHandler extends IslandStateHandler {
   IslandStateConfig get configState => IslandStateConfig.myCustomState;
 
   @override
-  Widget build(BuildContext context, Map<String, dynamic>? payload, IslandStateContext stateContext) {
+  Widget build(
+    BuildContext context,
+    Map<String, dynamic>? payload,
+    IslandStateContext stateContext,
+  ) {
     return Container(
       color: Colors.blue,
-      child: Text('Custom State'),
+      child: Text('自定义状态'),
     );
   }
 }
 ```
 
-4. **Register the handler**:
+**步骤 4：注册处理器**
 
 ```dart
 IslandStateRegistry.register(MyCustomHandler());
 ```
 
-### Modifying Timing Constants
+### 修改时间常量
 
-All timing values are centralized in `island_config.dart`:
+所有时间值集中在 `island_config.dart` 中：
 
 ```dart
 class IslandConfig {
-  // Hover behavior
+  // 鼠标悬停行为
   static const Duration hoverEnterDelay = Duration(milliseconds: 100);
   static const Duration hoverExitDelay = Duration(milliseconds: 120);
   static const Duration hoverMinStay = Duration(milliseconds: 400);
 
-  // Transitions
+  // 状态切换
   static const Duration transitionDuration = Duration(milliseconds: 200);
   static const int transitionDebounceMs = 200;
 
-  // Reminders
+  // 提醒相关
   static const Duration reminderCheckInterval = Duration(seconds: 10);
   static const Duration copiedLinkDismissDuration = Duration(seconds: 10);
 }
 ```
 
-### Customizing Colors
+### 自定义颜色
 
 ```dart
 class IslandConfig {
-  static const Color successColor = Color(0xFF4CAF50);
-  static const Color dangerColor = Color(0xFFD32F2F);
-  static const Color warningColor = Color(0xFFFF9800);
-  static const Color focusColor = Color(0xFF6366F1);
-  static const Color bgColor = Color(0xFF1C1C1E);
+  static const Color successColor = Color(0xFF4CAF50);   // 成功绿
+  static const Color dangerColor = Color(0xFFD32F2F);    // 危险红
+  static const Color warningColor = Color(0xFFFF9800);   // 警告橙
+  static const Color focusColor = Color(0xFF6366F1);     // 专注紫
+  static const Color bgColor = Color(0xFF1C1C1E);        // 背景色
 }
 ```
 
-### Adding Reminder Types
+### 添加提醒类型
 
-In `island_reminder.dart`, extend the reminder checking logic:
+在 `island_reminder.dart` 中扩展提醒检查逻辑：
 
 ```dart
-static Future<List<Map<String, dynamic>>> _checkCustomReminders(DateTime now) async {
+/// 检查自定义提醒源
+static Future<List<Map<String, dynamic>>> _checkCustomReminders(
+  DateTime now,
+) async {
   final reminders = <Map<String, dynamic>>[];
-  
-  // Your custom reminder source
+
+  // 你的自定义提醒数据源
   final items = await getCustomReminders();
   for (final item in items) {
     final diff = item.startTime.difference(now).inMinutes;
@@ -187,125 +222,167 @@ static Future<List<Map<String, dynamic>>> _checkCustomReminders(DateTime now) as
       });
     }
   }
-  
+
   return reminders;
 }
 ```
 
-Then add it to `checkUpcomingReminder()`:
+然后在 `checkUpcomingReminder()` 中调用：
 
 ```dart
 final customReminders = await _checkCustomReminders(now);
 allReminders.addAll(customReminders);
 ```
 
-### Win32 Utilities
+### Win32 工具函数
 
-Use `island_win32.dart` for window manipulation:
+使用 `island_win32.dart` 进行窗口操作：
 
 ```dart
 import 'island_win32.dart';
 
-// Get window handle
+// 获取窗口句柄
 final hwnd = getSmallestFlutterWindow();
 
-// Resize window
+// 调整窗口大小
 resizeCurrentWindow(200, 100);
 
-// Move window
+// 移动窗口
 moveCurrentWindow(100, 200);
 
-// Get current position
+// 获取当前位置
 final rect = getWindowRect();
 
-// Start dragging
+// 开始拖动
 startWindowDragging();
 
-// Get DPI scale
+// 获取 DPI 缩放比例
 final scale = getIslandScaleFactor(hwnd);
 ```
 
-## IPC Communication
+## IPC 通信
 
-### Sending Data to Island
+### 发送数据到灵动岛
 
-From the main app, use `IslandManager`:
+从主应用使用 `IslandManager`：
 
 ```dart
 final manager = IslandManager();
 await manager.createIsland('island-1');
 
-// Send payload
+// 发送数据载荷
 await manager.sendStructuredPayload('island-1', {
   'state': 'focusing',
   'focusData': {
-    'title': 'Study Session',
+    'title': '学习时间',
     'endMs': DateTime.now().add(Duration(minutes: 25)).millisecondsSinceEpoch,
   },
 });
 ```
 
-### Receiving Actions
+### 接收操作
 
-Actions are written to `island_action.json` and picked up by `IslandChannel`:
+操作通过 `island_action.json` 文件写入，由 `IslandChannel` 读取：
 
 ```dart
 IslandChannel.actionStream.listen((event) {
   final action = event['action'];
   final windowId = event['windowId'];
-  
+
   switch (action) {
     case 'finish':
-      // Handle focus completion
+      // 处理专注完成
       break;
     case 'reminder_ok':
-      // Handle reminder acknowledgment
+      // 处理提醒确认
       break;
   }
 });
 ```
 
-## Best Practices
+## 数据缓存机制
 
-1. **Use constants**: Always use `IslandConfig` for timing, colors, and sizes
-2. **State protection**: Check state before transitions to prevent loops
-3. **Debounce**: Use appropriate debouncing for user interactions
-4. **Memory cleanup**: Cancel timers in `dispose()`
-5. **Error handling**: Wrap async operations in try-catch
-6. **Testing**: Use `IslandDebugPage` for testing UI states
+### IslandDataProvider 缓存
 
-## Debug Mode
+`IslandDataProvider` 提供智能缓存，减少重复计算：
 
-Use the debug page to test states without the full IPC:
+| 数据类型 | 缓存时长 | 失效方法 |
+|----------|---------|---------|
+| 槽位数据 (todos/courses) | 30秒 | `invalidateSlotCache()` |
+| Style 设置 | 5分钟 | `invalidateCache()` |
+| Priority 列表 | 5分钟 | `invalidateCache()` |
+| Theme | 5分钟 | `invalidateCache()` |
+
+**使用示例：**
+
+```dart
+import '../services/float_window_service.dart';
+
+// 数据变更时刷新槽位缓存
+FloatWindowService.invalidateSlotCache();
+
+// 完全重置缓存
+FloatWindowService.invalidateCache();
+
+// 获取调试信息
+final debugInfo = FloatWindowService.getDebugInfo();
+```
+
+### 变化检测
+
+当以下条件满足时，更新会被跳过：
+- `_lastSentEndMs` 未变化
+- `_lastSentState` 未变化
+- 非强制更新 (`forceReset = false`)
+
+## 最佳实践
+
+1. **使用常量**：始终使用 `IslandConfig` 管理时间、颜色和尺寸
+2. **状态保护**：切换状态前检查当前状态，防止循环切换
+3. **防抖处理**：用户交互使用适当的防抖延迟
+4. **内存清理**：在 `dispose()` 中取消所有定时器
+5. **错误处理**：异步操作用 try-catch 包裹
+6. **测试调试**：使用 `IslandDebugPage` 测试 UI 状态
+
+## 调试模式
+
+使用调试页面测试状态，无需完整 IPC：
 
 ```dart
 import 'package:math_quiz_app/windows_island/island_debug.dart';
 
-// In your app
+// 在应用中
 Navigator.push(context, MaterialPageRoute(
   builder: (_) => IslandDebugPage(),
 ));
 ```
 
-## Troubleshooting
+## 问题排查
 
-| Issue | Solution |
-|-------|----------|
-| Window not transparent | Check Win32 initialization in `initFfiTransparent()` |
-| State not updating | Verify payload format matches expected structure |
-| Timer leaks | Ensure `dispose()` cancels all timers |
-| IPC not working | Check `island_action.json` permissions and path |
+| 问题 | 解决方案 |
+|------|----------|
+| 窗口不透明 | 检查 `initFfiTransparent()` 中的 Win32 初始化 |
+| 状态不更新 | 验证 payload 格式是否符合预期结构 |
+| 定时器泄漏 | 确保 `dispose()` 取消了所有定时器 |
+| IPC 不工作 | 检查 `island_action.json` 的权限和路径 |
+| 槽位数据不更新 | 调用 `FloatWindowService.invalidateSlotCache()` |
+| 性能问题 | 检查缓存是否生效，使用 `getDebugInfo()` |
 
-## File Reference
+## 文件参考
 
-| File | Purpose | Lines |
-|------|---------|-------|
-| `island_config.dart` | Constants and configuration | ~170 |
-| `island_win32.dart` | Win32 API wrapper | ~280 |
-| `island_reminder.dart` | Reminder service | ~200 |
-| `island_state_handler.dart` | State registry | ~150 |
-| `island_payload.dart` | Data models | ~130 |
-| `island_entry.dart` | Entry point | ~350 |
-| `island_ui.dart` | UI components | ~1000 |
-| `island_manager.dart` | Window manager | ~330 |
-| `island_channel.dart` | IPC channel | ~260 |
+| 文件 | 用途 | 行数 |
+|------|------|------|
+| `island_config.dart` | 常量和配置 | ~170 |
+| `island_win32.dart` | Win32 API 封装 | ~280 |
+| `island_reminder.dart` | 提醒服务 | ~200 |
+| `island_state_handler.dart` | 状态注册器 | ~150 |
+| `island_payload.dart` | 数据模型 | ~130 |
+| `island_entry.dart` | 入口点 | ~350 |
+| `island_ui.dart` | UI 组件 | ~1000 |
+| `island_manager.dart` | 窗口管理器 | ~330 |
+| `island_channel.dart` | IPC 通道 | ~260 |
+| `island_data_provider.dart` | 数据聚合中心 | ~250 |
+| `island_slot_provider.dart` | 槽位数据提供 | ~200 |
+| `clipboard_service.dart` | 剪贴板服务 | ~140 |
+| `float_window_service.dart` | 悬浮窗服务 | ~400 |
+| `snooze_dialog.dart` | 稍后提醒对话框 | ~90 |
