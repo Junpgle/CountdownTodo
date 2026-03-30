@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
@@ -67,24 +69,32 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       return d.isBefore(today);
     } else {
       DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
-              t.createdDate ?? t.createdAt,
-              isUtc: true)
-          .toLocal();
+        t.createdDate ?? t.createdAt,
+        isUtc: true,
+      ).toLocal();
       DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
     }
   }
 
   void showAddTodoDialog() {
-    _showAddTodoDialogWithData(null);
+    _showAddTodoDialogWithData(null, null);
   }
 
   /// 显示添加待办对话框并预填充大模型识别的数据
-  void showAddTodoDialogWithData(List<Map<String, dynamic>> llmResults) {
-    _showAddTodoDialogWithData(llmResults);
+  /// [llmResults] 大模型识别结果列表
+  /// [imagePath] 原始图片路径（用于显示缩略图）
+  void showAddTodoDialogWithData(
+    List<Map<String, dynamic>> llmResults, [
+    String? imagePath,
+  ]) {
+    _showAddTodoDialogWithData(llmResults, imagePath);
   }
 
-  void _showAddTodoDialogWithData(List<Map<String, dynamic>>? llmResults) {
+  void _showAddTodoDialogWithData(
+    List<Map<String, dynamic>>? llmResults,
+    String? imagePath,
+  ) {
     TextEditingController titleCtrl = TextEditingController();
     TextEditingController remarkCtrl = TextEditingController();
     DateTime createdAt = DateTime.now();
@@ -101,6 +111,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     int currentParseIndex = 0;
     bool isParsing = false;
     String? llmRawResponse;
+    String? sharedImagePath = imagePath; // 保存分享的图片路径
 
     int selectedTabIndex = 0;
 
@@ -132,15 +143,25 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         if (first.startTime != null) {
           createdAt = first.startTime!;
           if (first.isAllDay) {
-            createdAt =
-                DateTime(createdAt.year, createdAt.month, createdAt.day, 0, 0);
+            createdAt = DateTime(
+              createdAt.year,
+              createdAt.month,
+              createdAt.day,
+              0,
+              0,
+            );
           }
         }
         if (first.endTime != null) {
           dueDate = first.endTime;
         } else if (first.startTime != null && first.isAllDay) {
-          dueDate =
-              DateTime(createdAt.year, createdAt.month, createdAt.day, 23, 59);
+          dueDate = DateTime(
+            createdAt.year,
+            createdAt.month,
+            createdAt.day,
+            23,
+            59,
+          );
         }
         isAllDay = first.isAllDay;
         recurrence = first.recurrence;
@@ -161,42 +182,66 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
-                      controller: titleCtrl,
-                      decoration: InputDecoration(
-                          labelText: "待办内容",
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12)))),
+                    controller: titleCtrl,
+                    decoration: InputDecoration(
+                      labelText: "待办内容",
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: remarkCtrl,
                     decoration: InputDecoration(
-                        labelText: "备注 (可选)",
-                        hintText: "添加备注...",
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12))),
+                      labelText: "备注 (可选)",
+                      hintText: "添加备注...",
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                     maxLines: 3,
                     minLines: 1,
                   ),
                   const SizedBox(height: 12),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text("全天事件",
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold)),
+                    title: const Text(
+                      "全天事件",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     value: isAllDay,
                     activeColor: Theme.of(context).colorScheme.primary,
                     onChanged: (val) {
                       setDialogState(() {
                         isAllDay = val;
                         if (isAllDay) {
-                          createdAt = DateTime(createdAt.year, createdAt.month,
-                              createdAt.day, 0, 0);
+                          createdAt = DateTime(
+                            createdAt.year,
+                            createdAt.month,
+                            createdAt.day,
+                            0,
+                            0,
+                          );
                           if (dueDate != null) {
-                            dueDate = DateTime(dueDate!.year, dueDate!.month,
-                                dueDate!.day, 23, 59);
+                            dueDate = DateTime(
+                              dueDate!.year,
+                              dueDate!.month,
+                              dueDate!.day,
+                              23,
+                              59,
+                            );
                           } else {
-                            dueDate = DateTime(createdAt.year, createdAt.month,
-                                createdAt.day, 23, 59);
+                            dueDate = DateTime(
+                              createdAt.year,
+                              createdAt.month,
+                              createdAt.day,
+                              23,
+                              59,
+                            );
                           }
                         }
                       });
@@ -205,35 +250,47 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(
-                        "开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdAt)}"),
-                    trailing: Icon(Icons.edit_calendar,
-                        size: 20, color: Theme.of(context).colorScheme.primary),
+                      "开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdAt)}",
+                    ),
+                    trailing: Icon(
+                      Icons.edit_calendar,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     onTap: () async {
                       final pickedDate = await showDatePicker(
-                          context: context,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          initialDate: createdAt);
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: createdAt,
+                      );
                       if (pickedDate != null) {
                         if (isAllDay) {
-                          setDialogState(() => createdAt = DateTime(
+                          setDialogState(
+                            () => createdAt = DateTime(
                               pickedDate.year,
                               pickedDate.month,
                               pickedDate.day,
                               0,
-                              0));
+                              0,
+                            ),
+                          );
                         } else {
                           if (!context.mounted) return;
                           final pickedTime = await showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.fromDateTime(createdAt));
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(createdAt),
+                          );
                           if (pickedTime != null) {
-                            setDialogState(() => createdAt = DateTime(
+                            setDialogState(
+                              () => createdAt = DateTime(
                                 pickedDate.year,
                                 pickedDate.month,
                                 pickedDate.day,
                                 pickedTime.hour,
-                                pickedTime.minute));
+                                pickedTime.minute,
+                              ),
+                            );
                           }
                         }
                       }
@@ -241,38 +298,52 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(dueDate == null
-                        ? "设置截止时间 (可选)"
-                        : "截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}"),
-                    trailing: Icon(Icons.event,
-                        size: 20, color: Theme.of(context).colorScheme.primary),
+                    title: Text(
+                      dueDate == null
+                          ? "设置截止时间 (可选)"
+                          : "截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}",
+                    ),
+                    trailing: Icon(
+                      Icons.event,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     onTap: () async {
                       final pickedDate = await showDatePicker(
-                          context: context,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          initialDate: dueDate ?? createdAt);
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: dueDate ?? createdAt,
+                      );
                       if (pickedDate != null) {
                         if (isAllDay) {
-                          setDialogState(() => dueDate = DateTime(
+                          setDialogState(
+                            () => dueDate = DateTime(
                               pickedDate.year,
                               pickedDate.month,
                               pickedDate.day,
                               23,
-                              59));
+                              59,
+                            ),
+                          );
                         } else {
                           if (!context.mounted) return;
                           final pickedTime = await showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.fromDateTime(
-                                  dueDate ?? DateTime.now()));
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(
+                              dueDate ?? DateTime.now(),
+                            ),
+                          );
                           if (pickedTime != null) {
-                            setDialogState(() => dueDate = DateTime(
+                            setDialogState(
+                              () => dueDate = DateTime(
                                 pickedDate.year,
                                 pickedDate.month,
                                 pickedDate.day,
                                 pickedTime.hour,
-                                pickedTime.minute));
+                                pickedTime.minute,
+                              ),
+                            );
                           }
                         }
                       }
@@ -282,25 +353,40 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   DropdownButtonFormField<RecurrenceType>(
                     value: recurrence,
                     decoration: InputDecoration(
-                        labelText: "循环设置 (可选)",
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12))),
+                      labelText: "循环设置 (可选)",
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                     items: const [
                       DropdownMenuItem(
-                          value: RecurrenceType.none, child: Text("不重复")),
+                        value: RecurrenceType.none,
+                        child: Text("不重复"),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.daily, child: Text("每天重复")),
+                        value: RecurrenceType.daily,
+                        child: Text("每天重复"),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.weekly, child: Text("每周重复")),
+                        value: RecurrenceType.weekly,
+                        child: Text("每周重复"),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.monthly, child: Text("每月重复")),
+                        value: RecurrenceType.monthly,
+                        child: Text("每月重复"),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.yearly, child: Text("每年重复")),
+                        value: RecurrenceType.yearly,
+                        child: Text("每年重复"),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.weekdays, child: Text("工作日")),
+                        value: RecurrenceType.weekdays,
+                        child: Text("工作日"),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.customDays,
-                          child: Text("间隔几天")),
+                        value: RecurrenceType.customDays,
+                        child: Text("间隔几天"),
+                      ),
                     ],
                     onChanged: (val) => setDialogState(() => recurrence = val!),
                   ),
@@ -308,35 +394,44 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     Padding(
                       padding: const EdgeInsets.only(top: 12.0),
                       child: TextField(
-                          controller: customDaysCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                              labelText: "间隔天数",
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12))),
-                          onChanged: (val) => customDays = int.tryParse(val)),
+                        controller: customDaysCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: "间隔天数",
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onChanged: (val) => customDays = int.tryParse(val),
+                      ),
                     ),
                   if (recurrence != RecurrenceType.none)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: Text(recurrenceEndDate == null
-                          ? "循环截止日期 (可选)"
-                          : "循环结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}"),
-                      trailing: Icon(Icons.event_busy,
-                          size: 20,
-                          color: Theme.of(context).colorScheme.primary),
+                      title: Text(
+                        recurrenceEndDate == null
+                            ? "循环截止日期 (可选)"
+                            : "循环结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
+                      ),
+                      trailing: Icon(
+                        Icons.event_busy,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       onTap: () async {
                         final picked = await showDatePicker(
-                            context: context,
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime(2100),
-                            initialDate:
-                                DateTime.now().add(const Duration(days: 30)));
+                          context: context,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                          initialDate: DateTime.now().add(
+                            const Duration(days: 30),
+                          ),
+                        );
                         if (picked != null) {
                           setDialogState(() => recurrenceEndDate = picked);
                         }
                       },
-                    )
+                    ),
                 ],
               ),
             );
@@ -348,13 +443,76 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 显示分享的图片缩略图（如果有）
+                  if (sharedImagePath != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.secondaryContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.image,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.secondary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                "识别的图片",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.secondary,
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: () =>
+                                    _showFullImage(context, sharedImagePath!),
+                                child: const Text("查看大图"),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () =>
+                                _showFullImage(context, sharedImagePath!),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(
+                                File(sharedImagePath!),
+                                height: 150,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    height: 100,
+                                    color: Colors.grey[300],
+                                    child: const Center(child: Text("图片加载失败")),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primaryContainer
-                          .withValues(alpha: 0.3),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(
@@ -362,15 +520,19 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.info_outline,
-                                size: 16,
-                                color: Theme.of(context).colorScheme.primary),
+                            Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                             const SizedBox(width: 6),
-                            Text("支持的格式示例",
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color:
-                                        Theme.of(context).colorScheme.primary)),
+                            Text(
+                              "支持的格式示例",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -389,7 +551,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                       labelText: "输入待办内容",
                       hintText: "在此粘贴或输入文字...",
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     maxLines: 4,
                     minLines: 2,
@@ -404,8 +567,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                               : () async {
                                   if (aiInputCtrl.text.trim().isEmpty) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                            content: Text("请输入待办内容")));
+                                      const SnackBar(content: Text("请输入待办内容")),
+                                    );
                                     return;
                                   }
                                   setDialogState(() {
@@ -414,10 +577,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
                                   // 给一个短暂延迟让UI刷新出 Loading 状态，避免同步卡顿
                                   await Future.delayed(
-                                      const Duration(milliseconds: 150));
+                                    const Duration(milliseconds: 150),
+                                  );
 
                                   final results = TodoParserService.parseMulti(
-                                      aiInputCtrl.text);
+                                    aiInputCtrl.text,
+                                  );
 
                                   setDialogState(() {
                                     parsedResults = results;
@@ -434,11 +599,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                         createdAt = first.startTime!;
                                         if (first.isAllDay) {
                                           createdAt = DateTime(
-                                              createdAt.year,
-                                              createdAt.month,
-                                              createdAt.day,
-                                              0,
-                                              0);
+                                            createdAt.year,
+                                            createdAt.month,
+                                            createdAt.day,
+                                            0,
+                                            0,
+                                          );
                                         }
                                       }
                                       if (first.endTime != null) {
@@ -446,18 +612,19 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       } else if (first.startTime != null &&
                                           first.isAllDay) {
                                         dueDate = DateTime(
-                                            createdAt.year,
-                                            createdAt.month,
-                                            createdAt.day,
-                                            23,
-                                            59);
+                                          createdAt.year,
+                                          createdAt.month,
+                                          createdAt.day,
+                                          23,
+                                          59,
+                                        );
                                       }
                                       isAllDay = first.isAllDay;
                                       recurrence = first.recurrence;
                                       customDays = first.customIntervalDays;
                                       if (customDays != null) {
-                                        customDaysCtrl.text =
-                                            customDays.toString();
+                                        customDaysCtrl.text = customDays
+                                            .toString();
                                       }
 
                                       // ★ 解析完成后自动切回"手动输入"标签页供用户检查或修改 ★
@@ -465,8 +632,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                     });
 
                                     if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         const SnackBar(
                                           content: Text("解析成功，请确认或修改后保存"),
                                           duration: Duration(seconds: 2),
@@ -479,8 +647,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Icon(Icons.auto_awesome),
                           label: Text(isParsing ? "解析中..." : "智能解析"),
@@ -494,8 +663,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                               : () async {
                                   if (aiInputCtrl.text.trim().isEmpty) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                            content: Text("请输入待办内容")));
+                                      const SnackBar(content: Text("请输入待办内容")),
+                                    );
                                     return;
                                   }
 
@@ -507,7 +676,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       builder: (ctx) => AlertDialog(
                                         title: const Text("未配置大模型"),
                                         content: const Text(
-                                            "使用大模型识别需要先配置API地址和密钥，是否前往设置？"),
+                                          "使用大模型识别需要先配置API地址和密钥，是否前往设置？",
+                                        ),
                                         actions: [
                                           TextButton(
                                             onPressed: () =>
@@ -526,8 +696,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                         context.mounted) {
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
-                                            builder: (_) =>
-                                                const SettingsPage()),
+                                          builder: (_) => const SettingsPage(),
+                                        ),
                                       );
                                     }
                                     return;
@@ -540,10 +710,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                   try {
                                     final results =
                                         await LLMService.parseTodoWithLLM(
-                                            aiInputCtrl.text);
+                                          aiInputCtrl.text,
+                                        );
 
-                                    final parsedResultsList =
-                                        results.map((result) {
+                                    final parsedResultsList = results.map((
+                                      result,
+                                    ) {
                                       return ParsedTodoResult(
                                         title:
                                             result['title'] ?? aiInputCtrl.text,
@@ -551,14 +723,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                         isAllDay: result['isAllDay'] ?? false,
                                         startTime: result['startTime'] != null
                                             ? DateTime.tryParse(
-                                                result['startTime'])
+                                                result['startTime'],
+                                              )
                                             : null,
                                         endTime: result['endTime'] != null
                                             ? DateTime.tryParse(
-                                                result['endTime'])
+                                                result['endTime'],
+                                              )
                                             : null,
                                         recurrence: _parseRecurrenceType(
-                                            result['recurrence']),
+                                          result['recurrence'],
+                                        ),
                                         customIntervalDays:
                                             result['customIntervalDays'],
                                       );
@@ -569,8 +744,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       currentParseIndex = 0;
                                       isParsing = false;
                                       llmRawResponse =
-                                          const JsonEncoder.withIndent('  ')
-                                              .convert(results);
+                                          const JsonEncoder.withIndent(
+                                            '  ',
+                                          ).convert(results);
                                     });
 
                                     if (parsedResults.isNotEmpty) {
@@ -582,11 +758,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                           createdAt = first.startTime!;
                                           if (first.isAllDay) {
                                             createdAt = DateTime(
-                                                createdAt.year,
-                                                createdAt.month,
-                                                createdAt.day,
-                                                0,
-                                                0);
+                                              createdAt.year,
+                                              createdAt.month,
+                                              createdAt.day,
+                                              0,
+                                              0,
+                                            );
                                           }
                                         }
                                         if (first.endTime != null) {
@@ -594,30 +771,34 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                         } else if (first.startTime != null &&
                                             first.isAllDay) {
                                           dueDate = DateTime(
-                                              createdAt.year,
-                                              createdAt.month,
-                                              createdAt.day,
-                                              23,
-                                              59);
+                                            createdAt.year,
+                                            createdAt.month,
+                                            createdAt.day,
+                                            23,
+                                            59,
+                                          );
                                         }
                                         isAllDay = first.isAllDay;
                                         recurrence = first.recurrence;
                                         customDays = first.customIntervalDays;
                                         if (customDays != null) {
-                                          customDaysCtrl.text =
-                                              customDays.toString();
+                                          customDaysCtrl.text = customDays
+                                              .toString();
                                         }
                                         selectedTabIndex = 0;
                                       });
 
                                       if (mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           SnackBar(
                                             content: Text(
-                                                "大模型解析成功，共${parsedResults.length}个待办，请确认或修改后保存"),
-                                            duration:
-                                                const Duration(seconds: 2),
+                                              "大模型解析成功，共${parsedResults.length}个待办，请确认或修改后保存",
+                                            ),
+                                            duration: const Duration(
+                                              seconds: 2,
+                                            ),
                                           ),
                                         );
                                       }
@@ -627,8 +808,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       isParsing = false;
                                     });
                                     if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         SnackBar(content: Text("大模型解析失败: $e")),
                                       );
                                     }
@@ -638,8 +820,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Icon(Icons.smart_toy_outlined),
                           label: Text(isParsing ? "解析中..." : "大模型识别"),
@@ -652,31 +835,44 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     const Divider(),
                     const SizedBox(height: 8),
                     Text(
-                        "解析结果 (${currentParseIndex + 1}/${parsedResults.length})",
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                      "解析结果 (${currentParseIndex + 1}/${parsedResults.length})",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 8),
                     _buildParseResultItem(
-                        "待办内容", parsedResults[currentParseIndex].title),
+                      "待办内容",
+                      parsedResults[currentParseIndex].title,
+                    ),
                     _buildParseResultItem(
-                        "开始时间",
-                        parsedResults[currentParseIndex].startTime != null
-                            ? DateFormat('yyyy-MM-dd HH:mm').format(
-                                parsedResults[currentParseIndex].startTime!)
-                            : "未识别"),
+                      "开始时间",
+                      parsedResults[currentParseIndex].startTime != null
+                          ? DateFormat('yyyy-MM-dd HH:mm').format(
+                              parsedResults[currentParseIndex].startTime!,
+                            )
+                          : "未识别",
+                    ),
                     _buildParseResultItem(
-                        "结束时间",
-                        parsedResults[currentParseIndex].endTime != null
-                            ? DateFormat('yyyy-MM-dd HH:mm').format(
-                                parsedResults[currentParseIndex].endTime!)
-                            : "未识别"),
-                    _buildParseResultItem("全天事件",
-                        parsedResults[currentParseIndex].isAllDay ? "是" : "否"),
+                      "结束时间",
+                      parsedResults[currentParseIndex].endTime != null
+                          ? DateFormat(
+                              'yyyy-MM-dd HH:mm',
+                            ).format(parsedResults[currentParseIndex].endTime!)
+                          : "未识别",
+                    ),
                     _buildParseResultItem(
-                        "重复",
-                        _getRecurrenceText(
-                            parsedResults[currentParseIndex].recurrence)),
-                    _buildParseResultItem("备注/地点",
-                        parsedResults[currentParseIndex].remark ?? "-"),
+                      "全天事件",
+                      parsedResults[currentParseIndex].isAllDay ? "是" : "否",
+                    ),
+                    _buildParseResultItem(
+                      "重复",
+                      _getRecurrenceText(
+                        parsedResults[currentParseIndex].recurrence,
+                      ),
+                    ),
+                    _buildParseResultItem(
+                      "备注/地点",
+                      parsedResults[currentParseIndex].remark ?? "-",
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -686,16 +882,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                             onPressed: () {
                               setDialogState(() => currentParseIndex--);
                               _applyParsedResult(
-                                  parsedResults[currentParseIndex],
-                                  setDialogState,
-                                  titleCtrl,
-                                  remarkCtrl,
-                                  (d) => createdAt = d,
-                                  (d) => dueDate = d,
-                                  (b) => isAllDay = b,
-                                  (r) => recurrence = r,
-                                  (i) => customDays = i,
-                                  customDaysCtrl);
+                                parsedResults[currentParseIndex],
+                                setDialogState,
+                                titleCtrl,
+                                remarkCtrl,
+                                (d) => createdAt = d,
+                                (d) => dueDate = d,
+                                (b) => isAllDay = b,
+                                (r) => recurrence = r,
+                                (i) => customDays = i,
+                                customDaysCtrl,
+                              );
                             },
                             child: const Text("上一个"),
                           ),
@@ -704,16 +901,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                             onPressed: () {
                               setDialogState(() => currentParseIndex++);
                               _applyParsedResult(
-                                  parsedResults[currentParseIndex],
-                                  setDialogState,
-                                  titleCtrl,
-                                  remarkCtrl,
-                                  (d) => createdAt = d,
-                                  (d) => dueDate = d,
-                                  (b) => isAllDay = b,
-                                  (r) => recurrence = r,
-                                  (i) => customDays = i,
-                                  customDaysCtrl);
+                                parsedResults[currentParseIndex],
+                                setDialogState,
+                                titleCtrl,
+                                remarkCtrl,
+                                (d) => createdAt = d,
+                                (d) => dueDate = d,
+                                (b) => isAllDay = b,
+                                (r) => recurrence = r,
+                                (i) => customDays = i,
+                                customDaysCtrl,
+                              );
                             },
                             child: const Text("下一个"),
                           ),
@@ -722,9 +920,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     if (llmRawResponse != null) ...[
                       const SizedBox(height: 12),
                       ExpansionTile(
-                        title: const Text("大模型原始返回",
-                            style: TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w500)),
+                        title: const Text(
+                          "大模型原始返回",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                         children: [
                           Container(
                             width: double.infinity,
@@ -736,7 +938,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                             child: SelectableText(
                               llmRawResponse!,
                               style: const TextStyle(
-                                  fontSize: 12, fontFamily: 'monospace'),
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                              ),
                             ),
                           ),
                         ],
@@ -750,8 +954,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
           return AlertDialog(
             title: const Text("添加待办"),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
             content: SizedBox(
               width: MediaQuery.of(context).size.width * 0.8,
               child: Column(
@@ -761,9 +966,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     segments: const [
                       ButtonSegment(value: 0, label: Text("手动输入")),
                       ButtonSegment(
-                          value: 1,
-                          icon: Icon(Icons.auto_awesome),
-                          label: Text("AI识别")),
+                        value: 1,
+                        icon: Icon(Icons.auto_awesome),
+                        label: Text("AI识别"),
+                      ),
                     ],
                     selected: {selectedTabIndex},
                     onSelectionChanged: (Set<int> selection) {
@@ -784,11 +990,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("取消"),
+              ),
               FilledButton(
                 style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12))),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
                 onPressed: () {
                   if (titleCtrl.text.isNotEmpty) {
                     final newTodo = TodoItem(
@@ -809,7 +1019,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   }
                 },
                 child: const Text("添加"),
-              )
+              ),
             ],
           );
         },
@@ -817,11 +1027,47 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     );
   }
 
+  /// 显示全屏图片预览
+  void _showFullImage(BuildContext context, String imagePath) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text("图片预览"),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.file(
+                File(imagePath),
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Center(
+                    child: Text(
+                      "图片加载失败",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildExampleText(String text) {
     return Padding(
       padding: const EdgeInsets.only(left: 8, top: 4),
-      child: Text("• $text",
-          style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+      child: Text(
+        "• $text",
+        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+      ),
     );
   }
 
@@ -833,8 +1079,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         children: [
           SizedBox(
             width: 80,
-            child: Text("$label:",
-                style: const TextStyle(fontWeight: FontWeight.w500)),
+            child: Text(
+              "$label:",
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
           ),
           Expanded(child: Text(value)),
         ],
@@ -919,20 +1167,23 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
   void _editTodo(TodoItem todo) {
     TextEditingController titleCtrl = TextEditingController(text: todo.title);
-    TextEditingController remarkCtrl =
-        TextEditingController(text: todo.remark ?? '');
+    TextEditingController remarkCtrl = TextEditingController(
+      text: todo.remark ?? '',
+    );
     DateTime createdDate = DateTime.fromMillisecondsSinceEpoch(
-            todo.createdDate ?? todo.createdAt,
-            isUtc: true)
-        .toLocal();
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
     DateTime? dueDate = todo.dueDate;
     RecurrenceType recurrence = todo.recurrence;
     int? customDays = todo.customIntervalDays;
-    TextEditingController customDaysCtrl =
-        TextEditingController(text: customDays?.toString() ?? "");
+    TextEditingController customDaysCtrl = TextEditingController(
+      text: customDays?.toString() ?? "",
+    );
     DateTime? recurrenceEndDate = todo.recurrenceEndDate;
 
-    bool isAllDay = dueDate != null &&
+    bool isAllDay =
+        dueDate != null &&
         createdDate.hour == 0 &&
         createdDate.minute == 0 &&
         dueDate!.hour == 23 &&
@@ -943,49 +1194,71 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text("编辑待办"),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
-                    controller: titleCtrl,
-                    decoration: InputDecoration(
-                        labelText: "待办内容",
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)))),
+                  controller: titleCtrl,
+                  decoration: InputDecoration(
+                    labelText: "待办内容",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: remarkCtrl,
                   decoration: InputDecoration(
-                      labelText: "备注 (可选)",
-                      hintText: "添加备注...",
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12))),
+                    labelText: "备注 (可选)",
+                    hintText: "添加备注...",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                   maxLines: 3,
                   minLines: 1,
                 ),
                 const SizedBox(height: 12),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text("全天事件",
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  title: const Text(
+                    "全天事件",
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
                   value: isAllDay,
                   activeColor: Theme.of(context).colorScheme.primary,
                   onChanged: (val) {
                     setDialogState(() {
                       isAllDay = val;
                       if (isAllDay) {
-                        createdDate = DateTime(createdDate.year,
-                            createdDate.month, createdDate.day, 0, 0);
+                        createdDate = DateTime(
+                          createdDate.year,
+                          createdDate.month,
+                          createdDate.day,
+                          0,
+                          0,
+                        );
                         if (dueDate != null) {
-                          dueDate = DateTime(dueDate!.year, dueDate!.month,
-                              dueDate!.day, 23, 59);
+                          dueDate = DateTime(
+                            dueDate!.year,
+                            dueDate!.month,
+                            dueDate!.day,
+                            23,
+                            59,
+                          );
                         } else {
-                          dueDate = DateTime(createdDate.year,
-                              createdDate.month, createdDate.day, 23, 59);
+                          dueDate = DateTime(
+                            createdDate.year,
+                            createdDate.month,
+                            createdDate.day,
+                            23,
+                            59,
+                          );
                         }
                       }
                     });
@@ -994,35 +1267,47 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
-                      "开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdDate)}"),
-                  trailing: Icon(Icons.edit_calendar,
-                      size: 20, color: Theme.of(context).colorScheme.primary),
+                    "开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdDate)}",
+                  ),
+                  trailing: Icon(
+                    Icons.edit_calendar,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   onTap: () async {
                     final pickedDate = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        initialDate: createdDate);
+                      context: context,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      initialDate: createdDate,
+                    );
                     if (pickedDate != null) {
                       if (isAllDay) {
-                        setDialogState(() => createdDate = DateTime(
+                        setDialogState(
+                          () => createdDate = DateTime(
                             pickedDate.year,
                             pickedDate.month,
                             pickedDate.day,
                             0,
-                            0));
+                            0,
+                          ),
+                        );
                       } else {
                         if (!context.mounted) return;
                         final pickedTime = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(createdDate));
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(createdDate),
+                        );
                         if (pickedTime != null) {
-                          setDialogState(() => createdDate = DateTime(
+                          setDialogState(
+                            () => createdDate = DateTime(
                               pickedDate.year,
                               pickedDate.month,
                               pickedDate.day,
                               pickedTime.hour,
-                              pickedTime.minute));
+                              pickedTime.minute,
+                            ),
+                          );
                         }
                       }
                     }
@@ -1030,34 +1315,52 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(dueDate == null
-                      ? "设置截止时间 (可选)"
-                      : "截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}"),
-                  trailing: Icon(Icons.event,
-                      size: 20, color: Theme.of(context).colorScheme.primary),
+                  title: Text(
+                    dueDate == null
+                        ? "设置截止时间 (可选)"
+                        : "截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}",
+                  ),
+                  trailing: Icon(
+                    Icons.event,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   onTap: () async {
                     final pickedDate = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        initialDate: dueDate ?? createdDate);
+                      context: context,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      initialDate: dueDate ?? createdDate,
+                    );
                     if (pickedDate != null) {
                       if (isAllDay) {
-                        setDialogState(() => dueDate = DateTime(pickedDate.year,
-                            pickedDate.month, pickedDate.day, 23, 59));
+                        setDialogState(
+                          () => dueDate = DateTime(
+                            pickedDate.year,
+                            pickedDate.month,
+                            pickedDate.day,
+                            23,
+                            59,
+                          ),
+                        );
                       } else {
                         if (!context.mounted) return;
                         final pickedTime = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(
-                                dueDate ?? DateTime.now()));
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(
+                            dueDate ?? DateTime.now(),
+                          ),
+                        );
                         if (pickedTime != null) {
-                          setDialogState(() => dueDate = DateTime(
+                          setDialogState(
+                            () => dueDate = DateTime(
                               pickedDate.year,
                               pickedDate.month,
                               pickedDate.day,
                               pickedTime.hour,
-                              pickedTime.minute));
+                              pickedTime.minute,
+                            ),
+                          );
                         }
                       }
                     }
@@ -1067,24 +1370,40 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 DropdownButtonFormField<RecurrenceType>(
                   value: recurrence,
                   decoration: InputDecoration(
-                      labelText: "循环设置 (可选)",
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12))),
+                    labelText: "循环设置 (可选)",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                   items: const [
                     DropdownMenuItem(
-                        value: RecurrenceType.none, child: Text("不重复")),
+                      value: RecurrenceType.none,
+                      child: Text("不重复"),
+                    ),
                     DropdownMenuItem(
-                        value: RecurrenceType.daily, child: Text("每天重复")),
+                      value: RecurrenceType.daily,
+                      child: Text("每天重复"),
+                    ),
                     DropdownMenuItem(
-                        value: RecurrenceType.weekly, child: Text("每周重复")),
+                      value: RecurrenceType.weekly,
+                      child: Text("每周重复"),
+                    ),
                     DropdownMenuItem(
-                        value: RecurrenceType.monthly, child: Text("每月重复")),
+                      value: RecurrenceType.monthly,
+                      child: Text("每月重复"),
+                    ),
                     DropdownMenuItem(
-                        value: RecurrenceType.yearly, child: Text("每年重复")),
+                      value: RecurrenceType.yearly,
+                      child: Text("每年重复"),
+                    ),
                     DropdownMenuItem(
-                        value: RecurrenceType.weekdays, child: Text("工作日")),
+                      value: RecurrenceType.weekdays,
+                      child: Text("工作日"),
+                    ),
                     DropdownMenuItem(
-                        value: RecurrenceType.customDays, child: Text("间隔几天")),
+                      value: RecurrenceType.customDays,
+                      child: Text("间隔几天"),
+                    ),
                   ],
                   onChanged: (val) => setDialogState(() => recurrence = val!),
                 ),
@@ -1092,43 +1411,57 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   Padding(
                     padding: const EdgeInsets.only(top: 12.0),
                     child: TextField(
-                        controller: customDaysCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                            labelText: "间隔天数",
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12))),
-                        onChanged: (val) => customDays = int.tryParse(val)),
+                      controller: customDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: "间隔天数",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onChanged: (val) => customDays = int.tryParse(val),
+                    ),
                   ),
                 if (recurrence != RecurrenceType.none)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(recurrenceEndDate == null
-                        ? "循环截止日期 (可选)"
-                        : "循环结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}"),
-                    trailing: Icon(Icons.event_busy,
-                        size: 20, color: Theme.of(context).colorScheme.primary),
+                    title: Text(
+                      recurrenceEndDate == null
+                          ? "循环截止日期 (可选)"
+                          : "循环结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
+                    ),
+                    trailing: Icon(
+                      Icons.event_busy,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     onTap: () async {
                       final picked = await showDatePicker(
-                          context: context,
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime(2100),
-                          initialDate: recurrenceEndDate ??
-                              DateTime.now().add(const Duration(days: 30)));
+                        context: context,
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime(2100),
+                        initialDate:
+                            recurrenceEndDate ??
+                            DateTime.now().add(const Duration(days: 30)),
+                      );
                       if (picked != null)
                         setDialogState(() => recurrenceEndDate = picked);
                     },
-                  )
+                  ),
               ],
             ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("取消"),
+            ),
             FilledButton(
               style: FilledButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12))),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               onPressed: () {
                 if (titleCtrl.text.isNotEmpty) {
                   todo.title = titleCtrl.text;
@@ -1148,7 +1481,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 }
               },
               child: const Text("保存"),
-            )
+            ),
           ],
         ),
       ),
@@ -1159,8 +1492,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   // 时间标签构建（单行，信息完整）
   // ─────────────────────────────────────────────
   String _buildTimeLabel(
-      TodoItem todo, DateTime cDate, bool isPast, bool isFuture, DateTime now) {
-    final bool isAllDay = todo.dueDate != null &&
+    TodoItem todo,
+    DateTime cDate,
+    bool isPast,
+    bool isFuture,
+    DateTime now,
+  ) {
+    final bool isAllDay =
+        todo.dueDate != null &&
         cDate.hour == 0 &&
         cDate.minute == 0 &&
         todo.dueDate!.hour == 23 &&
@@ -1183,44 +1522,58 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   // ─────────────────────────────────────────────
   // 🎨 紧凑卡片：重新设计，更小更精致
   // ─────────────────────────────────────────────
-  Widget _buildTodoItemCard(TodoItem todo,
-      {required bool isPast, required bool isFuture, Key? key}) {
+  Widget _buildTodoItemCard(
+    TodoItem todo, {
+    required bool isPast,
+    required bool isFuture,
+    Key? key,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool isLight = widget.isLight;
 
     // ── 颜色层 ──
     final Color cardBg = todo.isDone
         ? colorScheme.surfaceContainerHighest.withOpacity(isLight ? 0.25 : 0.08)
-        : colorScheme.surface.withOpacity(isPast
-            ? (isLight ? 0.9 : 0.45)
-            : isFuture
+        : colorScheme.surface.withOpacity(
+            isPast
+                ? (isLight ? 0.9 : 0.45)
+                : isFuture
                 ? (isLight ? 0.85 : 0.35)
-                : (isLight ? 0.97 : 0.75));
+                : (isLight ? 0.97 : 0.75),
+          );
 
     final Color titleColor = todo.isDone
         ? colorScheme.onSurface.withOpacity(0.35)
         : (isPast || isFuture
-            ? colorScheme.onSurface.withOpacity(0.65)
-            : colorScheme.onSurface);
+              ? colorScheme.onSurface.withOpacity(0.65)
+              : colorScheme.onSurface);
 
     // ── 进度计算 ──
     DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
-            todo.createdDate ?? todo.createdAt,
-            isUtc: true)
-        .toLocal();
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
     final DateTime now = DateTime.now();
     double progress = 0.0;
     {
       DateTime start = cDate;
       DateTime end = todo.dueDate != null
-          ? DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day,
-              todo.dueDate!.hour, todo.dueDate!.minute, 59)
+          ? DateTime(
+              todo.dueDate!.year,
+              todo.dueDate!.month,
+              todo.dueDate!.day,
+              todo.dueDate!.hour,
+              todo.dueDate!.minute,
+              59,
+            )
           : DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
       int totalMinutes = end.difference(start).inMinutes;
       if (totalMinutes <= 0) totalMinutes = 1;
       if (now.isAfter(start)) {
-        progress =
-            (now.difference(start).inMinutes / totalMinutes).clamp(0.0, 1.0);
+        progress = (now.difference(start).inMinutes / totalMinutes).clamp(
+          0.0,
+          1.0,
+        );
       }
     }
 
@@ -1230,8 +1583,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     Color badgeBg = colorScheme.primaryContainer.withOpacity(0.6);
 
     if (todo.dueDate != null) {
-      final DateTime d =
-          DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+      final DateTime d = DateTime(
+        todo.dueDate!.year,
+        todo.dueDate!.month,
+        todo.dueDate!.day,
+      );
       final DateTime today = DateTime(now.year, now.month, now.day);
       if (isPast) {
         badge = "已逾期";
@@ -1256,8 +1612,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     // ── 循环图标 ──
     Widget? recurrenceIcon;
     if (todo.recurrence != RecurrenceType.none) {
-      recurrenceIcon = Icon(Icons.repeat_rounded,
-          size: 11, color: colorScheme.primary.withOpacity(0.6));
+      recurrenceIcon = Icon(
+        Icons.repeat_rounded,
+        size: 11,
+        color: colorScheme.primary.withOpacity(0.6),
+      );
     }
 
     return Dismissible(
@@ -1271,8 +1630,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Icons.delete_outline_rounded,
-            color: Colors.white, size: 22),
+        child: const Icon(
+          Icons.delete_outline_rounded,
+          color: Colors.white,
+          size: 22,
+        ),
       ),
       onDismissed: (_) async {
         _todoKeys.remove('drag_${todo.id}');
@@ -1294,7 +1656,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           }
           deleted.insert(0, todo);
           await prefs.setString(
-              cacheKey, jsonEncode(deleted.map((e) => e.toJson()).toList()));
+            cacheKey,
+            jsonEncode(deleted.map((e) => e.toJson()).toList()),
+          );
         } catch (e) {
           debugPrint("删除失败: $e");
         }
@@ -1313,9 +1677,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           boxShadow: (!todo.isDone && isLight)
               ? [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.03),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2))
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
                 ]
               : [],
         ),
@@ -1339,15 +1704,18 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6)),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
                       activeColor: colorScheme.primary,
                       value: todo.isDone,
                       onChanged: (val) {
                         todo.isDone = val!;
                         todo.markAsChanged();
                         List<TodoItem> updatedList = List.from(widget.todos);
-                        updatedList.sort((a, b) =>
-                            a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+                        updatedList.sort(
+                          (a, b) =>
+                              a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1),
+                        );
                         widget.onTodosChanged(updatedList);
                       },
                     ),
@@ -1371,8 +1739,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                   decoration: todo.isDone
                                       ? TextDecoration.lineThrough
                                       : null,
-                                  decorationColor:
-                                      colorScheme.onSurface.withOpacity(0.3),
+                                  decorationColor: colorScheme.onSurface
+                                      .withOpacity(0.3),
                                   color: titleColor,
                                   fontSize: 14.5,
                                   fontWeight: todo.isDone || isPast || isFuture
@@ -1390,7 +1758,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                             // 时间徽章
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: todo.isDone
                                     ? colorScheme.onSurface.withOpacity(0.06)
@@ -1419,23 +1789,30 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                               Icons.schedule_rounded,
                               size: 11,
                               color: colorScheme.onSurface.withOpacity(
-                                  todo.isDone ? 0.25 : (isPast ? 0.55 : 0.4)),
+                                todo.isDone ? 0.25 : (isPast ? 0.55 : 0.4),
+                              ),
                             ),
                             const SizedBox(width: 3),
                             Expanded(
                               child: Text(
                                 _buildTimeLabel(
-                                    todo, cDate, isPast, isFuture, now),
+                                  todo,
+                                  cDate,
+                                  isPast,
+                                  isFuture,
+                                  now,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: colorScheme.onSurface
-                                      .withOpacity(todo.isDone
-                                          ? 0.25
-                                          : isPast
-                                              ? 0.6
-                                              : 0.45),
+                                  color: colorScheme.onSurface.withOpacity(
+                                    todo.isDone
+                                        ? 0.25
+                                        : isPast
+                                        ? 0.6
+                                        : 0.45,
+                                  ),
                                   height: 1.2,
                                 ),
                               ),
@@ -1452,8 +1829,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 11,
-                              color: colorScheme.onSurface
-                                  .withOpacity(todo.isDone ? 0.22 : 0.4),
+                              color: colorScheme.onSurface.withOpacity(
+                                todo.isDone ? 0.22 : 0.4,
+                              ),
                               height: 1.2,
                             ),
                           ),
@@ -1467,8 +1845,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                             child: LinearProgressIndicator(
                               value: progress,
                               minHeight: 3,
-                              backgroundColor:
-                                  colorScheme.onSurface.withOpacity(0.07),
+                              backgroundColor: colorScheme.onSurface
+                                  .withOpacity(0.07),
                               valueColor: AlwaysStoppedAnimation<Color>(
                                 isPast
                                     ? Colors.redAccent.shade200
@@ -1525,7 +1903,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
     // 根据背景智能反色，深色环境用亮白色，浅色环境用半透黑色
-    final c = color ??
+    final c =
+        color ??
         (useDarkUI
             ? Colors.white70
             : Theme.of(context).colorScheme.onSurface.withOpacity(0.5));
@@ -1538,22 +1917,26 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         child: Row(
           children: [
             Icon(
-                expanded
-                    ? Icons.keyboard_arrow_down_rounded
-                    : Icons.chevron_right_rounded,
-                size: 16,
-                color: c),
+              expanded
+                  ? Icons.keyboard_arrow_down_rounded
+                  : Icons.chevron_right_rounded,
+              size: 16,
+              color: c,
+            ),
             if (icon != null) ...[
               const SizedBox(width: 4),
               Icon(icon, size: 13, color: c),
             ],
             const SizedBox(width: 4),
-            Text(text,
-                style: TextStyle(
-                    color: c,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3)),
+            Text(
+              text,
+              style: TextStyle(
+                color: c,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.3,
+              ),
+            ),
           ],
         ),
       ),
@@ -1564,8 +1947,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
-    final Iterable<TodoItem> activeTodos =
-        widget.todos.where((t) => !t.isDeleted && !_isHistoricalTodo(t));
+    final Iterable<TodoItem> activeTodos = widget.todos.where(
+      (t) => !t.isDeleted && !_isHistoricalTodo(t),
+    );
 
     if (activeTodos.isEmpty) {
       return EmptyState(text: "暂无待办，去添加一个吧", isLight: widget.isLight);
@@ -1587,20 +1971,27 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           ),
           child: Row(
             children: [
-              Icon(Icons.checklist_rounded,
-                  size: 18, color: Theme.of(context).colorScheme.primary),
+              Icon(
+                Icons.checklist_rounded,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   undoneCount == 0 ? "🎉 所有待办均已完成" : "还有 $undoneCount 个待办未完成",
                   style: TextStyle(
-                      color: useDarkUI ? Colors.white : null,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13.5),
+                    color: useDarkUI ? Colors.white : null,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.5,
+                  ),
                 ),
               ),
-              Icon(Icons.expand_more,
-                  size: 18, color: useDarkUI ? Colors.white60 : Colors.grey),
+              Icon(
+                Icons.expand_more,
+                size: 18,
+                color: useDarkUI ? Colors.white60 : Colors.grey,
+              ),
             ],
           ),
         ),
@@ -1618,8 +2009,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       if (_isHistoricalTodo(t)) continue;
       if (t.isDeleted) continue;
       if (t.dueDate != null) {
-        final DateTime d =
-            DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+        final DateTime d = DateTime(
+          t.dueDate!.year,
+          t.dueDate!.month,
+          t.dueDate!.day,
+        );
         if (d.isBefore(today)) {
           pastTodos.add(t);
         } else if (d.isAfter(today)) {
@@ -1644,16 +2038,26 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
     // ── 以往待办（逾期）──
     if (pastTodos.isNotEmpty) {
-      sections.add(_buildGroupLabel(
-        text: "逾期 · ${pastTodos.length}",
-        expanded: _isPastTodosExpanded,
-        color: Colors.redAccent.shade200,
-        onTap: () =>
-            setState(() => _isPastTodosExpanded = !_isPastTodosExpanded),
-      ));
+      sections.add(
+        _buildGroupLabel(
+          text: "逾期 · ${pastTodos.length}",
+          expanded: _isPastTodosExpanded,
+          color: Colors.redAccent.shade200,
+          onTap: () =>
+              setState(() => _isPastTodosExpanded = !_isPastTodosExpanded),
+        ),
+      );
       if (_isPastTodosExpanded) {
-        sections.addAll(pastTodos.map((t) => _buildTodoItemCard(t,
-            isPast: true, isFuture: false, key: _getTodoKey('dismiss', t.id))));
+        sections.addAll(
+          pastTodos.map(
+            (t) => _buildTodoItemCard(
+              t,
+              isPast: true,
+              isFuture: false,
+              key: _getTodoKey('dismiss', t.id),
+            ),
+          ),
+        );
       }
     }
 
@@ -1671,10 +2075,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             decoration: BoxDecoration(
               color: useDarkUI
                   ? Colors.white.withOpacity(0.1)
-                  : Theme.of(context)
-                      .colorScheme
-                      .surfaceVariant
-                      .withOpacity(0.3),
+                  : Theme.of(
+                      context,
+                    ).colorScheme.surfaceVariant.withOpacity(0.3),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -1687,13 +2090,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                         ? "今日待办均已完成"
                         : "还有 ${todayTodos.where((t) => !t.isDone).length} 个今日待办",
                     style: TextStyle(
-                        color: useDarkUI ? Colors.white : null,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13),
+                      color: useDarkUI ? Colors.white : null,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
-                Icon(Icons.expand_more,
-                    size: 16, color: useDarkUI ? Colors.white60 : Colors.grey),
+                Icon(
+                  Icons.expand_more,
+                  size: 16,
+                  color: useDarkUI ? Colors.white60 : Colors.grey,
+                ),
               ],
             ),
           ),
@@ -1701,15 +2108,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       );
     } else if (showTodayItems) {
       if (todayTodos.isNotEmpty) {
-        sections.add(_buildGroupLabel(
-          text:
-              "今日 · ${todayTodos.where((t) => t.isDone).length}/${todayTodos.length} 已完成",
-          expanded: true,
-          onTap: () => setState(() {
-            _isTodayExpanded = false;
-            _isTodayManuallyExpanded = false;
-          }),
-        ));
+        sections.add(
+          _buildGroupLabel(
+            text:
+                "今日 · ${todayTodos.where((t) => t.isDone).length}/${todayTodos.length} 已完成",
+            expanded: true,
+            onTap: () => setState(() {
+              _isTodayExpanded = false;
+              _isTodayManuallyExpanded = false;
+            }),
+          ),
+        );
 
         sections.add(
           ReorderableListView(
@@ -1719,14 +2128,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             buildDefaultDragHandles: false,
             proxyDecorator:
                 (Widget child, int index, Animation<double> animation) {
-              return Material(
-                color: Colors.transparent,
-                elevation: 8 * animation.value,
-                shadowColor: Colors.black.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(14),
-                child: child,
-              );
-            },
+                  return Material(
+                    color: Colors.transparent,
+                    elevation: 8 * animation.value,
+                    shadowColor: Colors.black.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(14),
+                    child: child,
+                  );
+                },
             onReorder: (oldIndex, newIndex) {
               if (newIndex > oldIndex) newIndex -= 1;
               final List<int> todayIndices = [];
@@ -1735,7 +2144,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 if (_isHistoricalTodo(t) || t.isDeleted) continue;
                 if (t.dueDate != null) {
                   final DateTime d = DateTime(
-                      t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+                    t.dueDate!.year,
+                    t.dueDate!.month,
+                    t.dueDate!.day,
+                  );
                   if (!d.isBefore(today) && !d.isAfter(today)) {
                     todayIndices.add(i);
                   }
@@ -1747,9 +2159,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               final item = reordered.removeAt(oldIndex);
               reordered.insert(newIndex, item);
               final List<TodoItem> updatedList = List.from(widget.todos);
-              for (int i = 0;
-                  i < todayIndices.length && i < reordered.length;
-                  i++) {
+              for (
+                int i = 0;
+                i < todayIndices.length && i < reordered.length;
+                i++
+              ) {
                 updatedList[todayIndices[i]] = reordered[i];
               }
               widget.onTodosChanged(updatedList);
@@ -1760,41 +2174,61 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               return ReorderableDelayedDragStartListener(
                 key: _getTodoKey('drag', t.id),
                 index: index,
-                child: _buildTodoItemCard(t,
-                    isPast: false,
-                    isFuture: false,
-                    key: _getTodoKey('dismiss', t.id)),
+                child: _buildTodoItemCard(
+                  t,
+                  isPast: false,
+                  isFuture: false,
+                  key: _getTodoKey('dismiss', t.id),
+                ),
               );
             }).toList(),
           ),
         );
       } else if (futureTodos.isEmpty) {
-        sections.add(Padding(
+        sections.add(
+          Padding(
             padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4),
-            child: Text("今日无待办",
-                style: TextStyle(
-                    fontSize: 12.5,
-                    color: useDarkUI ? Colors.white60 : Colors.grey))));
+            child: Text(
+              "今日无待办",
+              style: TextStyle(
+                fontSize: 12.5,
+                color: useDarkUI ? Colors.white60 : Colors.grey,
+              ),
+            ),
+          ),
+        );
       }
     }
 
     // ── 未来待办 ──
     if (sortedFutureTodos.isNotEmpty) {
       final int futureUndone = sortedFutureTodos.where((t) => !t.isDone).length;
-      sections.add(_buildGroupLabel(
-        text: "将来 · $futureUndone 未完成",
-        expanded: _isFutureExpanded,
-        icon: Icons.calendar_month_rounded,
-        onTap: () => setState(() => _isFutureExpanded = !_isFutureExpanded),
-      ));
+      sections.add(
+        _buildGroupLabel(
+          text: "将来 · $futureUndone 未完成",
+          expanded: _isFutureExpanded,
+          icon: Icons.calendar_month_rounded,
+          onTap: () => setState(() => _isFutureExpanded = !_isFutureExpanded),
+        ),
+      );
       if (_isFutureExpanded) {
-        sections.addAll(sortedFutureTodos.map((t) => _buildTodoItemCard(t,
-            isPast: false, isFuture: true, key: _getTodoKey('dismiss', t.id))));
+        sections.addAll(
+          sortedFutureTodos.map(
+            (t) => _buildTodoItemCard(
+              t,
+              isPast: false,
+              isFuture: true,
+              key: _getTodoKey('dismiss', t.id),
+            ),
+          ),
+        );
       }
     }
 
     return Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: sections);
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: sections,
+    );
   }
 
   @override
@@ -1826,8 +2260,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                 if (!_isWholeListExpanded && undoneCount > 0)
                   Container(
                     margin: const EdgeInsets.only(right: 6),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: useDarkUI
                           ? Colors.white.withOpacity(0.2)
@@ -1847,15 +2283,19 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.history,
-                      size: 20,
-                      color: useDarkUI ? Colors.white70 : Colors.grey),
+                  icon: Icon(
+                    Icons.history,
+                    size: 20,
+                    color: useDarkUI ? Colors.white70 : Colors.grey,
+                  ),
                   onPressed: () async {
                     await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => HistoricalTodosScreen(
-                                username: widget.username)));
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            HistoricalTodosScreen(username: widget.username),
+                      ),
+                    );
                     widget.onRefreshRequested();
                   },
                 ),
@@ -1869,7 +2309,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     color: useDarkUI ? Colors.white70 : Colors.grey,
                   ),
                   onPressed: () => setState(
-                      () => _isWholeListExpanded = !_isWholeListExpanded),
+                    () => _isWholeListExpanded = !_isWholeListExpanded,
+                  ),
                 ),
               ],
             ),
