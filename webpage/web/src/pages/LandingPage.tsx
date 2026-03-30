@@ -10,6 +10,7 @@ import { AndroidShowcase } from './landing/AndroidShowcase';
 import { WebShowcase } from './landing/WebShowcase';
 import { TimetableShowcase } from './landing/TimetableShowcase';
 import { LiveUpdatesShowcase } from './landing/LiveUpdatesShowcase';
+import { WindowsIslandShowcase } from './landing/WindowsIslandShowcase';
 import { AnalyticsPreview } from './landing/AnalyticsPreview';
 import { DownloadSection } from './landing/DownloadSection';
 import { Footer } from './landing/Footer';
@@ -75,6 +76,7 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           <WebShowcase onOpenWeb={onOpenWeb} />
           <TimetableShowcase />
           <LiveUpdatesShowcase />
+          <WindowsIslandShowcase imageSrc="./island_screenshot.jpg" />
           <AnalyticsPreview />
           <DownloadSection
             androidInfo={androidInfo}
