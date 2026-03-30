@@ -1,7 +1,7 @@
 name: CountDownTodo
 description: A new Flutter project.
 publish_to: 'none'
-version: 2.3.7
+version: 2.4.0
 
 environment:
   sdk: '>=3.1.0 <4.0.0'
@@ -37,6 +37,7 @@ dependencies:
   sqflite_common_ffi: ^2.3.0   # 桌面端 SQLite 读取
   video_player: ^2.11.1
   video_player_win: ^3.2.2
+  flutter_image_compress: ^2.3.0
 
 
 dev_dependencies:

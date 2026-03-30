@@ -155,9 +155,10 @@ class _HomeDashboardState extends State<HomeDashboard>
         () {
           _loadAllData();
         },
-        onTodoRecognized: (results) {
+        onTodoRecognized: (results, imagePath) {
           // 图片识别到待办，显示添加对话框并预填充数据
-          _todoSectionKey.currentState?.showAddTodoDialogWithData(results);
+          _todoSectionKey.currentState
+              ?.showAddTodoDialogWithData(results, imagePath);
         },
       );
       _checkAutoSync();

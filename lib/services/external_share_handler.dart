@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'course_service.dart';
@@ -14,11 +16,11 @@ class ExternalShareHandler {
 
   /// 初始化监听，放在主页的 initState 中调用
   /// [onCourseImported] 课表导入成功回调
-  /// [onTodoRecognized] 图片识别待办回调，传入识别结果列表
+  /// [onTodoRecognized] 图片识别待办回调，传入识别结果列表和图片路径
   static void init(
     BuildContext context,
     Function onCourseImported, {
-    Function(List<Map<String, dynamic>>)? onTodoRecognized,
+    Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
   }) {
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
@@ -45,7 +47,7 @@ class ExternalShareHandler {
     BuildContext context,
     List<SharedMediaFile> files,
     Function onSuccess, {
-    Function(List<Map<String, dynamic>>)? onTodoRecognized,
+    Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     if (files.isEmpty || _isProcessing) return;
@@ -104,7 +106,7 @@ class ExternalShareHandler {
 
       if (isImage) {
         // 图片处理：调用大模型识别待办
-        statusNotifier.value = "识别到图片\n正在调用大模型分析...";
+        statusNotifier.value = "识别到图片\n正在压缩图片...";
 
         final config = await LLMService.getConfig();
         if (config == null || !config.isConfigured) {
@@ -114,20 +116,47 @@ class ExternalShareHandler {
           return;
         }
 
+        // 检查原始图片大小
+        final fileSize = await file.length();
+        if (fileSize > 20 * 1024 * 1024) {
+          statusNotifier.value = "⚠️ 图片太大\n请分享小于20MB的图片";
+          await Future.delayed(const Duration(seconds: 2));
+          _closeDialogSafely(dialogContext);
+          return;
+        }
+
+        // 压缩图片
+        String compressedPath = await _compressImage(filePath);
+
+        final compressedFile = File(compressedPath);
+        final compressedSize = await compressedFile.length();
+        statusNotifier.value =
+            "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
+
         try {
-          final results = await LLMService.parseTodoFromImage(filePath);
+          final results = await LLMService.parseTodoFromImage(compressedPath)
+              .timeout(const Duration(seconds: 90));
 
           statusNotifier.value = "✅ 识别成功！\n发现${results.length}个待办事项";
           await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
 
           if (onTodoRecognized != null && results.isNotEmpty) {
-            onTodoRecognized(results);
+            // 传递原始图片路径（用于显示缩略图）
+            onTodoRecognized(results, filePath);
           }
         } catch (e) {
           debugPrint("大模型图片识别失败: $e");
-          statusNotifier.value = "❌ 图片识别失败\n$e";
-          await Future.delayed(const Duration(seconds: 2));
+          String errorMsg = e.toString();
+          if (errorMsg.contains('TimeoutException')) {
+            statusNotifier.value = "❌ 请求超时\n请检查网络或稍后重试";
+          } else if (errorMsg.contains('SocketException')) {
+            statusNotifier.value = "❌ 网络连接失败\n请检查网络设置";
+          } else {
+            statusNotifier.value =
+                "❌ 图片识别失败\n${errorMsg.length > 50 ? errorMsg.substring(0, 50) : errorMsg}";
+          }
+          await Future.delayed(const Duration(seconds: 3));
           _closeDialogSafely(dialogContext);
         }
       } else {
@@ -216,6 +245,29 @@ class ExternalShareHandler {
       ReceiveSharingIntent.instance.reset();
       _isProcessing = false;
     }
+  }
+
+  /// 压缩图片，返回压缩后的文件路径
+  static Future<String> _compressImage(String inputPath) async {
+    final dir = await getTemporaryDirectory();
+    final targetPath =
+        '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    final result = await FlutterImageCompress.compressAndGetFile(
+      inputPath,
+      targetPath,
+      quality: 80,
+      minWidth: 1024,
+      minHeight: 1024,
+      format: CompressFormat.jpeg,
+    );
+
+    if (result == null) {
+      // 压缩失败，返回原路径
+      return inputPath;
+    }
+
+    return result.path;
   }
 
   static void _closeDialogSafely(BuildContext? dialogContext) {

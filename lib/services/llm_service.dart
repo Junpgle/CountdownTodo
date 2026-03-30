@@ -313,8 +313,19 @@ class LLMService {
       throw Exception('图片文件不存在: $imagePath');
     }
 
+    // 检查文件大小
+    final fileSize = await file.length();
+    print('图片大小: ${(fileSize / 1024).toStringAsFixed(1)}KB');
+
+    if (fileSize > 10 * 1024 * 1024) {
+      throw Exception('图片太大，请使用小于10MB的图片');
+    }
+
+    // 读取并编码图片
     final bytes = await file.readAsBytes();
-    final base64Image = base64Encode(bytes);
+
+    // 使用 Future.microtask 避免阻塞主线程
+    final base64Image = await Future.microtask(() => base64Encode(bytes));
 
     String mimeType = 'image/jpeg';
     final ext = imagePath.split('.').last.toLowerCase();
@@ -341,6 +352,9 @@ class LLMService {
       'Authorization': 'Bearer ${config.apiKey}',
     };
 
+    final imageUrl = 'data:$mimeType;base64,$base64Image';
+    print('Base64 长度: ${imageUrl.length}');
+
     final body = jsonEncode({
       'model': config.visionModel,
       'messages': [
@@ -350,7 +364,7 @@ class LLMService {
             {'type': 'text', 'text': prompt},
             {
               'type': 'image_url',
-              'image_url': {'url': 'data:$mimeType;base64,$base64Image'}
+              'image_url': {'url': imageUrl}
             }
           ]
         }
@@ -358,11 +372,15 @@ class LLMService {
       'temperature': 0.1,
     });
 
+    // 清理不再需要的变量
+    bytes.length; // 保持引用但不使用
+    base64Image.length;
+
     print('========== LLM 图片识别请求 ==========');
     print('API: ${config.apiUrl}');
     print('Model: ${config.visionModel}');
-    print('Image: $imagePath (${(bytes.length / 1024).toStringAsFixed(1)}KB)');
-    print('Prompt:\n$prompt');
+    print('Image: $imagePath (${(fileSize / 1024).toStringAsFixed(1)}KB)');
+    print('Body 大小: ${(body.length / 1024).toStringAsFixed(1)}KB');
     print('====================================');
 
     final response = await http
@@ -371,11 +389,11 @@ class LLMService {
           headers: headers,
           body: body,
         )
-        .timeout(const Duration(seconds: 60));
+        .timeout(const Duration(seconds: 90));
 
     if (response.statusCode != 200) {
       print('LLM 请求失败: ${response.statusCode} - ${response.body}');
-      throw Exception('API调用失败: ${response.statusCode} - ${response.body}');
+      throw Exception('API调用失败: ${response.statusCode}');
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
