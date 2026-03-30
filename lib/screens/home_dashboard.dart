@@ -150,9 +150,16 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (mounted) _checkExactAlarmPermission();
       });
 
-      ExternalShareHandler.init(context, () {
-        _loadAllData();
-      });
+      ExternalShareHandler.init(
+        context,
+        () {
+          _loadAllData();
+        },
+        onTodoRecognized: (results) {
+          // 图片识别到待办，显示添加对话框并预填充数据
+          _todoSectionKey.currentState?.showAddTodoDialogWithData(results);
+        },
+      );
       _checkAutoSync();
       _checkUpdatesSilently();
 

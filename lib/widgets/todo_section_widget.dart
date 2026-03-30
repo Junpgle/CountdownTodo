@@ -76,6 +76,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   }
 
   void showAddTodoDialog() {
+    _showAddTodoDialogWithData(null);
+  }
+
+  /// 显示添加待办对话框并预填充大模型识别的数据
+  void showAddTodoDialogWithData(List<Map<String, dynamic>> llmResults) {
+    _showAddTodoDialogWithData(llmResults);
+  }
+
+  void _showAddTodoDialogWithData(List<Map<String, dynamic>>? llmResults) {
     TextEditingController titleCtrl = TextEditingController();
     TextEditingController remarkCtrl = TextEditingController();
     DateTime createdAt = DateTime.now();
@@ -91,9 +100,56 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     List<ParsedTodoResult> parsedResults = [];
     int currentParseIndex = 0;
     bool isParsing = false;
-    String? llmRawResponse; // 大模型原始返回
+    String? llmRawResponse;
 
     int selectedTabIndex = 0;
+
+    // 如果有预填充的大模型数据，解析并设置
+    if (llmResults != null && llmResults.isNotEmpty) {
+      parsedResults = llmResults.map((result) {
+        return ParsedTodoResult(
+          title: result['title'] ?? '',
+          remark: result['remark'],
+          isAllDay: result['isAllDay'] ?? false,
+          startTime: result['startTime'] != null
+              ? DateTime.tryParse(result['startTime'])
+              : null,
+          endTime: result['endTime'] != null
+              ? DateTime.tryParse(result['endTime'])
+              : null,
+          recurrence: _parseRecurrenceType(result['recurrence']),
+          customIntervalDays: result['customIntervalDays'],
+        );
+      }).toList();
+
+      llmRawResponse = const JsonEncoder.withIndent('  ').convert(llmResults);
+
+      // 设置第一个待办的数据
+      if (parsedResults.isNotEmpty) {
+        final first = parsedResults[0];
+        titleCtrl.text = first.title;
+        remarkCtrl.text = first.remark ?? "";
+        if (first.startTime != null) {
+          createdAt = first.startTime!;
+          if (first.isAllDay) {
+            createdAt =
+                DateTime(createdAt.year, createdAt.month, createdAt.day, 0, 0);
+          }
+        }
+        if (first.endTime != null) {
+          dueDate = first.endTime;
+        } else if (first.startTime != null && first.isAllDay) {
+          dueDate =
+              DateTime(createdAt.year, createdAt.month, createdAt.day, 23, 59);
+        }
+        isAllDay = first.isAllDay;
+        recurrence = first.recurrence;
+        customDays = first.customIntervalDays;
+        if (customDays != null) {
+          customDaysCtrl.text = customDays.toString();
+        }
+      }
+    }
 
     showDialog(
       context: context,
@@ -482,35 +538,39 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                   });
 
                                   try {
-                                    final result =
+                                    final results =
                                         await LLMService.parseTodoWithLLM(
                                             aiInputCtrl.text);
 
-                                    final parsedResult = ParsedTodoResult(
-                                      title:
-                                          result['title'] ?? aiInputCtrl.text,
-                                      remark: result['remark'],
-                                      isAllDay: result['isAllDay'] ?? false,
-                                      startTime: result['startTime'] != null
-                                          ? DateTime.tryParse(
-                                              result['startTime'])
-                                          : null,
-                                      endTime: result['endTime'] != null
-                                          ? DateTime.tryParse(result['endTime'])
-                                          : null,
-                                      recurrence: _parseRecurrenceType(
-                                          result['recurrence']),
-                                      customIntervalDays:
-                                          result['customIntervalDays'],
-                                    );
+                                    final parsedResultsList =
+                                        results.map((result) {
+                                      return ParsedTodoResult(
+                                        title:
+                                            result['title'] ?? aiInputCtrl.text,
+                                        remark: result['remark'],
+                                        isAllDay: result['isAllDay'] ?? false,
+                                        startTime: result['startTime'] != null
+                                            ? DateTime.tryParse(
+                                                result['startTime'])
+                                            : null,
+                                        endTime: result['endTime'] != null
+                                            ? DateTime.tryParse(
+                                                result['endTime'])
+                                            : null,
+                                        recurrence: _parseRecurrenceType(
+                                            result['recurrence']),
+                                        customIntervalDays:
+                                            result['customIntervalDays'],
+                                      );
+                                    }).toList();
 
                                     setDialogState(() {
-                                      parsedResults = [parsedResult];
+                                      parsedResults = parsedResultsList;
                                       currentParseIndex = 0;
                                       isParsing = false;
                                       llmRawResponse =
                                           const JsonEncoder.withIndent('  ')
-                                              .convert(result);
+                                              .convert(results);
                                     });
 
                                     if (parsedResults.isNotEmpty) {
@@ -553,9 +613,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       if (mounted) {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
-                                          const SnackBar(
-                                            content: Text("大模型解析成功，请确认或修改后保存"),
-                                            duration: Duration(seconds: 2),
+                                          SnackBar(
+                                            content: Text(
+                                                "大模型解析成功，共${parsedResults.length}个待办，请确认或修改后保存"),
+                                            duration:
+                                                const Duration(seconds: 2),
                                           ),
                                         );
                                       }

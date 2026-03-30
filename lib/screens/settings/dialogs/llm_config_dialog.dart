@@ -12,8 +12,13 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
   final _apiUrlCtrl = TextEditingController();
   final _apiKeyCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
+  final _visionModelCtrl = TextEditingController();
+  final _textPromptCtrl = TextEditingController();
+  final _visionPromptCtrl = TextEditingController();
   bool _obscureApiKey = true;
   bool _isLoading = true;
+  bool _isTesting = false;
+  bool _showAdvanced = false;
 
   @override
   void initState() {
@@ -27,12 +32,56 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
       _apiUrlCtrl.text = config.apiUrl;
       _apiKeyCtrl.text = config.apiKey;
       _modelCtrl.text = config.model;
+      _visionModelCtrl.text = config.visionModel;
+      _textPromptCtrl.text = config.textPrompt;
+      _visionPromptCtrl.text = config.visionPrompt;
     } else {
       _apiUrlCtrl.text =
           'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-      _modelCtrl.text = 'glm-4-flash';
+      _modelCtrl.text = 'glm-4.7-flash';
+      _visionModelCtrl.text = 'glm-4.6v-flash';
+      _textPromptCtrl.text = LLMConfig.defaultTextPrompt;
+      _visionPromptCtrl.text = LLMConfig.defaultVisionPrompt;
     }
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _testConnection() async {
+    setState(() => _isTesting = true);
+    try {
+      // 先保存当前配置
+      final config = LLMConfig(
+        apiKey: _apiKeyCtrl.text.trim(),
+        model: _modelCtrl.text.trim(),
+        visionModel: _visionModelCtrl.text.trim(),
+        apiUrl: _apiUrlCtrl.text.trim(),
+        textPrompt: _textPromptCtrl.text,
+        visionPrompt: _visionPromptCtrl.text,
+      );
+      await LLMService.saveConfig(config);
+
+      final result = await LLMService.testConnection();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '连接成功！响应: ${result.substring(0, result.length > 50 ? 50 : result.length)}...'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('连接失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isTesting = false);
+    }
   }
 
   @override
@@ -40,6 +89,9 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
     _apiUrlCtrl.dispose();
     _apiKeyCtrl.dispose();
     _modelCtrl.dispose();
+    _visionModelCtrl.dispose();
+    _textPromptCtrl.dispose();
+    _visionPromptCtrl.dispose();
     super.dispose();
   }
 
@@ -123,13 +175,91 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
                   TextField(
                     controller: _modelCtrl,
                     decoration: InputDecoration(
-                      labelText: '模型名称',
-                      hintText: 'glm-4-flash',
+                      labelText: '文本模型',
+                      hintText: 'glm-4.7-flash',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      prefixIcon: const Icon(Icons.psychology),
+                      prefixIcon: const Icon(Icons.text_fields),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _visionModelCtrl,
+                    decoration: InputDecoration(
+                      labelText: '视觉模型 (图片识别)',
+                      hintText: 'glm-4.6v-flash',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      prefixIcon: const Icon(Icons.image),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ExpansionTile(
+                    title: const Text('高级设置 (自定义Prompt)',
+                        style: TextStyle(fontSize: 14)),
+                    children: [
+                      const SizedBox(height: 8),
+                      const Text('文本识别Prompt:',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
+                      const SizedBox(height: 4),
+                      const Text('可用变量: {now} 当前时间, {input} 输入文本',
+                          style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _textPromptCtrl,
+                        maxLines: 8,
+                        style: const TextStyle(
+                            fontSize: 12, fontFamily: 'monospace'),
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.all(12),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('图片识别Prompt:',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
+                      const SizedBox(height: 4),
+                      const Text('可用变量: {now} 当前时间',
+                          style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _visionPromptCtrl,
+                        maxLines: 8,
+                        style: const TextStyle(
+                            fontSize: 12, fontFamily: 'monospace'),
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.all(12),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _textPromptCtrl.text =
+                                    LLMConfig.defaultTextPrompt;
+                                _visionPromptCtrl.text =
+                                    LLMConfig.defaultVisionPrompt;
+                              });
+                            },
+                            icon: const Icon(Icons.restore, size: 16),
+                            label: const Text('恢复默认'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                   ),
                 ],
               ),
@@ -138,6 +268,17 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('取消'),
+        ),
+        TextButton.icon(
+          onPressed: _isTesting ? null : _testConnection,
+          icon: _isTesting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.wifi_tethering, size: 18),
+          label: Text(_isTesting ? '测试中...' : '测试连接'),
         ),
         TextButton(
           onPressed: () async {
@@ -149,7 +290,7 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
               );
             }
           },
-          child: const Text('清除配置'),
+          child: const Text('清除'),
         ),
         FilledButton(
           onPressed: () async {
@@ -163,9 +304,17 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
             final config = LLMConfig(
               apiKey: _apiKeyCtrl.text.trim(),
               model: _modelCtrl.text.trim(),
+              visionModel: _visionModelCtrl.text.trim().isEmpty
+                  ? null
+                  : _visionModelCtrl.text.trim(),
               apiUrl: _apiUrlCtrl.text.trim().isEmpty
                   ? null
                   : _apiUrlCtrl.text.trim(),
+              textPrompt:
+                  _textPromptCtrl.text.isEmpty ? null : _textPromptCtrl.text,
+              visionPrompt: _visionPromptCtrl.text.isEmpty
+                  ? null
+                  : _visionPromptCtrl.text,
             );
             await LLMService.saveConfig(config);
             if (context.mounted) {

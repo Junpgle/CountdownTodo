@@ -79,6 +79,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ── 系统控制超时返回
   Timer? _systemControlAutoReturnTimer;
   Timer? _quickControlsAutoReturnTimer;
+  Timer? _mediaRefreshTimer;
 
   // 启动系统控制自动返回定时器（子控制 → 快速面板）
   void _startSystemControlAutoReturnTimer() {
@@ -195,6 +196,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         if (mounted) _applyPayload(widget.initialPayload);
       });
     }
+
+    // 启动 SMTC 媒体轮询
+    SystemControlService.startMediaPolling(intervalMs: 3000);
+    // 定时刷新 UI 上的媒体信息
+    _mediaRefreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -213,7 +221,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _splitController.dispose();
     _sizeController.dispose();
     _pulseController.dispose(); // 清理脉冲动画控制器
-    SystemControlService.disposeGamma();
+    _mediaRefreshTimer?.cancel();
+    SystemControlService.dispose();
     _windowController?.setWindowMethodHandler(null);
     super.dispose();
   }
@@ -2493,15 +2502,26 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Widget _buildMusicPlayer() {
     final musicData = _currentPayload?['musicData'] as Map?;
     final hasMusic = musicData != null && musicData.isNotEmpty;
-    final title = musicData?['title']?.toString() ?? '';
-    final artist = musicData?['artist']?.toString() ?? '';
-    final isPlaying = musicData?['isPlaying'] as bool? ?? false;
+
+    // 从 SMTC 获取系统媒体信息
+    final smtc = SystemControlService.getMediaInfo();
+    final smtcHasMusic = !smtc.isEmpty;
+
+    // 优先使用 payload 中的数据，其次使用 SMTC 数据
+    final title =
+        musicData?['title']?.toString() ?? (smtcHasMusic ? smtc.title : '');
+    final artist =
+        musicData?['artist']?.toString() ?? (smtcHasMusic ? smtc.artist : '');
+    final isPlaying = musicData?['isPlaying'] as bool? ??
+        (smtc.status == PlaybackStatus.playing);
     final currentTime = musicData?['currentTime']?.toString() ?? '0:00';
     final totalTime = musicData?['totalTime']?.toString() ?? '0:00';
     final lyrics = musicData?['lyrics']?.toString() ?? '';
     final currentLyricIndex = musicData?['currentLyricIndex'] as int? ?? 0;
     final shuffleOn = musicData?['shuffle'] as bool? ?? false;
     final repeatMode = musicData?['repeat']?.toString() ?? 'off';
+
+    final showContent = hasMusic || smtcHasMusic;
 
     return GestureDetector(
       key: const ValueKey('musicPlayer'),
@@ -2516,7 +2536,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       child: Container(
         color: Colors.transparent,
         padding: const EdgeInsets.all(14),
-        child: hasMusic
+        child: showContent
             ? _buildMusicPlayerContent(title, artist, isPlaying, currentTime,
                 totalTime, lyrics, currentLyricIndex, shuffleOn, repeatMode)
             : _buildMusicEmptyState(),
