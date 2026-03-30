@@ -2,62 +2,76 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'course_service.dart';
 import '../storage_service.dart';
+import 'llm_service.dart';
 
 class ExternalShareHandler {
   static StreamSubscription? _intentDataStreamSubscription;
-  static bool _isProcessing = false; // 🚀 终极防抖锁：防止系统疯狂发送 Intent 导致多线程死循环卡死 ANR
+  static bool _isProcessing = false;
 
   /// 初始化监听，放在主页的 initState 中调用
-  static void init(BuildContext context, Function onSuccessCallback) {
-    // 🚀 桌面端拦截：Windows/macOS 暂不支持 ReceiveSharingIntent
+  /// [onCourseImported] 课表导入成功回调
+  /// [onTodoRecognized] 图片识别待办回调，传入识别结果列表和图片路径
+  static void init(
+    BuildContext context,
+    Function onCourseImported, {
+    Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+  }) {
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
-    // 1. 处理 App 在后台运行时，其他应用分享进来的文件 (热启动)
-    _intentDataStreamSubscription = ReceiveSharingIntent.instance.getMediaStream().listen((List<SharedMediaFile> value) {
-      _processSharedFiles(context, value, onSuccessCallback);
-    }, onError: (err) {
-      debugPrint("获取外部意图失败: $err");
-    });
+    _intentDataStreamSubscription =
+        ReceiveSharingIntent.instance.getMediaStream().listen(
+      (List<SharedMediaFile> value) {
+        _processSharedFiles(context, value, onCourseImported,
+            onTodoRecognized: onTodoRecognized);
+      },
+      onError: (err) {
+        debugPrint("获取外部意图失败: $err");
+      },
+    );
 
-    // 2. 处理 App 未启动时，点击文件直接唤起 App (冷启动)
-    ReceiveSharingIntent.instance.getInitialMedia().then((List<SharedMediaFile> value) {
-      _processSharedFiles(context, value, onSuccessCallback);
-    });
+    ReceiveSharingIntent.instance.getInitialMedia().then(
+      (List<SharedMediaFile> value) {
+        _processSharedFiles(context, value, onCourseImported,
+            onTodoRecognized: onTodoRecognized);
+      },
+    );
   }
 
-  static void _processSharedFiles(BuildContext context, List<SharedMediaFile> files, Function onSuccess) async {
-    // 🚀 桌面端拦截
+  static void _processSharedFiles(
+    BuildContext context,
+    List<SharedMediaFile> files,
+    Function onSuccess, {
+    Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+  }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
-
-    // 🚀 核心拦截：如果正在处理，或者文件为空，立刻抛弃后续的重复通知！
     if (files.isEmpty || _isProcessing) return;
     _isProcessing = true;
 
-    // 🚀 防白屏修复：给 Flutter 引擎留出 500 毫秒画出第一帧主页界面，然后再弹窗
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // 确保调用环境还存活
     if (!context.mounted) {
       _isProcessing = false;
       return;
     }
 
-    ValueNotifier<String> statusNotifier = ValueNotifier("获取课表文件中...");
-    BuildContext? dialogContext; // 🚀 独立捕获弹窗的 Context，保证 100% 能把它关掉
+    ValueNotifier<String> statusNotifier = ValueNotifier("处理中...");
+    BuildContext? dialogContext;
 
-    // 弹出不可取消的进度弹窗
     showDialog(
       context: context,
       barrierDismissible: false,
       useRootNavigator: true,
       builder: (ctx) {
-        dialogContext = ctx; // 记录弹窗自己的专属生命周期
+        dialogContext = ctx;
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Row(
             children: [
               const CircularProgressIndicator(),
@@ -80,123 +94,197 @@ class ExternalShareHandler {
     );
 
     try {
-      // 过渡动画延时
       await Future.delayed(const Duration(milliseconds: 400));
-      statusNotifier.value = "正在识别课表类型...";
 
-      // 获取传递过来的文件路径
       String filePath = files.first.path;
       File file = File(filePath);
-
-      // 安全读取文件内容
-      String content = await _safeReadFile(file);
       String ext = filePath.split('.').last.toLowerCase();
 
-      await Future.delayed(const Duration(milliseconds: 400));
+      // 检测是否为图片
+      final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+      final isImage = imageExtensions.contains(ext);
 
-      bool success = false;
-      String sourceName = "";
+      if (isImage) {
+        // 图片处理：调用大模型识别待办
+        statusNotifier.value = "识别到图片\n正在压缩图片...";
 
-      // 智能嗅探文件类型与内容特征
-      if (ext == 'ics' || content.contains('BEGIN:VCALENDAR')) {
-        sourceName = "西安电子科技大学";
-        statusNotifier.value = "识别到: $sourceName\n正在导入...";
-
-        DateTime? semStart = await StorageService.getSemesterStart();
-        if (semStart == null) {
-          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
+        final config = await LLMService.getConfig();
+        if (config == null || !config.isConfigured) {
+          statusNotifier.value = "⚠️ 需要配置大模型API\n请在设置中配置后重试";
           await Future.delayed(const Duration(seconds: 2));
           _closeDialogSafely(dialogContext);
           return;
         }
-        success = await CourseService.importXidianScheduleFromIcs(content, semStart);
-      }
 
-      // 2. 识别 正方教务系统 (关键新增)
-      // 特征：包含 timetable_con 类名或正方特有的 ID 格式
-      else if (content.contains('timetable_con') || content.contains('id="table1"')) {
-        sourceName = "正方教务系统";
-        statusNotifier.value = "识别到: $sourceName\n正在深度解析...";
-
-        DateTime? semStart = await StorageService.getSemesterStart();
-        if (semStart == null) {
-          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
+        // 检查原始图片大小
+        final fileSize = await file.length();
+        if (fileSize > 20 * 1024 * 1024) {
+          statusNotifier.value = "⚠️ 图片太大\n请分享小于20MB的图片";
           await Future.delayed(const Duration(seconds: 2));
           _closeDialogSafely(dialogContext);
           return;
         }
-        // 调用刚才在 CourseService 中新增的方法
-        success = await CourseService.importZfSoftScheduleFromHtml(content, semStart);
-      }
 
-      else if (['mhtml', 'html', 'htm'].contains(ext) || content.contains('quoted-printable') || content.toLowerCase().contains('<html')) {
-        sourceName = "厦门大学";
-        statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
+        // 压缩图片
+        String compressedPath = await _compressImage(filePath);
 
-        DateTime? semStart = await StorageService.getSemesterStart();
-        if (semStart == null) {
-          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
-          await Future.delayed(const Duration(seconds: 2));
+        final compressedFile = File(compressedPath);
+        final compressedSize = await compressedFile.length();
+        statusNotifier.value =
+            "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
+
+        try {
+          final results = await LLMService.parseTodoFromImage(compressedPath)
+              .timeout(const Duration(seconds: 90));
+
+          statusNotifier.value = "✅ 识别成功！\n发现${results.length}个待办事项";
+          await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
-          return;
-        }
-        success = await CourseService.importXmuScheduleFromHtml(content, semStart);
-      }
-      else if (['json', 'txt'].contains(ext) || content.trim().startsWith('[') || content.trim().startsWith('{')) {
-        sourceName = "聚在工大";
-        statusNotifier.value = "识别到: $sourceName\n正在导入...";
-        success = await CourseService.importScheduleFromJson(content);
-      }
-      else {
-        statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
-        await Future.delayed(const Duration(seconds: 2));
-        _closeDialogSafely(dialogContext);
-        return;
-      }
 
-      // 提示结果并刷新主页
-      if (success) {
-        statusNotifier.value = "✅ 导入成功！\n正在刷新课表...";
-        await Future.delayed(const Duration(milliseconds: 800));
-        _closeDialogSafely(dialogContext);
-        onSuccess(); // 通知主页刷新数据
+          if (onTodoRecognized != null && results.isNotEmpty) {
+            // 传递原始图片路径（用于显示缩略图）
+            onTodoRecognized(results, filePath);
+          }
+        } catch (e) {
+          debugPrint("大模型图片识别失败: $e");
+          String errorMsg = e.toString();
+          if (errorMsg.contains('TimeoutException')) {
+            statusNotifier.value = "❌ 请求超时\n请检查网络或稍后重试";
+          } else if (errorMsg.contains('SocketException')) {
+            statusNotifier.value = "❌ 网络连接失败\n请检查网络设置";
+          } else {
+            statusNotifier.value =
+                "❌ 图片识别失败\n${errorMsg.length > 50 ? errorMsg.substring(0, 50) : errorMsg}";
+          }
+          await Future.delayed(const Duration(seconds: 3));
+          _closeDialogSafely(dialogContext);
+        }
       } else {
-        statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
-        await Future.delayed(const Duration(seconds: 2));
-        _closeDialogSafely(dialogContext);
-      }
+        // 文件处理：课表导入
+        statusNotifier.value = "获取课表文件中...";
 
+        String content = await _safeReadFile(file);
+
+        await Future.delayed(const Duration(milliseconds: 400));
+
+        bool success = false;
+        String sourceName = "";
+
+        if (ext == 'ics' || content.contains('BEGIN:VCALENDAR')) {
+          sourceName = "西安电子科技大学";
+          statusNotifier.value = "识别到: $sourceName\n正在导入...";
+
+          DateTime? semStart = await StorageService.getSemesterStart();
+          if (semStart == null) {
+            statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
+            await Future.delayed(const Duration(seconds: 2));
+            _closeDialogSafely(dialogContext);
+            return;
+          }
+          success = await CourseService.importXidianScheduleFromIcs(
+              content, semStart);
+        } else if (content.contains('timetable_con') ||
+            content.contains('id="table1"')) {
+          sourceName = "正方教务系统";
+          statusNotifier.value = "识别到: $sourceName\n正在深度解析...";
+
+          DateTime? semStart = await StorageService.getSemesterStart();
+          if (semStart == null) {
+            statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
+            await Future.delayed(const Duration(seconds: 2));
+            _closeDialogSafely(dialogContext);
+            return;
+          }
+          success = await CourseService.importZfSoftScheduleFromHtml(
+              content, semStart);
+        } else if (['mhtml', 'html', 'htm'].contains(ext) ||
+            content.contains('quoted-printable') ||
+            content.toLowerCase().contains('<html')) {
+          sourceName = "厦门大学";
+          statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
+
+          DateTime? semStart = await StorageService.getSemesterStart();
+          if (semStart == null) {
+            statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
+            await Future.delayed(const Duration(seconds: 2));
+            _closeDialogSafely(dialogContext);
+            return;
+          }
+          success =
+              await CourseService.importXmuScheduleFromHtml(content, semStart);
+        } else if (['json', 'txt'].contains(ext) ||
+            content.trim().startsWith('[') ||
+            content.trim().startsWith('{')) {
+          sourceName = "聚在工大";
+          statusNotifier.value = "识别到: $sourceName\n正在导入...";
+          success = await CourseService.importScheduleFromJson(content);
+        } else {
+          statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
+          await Future.delayed(const Duration(seconds: 2));
+          _closeDialogSafely(dialogContext);
+          return;
+        }
+
+        if (success) {
+          statusNotifier.value = "✅ 导入成功！\n正在刷新课表...";
+          await Future.delayed(const Duration(milliseconds: 800));
+          _closeDialogSafely(dialogContext);
+          onSuccess();
+        } else {
+          statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
+          await Future.delayed(const Duration(seconds: 2));
+          _closeDialogSafely(dialogContext);
+        }
+      }
     } catch (e) {
       debugPrint("处理外部共享文件崩溃: $e");
       statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
       await Future.delayed(const Duration(seconds: 2));
       _closeDialogSafely(dialogContext);
     } finally {
-      // 🚀 终极清理：彻底斩断所有后续排队的重复意图，并释放互斥锁
       ReceiveSharingIntent.instance.reset();
       _isProcessing = false;
     }
   }
 
-  /// 🚀 核心修复：绝对安全的关闭弹窗方法，不依赖外部主页的存活状态
+  /// 压缩图片，返回压缩后的文件路径
+  static Future<String> _compressImage(String inputPath) async {
+    final dir = await getTemporaryDirectory();
+    final targetPath =
+        '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    final result = await FlutterImageCompress.compressAndGetFile(
+      inputPath,
+      targetPath,
+      quality: 80,
+      minWidth: 1024,
+      minHeight: 1024,
+      format: CompressFormat.jpeg,
+    );
+
+    if (result == null) {
+      // 压缩失败，返回原路径
+      return inputPath;
+    }
+
+    return result.path;
+  }
+
   static void _closeDialogSafely(BuildContext? dialogContext) {
     if (dialogContext != null && dialogContext.mounted) {
       Navigator.pop(dialogContext);
     }
   }
 
-  /// 辅助方法：安全读取文件，防止非 UTF-8 编码抛出异常
   static Future<String> _safeReadFile(File file) async {
     try {
       return await file.readAsString();
     } catch (e) {
-      // 如果默认 readAsString 失败（通常是因为编码问题），降级为允许乱码的字节解码
       List<int> bytes = await file.readAsBytes();
       return utf8.decode(bytes, allowMalformed: true);
     }
   }
 
-  /// 页面销毁时释放资源
   static void dispose() {
     _intentDataStreamSubscription?.cancel();
   }

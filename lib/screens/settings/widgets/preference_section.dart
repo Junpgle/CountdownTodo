@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../services/llm_service.dart';
+import '../dialogs/llm_config_dialog.dart';
 
 class PreferenceSection extends StatelessWidget {
   final VoidCallback onManageHomeSections;
@@ -85,7 +87,8 @@ class PreferenceSection extends StatelessWidget {
                   items: const [
                     DropdownMenuItem(
                         value: 'cloudflare', child: Text('Cloudflare (更安全)')),
-                    DropdownMenuItem(value: 'aliyun', child: Text('阿里云ECS (更快)')),
+                    DropdownMenuItem(
+                        value: 'aliyun', child: Text('阿里云ECS (更快)')),
                   ],
                   onChanged: onServerChoiceChanged,
                 ),
@@ -104,6 +107,42 @@ class PreferenceSection extends StatelessWidget {
                   ],
                   onChanged: onThemeModeChanged,
                 ),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.psychology_outlined,
+                    color: Colors.deepPurple),
+                title: const Text('大模型API配置'),
+                subtitle: FutureBuilder<LLMConfig?>(
+                  future: LLMService.getConfig(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Text('加载中...',
+                          style: TextStyle(fontSize: 12));
+                    }
+                    final config = snapshot.data;
+                    if (config == null || !config.isConfigured) {
+                      return const Text(
+                        '未配置，用于AI智能解析待办',
+                        style: TextStyle(fontSize: 12, color: Colors.orange),
+                      );
+                    }
+                    return Text(
+                      '已配置: ${config.model}',
+                      style: const TextStyle(fontSize: 12, color: Colors.green),
+                    );
+                  },
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => const LLMConfigDialog(),
+                  );
+                  if (result == true) {
+                    (context as Element).markNeedsBuild();
+                  }
+                },
               ),
               if (Platform.isWindows) ...[
                 const Divider(height: 1, indent: 56),
@@ -125,7 +164,8 @@ class PreferenceSection extends StatelessWidget {
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  leading: const Icon(Icons.layers_outlined, color: Colors.indigo),
+                  leading:
+                      const Icon(Icons.layers_outlined, color: Colors.indigo),
                   title: const Text('灵动岛'),
                   subtitle: const Text('开启灵动岛式浮动窗口'),
                   trailing: Switch(

@@ -17,7 +17,6 @@ import 'services/window_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 import 'windows_island/island_manager.dart';
-import 'windows_island/island_ui.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -68,9 +67,6 @@ Future<void> main(List<String> args) async {
 
   // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
   HttpOverrides.global = MyHttpOverrides();
-
-  // 初始化 FloatWindowService（注册 native handler）
-  FloatWindowService.init();
 
   // 初始化 WindowService（监听窗口关闭事件）
   WindowService.init();
@@ -280,19 +276,9 @@ class _MyAppState extends State<MyApp> {
             '/dev/island': (context) => const IslandDebugPage(),
           },
 
-          // Inject an in-layout island overlay when needed via builder so it
-          // sits above all routes. The overlay listens to
-          // FloatWindowService.debugPayload to show an in-app island when
-          // multi-window features are unavailable.
+          // No in-layout island overlay - using independent window island only
           builder: (context, child) {
-            return Stack(
-              children: [
-                child ?? const SizedBox.shrink(),
-                // In-layout island overlay
-                const SizedBox.expand(child: SizedBox()),
-                InLayoutIslandOverlay(),
-              ],
-            );
+            return child ?? const SizedBox.shrink();
           },
 
           // 路由控制：加载中 → 升级引导 → 主页/登录
@@ -319,51 +305,3 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
-class InLayoutIslandOverlay extends StatefulWidget {
-  const InLayoutIslandOverlay({super.key});
-
-  @override
-  State<InLayoutIslandOverlay> createState() => _InLayoutIslandOverlayState();
-}
-
-class _InLayoutIslandOverlayState extends State<InLayoutIslandOverlay> {
-  Offset _pos = const Offset(40, 400);
-
-  @override
-  void initState() {
-    super.initState();
-    FloatWindowService.debugPayload.addListener(_onPayload);
-  }
-
-  void _onPayload() => setState(() {});
-
-  @override
-  void dispose() {
-    FloatWindowService.debugPayload.removeListener(_onPayload);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final payload = FloatWindowService.debugPayload.value;
-    if (payload == null) return const SizedBox.shrink();
-
-    // Render a small draggable island in-layout
-    return Positioned(
-      left: _pos.dx,
-      top: _pos.dy,
-      child: GestureDetector(
-        onPanUpdate: (d) => setState(() => _pos += d.delta),
-        child: Material(
-          elevation: 6,
-          borderRadius: BorderRadius.circular(28),
-          color: Colors.transparent,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380, maxHeight: 300),
-            child: IslandUI(initialPayload: payload),
-          ),
-        ),
-      ),
-    );
-  }
-}

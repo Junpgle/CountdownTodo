@@ -76,7 +76,7 @@ class IslandManager {
       final orphanId = await _loadPersistedWindowId(islandId);
       if (orphanId != null) {
         debugPrint(
-            '[IslandManager] destroying orphaned window $orphanId before creating new one');
+            '[IslandManager] destroying orphaned window $orphanId before creating new island');
         await IslandChannel.destroyWindow(orphanId);
         await _clearPersistedWindowId(islandId);
       }
@@ -85,13 +85,16 @@ class IslandManager {
     // Start create and cache the future so concurrent callers wait
     final future = _doCreate(islandId);
     _creating[islandId] = future;
-    final res = await future;
-    _creating.remove(islandId);
-    if (res != null) {
-      _windowIdCache[islandId] = res;
-      await _persistWindowId(islandId, res);
+    try {
+      final res = await future;
+      if (res != null) {
+        _windowIdCache[islandId] = res;
+        await _persistWindowId(islandId, res);
+      }
+      return res;
+    } finally {
+      _creating.remove(islandId);
     }
-    return res;
   }
 
   Future<String?> _doCreate(String islandId) async {
