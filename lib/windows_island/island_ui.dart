@@ -9,6 +9,7 @@ import 'island_state_stack.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
+import '../services/system_control_service.dart';
 
 // 导入鼠标事件类型
 import 'package:flutter/gestures.dart' show PointerScrollEvent;
@@ -183,6 +184,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _snoozeTimer?.cancel();
     _idleAutoReturnTimer?.cancel();
     _carouselAutoReturnTimer?.cancel();
+    _resizeDebounce?.cancel();
     _timeNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
@@ -194,18 +196,27 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── 窗口大小控制 ─────────────────────────────────────────────────────────
 
+  Timer? _resizeDebounce;
+
   Future<void> _resizeWindowOnce(Size targetSize) async {
     if (targetSize == _currentWindowSize) return;
-    try {
-      final ctrl = await _getController();
-      await ctrl.invokeMethod('setWindowSize', {
-        'width': targetSize.width.toDouble(),
-        'height': targetSize.height.toDouble(),
-      });
-      _currentWindowSize = targetSize;
-    } catch (e) {
-      debugPrint('[IslandUI] resize error: $e');
-    }
+    // 防抖：快速连续调用只执行最后一次
+    _resizeDebounce?.cancel();
+    _resizeDebounce = Timer(const Duration(milliseconds: 50), () async {
+      if (!mounted) return;
+      if (targetSize == _currentWindowSize) return;
+      try {
+        final ctrl = await _getController();
+        if (!mounted) return;
+        await ctrl.invokeMethod('setWindowSize', {
+          'width': targetSize.width.toDouble(),
+          'height': targetSize.height.toDouble(),
+        });
+        _currentWindowSize = targetSize;
+      } catch (e) {
+        debugPrint('[IslandUI] resize error: $e');
+      }
+    });
   }
 
   void _animateToState(IslandState nextState) {
@@ -222,7 +233,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     ));
 
     _resizeWindowOnce(toSize);
-    setState(() {}); // 触发 _buildContent() 读取 _stack.current
 
     _sizeController.forward(from: 0).then((_) {
       if (mounted && _transitionVersion == myVersion) {
@@ -1948,8 +1958,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     });
 
     try {
-      // 获取当前用户名
       final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
       final username = prefs.getString('current_login_user') ?? '';
 
       if (username.isEmpty) {
@@ -1960,12 +1970,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
       final now = DateTime.now();
 
-      // 添加待办事项卡片 - 只显示最紧急的一个
+      // 添加待办事项卡片
       try {
         final todos = await StorageService.getTodos(username);
+        if (!mounted) return;
         final activeTodos =
             todos.where((todo) => !todo.isDeleted && !todo.isDone).toList();
-        // 按到期时间排序，今天的优先
         activeTodos.sort((a, b) {
           if (a.dueDate == null && b.dueDate == null) return 0;
           if (a.dueDate == null) return 1;
@@ -1999,13 +2009,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         debugPrint('[IslandUI] 读取待办失败: $e');
       }
 
-      // 添加倒计时卡片 - 只显示最近未过的一个（排除已过时的）
+      // 添加倒计时卡片
       try {
         final countdowns = await StorageService.getCountdowns(username);
+        if (!mounted) return;
         final activeCountdowns = countdowns
             .where((cd) => !cd.isDeleted && cd.targetDate.isAfter(now))
             .toList();
-        // 按目标时间排序
         activeCountdowns.sort((a, b) => a.targetDate.compareTo(b.targetDate));
         if (activeCountdowns.isNotEmpty) {
           final countdown = activeCountdowns.first;
@@ -2032,19 +2042,19 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         debugPrint('[IslandUI] 读取倒计时失败: $e');
       }
 
-      // 添加课程卡片 - 从 CourseService 获取下一个上课的课程
+      // 添加课程卡片
       try {
         final dashboardCourses = await CourseService.getDashboardCourses();
+        if (!mounted) return;
         final courses = dashboardCourses['courses'] as List? ?? [];
         if (courses.isNotEmpty) {
           final nextCourse = courses.first;
-          // 计算相对日期
-          final courseDateStr = nextCourse.date; // yyyy-MM-dd
+          final courseDateStr = nextCourse.date;
           final todayStr =
               '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
           String dateLabel;
           if (courseDateStr == todayStr) {
-            dateLabel = nextCourse.formattedStartTime; // 今天显示具体时间
+            dateLabel = nextCourse.formattedStartTime;
           } else {
             try {
               final courseDate = DateTime.parse(courseDateStr);
@@ -2080,9 +2090,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         debugPrint('[IslandUI] 读取课程失败: $e');
       }
 
-      // 添加专注时长卡片 - 计算今日总专注时长
+      // 添加专注时长卡片
       try {
         final records = await PomodoroService.getRecords();
+        if (!mounted) return;
         final todayStart =
             DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
         int todayFocusSeconds = 0;
@@ -2092,26 +2103,18 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             todayFocusSeconds += r.actualDuration ?? 0;
           }
         }
-        if (todayFocusSeconds > 0) {
-          final hours = todayFocusSeconds ~/ 3600;
-          final minutes = (todayFocusSeconds % 3600) ~/ 60;
-          final timeStr = hours > 0 ? '${hours}时${minutes}分' : '$minutes分钟';
-          _cards.add({
-            'type': 'focus',
-            'icon': '🎯',
-            'title': '今日专注',
-            'subtitle': timeStr,
-            'color': IslandConfig.focusColor,
-          });
-        } else {
-          _cards.add({
-            'type': 'focus',
-            'icon': '🎯',
-            'title': '今日专注',
-            'subtitle': '0分钟',
-            'color': IslandConfig.focusColor,
-          });
-        }
+        final hours = todayFocusSeconds ~/ 3600;
+        final minutes = (todayFocusSeconds % 3600) ~/ 60;
+        final timeStr = todayFocusSeconds > 0
+            ? (hours > 0 ? '${hours}时${minutes}分' : '$minutes分钟')
+            : '0分钟';
+        _cards.add({
+          'type': 'focus',
+          'icon': '🎯',
+          'title': '今日专注',
+          'subtitle': timeStr,
+          'color': IslandConfig.focusColor,
+        });
       } catch (e) {
         debugPrint('[IslandUI] 读取专注时长失败: $e');
       }
@@ -2119,7 +2122,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       debugPrint('[IslandUI] 初始化卡片失败: $e');
     }
 
-    // 如果没有卡片，添加默认卡片
     if (_cards.isEmpty) {
       _addDefaultCard();
     }
@@ -2559,15 +2561,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // 音量控制
   Widget _buildVolumeControl() {
-    final volumeData = _currentPayload?['volumeData'] as Map?;
-    final currentVolume =
-        (volumeData?['currentVolume'] as num?)?.toDouble() ?? 0.75;
-    final isMuted = volumeData?['isMuted'] as bool? ?? false;
+    final currentVolume = SystemControlService.getVolume();
 
     return GestureDetector(
       key: const ValueKey('volumeControl'),
       onTap: () {
-        // 点击空白处返回到快速控制面板
         _stack.pop(IslandState.volumeControl);
         _stack.push(IslandState.quickControls, data: _currentPayload);
         _animateToState(IslandState.quickControls);
@@ -2580,10 +2578,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           children: [
             Row(
               children: [
-                const Text(
-                  '🔊',
-                  style: TextStyle(fontSize: 20),
-                ),
+                const Text('🔊', style: TextStyle(fontSize: 20)),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
@@ -2597,37 +2592,31 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 ),
                 Text(
                   '${(currentVolume * 100).round()}%',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            // 音量滑块
             Row(
               children: [
-                _miniBtn(
-                  isMuted ? '🔇' : '🔈',
-                  Colors.white.withOpacity(0.2),
-                  () {
-                    widget.onAction?.call('volume_mute');
-                  },
-                ),
+                _miniBtn('🔈', Colors.white.withOpacity(0.2), () {
+                  SystemControlService.toggleMute();
+                  setState(() {});
+                }),
                 Expanded(
                   child: Slider(
                     value: currentVolume,
                     onChanged: (value) {
-                      widget.onAction
-                          ?.call('volume_set', (value * 100).round());
+                      SystemControlService.setVolume(value);
+                      setState(() {});
                     },
                     activeColor: IslandConfig.focusColor,
                     inactiveColor: Colors.white.withOpacity(0.2),
                   ),
                 ),
                 _miniBtn('🔊', Colors.white.withOpacity(0.2), () {
-                  widget.onAction?.call('volume_max');
+                  SystemControlService.setVolume(1.0);
+                  setState(() {});
                 }),
               ],
             ),
@@ -2639,14 +2628,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // 亮度控制
   Widget _buildBrightnessControl() {
-    final brightnessData = _currentPayload?['brightnessData'] as Map?;
-    final currentBrightness =
-        (brightnessData?['currentBrightness'] as num?)?.toDouble() ?? 0.70;
+    final currentBrightness = SystemControlService.getBrightness();
 
     return GestureDetector(
       key: const ValueKey('brightnessControl'),
       onTap: () {
-        // 点击空白处返回到快速控制面板
         _stack.pop(IslandState.brightnessControl);
         _stack.push(IslandState.quickControls, data: _currentPayload);
         _animateToState(IslandState.quickControls);
@@ -2659,10 +2645,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           children: [
             Row(
               children: [
-                const Text(
-                  '☀️',
-                  style: TextStyle(fontSize: 20),
-                ),
+                const Text('☀️', style: TextStyle(fontSize: 20)),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
@@ -2676,33 +2659,31 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 ),
                 Text(
                   '${(currentBrightness * 100).round()}%',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            // 亮度滑块
             Row(
               children: [
                 _miniBtn('🌙', Colors.white.withOpacity(0.2), () {
-                  widget.onAction?.call('brightness_min');
+                  SystemControlService.setBrightness(0.1);
+                  setState(() {});
                 }),
                 Expanded(
                   child: Slider(
                     value: currentBrightness,
                     onChanged: (value) {
-                      widget.onAction
-                          ?.call('brightness_set', (value * 100).round());
+                      SystemControlService.setBrightness(value);
+                      setState(() {});
                     },
                     activeColor: IslandConfig.warningColor,
                     inactiveColor: Colors.white.withOpacity(0.2),
                   ),
                 ),
                 _miniBtn('☀️', Colors.white.withOpacity(0.2), () {
-                  widget.onAction?.call('brightness_max');
+                  SystemControlService.setBrightness(1.0);
+                  setState(() {});
                 }),
               ],
             ),
