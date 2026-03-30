@@ -181,6 +181,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _countdownTimer?.cancel();
     _autoDismissTimer?.cancel();
     _snoozeTimer?.cancel();
+    _idleAutoReturnTimer?.cancel();
+    _carouselAutoReturnTimer?.cancel();
     _timeNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
@@ -488,12 +490,30 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── 尺寸配置 ─────────────────────────────────────────────────────────────
 
+  Size _idleSizeForCard() {
+    if (_cards.isEmpty || _currentCardIndex >= _cards.length) {
+      return const Size(120, 34);
+    }
+    final card = _cards[_currentCardIndex];
+    if (card['type'] == 'time') {
+      return const Size(120, 34);
+    }
+    final title = card['title'] as String? ?? '';
+    final subtitle = card['subtitle'] as String? ?? '';
+    int maxLen = title.length;
+    if (subtitle.length > maxLen) maxLen = subtitle.length;
+    final textWidth = maxLen * 12.0;
+    final width = (24 + 16 + 6 + textWidth).clamp(140.0, 300.0);
+    final height = subtitle.isNotEmpty ? 48.0 : 34.0;
+    return Size(width, height);
+  }
+
   Size _targetSizeFor(IslandState s) {
     final hasSub =
         _reminderPopupData?['subtitle']?.toString().isNotEmpty ?? false;
     switch (s) {
       case IslandState.idle:
-        return const Size(120, 34);
+        return _idleSizeForCard();
       case IslandState.focusing:
         return const Size(100, 46);
       case IslandState.hoverWide:
@@ -501,7 +521,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.splitAlert:
         return const Size(300, 36);
       case IslandState.stackedCard:
-        return const Size(280, 140);
+        final hasSelected = _currentPayload?['selectedCard'] != null;
+        return hasSelected ? const Size(250, 150) : const Size(280, 140);
       case IslandState.finishConfirm:
       case IslandState.abandonConfirm:
       case IslandState.finishFinal:
@@ -532,7 +553,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.brightnessControl:
         return const Size(320, 100);
       case IslandState.cardCarousel:
-        return const Size(400, 50);
+        return const Size(380, 60);
     }
   }
 
@@ -665,18 +686,54 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
   }
 
+  // ── Idle 自动回位定时器
+  Timer? _idleAutoReturnTimer;
+
+  void _startIdleAutoReturnTimer() {
+    _idleAutoReturnTimer?.cancel();
+    _idleAutoReturnTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _stack.current == IslandState.idle && !_isFocusing) {
+        setState(() {
+          _currentCardIndex = 0;
+        });
+        final newSize = _idleSizeForCard();
+        _sizeAnimation = Tween<Size>(
+          begin: newSize,
+          end: newSize,
+        ).animate(_sizeController);
+        _resizeWindowOnce(newSize);
+      }
+    });
+  }
+
+  void _resetIdleAutoReturnTimer() {
+    _idleAutoReturnTimer?.cancel();
+    _startIdleAutoReturnTimer();
+  }
+
   // ── Idle ─────────────────────────────────────────────────────────────────
 
   Widget _buildIdle() => GestureDetector(
         key: const ValueKey('idle'),
         behavior: HitTestBehavior.translucent,
         onTap: () {
-          // 点击：如果正在专注，切换到专注状态；否则展开卡片轮播
           if (_isFocusing) {
             _stack.replaceBase(IslandState.focusing, data: _currentPayload);
             _animateToState(IslandState.focusing);
+          } else if (_cards.isNotEmpty &&
+              _currentCardIndex > 0 &&
+              _cards[_currentCardIndex]['type'] != 'time') {
+            // 非时间卡片：直接展开对应类型详情
+            final card = _cards[_currentCardIndex];
+            final detailData = {
+              ...?_currentPayload,
+              'selectedCard': card,
+            };
+            _currentPayload = detailData;
+            _stack.push(IslandState.stackedCard, data: detailData);
+            _animateToState(IslandState.stackedCard);
           } else {
-            // 非专注状态展开卡片轮播
+            // 时间卡片：展开平铺视角
             _initCards();
             _stack.push(IslandState.cardCarousel, data: _currentPayload);
             _animateToState(IslandState.cardCarousel);
@@ -684,51 +741,31 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           }
         },
         onLongPress: () {
-          // 长按：打开快速控制面板
           _stack.push(IslandState.quickControls, data: _currentPayload);
           _animateToState(IslandState.quickControls);
         },
-        onVerticalDragUpdate: (details) {
-          // 垂直拖动切换卡片
-          if (_isFocusing) {
-            // 专注状态下，向上拖动展开详情
-            if (details.delta.dy < 0) {
-              _stack.push(IslandState.stackedCard, data: _currentPayload);
-              _animateToState(IslandState.stackedCard);
-            }
-          } else if (_cards.length > 1) {
-            // 非专注状态下，拖动切换卡片
-            setState(() {
-              if (details.delta.dy < 0) {
-                // 向上拖动：下一张卡片
-                _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
-              } else {
-                // 向下拖动：上一张卡片
-                _currentCardIndex =
-                    (_currentCardIndex - 1 + _cards.length) % _cards.length;
-              }
-            });
-            // 保持小胶囊状态轮播，不展开大卡片
-            _resetCarouselAutoReturnTimer();
-          }
-        },
+        onPanStart: (_) => _startDrag(),
         child: Listener(
           onPointerSignal: (pointerSignal) {
-            // 鼠标滚轮事件处理
             if (pointerSignal is PointerScrollEvent && !_isFocusing) {
               final delta = pointerSignal.scrollDelta.dy;
               if (delta != 0 && _cards.length > 1) {
                 setState(() {
                   if (delta > 0) {
-                    // 向下滚动：下一张卡片
                     _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
                   } else {
-                    // 向上滚动：上一张卡片
                     _currentCardIndex =
                         (_currentCardIndex - 1 + _cards.length) % _cards.length;
                   }
                 });
-                _resetCarouselAutoReturnTimer();
+                // 同步窗口大小和动画
+                final newSize = _idleSizeForCard();
+                _sizeAnimation = Tween<Size>(
+                  begin: newSize,
+                  end: newSize,
+                ).animate(_sizeController);
+                _resizeWindowOnce(newSize);
+                _resetIdleAutoReturnTimer();
               }
             }
           },
@@ -755,7 +792,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   Widget _buildIdleCardContent() {
     if (_cards.isEmpty) {
-      // 首次加载：触发初始化
       if (!_cardsLoaded) {
         _initCards().then((_) {
           if (mounted) setState(() {});
@@ -775,51 +811,99 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       );
     }
     final card = _cards[_currentCardIndex];
+    final type = card['type'] as String;
     final icon = card['icon'] as String;
     final title = card['title'] as String;
-    final subtitle = card['subtitle'] as String;
     final color = card['color'] as Color;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 12)),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (subtitle.isNotEmpty)
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 9,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
+    // 时间卡片：显示当前时间
+    if (type == 'time') {
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        transitionBuilder: (child, anim) {
+          final offset = Tween<Offset>(
+            begin: const Offset(0, 0.3),
+            end: Offset.zero,
+          ).animate(anim);
+          return FadeTransition(
+            opacity: anim,
+            child: SlideTransition(position: offset, child: child),
+          );
+        },
+        child: ValueListenableBuilder<String>(
+          key: ValueKey(_currentCardIndex),
+          valueListenable: _timeNotifier,
+          builder: (_, time, __) => Text(
+            time,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
             ),
           ),
-        ],
+        ),
+      );
+    }
+
+    // 数据卡片：显示内容（时间卡显示时钟，数据卡显示详情）
+    final subtitle = card['subtitle'] as String;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, anim) {
+        final offset = Tween<Offset>(
+          begin: const Offset(0, 0.3),
+          end: Offset.zero,
+        ).animate(anim);
+        return FadeTransition(
+          opacity: anim,
+          child: SlideTransition(position: offset, child: child),
+        );
+      },
+      child: Container(
+        key: ValueKey(_currentCardIndex),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: IntrinsicWidth(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (subtitle.isNotEmpty)
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 9,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1002,6 +1086,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ── StackedCard ──────────────────────────────────────────────────────────
 
   Widget _buildStackedCard() {
+    // 检查是否有选中的卡片类型（从 carousel 或 idle 点击进入）
+    final selectedCard =
+        _currentPayload?['selectedCard'] as Map<String, dynamic>?;
+    if (selectedCard != null) {
+      return _buildTypedDetail(selectedCard);
+    }
+
+    // 默认：专注详情
     final fd = _currentPayload?['focusData'] as Map?;
     final title = fd?['title']?.toString() ?? '专注事项';
     final tags = (fd?['tags'] as List?)?.join(' ') ?? '';
@@ -1009,8 +1101,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     return GestureDetector(
       key: const ValueKey('stackedCard'),
-      // 点击空白 → pop stackedCard，恢复 focusing
       onTap: () {
+        _currentPayload?.remove('selectedCard');
         final restored = _stack.pop(IslandState.stackedCard);
         _animateToState(restored);
       },
@@ -1050,7 +1142,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             else
               Row(
                 children: [
-                  // 点击完成 → push finishConfirm
                   Expanded(
                     child: _btn('完成', IslandConfig.successColor, () {
                       _stack.push(IslandState.finishConfirm,
@@ -1059,7 +1150,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     }),
                   ),
                   const SizedBox(width: 12),
-                  // 点击放弃 → push abandonConfirm
                   Expanded(
                     child: _btn('放弃', IslandConfig.dangerColor, () {
                       _stack.push(IslandState.abandonConfirm,
@@ -1069,6 +1159,102 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   ),
                 ],
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 卡片类型详情（待办/倒计时/课程/专注统计）
+  Widget _buildTypedDetail(Map<String, dynamic> card) {
+    final type = card['type'] as String;
+    final icon = card['icon'] as String;
+    final title = card['title'] as String;
+    final subtitle = card['subtitle'] as String;
+    final color = card['color'] as Color;
+
+    String header;
+    String detail;
+    switch (type) {
+      case 'todo':
+        header = '📝 待办事项';
+        detail = subtitle.isNotEmpty ? '到期时间: $subtitle' : '无截止日期';
+        break;
+      case 'countdown':
+        header = '⏰ 倒计时';
+        detail = subtitle.isNotEmpty ? subtitle : '目标日期已设置';
+        break;
+      case 'course':
+        final dateLabel = card['dateLabel']?.toString() ?? '';
+        final roomName = card['roomName']?.toString() ?? '';
+        final startTime = card['startTime']?.toString() ?? '';
+        header = '📚 课程';
+        String info = dateLabel;
+        if (startTime.isNotEmpty) info += ' $startTime';
+        if (roomName.isNotEmpty) info += ' $roomName';
+        detail = info.isNotEmpty ? info : '暂无详细信息';
+        break;
+      case 'focus':
+        header = '🎯 专注统计';
+        detail = subtitle.isNotEmpty ? subtitle : '暂无专注记录';
+        break;
+      default:
+        header = '$icon $title';
+        detail = subtitle;
+    }
+
+    return GestureDetector(
+      key: const ValueKey('typedDetail'),
+      onTap: () {
+        _currentPayload?.remove('selectedCard');
+        final restored = _stack.pop(IslandState.stackedCard);
+        _animateToState(restored);
+      },
+      onPanStart: (_) => _startDrag(),
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              header,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              detail,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 10,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            _btn('关闭', color.withOpacity(0.8), () {
+              _currentPayload?.remove('selectedCard');
+              final restored = _stack.pop(IslandState.stackedCard);
+              _animateToState(restored);
+            }),
           ],
         ),
       ),
@@ -1434,17 +1620,32 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final row = Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            final newExpanded = expanded == 'focusing' ? null : 'focusing';
-            setState(() {
-              _expandedReminderPart = newExpanded;
-            });
-            // 使用 Future.microtask 延迟执行，避免在 setState 中触发动画
-            Future.microtask(() => _animateToState(IslandState.reminderSplit));
+        Listener(
+          onPointerSignal: (pointerSignal) {
+            if (pointerSignal is PointerScrollEvent) {
+              final delta = pointerSignal.scrollDelta.dy;
+              setState(() {
+                if (delta > 0) {
+                  _remainingSecs = (_remainingSecs - 60).clamp(0, 999999);
+                } else {
+                  _remainingSecs += 60;
+                }
+              });
+              _updateDisplayTime();
+            }
           },
-          child: _capsule('🎯', _timeNotifier.value, IslandConfig.focusColor),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              final newExpanded = expanded == 'focusing' ? null : 'focusing';
+              setState(() {
+                _expandedReminderPart = newExpanded;
+              });
+              Future.microtask(
+                  () => _animateToState(IslandState.reminderSplit));
+            },
+            child: _capsule('🎯', _timeNotifier.value, IslandConfig.focusColor),
+          ),
         ),
         const SizedBox(width: 12),
         GestureDetector(
@@ -1737,6 +1938,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _cards.clear();
     _currentCardIndex = 0;
 
+    // index 0: 时间卡片（始终在首位）
+    _cards.add({
+      'type': 'time',
+      'icon': '🕐',
+      'title': '当前时间',
+      'subtitle': '',
+      'color': Colors.white54,
+    });
+
     try {
       // 获取当前用户名
       final prefs = await SharedPreferences.getInstance();
@@ -1828,13 +2038,42 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         final courses = dashboardCourses['courses'] as List? ?? [];
         if (courses.isNotEmpty) {
           final nextCourse = courses.first;
+          // 计算相对日期
+          final courseDateStr = nextCourse.date; // yyyy-MM-dd
+          final todayStr =
+              '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+          String dateLabel;
+          if (courseDateStr == todayStr) {
+            dateLabel = nextCourse.formattedStartTime; // 今天显示具体时间
+          } else {
+            try {
+              final courseDate = DateTime.parse(courseDateStr);
+              final today = DateTime(now.year, now.month, now.day);
+              final diff =
+                  DateTime(courseDate.year, courseDate.month, courseDate.day)
+                      .difference(today)
+                      .inDays;
+              if (diff == 1) {
+                dateLabel = '明天';
+              } else if (diff == 2) {
+                dateLabel = '后天';
+              } else {
+                dateLabel = '${diff}天后';
+              }
+            } catch (_) {
+              dateLabel = dashboardCourses['title']?.toString() ?? '课程';
+            }
+          }
           _cards.add({
             'type': 'course',
             'icon': '📚',
             'title': nextCourse.courseName,
-            'subtitle':
-                '${nextCourse.formattedStartTime} ${nextCourse.roomName}',
+            'subtitle': dateLabel,
             'color': IslandConfig.warningColor,
+            'dateLabel': dateLabel,
+            'fullDate': courseDateStr,
+            'roomName': nextCourse.roomName,
+            'startTime': nextCourse.formattedStartTime,
           });
         }
       } catch (e) {
@@ -1862,6 +2101,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             'icon': '🎯',
             'title': '今日专注',
             'subtitle': timeStr,
+            'color': IslandConfig.focusColor,
+          });
+        } else {
+          _cards.add({
+            'type': 'focus',
+            'icon': '🎯',
+            'title': '今日专注',
+            'subtitle': '0分钟',
             'color': IslandConfig.focusColor,
           });
         }
@@ -1901,31 +2148,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     });
   }
 
-  // 重置自动返回定时器
-  void _resetCarouselAutoReturnTimer() {
-    _carouselAutoReturnTimer?.cancel();
-    _startCarouselAutoReturnTimer();
-  }
-
-  // 切换到下一张卡片
-  void _nextCard() {
-    if (_cards.isEmpty) return;
-    setState(() {
-      _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
-    });
-    _resetCarouselAutoReturnTimer();
-  }
-
-  // 切换到上一张卡片
-  void _previousCard() {
-    if (_cards.isEmpty) return;
-    setState(() {
-      _currentCardIndex =
-          (_currentCardIndex - 1 + _cards.length) % _cards.length;
-    });
-    _resetCarouselAutoReturnTimer();
-  }
-
   // 构建卡片并排平铺
   Widget _buildCardCarousel() {
     if (_cards.isEmpty) {
@@ -1940,52 +2162,102 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     return GestureDetector(
       key: const ValueKey('cardCarousel'),
       onTap: () {
-        // 点击空白处返回
+        _currentPayload?.remove('selectedCard');
         _stack.pop(IslandState.cardCarousel);
         _animateToState(IslandState.idle);
       },
       onPanStart: (_) => _startDrag(),
       child: Container(
         color: Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: _cards.asMap().entries.map((entry) {
-            final index = entry.key;
-            final card = entry.value;
+          children: _cards.map((card) {
+            final type = card['type'] as String;
             final icon = card['icon'] as String;
             final title = card['title'] as String;
+            final subtitle = card['subtitle'] as String;
             final color = card['color'] as Color;
 
-            return GestureDetector(
-              onTap: () {
-                // 点击卡片：根据类型执行不同操作
-                final type = card['type'] as String;
-                if (type == 'todo' ||
-                    type == 'course' ||
-                    type == 'countdown' ||
-                    type == 'focus') {
-                  // 展开详细信息
-                  _stack.pop(IslandState.cardCarousel);
-                  _stack.push(IslandState.stackedCard, data: _currentPayload);
-                  _animateToState(IslandState.stackedCard);
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '$icon $title',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+            Widget cardContent;
+            VoidCallback onTap;
+
+            if (type == 'time') {
+              cardContent = Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(icon, style: const TextStyle(fontSize: 14)),
+                  ValueListenableBuilder<String>(
+                    valueListenable: _timeNotifier,
+                    builder: (_, time, __) => Text(
+                      time,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                ],
+              );
+              onTap = () {
+                _currentPayload?.remove('selectedCard');
+                _stack.pop(IslandState.cardCarousel);
+                _animateToState(IslandState.idle);
+              };
+            } else {
+              cardContent = Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '$icon $title',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle.isNotEmpty)
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 9,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              );
+              onTap = () {
+                final detailData = {
+                  ...?_currentPayload,
+                  'selectedCard': card,
+                };
+                _currentPayload = detailData;
+                _stack.pop(IslandState.cardCarousel);
+                _stack.push(IslandState.stackedCard, data: detailData);
+                _animateToState(IslandState.stackedCard);
+              };
+            }
+
+            return Expanded(
+              child: GestureDetector(
+                onTap: onTap,
+                child: Container(
+                  height: 50,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: cardContent,
                 ),
               ),
             );
