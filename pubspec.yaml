@@ -26,7 +26,7 @@ dependencies:
   window_manager: ^0.3.8
   desktop_multi_window: ^0.3.0
   ffi: ^2.1.2
-  win32: ^5.1.0
+  win32: ^5.15.0
   flutter_local_notifications: ^20.0.0
   open_file: ^3.5.11
   device_info_plus: ^11.1.0

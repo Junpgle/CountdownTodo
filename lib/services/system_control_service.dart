@@ -5,50 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
 
 // ══════════════════════════════════════════════════════════════════════════
-// COM GUIDs
+// WinRT 类型
 // ══════════════════════════════════════════════════════════════════════════
 
-final _clsidMMDeviceEnumerator = calloc<GUID>()
-  ..ref.setGUID('{BCDE0395-E52F-467C-8E3D-C4579291692E}');
-final _iidMMDeviceEnumerator = calloc<GUID>()
-  ..ref.setGUID('{A95664D2-9614-4F35-A746-DE8DB63617E6}');
-final _iidAudioEndpointVolume = calloc<GUID>()
-  ..ref.setGUID('{5CDF2C82-841E-4546-9722-0CF74078229A}');
-
-// ══════════════════════════════════════════════════════════════════════════
-// IAudioEndpointVolume vtable 原生签名
-// ══════════════════════════════════════════════════════════════════════════
-// IUnknown: QueryInterface(0), AddRef(1), Release(2)
-// IAudioEndpointVolume:
-//   7 = SetMasterVolumeLevelScalar
-//   9 = GetMasterVolumeLevelScalar
-//  14 = SetMute
-//  15 = GetMute
-
-typedef _SetVolScalarNative = Int32 Function(
-    Pointer<COMObject> self, Float fLevel, Pointer<GUID> pguid);
-typedef _SetVolScalar = int Function(
-    Pointer<COMObject> self, double fLevel, Pointer<GUID> pguid);
-
-typedef _GetVolScalarNative = Int32 Function(
-    Pointer<COMObject> self, Pointer<Float> pfLevel);
-typedef _GetVolScalar = int Function(
-    Pointer<COMObject> self, Pointer<Float> pfLevel);
-
-typedef _SetMuteNative = Int32 Function(
-    Pointer<COMObject> self, Int32 bMute, Pointer<GUID> pguid);
-typedef _SetMute = int Function(
-    Pointer<COMObject> self, int bMute, Pointer<GUID> pguid);
-
-typedef _GetMuteNative = Int32 Function(
-    Pointer<COMObject> self, Pointer<Int32> pbMute);
-typedef _GetMute = int Function(Pointer<COMObject> self, Pointer<Int32> pbMute);
-
-// ══════════════════════════════════════════════════════════════════════════
-// WinRT SMTC 类型定义
-// ══════════════════════════════════════════════════════════════════════════
-
-// WinRT 函数签名
 typedef _RoInitializeNative = Int32 Function(Int32 aptType);
 typedef _RoInitialize = int Function(int aptType);
 
@@ -94,8 +53,8 @@ class MediaInfo {
   bool get isEmpty => title.isEmpty && artist.isEmpty;
 
   @override
-  String toString() => 'MediaInfo(title: $title, artist: $artist, '
-      'album: $album, status: $status)';
+  String toString() => 'MediaInfo(title: "$title", artist: "$artist", '
+      'album: "$album", albumArtist: "$albumArtist", status: $status)';
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -105,138 +64,105 @@ class MediaInfo {
 class SystemControlService {
   SystemControlService._();
 
-  // ───────────── 音量 (Core Audio API) ─────────────────────────────
+  // ───────────── 音量 ─────────────────────────────────────────────
+  // 使用 keybd_event 虚拟按键方式（稳定可靠）
 
-  static Pointer<COMObject>? _epVolume;
+  static final _user32 = DynamicLibrary.open('user32.dll');
+
+  static final _keybdEvent = _user32.lookupFunction<
+      Void Function(Uint8 bVk, Uint8 bScan, Uint32 dwFlags, IntPtr dwExtraInfo),
+      void Function(
+          int bVk, int bScan, int dwFlags, int dwExtraInfo)>('keybd_event');
+
+  static const _KEYEVENTF_KEYUP = 0x0002;
+  static const _KEYEVENTF_SILENT = 0x0004;
+  static const _VK_VOLUME_UP = 0xAF;
+  static const _VK_VOLUME_DOWN = 0xAE;
+  static const _VK_VOLUME_MUTE = 0xAD;
+
+  static final _winmm = DynamicLibrary.open('winmm.dll');
+  static final _waveOutGetVolume = _winmm.lookupFunction<
+      Uint32 Function(Uint32, Pointer<Uint32>),
+      int Function(int, Pointer<Uint32>)>('waveOutGetVolume');
+
   static double _cachedVolume = 0.5;
-  static bool _cachedMute = false;
-  static bool _comInit = false;
+  static double? _savedVolume;
+  static int _lastSentVolSteps = -1;
 
-  static void initVolume() {
+  static void _sendKey(int vk) {
+    _keybdEvent(vk, 0, _KEYEVENTF_SILENT, 0);
+    _keybdEvent(vk, 0, _KEYEVENTF_SILENT | _KEYEVENTF_KEYUP, 0);
+  }
+
+  static double _readSystemVolume() {
     try {
-      if (!_comInit) {
-        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-        _comInit = true;
-      }
-
-      using((arena) {
-        final enumPtr = arena<Pointer<COMObject>>();
-        var hr = CoCreateInstance(
-          _clsidMMDeviceEnumerator,
-          nullptr,
-          CLSCTX_ALL,
-          _iidMMDeviceEnumerator,
-          enumPtr.cast(),
-        );
-        if (hr != S_OK) return;
-        final enumerator = IMMDeviceEnumerator(enumPtr.value);
-
-        final devPtr = arena<Pointer<COMObject>>();
-        hr = enumerator.getDefaultAudioEndpoint(
-            eRender, eConsole, devPtr.cast());
-        if (hr != S_OK) {
-          enumerator.release();
-          return;
-        }
-        final device = IMMDevice(devPtr.value);
-
-        final volPtr = arena<Pointer<COMObject>>();
-        hr = device.activate(
-          _iidAudioEndpointVolume,
-          CLSCTX_ALL,
-          nullptr,
-          volPtr.cast(),
-        );
-        device.release();
-        enumerator.release();
-        if (hr != S_OK) return;
-
-        _epVolume = volPtr.value;
-        IUnknown(_epVolume!).addRef();
-        _cachedVolume = _readVolScalar();
-        _cachedMute = _readMute();
-      });
-    } catch (e) {
-      debugPrint('[SCS] initVolume error: $e');
+      final ptr = calloc<Uint32>();
+      _waveOutGetVolume(0, ptr);
+      final val = ptr.value;
+      calloc.free(ptr);
+      final left = val & 0xFFFF;
+      final right = (val >> 16) & 0xFFFF;
+      return ((left + right) / 2) / 0xFFFF;
+    } catch (_) {
+      return 0.5;
     }
-  }
-
-  static Pointer<IntPtr> get _volVtbl => _epVolume!.ref.vtable;
-
-  static _GetVolScalar _fnGetVolScalar() =>
-      Pointer<NativeFunction<_GetVolScalarNative>>.fromAddress(_volVtbl[9])
-          .asFunction<_GetVolScalar>();
-
-  static _SetVolScalar _fnSetVolScalar() =>
-      Pointer<NativeFunction<_SetVolScalarNative>>.fromAddress(_volVtbl[7])
-          .asFunction<_SetVolScalar>();
-
-  static _GetMute _fnGetMute() =>
-      Pointer<NativeFunction<_GetMuteNative>>.fromAddress(_volVtbl[15])
-          .asFunction<_GetMute>();
-
-  static _SetMute _fnSetMute() =>
-      Pointer<NativeFunction<_SetMuteNative>>.fromAddress(_volVtbl[14])
-          .asFunction<_SetMute>();
-
-  static double _readVolScalar() {
-    if (_epVolume == null) return _cachedVolume;
-    try {
-      final p = calloc<Float>();
-      if (_fnGetVolScalar()(_epVolume!, p) == S_OK) {
-        final v = p.value.clamp(0.0, 1.0);
-        calloc.free(p);
-        return v;
-      }
-      calloc.free(p);
-    } catch (_) {}
-    return _cachedVolume;
-  }
-
-  static bool _readMute() {
-    if (_epVolume == null) return _cachedMute;
-    try {
-      final p = calloc<Int32>();
-      if (_fnGetMute()(_epVolume!, p) == S_OK) {
-        final v = p.value != 0;
-        calloc.free(p);
-        return v;
-      }
-      calloc.free(p);
-    } catch (_) {}
-    return _cachedMute;
   }
 
   static double getVolumeSync() => _cachedVolume;
-  static bool isMuted() => _cachedMute;
 
-  static void setVolume(double target) {
-    _cachedVolume = target.clamp(0.0, 1.0);
-    _writeVolScalar(_cachedVolume);
+  static void initVolume() {
+    debugPrint('[SCS] initVolume start');
+    _cachedVolume = _readSystemVolume();
+    _lastSentVolSteps = (_cachedVolume * 50).round();
+    debugPrint(
+        '[SCS] initVolume done: vol=$_cachedVolume, steps=$_lastSentVolSteps');
   }
 
-  static void commitVolume(double target) => setVolume(target);
+  static void setVolume(double target) {
+    final t = target.clamp(0.0, 1.0);
+    debugPrint('[SCS] setVolume($t)');
+    _cachedVolume = t;
+    final newSteps = (t * 50).round();
 
-  static void _writeVolScalar(double level) {
-    if (_epVolume == null) return;
-    try {
-      _fnSetVolScalar()(_epVolume!, level, nullptr);
-    } catch (e) {
-      debugPrint('[SCS] setVolume error: $e');
+    if (_lastSentVolSteps < 0) _lastSentVolSteps = newSteps;
+    final diff = newSteps - _lastSentVolSteps;
+    if (diff.abs() < 2) return;
+
+    _lastSentVolSteps = newSteps;
+    if (diff > 0) {
+      for (var i = 0; i < diff; i++) _sendKey(_VK_VOLUME_UP);
+    } else {
+      for (var i = 0; i < -diff; i++) _sendKey(_VK_VOLUME_DOWN);
     }
   }
 
-  static void toggleMute() {
-    _cachedMute = !_cachedMute;
-    _writeMute(_cachedMute);
+  static void commitVolume(double target) {
+    final t = target.clamp(0.0, 1.0);
+    debugPrint('[SCS] commitVolume($t)');
+    _cachedVolume = t;
+    final newSteps = (t * 50).round();
+    if (_lastSentVolSteps < 0) _lastSentVolSteps = newSteps;
+    final diff = newSteps - _lastSentVolSteps;
+    if (diff == 0) return;
+    _lastSentVolSteps = newSteps;
+    if (diff > 0) {
+      for (var i = 0; i < diff; i++) _sendKey(_VK_VOLUME_UP);
+    } else {
+      for (var i = 0; i < -diff; i++) _sendKey(_VK_VOLUME_DOWN);
+    }
   }
 
-  static void _writeMute(bool mute) {
-    if (_epVolume == null) return;
-    try {
-      _fnSetMute()(_epVolume!, mute ? 1 : 0, nullptr);
-    } catch (e) {
-      debugPrint('[SCS] setMute error: $e');
+  static bool isMuted() => _cachedVolume <= 0.01;
+
+  static void toggleMute() {
+    debugPrint('[SCS] toggleMute, current vol=$_cachedVolume');
+    if (_cachedVolume > 0) {
+      _savedVolume = _cachedVolume;
+      _sendKey(_VK_VOLUME_MUTE);
+      _cachedVolume = 0;
+    } else {
+      _sendKey(_VK_VOLUME_MUTE);
+      _cachedVolume = _savedVolume ?? 0.5;
     }
   }
 
@@ -249,25 +175,31 @@ class SystemControlService {
   static bool _briSupported = false;
 
   static void initBrightness() {
+    debugPrint('[SCS] initBrightness start');
     try {
       final hMon =
           MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
+      debugPrint('[SCS] hMonitor: $hMon');
 
       final cnt = calloc<Uint32>();
       if (GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, cnt) == 0) {
+        debugPrint('[SCS] GetNumberOfPhysicalMonitors failed');
         calloc.free(cnt);
         return;
       }
       final n = cnt.value;
       calloc.free(cnt);
+      debugPrint('[SCS] physical monitor count: $n');
       if (n == 0) return;
 
       final arr = calloc<PHYSICAL_MONITOR>(n);
       if (GetPhysicalMonitorsFromHMONITOR(hMon, n, arr) == 0) {
+        debugPrint('[SCS] GetPhysicalMonitors failed');
         calloc.free(arr);
         return;
       }
       _physHandle = arr.cast<IntPtr>().value;
+      debugPrint('[SCS] physHandle: $_physHandle');
 
       final mn = calloc<Uint32>();
       final cr = calloc<Uint32>();
@@ -278,6 +210,8 @@ class SystemControlService {
         _briSupported = true;
         final range = _maxBri - _minBri;
         if (range > 0) _cachedBrightness = (cr.value - _minBri) / range;
+        debugPrint(
+            '[SCS] brightness range: $_minBri~$_maxBri, current: ${cr.value}');
       } else {
         debugPrint('[SCS] Monitor does not support DDC/CI brightness');
       }
@@ -285,8 +219,8 @@ class SystemControlService {
       calloc.free(cr);
       calloc.free(mx);
       calloc.free(arr);
-    } catch (e) {
-      debugPrint('[SCS] initBrightness error: $e');
+    } catch (e, st) {
+      debugPrint('[SCS] initBrightness error: $e\n$st');
     }
   }
 
@@ -294,6 +228,8 @@ class SystemControlService {
 
   static void setBrightness(double value) {
     _cachedBrightness = value.clamp(0.0, 1.0);
+    debugPrint(
+        '[SCS] setBrightness($_cachedBrightness) supported=$_briSupported');
     if (!_briSupported || _physHandle == 0) return;
     try {
       final range = _maxBri - _minBri;
@@ -319,53 +255,52 @@ class SystemControlService {
   static Timer? _mediaTimer;
   static bool _winrtInit = false;
 
-  // WinRT 函数指针
   static late final _RoInitialize _roInit;
   static late final _RoGetActivationFactory _roGetFactory;
   static late final _WindowsCreateString _winCreateStr;
   static late final _WindowsDeleteString _winDeleteStr;
   static late final _WindowsGetStringRawBuffer _winGetStrBuf;
 
-  // SMTC Manager 静态接口 IID: {3E4A4642-560D-5270-ADF8-2C8C8E1E9E8E}
   static final _iidSMTCManagerStatics = calloc<GUID>()
     ..ref.setGUID('{3E4A4642-560D-5270-ADF8-2C8C8E1E9E8E}');
-
-  // RuntimeClass HSTRING
   static int _hstrSMTCClass = 0;
 
-  /// 初始化 WinRT 并加载所需函数
   static void _initWinRT() {
     if (_winrtInit) return;
+    debugPrint('[SCS] _initWinRT start');
+    try {
+      final combase = DynamicLibrary.open('combase.dll');
+      _roInit = combase
+          .lookupFunction<_RoInitializeNative, _RoInitialize>('RoInitialize');
+      _roGetFactory = combase.lookupFunction<_RoGetActivationFactoryNative,
+          _RoGetActivationFactory>('RoGetActivationFactory');
+      _winCreateStr = combase.lookupFunction<_WindowsCreateStringNative,
+          _WindowsCreateString>('WindowsCreateString');
+      _winDeleteStr = combase.lookupFunction<_WindowsDeleteStringNative,
+          _WindowsDeleteString>('WindowsDeleteString');
+      _winGetStrBuf = combase.lookupFunction<_WindowsGetStringRawBufferNative,
+          _WindowsGetStringRawBuffer>('WindowsGetStringRawBuffer');
 
-    final combase = DynamicLibrary.open('combase.dll');
-    _roInit = combase
-        .lookupFunction<_RoInitializeNative, _RoInitialize>('RoInitialize');
-    _roGetFactory = combase.lookupFunction<_RoGetActivationFactoryNative,
-        _RoGetActivationFactory>('RoGetActivationFactory');
-    _winCreateStr = combase.lookupFunction<_WindowsCreateStringNative,
-        _WindowsCreateString>('WindowsCreateString');
-    _winDeleteStr = combase.lookupFunction<_WindowsDeleteStringNative,
-        _WindowsDeleteString>('WindowsDeleteString');
-    _winGetStrBuf = combase.lookupFunction<_WindowsGetStringRawBufferNative,
-        _WindowsGetStringRawBuffer>('WindowsGetStringRawBuffer');
+      final hr = _roInit(0);
+      debugPrint('[SCS] RoInitialize: 0x${hr.toRadixString(16)}');
 
-    // RoInitialize(RO_INIT_MULTITHREADED = 0)
-    _roInit(0);
+      final className =
+          'Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager'
+              .toNativeUtf16();
+      final hstrPtr = calloc<IntPtr>();
+      final hr2 = _winCreateStr(className, 138, hstrPtr);
+      debugPrint('[SCS] WindowsCreateString: 0x${hr2.toRadixString(16)}');
+      _hstrSMTCClass = hstrPtr.value;
+      calloc.free(hstrPtr);
+      calloc.free(className);
 
-    // 创建 RuntimeClass 名称的 HSTRING
-    final className =
-        'Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager'
-            .toNativeUtf16();
-    final hstrPtr = calloc<IntPtr>();
-    _winCreateStr(className, 138, hstrPtr); // 138 = char count
-    _hstrSMTCClass = hstrPtr.value;
-    calloc.free(hstrPtr);
-    calloc.free(className);
-
-    _winrtInit = true;
+      _winrtInit = true;
+      debugPrint('[SCS] _initWinRT done, hstr=$_hstrSMTCClass');
+    } catch (e, st) {
+      debugPrint('[SCS] _initWinRT error: $e\n$st');
+    }
   }
 
-  /// 从 HSTRING 读取 Dart 字符串
   static String _hstringToDart(int hstring) {
     if (hstring == 0) return '';
     final lenPtr = calloc<Uint32>();
@@ -378,6 +313,7 @@ class SystemControlService {
   static MediaInfo getMediaInfo() => _mediaInfo;
 
   static void startMediaPolling({int intervalMs = 2000}) {
+    debugPrint('[SCS] startMediaPolling interval=$intervalMs');
     _mediaTimer?.cancel();
     _mediaTimer =
         Timer.periodic(Duration(milliseconds: intervalMs), (_) => _pollSMTC());
@@ -389,97 +325,136 @@ class SystemControlService {
     _mediaTimer = null;
   }
 
-  /// 通过 WinRT SMTC 获取媒体信息
   static void _pollSMTC() {
+    debugPrint('[SCS] === _pollSMTC >>> ===');
     try {
       _initWinRT();
 
-      // 获取 IActivationFactory
+      if (!_winrtInit || _hstrSMTCClass == 0) {
+        debugPrint('[SCS] WinRT not ready, fallback');
+        _fallbackMediaInfo();
+        return;
+      }
+
+      // ── Step 1: RoGetActivationFactory ──
+      debugPrint('[SCS] [1] RoGetActivationFactory...');
       final factoryPtr = calloc<Pointer<COMObject>>();
       final hr = _roGetFactory(
           _hstrSMTCClass, _iidSMTCManagerStatics, factoryPtr.cast());
+      debugPrint('[SCS] [1] result: 0x${hr.toRadixString(16)}');
       if (hr != S_OK) {
         calloc.free(factoryPtr);
+        debugPrint('[SCS] factory failed, fallback');
         _fallbackMediaInfo();
         return;
       }
-
       final factory = factoryPtr.value;
       calloc.free(factoryPtr);
+      debugPrint('[SCS] [1] factory OK: $factory');
 
+      // ── Step 2: RequestAsync ──
       // IGlobalSystemMediaTransportControlsSessionManagerStatics vtable:
       // IUnknown(0-2), IInspectable(3-5), RequestAsync(6)
-      // RequestAsync 返回 IAsyncOperation<SessionManager>
+      debugPrint('[SCS] [2] RequestAsync...');
       final asyncOpPtr = calloc<Pointer<COMObject>>();
-      final requestAsyncAddr = factory.ref.vtable[6];
-      final requestAsyncFn = Pointer<
+      final requestAddr = factory.ref.vtable[6];
+      debugPrint('[SCS] [2] vtable[6] addr: $requestAddr');
+
+      final requestFn = Pointer<
                   NativeFunction<
                       Int32 Function(Pointer<COMObject> self,
                           Pointer<Pointer<COMObject>> result)>>.fromAddress(
-              requestAsyncAddr)
+              requestAddr)
           .asFunction<
               int Function(Pointer<COMObject> self,
                   Pointer<Pointer<COMObject>> result)>();
 
-      final hr2 = requestAsyncFn(factory, asyncOpPtr);
+      final hr2 = requestFn(factory, asyncOpPtr);
+      debugPrint('[SCS] [2] RequestAsync result: 0x${hr2.toRadixString(16)}');
       IUnknown(factory).release();
+
       if (hr2 != S_OK) {
         calloc.free(asyncOpPtr);
+        debugPrint('[SCS] RequestAsync failed, fallback');
         _fallbackMediaInfo();
         return;
       }
 
-      // 等待异步操作完成
-      final sessionManager = _waitForAsyncOperation(asyncOpPtr.value);
+      // ── Step 3: 等待异步完成 ──
+      debugPrint('[SCS] [3] waiting async op...');
+      final sessionManager = _waitForAsync(asyncOpPtr.value);
       calloc.free(asyncOpPtr);
+      debugPrint('[SCS] [3] sessionManager: $sessionManager');
       if (sessionManager == null) {
+        debugPrint('[SCS] sessionManager null, fallback');
         _fallbackMediaInfo();
         return;
       }
 
-      // GetCurrentSession()
+      // ── Step 4: GetCurrentSession ──
+      // IGlobalSystemMediaTransportControlsSessionManager vtable:
+      // IUnknown(0-2), IInspectable(3-5), GetCurrentSession(6)
+      debugPrint('[SCS] [4] GetCurrentSession...');
       final sessionPtr = calloc<Pointer<COMObject>>();
-      // vtable[6] = GetCurrentSession (IUnknown 0-2, IInspectable 3-5, GetCurrentSession 6)
-      final getCurSessionAddr = sessionManager.ref.vtable[6];
-      final getCurSessionFn = Pointer<
+      final getSessionAddr = sessionManager.ref.vtable[6];
+      debugPrint('[SCS] [4] vtable[6] addr: $getSessionAddr');
+      final getSessionFn = Pointer<
                   NativeFunction<
                       Int32 Function(Pointer<COMObject> self,
                           Pointer<Pointer<COMObject>> result)>>.fromAddress(
-              getCurSessionAddr)
+              getSessionAddr)
           .asFunction<
               int Function(Pointer<COMObject> self,
                   Pointer<Pointer<COMObject>> result)>();
 
-      final hr3 = getCurSessionFn(sessionManager, sessionPtr);
+      final hr3 = getSessionFn(sessionManager, sessionPtr);
+      debugPrint('[SCS] [4] GetCurrentSession: 0x${hr3.toRadixString(16)}');
       IUnknown(sessionManager).release();
+
       if (hr3 != S_OK) {
         calloc.free(sessionPtr);
+        debugPrint('[SCS] no current session');
         _mediaInfo = const MediaInfo(status: PlaybackStatus.unknown);
         return;
       }
 
       final session = sessionPtr.value;
       calloc.free(sessionPtr);
+      debugPrint('[SCS] [4] session OK: $session');
 
-      // GetPlaybackInfo() - vtable[8]
+      // ── Step 5: GetPlaybackInfo ──
+      // IGlobalSystemMediaTransportControlsSession vtable:
+      // IUnknown(0-2), IInspectable(3-5)
+      // 6: get_SourceAppUserModelId
+      // 7: get_DiscSession
+      // 8: GetPlaybackInfo
+      // 9: GetTimelineProperties
+      // 10: TrySkipAsync / TryChangePlaybackModeAsync (varies)
+      // ...
+      debugPrint('[SCS] [5] GetPlaybackInfo...');
+      PlaybackStatus status = PlaybackStatus.unknown;
       final playbackInfoPtr = calloc<Pointer<COMObject>>();
-      final getPlaybackInfoAddr = session.ref.vtable[8];
-      final getPlaybackInfoFn = Pointer<
+      final getPlaybackAddr = session.ref.vtable[8];
+      debugPrint('[SCS] [5] vtable[8] addr: $getPlaybackAddr');
+      final getPlaybackFn = Pointer<
                   NativeFunction<
                       Int32 Function(Pointer<COMObject> self,
                           Pointer<Pointer<COMObject>> result)>>.fromAddress(
-              getPlaybackInfoAddr)
+              getPlaybackAddr)
           .asFunction<
               int Function(Pointer<COMObject> self,
                   Pointer<Pointer<COMObject>> result)>();
 
-      final hr4 = getPlaybackInfoFn(session, playbackInfoPtr);
-      PlaybackStatus status = PlaybackStatus.unknown;
+      final hr4 = getPlaybackFn(session, playbackInfoPtr);
+      debugPrint('[SCS] [5] GetPlaybackInfo: 0x${hr4.toRadixString(16)}');
       if (hr4 == S_OK) {
         final playbackInfo = playbackInfoPtr.value;
-        // PlaybackStatus: vtable[6] = get_PlaybackStatus
-        // 返回枚举值: 0=Closed, 1=Opened, 2=Changing, 3=Stopped, 4=Paused, 5=Playing
-        final getStatusAddr = playbackInfo.ref.vtable[6];
+        // IGlobalSystemMediaTransportControlsSessionPlaybackInfo vtable:
+        // IUnknown(0-2), IInspectable(3-5), get_Controls(6), get_PlaybackStatus(7),
+        // get_PlaybackType(8), get_AutoRepeatMode(9), get_ShuffleEnabled(10), get_PlaybackRate(11)
+        final getStatusAddr = playbackInfo.ref.vtable[7];
+        debugPrint(
+            '[SCS] [5] get_PlaybackStatus vtable[7] addr: $getStatusAddr');
         final getStatusFn = Pointer<
                 NativeFunction<
                     Int32 Function(Pointer<COMObject> self,
@@ -488,12 +463,15 @@ class SystemControlService {
                 int Function(Pointer<COMObject> self, Pointer<Int32> result)>();
 
         final statusPtr = calloc<Int32>();
-        if (getStatusFn(playbackInfo, statusPtr) == S_OK) {
+        final hrS = getStatusFn(playbackInfo, statusPtr);
+        debugPrint(
+            '[SCS] [5] playback status: 0x${hrS.toRadixString(16)} val=${statusPtr.value}');
+        if (hrS == S_OK) {
           switch (statusPtr.value) {
-            case 5:
+            case 4:
               status = PlaybackStatus.playing;
               break;
-            case 4:
+            case 5:
               status = PlaybackStatus.paused;
               break;
             case 3:
@@ -508,9 +486,14 @@ class SystemControlService {
       }
       calloc.free(playbackInfoPtr);
 
-      // TryGetMediaPropertiesAsync() - vtable[9]
+      // ── Step 6: TryGetMediaPropertiesAsync ──
+      debugPrint('[SCS] [6] TryGetMediaPropertiesAsync...');
       final mediaPropsAsyncPtr = calloc<Pointer<COMObject>>();
-      final tryGetMediaAddr = session.ref.vtable[9];
+      // vtable index for TryGetMediaPropertiesAsync depends on the interface version
+      // Try common indices: 10, 11
+      int tryGetMediaIndex = 10;
+      final tryGetMediaAddr = session.ref.vtable[tryGetMediaIndex];
+      debugPrint('[SCS] [6] vtable[$tryGetMediaIndex] addr: $tryGetMediaAddr');
       final tryGetMediaFn = Pointer<
                   NativeFunction<
                       Int32 Function(Pointer<COMObject> self,
@@ -521,6 +504,8 @@ class SystemControlService {
                   Pointer<Pointer<COMObject>> result)>();
 
       final hr5 = tryGetMediaFn(session, mediaPropsAsyncPtr);
+      debugPrint(
+          '[SCS] [6] TryGetMediaPropertiesAsync: 0x${hr5.toRadixString(16)}');
       IUnknown(session).release();
 
       String title = '';
@@ -529,19 +514,21 @@ class SystemControlService {
       String albumArtist = '';
 
       if (hr5 == S_OK) {
-        final mediaProps = _waitForAsyncOperation(mediaPropsAsyncPtr.value);
+        debugPrint('[SCS] [6] waiting media props async...');
+        final mediaProps = _waitForAsync(mediaPropsAsyncPtr.value);
         calloc.free(mediaPropsAsyncPtr);
+        debugPrint('[SCS] [6] mediaProps: $mediaProps');
 
         if (mediaProps != null) {
-          // 读取 Title - vtable[6] = get_Title
-          title = _readHstringProperty(mediaProps, 6);
-          // 读取 Artist - vtable[7] = get_Artist
-          artist = _readHstringProperty(mediaProps, 7);
-          // 读取 AlbumTitle - vtable[8] = get_AlbumTitle
-          album = _readHstringProperty(mediaProps, 8);
-          // 读取 AlbumArtist - vtable[9] = get_AlbumArtist
-          albumArtist = _readHstringProperty(mediaProps, 9);
-
+          // IGlobalSystemMediaTransportControlsSessionMediaProperties vtable:
+          // IUnknown(0-2), IInspectable(3-5), get_Title(6), get_AlbumArtist(7),
+          // get_Artist(8), get_AlbumTitle(9), ...
+          title = _readHstr(mediaProps, 6);
+          albumArtist = _readHstr(mediaProps, 7);
+          artist = _readHstr(mediaProps, 8);
+          album = _readHstr(mediaProps, 9);
+          debugPrint('[SCS] [6] title="$title", artist="$artist", '
+              'album="$album", albumArtist="$albumArtist"');
           IUnknown(mediaProps).release();
         }
       } else {
@@ -555,46 +542,43 @@ class SystemControlService {
         albumArtist: albumArtist,
         status: status,
       );
-    } catch (e) {
-      debugPrint('[SCS] pollSMTC error: $e');
+      debugPrint('[SCS] === _pollSMTC result: $_mediaInfo ===');
+    } catch (e, st) {
+      debugPrint('[SCS] _pollSMTC error: $e\n$st');
       _fallbackMediaInfo();
     }
   }
 
-  /// 读取 WinRT 对象的 HSTRING 属性
-  static String _readHstringProperty(Pointer<COMObject> obj, int vtableIndex) {
+  static String _readHstr(Pointer<COMObject> obj, int idx) {
     try {
-      final getPropAddr = obj.ref.vtable[vtableIndex];
-      final getPropFn = Pointer<
+      final addr = obj.ref.vtable[idx];
+      final fn = Pointer<
               NativeFunction<
                   Int32 Function(Pointer<COMObject> self,
-                      Pointer<IntPtr> result)>>.fromAddress(getPropAddr)
+                      Pointer<IntPtr> result)>>.fromAddress(addr)
           .asFunction<
               int Function(Pointer<COMObject> self, Pointer<IntPtr> result)>();
-
-      final hstrPtr = calloc<IntPtr>();
-      if (getPropFn(obj, hstrPtr) == S_OK) {
-        final dartStr = _hstringToDart(hstrPtr.value);
-        if (hstrPtr.value != 0) _winDeleteStr(hstrPtr.value);
-        calloc.free(hstrPtr);
-        return dartStr;
+      final p = calloc<IntPtr>();
+      if (fn(obj, p) == S_OK) {
+        final s = _hstringToDart(p.value);
+        if (p.value != 0) _winDeleteStr(p.value);
+        calloc.free(p);
+        return s;
       }
-      calloc.free(hstrPtr);
-    } catch (_) {}
+      calloc.free(p);
+    } catch (e) {
+      debugPrint('[SCS] _readHstr($idx) error: $e');
+    }
     return '';
   }
 
-  /// 等待 IAsyncOperation 完成并获取结果
-  /// IAsyncOperation vtable:
-  ///   IUnknown: 0-2
-  ///   IAsyncInfo: 3=get_Id, 4=get_Status, 5=get_ErrorCode, 6=Cancel, 7=Close
-  ///   IAsyncOperation: 8=put_Completed, 9=get_Completed, 10=GetResults
-  static Pointer<COMObject>? _waitForAsyncOperation(
-      Pointer<COMObject> asyncOp) {
+  /// 等待 IAsyncOperation 完成并返回结果
+  static Pointer<COMObject>? _waitForAsync(Pointer<COMObject> asyncOp) {
+    debugPrint('[SCS] _waitForAsync start');
     try {
-      // 使用轮询方式等待完成
-      // get_Status - vtable[4]
+      // IAsyncInfo vtable: 3=get_Id, 4=get_Status, ...
       final getStatusAddr = asyncOp.ref.vtable[4];
+      debugPrint('[SCS] get_Status vtable[4] addr: $getStatusAddr');
       final getStatusFn = Pointer<
               NativeFunction<
                   Int32 Function(Pointer<COMObject> self,
@@ -602,38 +586,44 @@ class SystemControlService {
           .asFunction<
               int Function(Pointer<COMObject> self, Pointer<Int32> result)>();
 
-      // AsyncStatus: 0=Started, 1=Completed, 2=Cancelled, 3=Error
       final statusPtr = calloc<Int32>();
-      final startTime = DateTime.now();
+      final start = DateTime.now();
+      int polls = 0;
 
       while (true) {
-        if (getStatusFn(asyncOp, statusPtr) != S_OK) {
+        final hr = getStatusFn(asyncOp, statusPtr);
+        if (hr != S_OK) {
+          debugPrint('[SCS] getStatus failed: 0x${hr.toRadixString(16)}');
           calloc.free(statusPtr);
           IUnknown(asyncOp).release();
           return null;
         }
 
-        if (statusPtr.value == 1) break; // Completed
+        // AsyncStatus: 0=Started, 1=Completed, 2=Cancelled, 3=Error
+        if (statusPtr.value == 1) break;
         if (statusPtr.value >= 2) {
-          // Cancelled or Error
+          debugPrint('[SCS] async status=${statusPtr.value}');
           calloc.free(statusPtr);
           IUnknown(asyncOp).release();
           return null;
         }
 
-        // 超时 5 秒
-        if (DateTime.now().difference(startTime).inMilliseconds > 5000) {
+        if (DateTime.now().difference(start).inMilliseconds > 5000) {
+          debugPrint('[SCS] async timeout after 5s, $polls polls');
           calloc.free(statusPtr);
           IUnknown(asyncOp).release();
           return null;
         }
 
+        polls++;
         Sleep(10);
       }
+      debugPrint('[SCS] async completed, $polls polls');
       calloc.free(statusPtr);
 
-      // GetResults - vtable[10]
+      // IAsyncOperation vtable: IUnknown(0-2), IAsyncInfo(3-7), GetResults(10)
       final getResultsAddr = asyncOp.ref.vtable[10];
+      debugPrint('[SCS] GetResults vtable[10] addr: $getResultsAddr');
       final getResultsFn = Pointer<
                   NativeFunction<
                       Int32 Function(Pointer<COMObject> self,
@@ -645,16 +635,18 @@ class SystemControlService {
 
       final resultPtr = calloc<Pointer<COMObject>>();
       final hr = getResultsFn(asyncOp, resultPtr);
+      debugPrint('[SCS] GetResults: 0x${hr.toRadixString(16)}');
       IUnknown(asyncOp).release();
 
       if (hr == S_OK) {
         final result = resultPtr.value;
         calloc.free(resultPtr);
+        debugPrint('[SCS] async result: $result');
         return result;
       }
       calloc.free(resultPtr);
-    } catch (e) {
-      debugPrint('[SCS] async operation error: $e');
+    } catch (e, st) {
+      debugPrint('[SCS] _waitForAsync error: $e\n$st');
       try {
         IUnknown(asyncOp).release();
       } catch (_) {}
@@ -662,8 +654,8 @@ class SystemControlService {
     return null;
   }
 
-  /// 降级方案：通过窗口标题识别媒体播放器
   static void _fallbackMediaInfo() {
+    debugPrint('[SCS] _fallbackMediaInfo');
     try {
       final hwnd = GetForegroundWindow();
       if (hwnd == 0) return;
@@ -673,6 +665,7 @@ class SystemControlService {
       GetWindowText(hwnd, buf, len + 1);
       final title = buf.toDartString();
       free(buf);
+      debugPrint('[SCS] foreground: "$title"');
 
       const players = [
         'Spotify',
@@ -703,22 +696,17 @@ class SystemControlService {
         }
       }
       _mediaInfo = const MediaInfo(status: PlaybackStatus.unknown);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[SCS] _fallbackMediaInfo error: $e');
+    }
   }
 
   // ───────────── 全局清理 ──────────────────────────────────────────
 
   static void dispose() {
+    debugPrint('[SCS] dispose');
     stopMediaPolling();
     disposeBrightness();
-
-    if (_epVolume != null) {
-      try {
-        IUnknown(_epVolume!).release();
-      } catch (_) {}
-      _epVolume = null;
-    }
-
     if (_hstrSMTCClass != 0) {
       try {
         _winDeleteStr(_hstrSMTCClass);

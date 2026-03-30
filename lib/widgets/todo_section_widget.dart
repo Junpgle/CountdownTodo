@@ -91,6 +91,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     List<ParsedTodoResult> parsedResults = [];
     int currentParseIndex = 0;
     bool isParsing = false;
+    String? llmRawResponse; // 大模型原始返回
 
     int selectedTabIndex = 0;
 
@@ -507,6 +508,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       parsedResults = [parsedResult];
                                       currentParseIndex = 0;
                                       isParsing = false;
+                                      llmRawResponse =
+                                          const JsonEncoder.withIndent('  ')
+                                              .convert(result);
                                     });
 
                                     if (parsedResults.isNotEmpty) {
@@ -653,6 +657,29 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                           ),
                       ],
                     ),
+                    if (llmRawResponse != null) ...[
+                      const SizedBox(height: 12),
+                      ExpansionTile(
+                        title: const Text("大模型原始返回",
+                            style: TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w500)),
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: SelectableText(
+                              llmRawResponse!,
+                              style: const TextStyle(
+                                  fontSize: 12, fontFamily: 'monospace'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ],
               ),
