@@ -73,10 +73,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   bool _isScrolledInFocus = false; // 专注状态下是否已滚轮切换到其他卡片
 
   // ── 系统控制状态
-  bool _isWifiEnabled = true;
-  bool _isBtEnabled = false;
-  bool _isDndEnabled = false;
   double _savedVolumeBeforeMute = 0.75;
+  Timer? _sliderDebounce;
 
   // ── 系统控制超时返回
   Timer? _systemControlAutoReturnTimer;
@@ -91,7 +89,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               _stack.current == IslandState.volumeControl ||
               _stack.current == IslandState.brightnessControl)) {
         _stack.pop(_stack.current);
-        _stack.push(IslandState.quickControls, data: _currentPayload);
         _animateToState(IslandState.quickControls);
         _startQuickControlsAutoReturnTimer();
       }
@@ -209,6 +206,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _idleAutoReturnTimer?.cancel();
     _carouselAutoReturnTimer?.cancel();
     _systemControlAutoReturnTimer?.cancel();
+    _quickControlsAutoReturnTimer?.cancel();
     _resizeDebounce?.cancel();
     _timeNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
@@ -828,6 +826,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         onLongPress: () {
           _stack.push(IslandState.quickControls, data: _currentPayload);
           _animateToState(IslandState.quickControls);
+          _startQuickControlsAutoReturnTimer();
         },
         onPanStart: (_) => _startDrag(),
         child: Listener(
@@ -1747,7 +1746,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   Widget _buildReminderSplit() {
     final d = _reminderPopupData;
-    if (d == null) return const SizedBox.shrink();
+    if (d == null) {
+      // 提醒数据丢失时回退到专注显示，避免完全透明无响应
+      return _buildFocusTimerDisplay();
+    }
 
     final type = d['type']?.toString() ?? 'todo';
     final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
@@ -2419,6 +2421,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               '音量',
               IslandConfig.focusColor,
               () {
+                SystemControlService.initVolume();
                 _stack.push(IslandState.volumeControl, data: _currentPayload);
                 _animateToState(IslandState.volumeControl);
                 _startSystemControlAutoReturnTimer();
@@ -2547,6 +2550,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         const SizedBox(height: 12),
         _miniBtn('返回', Colors.white.withOpacity(0.15), () {
           _systemControlAutoReturnTimer?.cancel();
+          _quickControlsAutoReturnTimer?.cancel();
+          _sliderDebounce?.cancel();
           _quickControlsAutoReturnTimer?.cancel();
           _quickControlsAutoReturnTimer?.cancel();
           _stack.pop(IslandState.musicPlayer);
@@ -2920,6 +2925,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                           setState(() {});
                           _resetSystemControlAutoReturnTimer();
                         },
+                        onChangeEnd: (value) {
+                          SystemControlService.commitVolume(value);
+                          setState(() {});
+                        },
                       ),
                     ),
                   ),
@@ -3053,7 +3062,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 children: [
                   // 最低亮度
                   _miniBtn('🌙', Colors.white.withOpacity(0.1), () {
-                    SystemControlService.setBrightness(0.1);
+                    SystemControlService.setBrightness(0.05);
                     setState(() {});
                     _resetSystemControlAutoReturnTimer();
                   }),
@@ -3093,8 +3102,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [10, 30, 50, 70, 100].map((level) {
-                  final isActive = (brightnessPercent - level).abs() < 11;
+                children: [5, 25, 50, 75, 100].map((level) {
+                  final isActive = (brightnessPercent - level).abs() < 13;
                   return GestureDetector(
                     onTap: () {
                       SystemControlService.setBrightness(level / 100.0);

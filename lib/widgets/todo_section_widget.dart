@@ -7,6 +7,8 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../screens/historical_todos_screen.dart';
 import '../services/todo_parser_service.dart';
+import '../services/llm_service.dart';
+import '../screens/home_settings_screen.dart';
 import 'home_sections.dart';
 
 class TodoSectionWidget extends StatefulWidget {
@@ -65,8 +67,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       return d.isBefore(today);
     } else {
       DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
-          t.createdDate ?? t.createdAt,
-          isUtc: true)
+              t.createdDate ?? t.createdAt,
+              isUtc: true)
           .toLocal();
       DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
@@ -272,7 +274,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                             firstDate: DateTime.now(),
                             lastDate: DateTime(2100),
                             initialDate:
-                            DateTime.now().add(const Duration(days: 30)));
+                                DateTime.now().add(const Duration(days: 30)));
                         if (picked != null) {
                           setDialogState(() => recurrenceEndDate = picked);
                         }
@@ -311,7 +313,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color:
-                                    Theme.of(context).colorScheme.primary)),
+                                        Theme.of(context).colorScheme.primary)),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -336,81 +338,248 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     minLines: 2,
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: isParsing
-                          ? null
-                          : () async {
-                        if (aiInputCtrl.text.trim().isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("请输入待办内容")));
-                          return;
-                        }
-                        setDialogState(() {
-                          isParsing = true;
-                        });
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: isParsing
+                              ? null
+                              : () async {
+                                  if (aiInputCtrl.text.trim().isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content: Text("请输入待办内容")));
+                                    return;
+                                  }
+                                  setDialogState(() {
+                                    isParsing = true;
+                                  });
 
-                        // 给一个短暂延迟让UI刷新出 Loading 状态，避免同步卡顿
-                        await Future.delayed(const Duration(milliseconds: 150));
+                                  // 给一个短暂延迟让UI刷新出 Loading 状态，避免同步卡顿
+                                  await Future.delayed(
+                                      const Duration(milliseconds: 150));
 
-                        final results = TodoParserService.parseMulti(aiInputCtrl.text);
+                                  final results = TodoParserService.parseMulti(
+                                      aiInputCtrl.text);
 
-                        setDialogState(() {
-                          parsedResults = results;
-                          currentParseIndex = 0;
-                          isParsing = false;
-                        });
+                                  setDialogState(() {
+                                    parsedResults = results;
+                                    currentParseIndex = 0;
+                                    isParsing = false;
+                                  });
 
-                        if (parsedResults.isNotEmpty) {
-                          final first = parsedResults[0];
-                          setDialogState(() {
-                            titleCtrl.text = first.title;
-                            remarkCtrl.text = first.remark ?? "";
-                            if (first.startTime != null) {
-                              createdAt = first.startTime!;
-                              if (first.isAllDay) {
-                                createdAt = DateTime(createdAt.year,
-                                    createdAt.month, createdAt.day, 0, 0);
-                              }
-                            }
-                            if (first.endTime != null) {
-                              dueDate = first.endTime;
-                            } else if (first.startTime != null &&
-                                first.isAllDay) {
-                              dueDate = DateTime(createdAt.year,
-                                  createdAt.month, createdAt.day, 23, 59);
-                            }
-                            isAllDay = first.isAllDay;
-                            recurrence = first.recurrence;
-                            customDays = first.customIntervalDays;
-                            if (customDays != null) {
-                              customDaysCtrl.text = customDays.toString();
-                            }
+                                  if (parsedResults.isNotEmpty) {
+                                    final first = parsedResults[0];
+                                    setDialogState(() {
+                                      titleCtrl.text = first.title;
+                                      remarkCtrl.text = first.remark ?? "";
+                                      if (first.startTime != null) {
+                                        createdAt = first.startTime!;
+                                        if (first.isAllDay) {
+                                          createdAt = DateTime(
+                                              createdAt.year,
+                                              createdAt.month,
+                                              createdAt.day,
+                                              0,
+                                              0);
+                                        }
+                                      }
+                                      if (first.endTime != null) {
+                                        dueDate = first.endTime;
+                                      } else if (first.startTime != null &&
+                                          first.isAllDay) {
+                                        dueDate = DateTime(
+                                            createdAt.year,
+                                            createdAt.month,
+                                            createdAt.day,
+                                            23,
+                                            59);
+                                      }
+                                      isAllDay = first.isAllDay;
+                                      recurrence = first.recurrence;
+                                      customDays = first.customIntervalDays;
+                                      if (customDays != null) {
+                                        customDaysCtrl.text =
+                                            customDays.toString();
+                                      }
 
-                            // ★ 解析完成后自动切回“手动输入”标签页供用户检查或修改 ★
-                            selectedTabIndex = 0;
-                          });
+                                      // ★ 解析完成后自动切回"手动输入"标签页供用户检查或修改 ★
+                                      selectedTabIndex = 0;
+                                    });
 
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("解析成功，请确认或修改后保存"),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      icon: isParsing
-                          ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : const Icon(Icons.auto_awesome),
-                      label: Text(isParsing ? "解析中..." : "智能解析"),
-                    ),
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Text("解析成功，请确认或修改后保存"),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: isParsing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.auto_awesome),
+                          label: Text(isParsing ? "解析中..." : "智能解析"),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: isParsing
+                              ? null
+                              : () async {
+                                  if (aiInputCtrl.text.trim().isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content: Text("请输入待办内容")));
+                                    return;
+                                  }
+
+                                  final config = await LLMService.getConfig();
+                                  if (config == null || !config.isConfigured) {
+                                    if (!context.mounted) return;
+                                    final goToSettings = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text("未配置大模型"),
+                                        content: const Text(
+                                            "使用大模型识别需要先配置API地址和密钥，是否前往设置？"),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, false),
+                                            child: const Text("取消"),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, true),
+                                            child: const Text("去配置"),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (goToSettings == true &&
+                                        context.mounted) {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                const SettingsPage()),
+                                      );
+                                    }
+                                    return;
+                                  }
+
+                                  setDialogState(() {
+                                    isParsing = true;
+                                  });
+
+                                  try {
+                                    final result =
+                                        await LLMService.parseTodoWithLLM(
+                                            aiInputCtrl.text);
+
+                                    final parsedResult = ParsedTodoResult(
+                                      title:
+                                          result['title'] ?? aiInputCtrl.text,
+                                      remark: result['remark'],
+                                      isAllDay: result['isAllDay'] ?? false,
+                                      startTime: result['startTime'] != null
+                                          ? DateTime.tryParse(
+                                              result['startTime'])
+                                          : null,
+                                      endTime: result['endTime'] != null
+                                          ? DateTime.tryParse(result['endTime'])
+                                          : null,
+                                      recurrence: _parseRecurrenceType(
+                                          result['recurrence']),
+                                      customIntervalDays:
+                                          result['customIntervalDays'],
+                                    );
+
+                                    setDialogState(() {
+                                      parsedResults = [parsedResult];
+                                      currentParseIndex = 0;
+                                      isParsing = false;
+                                    });
+
+                                    if (parsedResults.isNotEmpty) {
+                                      final first = parsedResults[0];
+                                      setDialogState(() {
+                                        titleCtrl.text = first.title;
+                                        remarkCtrl.text = first.remark ?? "";
+                                        if (first.startTime != null) {
+                                          createdAt = first.startTime!;
+                                          if (first.isAllDay) {
+                                            createdAt = DateTime(
+                                                createdAt.year,
+                                                createdAt.month,
+                                                createdAt.day,
+                                                0,
+                                                0);
+                                          }
+                                        }
+                                        if (first.endTime != null) {
+                                          dueDate = first.endTime;
+                                        } else if (first.startTime != null &&
+                                            first.isAllDay) {
+                                          dueDate = DateTime(
+                                              createdAt.year,
+                                              createdAt.month,
+                                              createdAt.day,
+                                              23,
+                                              59);
+                                        }
+                                        isAllDay = first.isAllDay;
+                                        recurrence = first.recurrence;
+                                        customDays = first.customIntervalDays;
+                                        if (customDays != null) {
+                                          customDaysCtrl.text =
+                                              customDays.toString();
+                                        }
+                                        selectedTabIndex = 0;
+                                      });
+
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text("大模型解析成功，请确认或修改后保存"),
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } catch (e) {
+                                    setDialogState(() {
+                                      isParsing = false;
+                                    });
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(content: Text("大模型解析失败: $e")),
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: isParsing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.smart_toy_outlined),
+                          label: Text(isParsing ? "解析中..." : "大模型识别"),
+                        ),
+                      ),
+                    ],
                   ),
                   if (parsedResults.isNotEmpty) ...[
                     const SizedBox(height: 16),
@@ -426,13 +595,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                         "开始时间",
                         parsedResults[currentParseIndex].startTime != null
                             ? DateFormat('yyyy-MM-dd HH:mm').format(
-                            parsedResults[currentParseIndex].startTime!)
+                                parsedResults[currentParseIndex].startTime!)
                             : "未识别"),
                     _buildParseResultItem(
                         "结束时间",
                         parsedResults[currentParseIndex].endTime != null
                             ? DateFormat('yyyy-MM-dd HH:mm').format(
-                            parsedResults[currentParseIndex].endTime!)
+                                parsedResults[currentParseIndex].endTime!)
                             : "未识别"),
                     _buildParseResultItem("全天事件",
                         parsedResults[currentParseIndex].isAllDay ? "是" : "否"),
@@ -455,11 +624,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                   setDialogState,
                                   titleCtrl,
                                   remarkCtrl,
-                                      (d) => createdAt = d,
-                                      (d) => dueDate = d,
-                                      (b) => isAllDay = b,
-                                      (r) => recurrence = r,
-                                      (i) => customDays = i,
+                                  (d) => createdAt = d,
+                                  (d) => dueDate = d,
+                                  (b) => isAllDay = b,
+                                  (r) => recurrence = r,
+                                  (i) => customDays = i,
                                   customDaysCtrl);
                             },
                             child: const Text("上一个"),
@@ -473,11 +642,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                   setDialogState,
                                   titleCtrl,
                                   remarkCtrl,
-                                      (d) => createdAt = d,
-                                      (d) => dueDate = d,
-                                      (b) => isAllDay = b,
-                                      (r) => recurrence = r,
-                                      (i) => customDays = i,
+                                  (d) => createdAt = d,
+                                  (d) => dueDate = d,
+                                  (b) => isAllDay = b,
+                                  (r) => recurrence = r,
+                                  (i) => customDays = i,
                                   customDaysCtrl);
                             },
                             child: const Text("下一个"),
@@ -493,7 +662,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           return AlertDialog(
             title: const Text("添加待办"),
             shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
             content: SizedBox(
               width: MediaQuery.of(context).size.width * 0.8,
               child: Column(
@@ -603,18 +772,37 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     }
   }
 
+  RecurrenceType _parseRecurrenceType(String? value) {
+    switch (value) {
+      case 'daily':
+        return RecurrenceType.daily;
+      case 'weekly':
+        return RecurrenceType.weekly;
+      case 'monthly':
+        return RecurrenceType.monthly;
+      case 'yearly':
+        return RecurrenceType.yearly;
+      case 'weekdays':
+        return RecurrenceType.weekdays;
+      case 'customDays':
+        return RecurrenceType.customDays;
+      default:
+        return RecurrenceType.none;
+    }
+  }
+
   void _applyParsedResult(
-      ParsedTodoResult result,
-      void Function(void Function()) setDialogState,
-      TextEditingController titleCtrl,
-      TextEditingController remarkCtrl,
-      Function(DateTime) setCreatedAt,
-      Function(DateTime?) setDueDate,
-      Function(bool) setIsAllDay,
-      Function(RecurrenceType) setRecurrence,
-      Function(int?) setCustomDays,
-      TextEditingController customDaysCtrl,
-      ) {
+    ParsedTodoResult result,
+    void Function(void Function()) setDialogState,
+    TextEditingController titleCtrl,
+    TextEditingController remarkCtrl,
+    Function(DateTime) setCreatedAt,
+    Function(DateTime?) setDueDate,
+    Function(bool) setIsAllDay,
+    Function(RecurrenceType) setRecurrence,
+    Function(int?) setCustomDays,
+    TextEditingController customDaysCtrl,
+  ) {
     setDialogState(() {
       titleCtrl.text = result.title;
       remarkCtrl.text = result.remark ?? "";
@@ -643,16 +831,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   void _editTodo(TodoItem todo) {
     TextEditingController titleCtrl = TextEditingController(text: todo.title);
     TextEditingController remarkCtrl =
-    TextEditingController(text: todo.remark ?? '');
+        TextEditingController(text: todo.remark ?? '');
     DateTime createdDate = DateTime.fromMillisecondsSinceEpoch(
-        todo.createdDate ?? todo.createdAt,
-        isUtc: true)
+            todo.createdDate ?? todo.createdAt,
+            isUtc: true)
         .toLocal();
     DateTime? dueDate = todo.dueDate;
     RecurrenceType recurrence = todo.recurrence;
     int? customDays = todo.customIntervalDays;
     TextEditingController customDaysCtrl =
-    TextEditingController(text: customDays?.toString() ?? "");
+        TextEditingController(text: customDays?.toString() ?? "");
     DateTime? recurrenceEndDate = todo.recurrenceEndDate;
 
     bool isAllDay = dueDate != null &&
@@ -667,7 +855,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         builder: (context, setDialogState) => AlertDialog(
           title: const Text("编辑待办"),
           shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -694,7 +882,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text("全天事件",
                       style:
-                      TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   value: isAllDay,
                   activeColor: Theme.of(context).colorScheme.primary,
                   onChanged: (val) {
@@ -915,21 +1103,21 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     final Color cardBg = todo.isDone
         ? colorScheme.surfaceContainerHighest.withOpacity(isLight ? 0.25 : 0.08)
         : colorScheme.surface.withOpacity(isPast
-        ? (isLight ? 0.9 : 0.45)
-        : isFuture
-        ? (isLight ? 0.85 : 0.35)
-        : (isLight ? 0.97 : 0.75));
+            ? (isLight ? 0.9 : 0.45)
+            : isFuture
+                ? (isLight ? 0.85 : 0.35)
+                : (isLight ? 0.97 : 0.75));
 
     final Color titleColor = todo.isDone
         ? colorScheme.onSurface.withOpacity(0.35)
         : (isPast || isFuture
-        ? colorScheme.onSurface.withOpacity(0.65)
-        : colorScheme.onSurface);
+            ? colorScheme.onSurface.withOpacity(0.65)
+            : colorScheme.onSurface);
 
     // ── 进度计算 ──
     DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
-        todo.createdDate ?? todo.createdAt,
-        isUtc: true)
+            todo.createdDate ?? todo.createdAt,
+            isUtc: true)
         .toLocal();
     final DateTime now = DateTime.now();
     double progress = 0.0;
@@ -937,7 +1125,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       DateTime start = cDate;
       DateTime end = todo.dueDate != null
           ? DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day,
-          todo.dueDate!.hour, todo.dueDate!.minute, 59)
+              todo.dueDate!.hour, todo.dueDate!.minute, 59)
           : DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
       int totalMinutes = end.difference(start).inMinutes;
       if (totalMinutes <= 0) totalMinutes = 1;
@@ -954,7 +1142,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
 
     if (todo.dueDate != null) {
       final DateTime d =
-      DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+          DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
       final DateTime today = DateTime(now.year, now.month, now.day);
       if (isPast) {
         badge = "已逾期";
@@ -1035,11 +1223,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           ),
           boxShadow: (!todo.isDone && isLight)
               ? [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2))
-          ]
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2))
+                ]
               : [],
         ),
         child: Material(
@@ -1070,7 +1258,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                         todo.markAsChanged();
                         List<TodoItem> updatedList = List.from(widget.todos);
                         updatedList.sort((a, b) =>
-                        a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+                            a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
                         widget.onTodosChanged(updatedList);
                       },
                     ),
@@ -1095,7 +1283,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       ? TextDecoration.lineThrough
                                       : null,
                                   decorationColor:
-                                  colorScheme.onSurface.withOpacity(0.3),
+                                      colorScheme.onSurface.withOpacity(0.3),
                                   color: titleColor,
                                   fontSize: 14.5,
                                   fontWeight: todo.isDone || isPast || isFuture
@@ -1155,10 +1343,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                   fontSize: 11,
                                   color: colorScheme.onSurface
                                       .withOpacity(todo.isDone
-                                      ? 0.25
-                                      : isPast
-                                      ? 0.6
-                                      : 0.45),
+                                          ? 0.25
+                                          : isPast
+                                              ? 0.6
+                                              : 0.45),
                                   height: 1.2,
                                 ),
                               ),
@@ -1191,7 +1379,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                               value: progress,
                               minHeight: 3,
                               backgroundColor:
-                              colorScheme.onSurface.withOpacity(0.07),
+                                  colorScheme.onSurface.withOpacity(0.07),
                               valueColor: AlwaysStoppedAnimation<Color>(
                                 isPast
                                     ? Colors.redAccent.shade200
@@ -1288,7 +1476,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
     final Iterable<TodoItem> activeTodos =
-    widget.todos.where((t) => !t.isDeleted && !_isHistoricalTodo(t));
+        widget.todos.where((t) => !t.isDeleted && !_isHistoricalTodo(t));
 
     if (activeTodos.isEmpty) {
       return EmptyState(text: "暂无待办，去添加一个吧", isLight: widget.isLight);
@@ -1342,7 +1530,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       if (t.isDeleted) continue;
       if (t.dueDate != null) {
         final DateTime d =
-        DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+            DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
         if (d.isBefore(today)) {
           pastTodos.add(t);
         } else if (d.isAfter(today)) {
@@ -1395,9 +1583,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               color: useDarkUI
                   ? Colors.white.withOpacity(0.1)
                   : Theme.of(context)
-                  .colorScheme
-                  .surfaceVariant
-                  .withOpacity(0.3),
+                      .colorScheme
+                      .surfaceVariant
+                      .withOpacity(0.3),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -1426,7 +1614,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
       if (todayTodos.isNotEmpty) {
         sections.add(_buildGroupLabel(
           text:
-          "今日 · ${todayTodos.where((t) => t.isDone).length}/${todayTodos.length} 已完成",
+              "今日 · ${todayTodos.where((t) => t.isDone).length}/${todayTodos.length} 已完成",
           expanded: true,
           onTap: () => setState(() {
             _isTodayExpanded = false;
@@ -1471,8 +1659,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               reordered.insert(newIndex, item);
               final List<TodoItem> updatedList = List.from(widget.todos);
               for (int i = 0;
-              i < todayIndices.length && i < reordered.length;
-              i++) {
+                  i < todayIndices.length && i < reordered.length;
+                  i++) {
                 updatedList[todayIndices[i]] = reordered[i];
               }
               widget.onTodosChanged(updatedList);
@@ -1550,7 +1738,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   Container(
                     margin: const EdgeInsets.only(right: 6),
                     padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: useDarkUI
                           ? Colors.white.withOpacity(0.2)
@@ -1592,7 +1780,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                     color: useDarkUI ? Colors.white70 : Colors.grey,
                   ),
                   onPressed: () => setState(
-                          () => _isWholeListExpanded = !_isWholeListExpanded),
+                      () => _isWholeListExpanded = !_isWholeListExpanded),
                 ),
               ],
             ),
