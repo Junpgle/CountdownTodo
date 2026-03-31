@@ -45,6 +45,9 @@ class StorageService {
   static const String KEY_LOCAL_SCREEN_TIME =
       "local_screen_time_pending_upload";
 
+  static const String KEY_LLM_RETRY_COUNT = "llm_retry_count";
+  static const String KEY_PENDING_TODO_CONFIRM = "pending_todo_confirm";
+
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
@@ -1018,5 +1021,57 @@ class StorageService {
       if (m is Map && m.isNotEmpty) return Map<String, dynamic>.from(m);
     } catch (_) {}
     return null;
+  }
+
+  // ==========================================
+  // 🔄 大模型重试配置
+  // ==========================================
+
+  /// 获取大模型重试次数，默认3次
+  static Future<int> getLLMRetryCount() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getInt(KEY_LLM_RETRY_COUNT) ?? 3;
+  }
+
+  /// 设置大模型重试次数
+  static Future<void> setLLMRetryCount(int count) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setInt(KEY_LLM_RETRY_COUNT, count);
+  }
+
+  // ==========================================
+  // 📋 待确认待办数据（用于通知点击后的二次确认）
+  // ==========================================
+
+  /// 保存待确认的待办数据
+  static Future<void> savePendingTodoConfirm({
+    required String imagePath,
+    required List<Map<String, dynamic>> results,
+  }) async {
+    final prefs = await StorageService.prefs;
+    final data = jsonEncode({
+      'imagePath': imagePath,
+      'results': results,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    await prefs.setString(KEY_PENDING_TODO_CONFIRM, data);
+  }
+
+  /// 获取待确认的待办数据
+  static Future<Map<String, dynamic>?> getPendingTodoConfirm() async {
+    final prefs = await StorageService.prefs;
+    final data = prefs.getString(KEY_PENDING_TODO_CONFIRM);
+    if (data == null) return null;
+    try {
+      return jsonDecode(data) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 清除待确认的待办数据
+  static Future<void> clearPendingTodoConfirm() async {
+    final prefs = await StorageService.prefs;
+    await prefs.remove(KEY_PENDING_TODO_CONFIRM);
   }
 }

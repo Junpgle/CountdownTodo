@@ -45,6 +45,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val NOTIFICATION_ID = 12345          // 主通知 ID（待办/测验）
     private val POMODORO_NOTIFICATION_ID = 12346 // 🍅 番茄钟独立通知 ID
     private val COURSE_NOTIFICATION_ID   = 12347 // 📚 课程提醒独立通知 ID
+    private val SPECIAL_TODO_NOTIFICATION_ID = 12352 // 🚴 特殊待办独立通知 ID
+    private val TODO_RECOGNIZE_NOTIFICATION_ID = 12353 // 📸 图片识别待办通知 ID
     private val ALERT_COURSE_ID   = 12348 // 🔔 课程普通提醒
     private val ALERT_TODO_ID     = 12349 // 🔔 待办普通提醒
     private val ALERT_POMO_START_ID = 12350 // 🔔 番茄开始普通提醒
@@ -52,6 +54,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val TODO_ISLAND_BIZ_TAG     = "math_quiz_todo"     // 待办独立岛 bizTag
     private val COURSE_ISLAND_BIZ_TAG   = "math_quiz_course"   // 📚 课程独立岛 bizTag
     private val POMODORO_ISLAND_BIZ_TAG = "math_quiz_pomodoro" // 🍅 番茄钟独立岛 bizTag
+    private val SPECIAL_TODO_ISLAND_BIZ_TAG = "math_quiz_special_todo" // 🚴 特殊待办独立岛 bizTag
     private val TAG = "MathQuizApp"
 
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
@@ -240,8 +243,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                             "quiz" -> updateQuizNotification(args)
                             "course" -> updateCourseNotification(args)
                             "upcoming_todo" -> updateUpcomingTodoNotification(args)
+                            "special_todo" -> updateSpecialTodoNotification(args)
                             "pomodoro" -> updatePomodoroNotification(args)
                             "pomodoro_end" -> sendPomodoroEndAlert(args)
+                            "todo_recognize_progress" -> updateTodoRecognizeProgressNotification(args)
+                            "todo_recognize_success" -> updateTodoRecognizeSuccessNotification(args)
+                            "todo_recognize_failed" -> updateTodoRecognizeFailedNotification(args)
                             else -> updateTodoNotification(args)
                         }
                         result.success(null)
@@ -253,6 +260,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     nm.cancel(NOTIFICATION_ID)
                     nm.cancel(COURSE_NOTIFICATION_ID)          // 📚 清除课程独立通知
                     nm.cancel(POMODORO_NOTIFICATION_ID)        // 🍅 清除番茄钟独立通知
+                    nm.cancel(SPECIAL_TODO_NOTIFICATION_ID)   // 🚴 清除特殊待办独立通知
                     result.success(null)
                 }
 
@@ -769,6 +777,49 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
+    // 🚀 特殊待办实时通知（快递、外卖、餐饮单独显示）
+    private fun updateSpecialTodoNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val todoTitle = args["todoTitle"] as? String ?: "待办事项"
+        val todoRemark = (args["todoRemark"] as? String)?.trim() ?: ""
+        val timeStr = args["timeStr"] as? String ?: ""
+        val todoType = args["todoType"] as? String ?: "default"
+        
+        Log.d(TAG, "🚴 updateSpecialTodoNotification: title=$todoTitle, todoType=$todoType")
+
+        val (iconResId, color, typeLabel) = when (todoType) {
+            "delivery" -> Triple(R.drawable.local_shipping, 0xFF4CAF50.toInt(), "取件")
+            "cafe" -> Triple(R.drawable.local_cafe, 0xFF795548.toInt(), "取餐")
+            "food" -> Triple(R.drawable.shopping_bag, 0xFFFF5722.toInt(), "取餐")
+            "restaurant" -> Triple(R.drawable.restaurant, 0xFF9C27B0.toInt(), "堂食")
+            else -> Triple(R.drawable.calendar_clock, 0xFFFF9800.toInt(), "待办")
+        }
+
+        val title = todoTitle
+        val text = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
+        val subText = "$typeLabel - $timeStr"
+        
+        val customNotifId = args["notificationId"] as? Int
+        val notifId = customNotifId ?: SPECIAL_TODO_NOTIFICATION_ID
+
+        buildAndNotify(
+            title = title,
+            text = text,
+            subText = subText,
+            progress = 0,
+            isOngoing = true,
+            color = color,
+            currentStep = 0,
+            totalSteps = 0,
+            isTodo = true,
+            shortText = timeStr,
+            iconResId = iconResId,
+            largeIconResId = iconResId,
+            notificationId = notifId,
+            islandBizTag = SPECIAL_TODO_ISLAND_BIZ_TAG
+        )
+    }
+
     // 负责"全天"待办的汇总显示
     private fun updateTodoNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -821,6 +872,103 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             totalSteps = totalCount,
             isTodo = true
         )
+    }
+
+    // 📸 图片识别待办进度通知
+    private fun updateTodoRecognizeProgressNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val currentAttempt = (args["currentAttempt"] as? Number)?.toInt() ?: 1
+        val maxAttempts = (args["maxAttempts"] as? Number)?.toInt() ?: 1
+        val status = args["status"] as? String ?: "正在识别..."
+
+        val title = "🔍 图片识别待办中..."
+        val text = "第$currentAttempt/$maxAttempts次尝试 | $status"
+        val subText = "后台识别中"
+        val color = 0xFF2196F3.toInt() // 蓝色
+
+        val progress = if (maxAttempts > 0) (currentAttempt * 100) / maxAttempts else 0
+
+        buildAndNotify(
+            title = title,
+            text = text,
+            subText = subText,
+            progress = progress,
+            isOngoing = true,
+            color = color,
+            currentStep = currentAttempt,
+            totalSteps = maxAttempts,
+            isTodo = false,
+            iconResId = R.drawable.hourglass,
+            notificationId = TODO_RECOGNIZE_NOTIFICATION_ID
+        )
+    }
+
+    // 📸 图片识别待办成功通知（点击进入确认页面）
+    private fun updateTodoRecognizeSuccessNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val todoCount = (args["todoCount"] as? Number)?.toInt() ?: 0
+
+        val title = "✅ 图片识别完成"
+        val text = "发现$todoCount个待办事项，点击查看详情"
+        val subText = "识别成功"
+        val color = 0xFF4CAF50.toInt() // 绿色
+
+        // 创建点击意图，打开应用并导航到确认页面
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("open_todo_confirm", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, TODO_RECOGNIZE_NOTIFICATION_ID, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_done)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSubText(subText)
+            .setColor(color)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "updateTodoRecognizeSuccessNotification error", e)
+        }
+    }
+
+    // 📸 图片识别待办失败通知
+    private fun updateTodoRecognizeFailedNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val errorMsg = (args["errorMsg"] as? String)?.trim() ?: "未知错误"
+        val displayError = if (errorMsg.length > 50) errorMsg.substring(0, 50) + "..." else errorMsg
+
+        val title = "❌ 图片识别失败"
+        val text = displayError
+        val subText = "识别失败"
+        val color = 0xFFF44336.toInt() // 红色
+
+        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_cancel)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSubText(subText)
+            .setColor(color)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "updateTodoRecognizeFailedNotification error", e)
+        }
     }
 
     /**
@@ -876,6 +1024,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         isTodo: Boolean = false,
         shortText: String? = null,
         iconResId: Int = R.drawable.ic_notification,
+        largeIconResId: Int? = null,
         channelId: String = NOTIFICATION_CHANNEL_ID,
         notificationId: Int = NOTIFICATION_ID,
         islandBizTag: String = TODO_ISLAND_BIZ_TAG
@@ -894,7 +1043,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(iconResId)
-            .setLargeIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+            .setLargeIcon(if (largeIconResId != null) Icon.createWithResource(this, largeIconResId) else Icon.createWithResource(this, R.mipmap.ic_launcher))
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)

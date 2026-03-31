@@ -9,10 +9,13 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'course_service.dart';
 import '../storage_service.dart';
 import 'llm_service.dart';
+import 'notification_service.dart';
 
 class ExternalShareHandler {
   static StreamSubscription? _intentDataStreamSubscription;
   static bool _isProcessing = false;
+  static final List<String> _processedFileKeys = [];
+  static const int _maxProcessedKeys = 10;
 
   /// 初始化监听，放在主页的 initState 中调用
   /// [onCourseImported] 课表导入成功回调
@@ -28,7 +31,7 @@ class ExternalShareHandler {
         ReceiveSharingIntent.instance.getMediaStream().listen(
       (List<SharedMediaFile> value) {
         _processSharedFiles(context, value, onCourseImported,
-            onTodoRecognized: onTodoRecognized);
+            onTodoRecognized: onTodoRecognized, fromInitial: false);
       },
       onError: (err) {
         debugPrint("获取外部意图失败: $err");
@@ -38,7 +41,7 @@ class ExternalShareHandler {
     ReceiveSharingIntent.instance.getInitialMedia().then(
       (List<SharedMediaFile> value) {
         _processSharedFiles(context, value, onCourseImported,
-            onTodoRecognized: onTodoRecognized);
+            onTodoRecognized: onTodoRecognized, fromInitial: true);
       },
     );
   }
@@ -48,6 +51,7 @@ class ExternalShareHandler {
     List<SharedMediaFile> files,
     Function onSuccess, {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    bool fromInitial = false,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     if (files.isEmpty || _isProcessing) return;
@@ -100,6 +104,16 @@ class ExternalShareHandler {
       File file = File(filePath);
       String ext = filePath.split('.').last.toLowerCase();
 
+      // 生成文件唯一标识并检查是否已处理（仅对getInitialMedia去重，防止重复处理）
+      final fileKey = await _generateFileKey(filePath);
+      if (fromInitial && _isFileProcessed(fileKey)) {
+        debugPrint("文件已处理过，跳过: $filePath");
+        _closeDialogSafely(dialogContext);
+        ReceiveSharingIntent.instance.reset();
+        _isProcessing = false;
+        return;
+      }
+
       // 检测是否为图片
       final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
       final isImage = imageExtensions.contains(ext);
@@ -138,6 +152,8 @@ class ExternalShareHandler {
               .timeout(const Duration(seconds: 90));
 
           statusNotifier.value = "✅ 识别成功！\n发现${results.length}个待办事项";
+          // 标记文件为已处理，防止重复处理
+          _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
 
@@ -148,16 +164,37 @@ class ExternalShareHandler {
         } catch (e) {
           debugPrint("大模型图片识别失败: $e");
           String errorMsg = e.toString();
-          if (errorMsg.contains('TimeoutException')) {
-            statusNotifier.value = "❌ 请求超时\n请检查网络或稍后重试";
-          } else if (errorMsg.contains('SocketException')) {
-            statusNotifier.value = "❌ 网络连接失败\n请检查网络设置";
+
+          // 获取重试次数
+          final maxRetries = await StorageService.getLLMRetryCount();
+
+          if (maxRetries > 0) {
+            // 有重试次数，启动后台重试
+            statusNotifier.value = "首次识别失败\n正在后台重试...";
+            await Future.delayed(const Duration(milliseconds: 500));
+            _closeDialogSafely(dialogContext);
+
+            // 在后台启动重试任务
+            _startBackgroundRetry(
+              filePath: filePath,
+              compressedPath: compressedPath,
+              fileKey: fileKey,
+              maxRetries: maxRetries,
+              onTodoRecognized: onTodoRecognized,
+            );
           } else {
-            statusNotifier.value =
-                "❌ 图片识别失败\n${errorMsg.length > 50 ? errorMsg.substring(0, 50) : errorMsg}";
+            // 没有重试次数，直接显示错误
+            if (errorMsg.contains('TimeoutException')) {
+              statusNotifier.value = "❌ 请求超时\n请检查网络或稍后重试";
+            } else if (errorMsg.contains('SocketException')) {
+              statusNotifier.value = "❌ 网络连接失败\n请检查网络设置";
+            } else {
+              statusNotifier.value =
+                  "❌ 图片识别失败\n${errorMsg.length > 50 ? errorMsg.substring(0, 50) : errorMsg}";
+            }
+            await Future.delayed(const Duration(seconds: 3));
+            _closeDialogSafely(dialogContext);
           }
-          await Future.delayed(const Duration(seconds: 3));
-          _closeDialogSafely(dialogContext);
         }
       } else {
         // 文件处理：课表导入
@@ -227,6 +264,8 @@ class ExternalShareHandler {
 
         if (success) {
           statusNotifier.value = "✅ 导入成功！\n正在刷新课表...";
+          // 标记文件为已处理，防止重复处理
+          _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
           onSuccess();
@@ -285,7 +324,140 @@ class ExternalShareHandler {
     }
   }
 
+  /// 生成文件唯一标识（路径 + 修改时间 + 大小）
+  static Future<String> _generateFileKey(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return filePath;
+      final stat = await file.stat();
+      return '${filePath}_${stat.modified.millisecondsSinceEpoch}_${stat.size}';
+    } catch (e) {
+      return filePath;
+    }
+  }
+
+  /// 检查文件是否已处理过
+  static bool _isFileProcessed(String fileKey) {
+    return _processedFileKeys.contains(fileKey);
+  }
+
+  /// 标记文件为已处理
+  static void _markFileProcessed(String fileKey) {
+    _processedFileKeys.add(fileKey);
+    // 限制列表大小，只保留最近处理的文件
+    while (_processedFileKeys.length > _maxProcessedKeys) {
+      _processedFileKeys.removeAt(0);
+    }
+  }
+
   static void dispose() {
     _intentDataStreamSubscription?.cancel();
+  }
+
+  /// 启动后台重试任务
+  /// [filePath] 原始图片路径
+  /// [compressedPath] 压缩后的图片路径
+  /// [fileKey] 文件唯一标识
+  /// [maxRetries] 最大重试次数
+  /// [onTodoRecognized] 识别成功回调
+  static void _startBackgroundRetry({
+    required String filePath,
+    required String compressedPath,
+    required String fileKey,
+    required int maxRetries,
+    Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+  }) async {
+    debugPrint("启动后台重试: filePath=$filePath, maxRetries=$maxRetries");
+
+    // 显示开始重试的通知
+    await NotificationService.showTodoRecognizeProgress(
+      currentAttempt: 1,
+      maxAttempts: maxRetries + 1,
+      status: '开始后台重试...',
+    );
+
+    bool success = false;
+    List<Map<String, dynamic>>? results;
+    String? lastError;
+
+    // 尝试原始图片和压缩后的图片
+    final pathsToTry = [compressedPath];
+    if (compressedPath != filePath) {
+      pathsToTry.add(filePath);
+    }
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        debugPrint("后台重试第$attempt次...");
+
+        // 更新进度通知
+        await NotificationService.showTodoRecognizeProgress(
+          currentAttempt: attempt + 1,
+          maxAttempts: maxRetries + 1,
+          status: '正在分析图片...',
+        );
+
+        // 尝试不同的图片路径
+        final currentPath = pathsToTry[(attempt - 1) % pathsToTry.length];
+
+        results = await LLMService.parseTodoFromImage(currentPath)
+            .timeout(const Duration(seconds: 90));
+
+        success = true;
+        debugPrint("后台重试第$attempt次成功!");
+        break;
+      } catch (e) {
+        lastError = e.toString();
+        debugPrint("后台重试第$attempt次失败: $e");
+
+        // 更新失败通知
+        await NotificationService.showTodoRecognizeProgress(
+          currentAttempt: attempt + 1,
+          maxAttempts: maxRetries + 1,
+          status: '第$attempt次失败，准备重试...',
+        );
+
+        // 如果不是最后一次，等待一段时间再重试
+        if (attempt < maxRetries) {
+          await Future.delayed(Duration(seconds: 2 * attempt));
+        }
+      }
+    }
+
+    if (success && results != null && results.isNotEmpty) {
+      // 标记文件为已处理
+      _markFileProcessed(fileKey);
+
+      // 保存待确认数据
+      await StorageService.savePendingTodoConfirm(
+        imagePath: filePath,
+        results: results,
+      );
+
+      // 发送成功通知
+      await NotificationService.showTodoRecognizeSuccess(
+        todoCount: results.length,
+      );
+
+      debugPrint("后台重试成功，已保存${results.length}个待办，等待用户确认");
+    } else {
+      // 所有重试都失败
+      await NotificationService.showTodoRecognizeFailed(
+        errorMsg: lastError ?? '未知错误',
+      );
+
+      debugPrint("后台重试全部失败: $lastError");
+    }
+  }
+
+  /// 检查是否有待确认的待办数据
+  /// 返回 null 表示没有待确认数据
+  static Future<Map<String, dynamic>?> getPendingTodoConfirm() async {
+    return await StorageService.getPendingTodoConfirm();
+  }
+
+  /// 清除待确认的待办数据
+  static Future<void> clearPendingTodoConfirm() async {
+    await StorageService.clearPendingTodoConfirm();
   }
 }

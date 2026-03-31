@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../services/llm_service.dart';
+import '../../../storage_service.dart';
 import '../dialogs/llm_config_dialog.dart';
 
 class PreferenceSection extends StatelessWidget {
@@ -17,6 +18,8 @@ class PreferenceSection extends StatelessWidget {
   final ValueChanged<int?>? onFloatWindowStyleChanged;
   final VoidCallback? onForceRefreshPressed;
   final VoidCallback? onIslandPriorityPressed;
+  final int llmRetryCount;
+  final ValueChanged<int?>? onLLMRetryCountChanged;
 
   const PreferenceSection({
     Key? key,
@@ -33,6 +36,8 @@ class PreferenceSection extends StatelessWidget {
     this.onFloatWindowStyleChanged,
     this.onForceRefreshPressed,
     this.onIslandPriorityPressed,
+    this.llmRetryCount = 3,
+    this.onLLMRetryCountChanged,
   }) : super(key: key);
 
   @override
@@ -143,6 +148,25 @@ class PreferenceSection extends StatelessWidget {
                     (context as Element).markNeedsBuild();
                   }
                 },
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.refresh_outlined,
+                    color: Colors.deepPurple),
+                title: const Text('图片识别重试次数'),
+                subtitle: const Text('识别超时后自动重试的次数（后台异步执行）'),
+                trailing: DropdownButton<int>(
+                  value: llmRetryCount,
+                  underline: const SizedBox(),
+                  items: const [
+                    DropdownMenuItem(value: 0, child: Text('不重试')),
+                    DropdownMenuItem(value: 1, child: Text('1 次')),
+                    DropdownMenuItem(value: 2, child: Text('2 次')),
+                    DropdownMenuItem(value: 3, child: Text('3 次')),
+                    DropdownMenuItem(value: 5, child: Text('5 次')),
+                  ],
+                  onChanged: onLLMRetryCountChanged,
+                ),
               ),
               if (Platform.isWindows) ...[
                 const Divider(height: 1, indent: 56),

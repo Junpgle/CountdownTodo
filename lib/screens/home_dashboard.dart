@@ -32,6 +32,7 @@ import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'home_settings_screen.dart';
 import 'feature_guide_screen.dart';
+import 'todo_confirm_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
@@ -54,6 +55,12 @@ class HomeDashboard extends StatefulWidget {
 
 class _HomeDashboardState extends State<HomeDashboard>
     with WidgetsBindingObserver {
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
+  }
+
   // === 状态变量 ===
   List<CountdownItem> _countdowns = [];
   List<TodoItem> _todos = [];
@@ -156,16 +163,23 @@ class _HomeDashboardState extends State<HomeDashboard>
           _loadAllData();
         },
         onTodoRecognized: (results, imagePath) {
-          // 图片识别到待办，显示添加对话框并预填充数据
-          _todoSectionKey.currentState
-              ?.showAddTodoDialogWithData(results, imagePath);
+          // 图片识别到待办，显示确认页面
+          _navigateToTodoConfirm(results, imagePath);
         },
       );
+
+      // 检查是否有待确认的待办数据（从通知点击进入）
+      _checkPendingTodoConfirm();
+
       _checkAutoSync();
       _checkUpdatesSilently();
 
       _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
         _checkUpcomingEvents();
+      });
+      // 立即执行一次
+      Future.delayed(Duration(milliseconds: 500), () {
+        if (mounted) _checkUpcomingEvents();
       });
       _checkAndNavigateToPomodoro();
     });
@@ -199,6 +213,53 @@ class _HomeDashboardState extends State<HomeDashboard>
         duration: const Duration(seconds: 8),
       ),
     );
+  }
+
+  /// 导航到待办确认页面
+  void _navigateToTodoConfirm(
+      List<Map<String, dynamic>> results, String? imagePath) {
+    if (!mounted || imagePath == null) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TodoConfirmScreen(
+          llmResults: results,
+          imagePath: imagePath,
+          onConfirm: (confirmedResults) {
+            // 用户确认后，显示添加对话框
+            _todoSectionKey.currentState
+                ?.showAddTodoDialogWithData(confirmedResults, imagePath);
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 检查是否有待确认的待办数据（从通知点击进入）
+  Future<void> _checkPendingTodoConfirm() async {
+    final pendingData = await ExternalShareHandler.getPendingTodoConfirm();
+    if (pendingData == null || !mounted) return;
+
+    final imagePath = pendingData['imagePath'] as String?;
+    final results = pendingData['results'] as List<dynamic>?;
+
+    if (imagePath == null || results == null || results.isEmpty) return;
+
+    // 将结果转换为正确的类型
+    final List<Map<String, dynamic>> typedResults =
+        results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+    // 延迟一下再弹出确认页面，避免与主页面初始化冲突
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    if (!mounted) return;
+
+    // 显示确认页面
+    _navigateToTodoConfirm(typedResults, imagePath);
+
+    // 清除待确认数据
+    await ExternalShareHandler.clearPendingTodoConfirm();
   }
 
   Future<void> _initCrossDevicePomodoro() async {
@@ -622,42 +683,83 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     if (hasUpcomingCourse) return;
 
-    List<TodoItem> upcomingTodos = _todos.where((t) {
-      if (t.isDone) return false;
-      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      bool isAllDay = t.dueDate != null &&
-          DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt,
-                      isUtc: true)
-                  .toLocal()
-                  .hour ==
-              0 &&
-          DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt,
-                      isUtc: true)
-                  .toLocal()
-                  .minute ==
-              0 &&
-          t.dueDate!.hour == 23 &&
-          t.dueDate!.minute == 59;
-      if (isAllDay) return false;
+    debugPrint(
+        "🔔 _checkUpcomingEvents: 开始检查特殊待办, _todos.length=${_todos.length}");
 
-      // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime created = DateTime.fromMillisecondsSinceEpoch(
+    String _detectTodoType(String title) {
+      final lowerTitle = title.toLowerCase();
+      if (lowerTitle.contains('快递') ||
+          lowerTitle.contains('取件') ||
+          lowerTitle.contains('顺丰') ||
+          lowerTitle.contains('京东') ||
+          lowerTitle.contains('菜鸟') ||
+          lowerTitle.contains('中通') ||
+          lowerTitle.contains('圆通') ||
+          lowerTitle.contains('韵达') ||
+          lowerTitle.contains('申通')) {
+        return 'delivery';
+      } else if (lowerTitle.contains('奶茶') ||
+          lowerTitle.contains('咖啡') ||
+          lowerTitle.contains('古茗') ||
+          lowerTitle.contains('茶百道') ||
+          lowerTitle.contains('蜜雪冰城') ||
+          lowerTitle.contains('瑞幸') ||
+          lowerTitle.contains('星巴克') ||
+          lowerTitle.contains('库迪') ||
+          lowerTitle.contains('coco') ||
+          lowerTitle.contains('一点点')) {
+        return 'cafe';
+      } else if (lowerTitle.contains('取餐') ||
+          lowerTitle.contains('外卖') ||
+          lowerTitle.contains('肯德基') ||
+          lowerTitle.contains('麦当劳') ||
+          lowerTitle.contains('KFC')) {
+        return 'food';
+      } else if (lowerTitle.contains('海底捞') ||
+          lowerTitle.contains('太二') ||
+          lowerTitle.contains('外婆家') ||
+          lowerTitle.contains('西贝') ||
+          lowerTitle.contains('必胜客') ||
+          lowerTitle.contains('堂食') ||
+          lowerTitle.contains('餐饮')) {
+        return 'restaurant';
+      }
+      return 'default';
+    }
+
+    final specialTodosNow = _todos.where((t) {
+      if (t.isDone) return false;
+      if (t.dueDate == null) return false;
+      final todoType = _detectTodoType(t.title);
+      debugPrint(
+          "🔔 检查待办: title=${t.title}, todoType=$todoType, dueDate=${t.dueDate}");
+      if (todoType == 'default') return false;
+      DateTime localDueDate = t.dueDate!.toLocal();
+      return _isSameDay(localDueDate, now);
+    }).toList();
+
+    for (final todo in specialTodosNow) {
+      await NotificationService.showUpcomingTodoNotification(todo);
+    }
+
+    final allDayTodos = _todos.where((t) {
+      if (t.isDone) return false;
+      if (t.dueDate == null) return false;
+      final todoType = _detectTodoType(t.title);
+      if (todoType != 'default') return false;
+      DateTime localDueDate = t.dueDate!.toLocal();
+      if (!_isSameDay(localDueDate, now)) return false;
+      DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
               t.createdDate ?? t.createdAt,
               isUtc: true)
           .toLocal();
-      DateTime startTime =
-          DateTime(now.year, now.month, now.day, created.hour, created.minute);
-      int diffMinutes = startTime.difference(now).inMinutes;
-      return diffMinutes >= 0 && diffMinutes <= 20;
+      return startDate.hour == 0 &&
+          startDate.minute == 0 &&
+          localDueDate.hour == 23 &&
+          localDueDate.minute == 59;
     }).toList();
 
-    if (upcomingTodos.isNotEmpty) {
-      upcomingTodos.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-      NotificationService.showUpcomingTodoNotification(upcomingTodos.first);
-      return;
-    }
-
-    NotificationService.updateTodoNotification(_todos);
+    NotificationService.updateTodoNotification(allDayTodos);
   }
 
   Future<void> _checkUpdatesSilently() async {

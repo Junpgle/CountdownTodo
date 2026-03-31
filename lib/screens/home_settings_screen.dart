@@ -81,6 +81,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _themeMode = 'system';
   String _noCourseBehavior = 'keep';
   String _serverChoice = 'aliyun';
+  int _llmRetryCount = 3;
 
   // 学期进度状态
   bool _semesterEnabled = false;
@@ -270,6 +271,7 @@ class _SettingsPageState extends State<SettingsPage> {
     int interval = await StorageService.getSyncInterval();
     String theme = await StorageService.getThemeMode();
     String serverUrlChoice = await StorageService.getServerChoice();
+    int llmRetryCount = await StorageService.getLLMRetryCount();
 
     bool sEnabled = await StorageService.getSemesterEnabled();
     DateTime? sStart = await StorageService.getSemesterStart();
@@ -284,6 +286,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _syncInterval = interval;
       _themeMode = theme;
       _serverChoice = serverUrlChoice;
+      _llmRetryCount = llmRetryCount;
       _semesterEnabled = sEnabled;
       _semesterStart = sStart;
       _semesterEnd = sEnd;
@@ -996,6 +999,13 @@ class _SettingsPageState extends State<SettingsPage> {
               : null,
           onIslandPriorityPressed:
               Platform.isWindows ? _showIslandPriorityDialog : null,
+          llmRetryCount: _llmRetryCount,
+          onLLMRetryCountChanged: (val) {
+            if (val != null) {
+              setState(() => _llmRetryCount = val);
+              StorageService.setLLMRetryCount(val);
+            }
+          },
         ),
         PermissionSection(
           permissionDefs: PermissionHandler.permissionDefs,
@@ -1216,6 +1226,13 @@ class _SettingsPageState extends State<SettingsPage> {
                       : null,
                   onIslandPriorityPressed:
                       Platform.isWindows ? _showIslandPriorityDialog : null,
+                  llmRetryCount: _llmRetryCount,
+                  onLLMRetryCountChanged: (val) {
+                    if (val != null) {
+                      setState(() => _llmRetryCount = val);
+                      StorageService.setLLMRetryCount(val);
+                    }
+                  },
                 ),
                 PermissionSection(
                   permissionDefs: PermissionHandler.permissionDefs,
