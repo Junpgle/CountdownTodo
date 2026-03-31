@@ -28,6 +28,7 @@ import '../windows_island/island_manager.dart';
 import 'settings/widgets/account_section.dart';
 import 'settings/widgets/course_section.dart';
 import 'settings/widgets/semester_section.dart';
+import 'settings/server_choice_page.dart';
 import 'settings/widgets/preference_section.dart';
 import 'settings/widgets/permission_section.dart';
 import 'settings/widgets/advanced_section.dart';
@@ -899,35 +900,15 @@ class _SettingsPageState extends State<SettingsPage> {
             }
           },
           serverChoice: _serverChoice,
-          onServerChoiceChanged: (val) async {
-            if (val != null && val != _serverChoice) {
-              final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('切换服务器'),
-                      content:
-                          const Text('不同服务器的登录凭证不互通，切换后需要重新登录。\n\n确定要切换吗？'),
-                      actions: [
-                        TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('取消')),
-                        FilledButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('切换并重新登录')),
-                      ],
-                    ),
-                  ) ??
-                  false;
-
-              if (confirm && mounted) {
-                await StorageService.saveServerChoice(val);
-                await StorageService.clearLoginSession();
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
-            }
+          onServerChoiceTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ServerChoicePage(
+                  initialServerChoice: _serverChoice,
+                ),
+              ),
+            );
           },
           themeMode: _themeMode,
           onThemeModeChanged: (val) {
@@ -1117,36 +1098,15 @@ class _SettingsPageState extends State<SettingsPage> {
                     }
                   },
                   serverChoice: _serverChoice,
-                  onServerChoiceChanged: (val) async {
-                    if (val != null && val != _serverChoice) {
-                      final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('切换服务器'),
-                              content: const Text(
-                                  '不同服务器的登录凭证不互通，切换后需要重新登录。\n\n确定要切换吗？'),
-                              actions: [
-                                TextButton(
-                                    onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('取消')),
-                                FilledButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('切换并重新登录')),
-                              ],
-                            ),
-                          ) ??
-                          false;
-
-                      if (confirm && mounted) {
-                        await StorageService.saveServerChoice(val);
-                        await StorageService.clearLoginSession();
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                              builder: (_) => const LoginScreen()),
-                          (route) => false,
-                        );
-                      }
-                    }
+                  onServerChoiceTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ServerChoicePage(
+                          initialServerChoice: _serverChoice,
+                        ),
+                      ),
+                    );
                   },
                   themeMode: _themeMode,
                   onThemeModeChanged: (val) {

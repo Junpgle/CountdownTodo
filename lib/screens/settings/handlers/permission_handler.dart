@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../../services/screen_time_service.dart';
 
 class PermissionHandler {
   final BuildContext context;
@@ -74,18 +75,19 @@ class PermissionHandler {
           ? PermissionStatus.granted
           : storageStatus;
 
-      try {
-        final bool hasUsage = await platform.invokeMethod('checkUsageStatsPermission') ?? false;
-        results['usage_stats'] = hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
-      } catch (_) {
-        results['usage_stats'] = PermissionStatus.denied;
-      }
+      final bool hasUsage = await ScreenTimeService.checkPermission();
+      results['usage_stats'] =
+          hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
 
-      results['request_install'] = await Permission.requestInstallPackages.status;
+      results['request_install'] =
+          await Permission.requestInstallPackages.status;
 
       try {
-        final bool granted = await platform.invokeMethod<bool>('checkExactAlarmPermission') ?? true;
-        results['exact_alarm'] = granted ? PermissionStatus.granted : PermissionStatus.denied;
+        final bool granted =
+            await platform.invokeMethod<bool>('checkExactAlarmPermission') ??
+                true;
+        results['exact_alarm'] =
+            granted ? PermissionStatus.granted : PermissionStatus.denied;
       } catch (_) {
         results['exact_alarm'] = PermissionStatus.granted;
       }
@@ -111,23 +113,20 @@ class PermissionHandler {
       case 'storage':
         if (Platform.isAndroid) {
           final status = await Permission.manageExternalStorage.request();
-          if (status.isPermanentlyDenied || status.isDenied) await openAppSettings();
+          if (status.isPermanentlyDenied || status.isDenied)
+            await openAppSettings();
         } else {
           final status = await Permission.storage.request();
           if (status.isPermanentlyDenied) await openAppSettings();
         }
         break;
       case 'usage_stats':
-        try {
-          final bool opened = await platform.invokeMethod('openUsageStatsSettings') ?? false;
-          if (!opened) await openAppSettings();
-        } catch (_) {
-          await openAppSettings();
-        }
+        await ScreenTimeService.openSettings();
         break;
       case 'request_install':
         final status = await Permission.requestInstallPackages.request();
-        if (status.isPermanentlyDenied || status.isDenied) await openAppSettings();
+        if (status.isPermanentlyDenied || status.isDenied)
+          await openAppSettings();
         break;
       case 'exact_alarm':
         try {

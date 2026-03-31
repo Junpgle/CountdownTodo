@@ -798,6 +798,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val title = todoTitle
         val text = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
         val subText = "$typeLabel - $timeStr"
+        val shortText = when {
+            todoRemark.isNotEmpty() -> todoRemark
+            else -> todoTitle
+        }
         
         val customNotifId = args["notificationId"] as? Int
         val notifId = customNotifId ?: SPECIAL_TODO_NOTIFICATION_ID
@@ -812,7 +816,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             currentStep = 0,
             totalSteps = 0,
             isTodo = true,
-            shortText = timeStr,
+            shortText = shortText,
             iconResId = iconResId,
             largeIconResId = iconResId,
             notificationId = notifId,
@@ -882,7 +886,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val status = args["status"] as? String ?: "正在识别..."
 
         val title = "🔍 图片识别待办中..."
-        val text = "第$currentAttempt/$maxAttempts次尝试 | $status"
+        val text = "第${currentAttempt}/${maxAttempts}次尝试 | ${status}"
         val subText = "后台识别中"
         val color = 0xFF2196F3.toInt() // 蓝色
 
@@ -909,7 +913,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val todoCount = (args["todoCount"] as? Number)?.toInt() ?: 0
 
         val title = "✅ 图片识别完成"
-        val text = "发现$todoCount个待办事项，点击查看详情"
+        val text = "发现${todoCount}个待办事项，点击查看详情"
         val subText = "识别成功"
         val color = 0xFF4CAF50.toInt() // 绿色
 
@@ -1043,7 +1047,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(iconResId)
-            .setLargeIcon(if (largeIconResId != null) Icon.createWithResource(this, largeIconResId) else Icon.createWithResource(this, R.mipmap.ic_launcher))
+            .setLargeIcon(if (largeIconResId != null) Icon.createWithResource(this, largeIconResId) else Icon.createWithResource(this, R.drawable.ic_notification))
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)

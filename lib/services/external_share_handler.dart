@@ -130,10 +130,18 @@ class ExternalShareHandler {
           return;
         }
 
+        // 立即显示进度通知上岛
+        await NotificationService.showTodoRecognizeProgress(
+          currentAttempt: 1,
+          maxAttempts: 1,
+          status: '正在识别图片...',
+        );
+
         // 检查原始图片大小
         final fileSize = await file.length();
         if (fileSize > 20 * 1024 * 1024) {
           statusNotifier.value = "⚠️ 图片太大\n请分享小于20MB的图片";
+          await NotificationService.cancelTodoRecognizeNotification();
           await Future.delayed(const Duration(seconds: 2));
           _closeDialogSafely(dialogContext);
           return;
@@ -147,6 +155,13 @@ class ExternalShareHandler {
         statusNotifier.value =
             "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
 
+        // 更新通知状态
+        await NotificationService.showTodoRecognizeProgress(
+          currentAttempt: 1,
+          maxAttempts: 1,
+          status: '正在分析图片...',
+        );
+
         try {
           final results = await LLMService.parseTodoFromImage(compressedPath)
               .timeout(const Duration(seconds: 90));
@@ -156,6 +171,11 @@ class ExternalShareHandler {
           _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
+
+          // 显示成功通知
+          await NotificationService.showTodoRecognizeSuccess(
+            todoCount: results.length,
+          );
 
           if (onTodoRecognized != null && results.isNotEmpty) {
             // 传递原始图片路径（用于显示缩略图）
@@ -192,6 +212,10 @@ class ExternalShareHandler {
               statusNotifier.value =
                   "❌ 图片识别失败\n${errorMsg.length > 50 ? errorMsg.substring(0, 50) : errorMsg}";
             }
+            // 显示失败通知
+            await NotificationService.showTodoRecognizeFailed(
+              errorMsg: errorMsg,
+            );
             await Future.delayed(const Duration(seconds: 3));
             _closeDialogSafely(dialogContext);
           }

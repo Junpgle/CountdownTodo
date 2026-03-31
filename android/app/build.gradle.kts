@@ -25,6 +25,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 在原始 applicationId 后面加上 .debug
+            applicationIdSuffix = ".debug"
+            // 为了方便一眼分辨，给 debug 版改个名字
+            resValue("string", "app_name", "CDT-debug")
+        }
         release {
             signingConfig = signingConfigs.getByName("debug")
         }

@@ -1,0 +1,774 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models.dart';
+import '../storage_service.dart';
+import '../services/llm_service.dart';
+import '../services/notification_service.dart';
+
+class ParsedTodoResult {
+  final String title;
+  final String? remark;
+  final bool isAllDay;
+  final DateTime? startTime;
+  final DateTime? endTime;
+  final RecurrenceType recurrence;
+  final int? customIntervalDays;
+
+  ParsedTodoResult({
+    required this.title,
+    this.remark,
+    this.isAllDay = false,
+    this.startTime,
+    this.endTime,
+    this.recurrence = RecurrenceType.none,
+    this.customIntervalDays,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'remark': remark,
+      'isAllDay': isAllDay,
+      'startTime': startTime?.toIso8601String(),
+      'endTime': endTime?.toIso8601String(),
+      'recurrence': recurrence.name,
+      'customIntervalDays': customIntervalDays,
+    };
+  }
+}
+
+class TodoConfirmScreen extends StatefulWidget {
+  final List<Map<String, dynamic>> llmResults;
+  final String imagePath;
+  final Function(List<Map<String, dynamic>>)? onConfirm;
+
+  const TodoConfirmScreen({
+    Key? key,
+    required this.llmResults,
+    required this.imagePath,
+    this.onConfirm,
+  }) : super(key: key);
+
+  @override
+  State<TodoConfirmScreen> createState() => _TodoConfirmScreenState();
+}
+
+class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
+  late List<ParsedTodoResult> _allTodos;
+  final List<Map<String, dynamic>> _confirmedTodos = [];
+  int _currentIndex = 0;
+  bool _isRetrying = false;
+  String? _retryStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    _allTodos = _parseResults(widget.llmResults);
+  }
+
+  List<ParsedTodoResult> _parseResults(List<Map<String, dynamic>> results) {
+    return results.map((result) {
+      return ParsedTodoResult(
+        title: result['title'] ?? '',
+        remark: result['remark'],
+        isAllDay: result['isAllDay'] ?? false,
+        startTime: result['startTime'] != null
+            ? DateTime.tryParse(result['startTime'])
+            : null,
+        endTime: result['endTime'] != null
+            ? DateTime.tryParse(result['endTime'])
+            : null,
+        recurrence: _parseRecurrenceType(result['recurrence']),
+        customIntervalDays: result['customIntervalDays'],
+      );
+    }).toList();
+  }
+
+  RecurrenceType _parseRecurrenceType(String? type) {
+    switch (type) {
+      case 'daily':
+        return RecurrenceType.daily;
+      case 'weekly':
+        return RecurrenceType.weekly;
+      case 'monthly':
+        return RecurrenceType.monthly;
+      case 'yearly':
+        return RecurrenceType.yearly;
+      case 'customDays':
+        return RecurrenceType.customDays;
+      default:
+        return RecurrenceType.none;
+    }
+  }
+
+  Future<void> _retryRecognition() async {
+    setState(() {
+      _isRetrying = true;
+      _retryStatus = '正在重试...';
+    });
+
+    try {
+      final maxRetries = await StorageService.getLLMRetryCount();
+      final config = await LLMService.getConfig();
+
+      if (config == null || !config.isConfigured) {
+        setState(() {
+          _isRetrying = false;
+          _retryStatus = '需要配置大模型API';
+        });
+        return;
+      }
+
+      bool success = false;
+      List<Map<String, dynamic>>? results;
+      String? lastError;
+
+      for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
+        try {
+          setState(() {
+            _retryStatus = '第$attempt/${maxRetries + 1}次尝试...';
+          });
+
+          await NotificationService.showTodoRecognizeProgress(
+            currentAttempt: attempt,
+            maxAttempts: maxRetries + 1,
+            status: '正在分析图片...',
+          );
+
+          results = await LLMService.parseTodoFromImage(widget.imagePath)
+              .timeout(const Duration(seconds: 90));
+
+          success = true;
+          break;
+        } catch (e) {
+          lastError = e.toString();
+          debugPrint("重试第$attempt次失败: $e");
+
+          if (attempt <= maxRetries) {
+            await Future.delayed(Duration(seconds: 2 * attempt));
+          }
+        }
+      }
+
+      if (success && results != null && results.isNotEmpty) {
+        setState(() {
+          _allTodos = _parseResults(results!);
+          _currentIndex = 0;
+          _confirmedTodos.clear();
+          _isRetrying = false;
+          _retryStatus = null;
+        });
+
+        await NotificationService.showTodoRecognizeSuccess(
+          todoCount: results.length,
+        );
+      } else {
+        setState(() {
+          _isRetrying = false;
+          _retryStatus = '重试失败: ${lastError ?? "未知错误"}';
+        });
+
+        await NotificationService.showTodoRecognizeFailed(
+          errorMsg: lastError ?? '未知错误',
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isRetrying = false;
+        _retryStatus = '重试失败: $e';
+      });
+    }
+  }
+
+  void _editCurrentTodo() {
+    if (_currentIndex >= _allTodos.length) return;
+    final todo = _allTodos[_currentIndex];
+    final titleCtrl = TextEditingController(text: todo.title);
+    final remarkCtrl = TextEditingController(text: todo.remark ?? '');
+    bool isAllDay = todo.isAllDay;
+    DateTime createdAt = todo.startTime ?? DateTime.now();
+    DateTime? dueDate = todo.endTime;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('编辑待办'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleCtrl,
+                    decoration: InputDecoration(
+                      labelText: '待办内容',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: remarkCtrl,
+                    decoration: InputDecoration(
+                      labelText: '备注 (可选)',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    maxLines: 3,
+                    minLines: 1,
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('全天事件'),
+                    value: isAllDay,
+                    onChanged: (val) {
+                      setDialogState(() => isAllDay = val);
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      '开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdAt)}',
+                    ),
+                    onTap: () async {
+                      final pickedDate = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: createdAt,
+                      );
+                      if (pickedDate != null) {
+                        if (isAllDay) {
+                          setDialogState(() => createdAt = DateTime(
+                                pickedDate.year,
+                                pickedDate.month,
+                                pickedDate.day,
+                                0,
+                                0,
+                              ));
+                        } else {
+                          if (!context.mounted) return;
+                          final pickedTime = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(createdAt),
+                          );
+                          if (pickedTime != null) {
+                            setDialogState(() => createdAt = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  pickedTime.hour,
+                                  pickedTime.minute,
+                                ));
+                          }
+                        }
+                      }
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      dueDate == null
+                          ? '设置截止时间 (可选)'
+                          : '截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}',
+                    ),
+                    onTap: () async {
+                      final pickedDate = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: dueDate ?? createdAt,
+                      );
+                      if (pickedDate != null) {
+                        if (isAllDay) {
+                          setDialogState(() => dueDate = DateTime(
+                                pickedDate.year,
+                                pickedDate.month,
+                                pickedDate.day,
+                                23,
+                                59,
+                              ));
+                        } else {
+                          if (!context.mounted) return;
+                          final pickedTime = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(dueDate ??
+                                createdAt.add(const Duration(hours: 1))),
+                          );
+                          if (pickedTime != null) {
+                            setDialogState(() => dueDate = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  pickedTime.hour,
+                                  pickedTime.minute,
+                                ));
+                          }
+                        }
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  setState(() {
+                    _allTodos[_currentIndex] = ParsedTodoResult(
+                      title: titleCtrl.text,
+                      remark: remarkCtrl.text.isEmpty ? null : remarkCtrl.text,
+                      isAllDay: isAllDay,
+                      startTime: createdAt,
+                      endTime: dueDate,
+                      recurrence: todo.recurrence,
+                      customIntervalDays: todo.customIntervalDays,
+                    );
+                  });
+                  Navigator.pop(ctx);
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _confirmCurrentTodo() {
+    if (_currentIndex >= _allTodos.length) return;
+    _confirmedTodos.add(_allTodos[_currentIndex].toMap());
+    _moveToNext();
+  }
+
+  void _skipCurrentTodo() {
+    _moveToNext();
+  }
+
+  void _moveToNext() {
+    if (_currentIndex < _allTodos.length - 1) {
+      setState(() {
+        _currentIndex++;
+      });
+    } else {
+      _finishConfirm();
+    }
+  }
+
+  void _finishConfirm() {
+    if (_confirmedTodos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有添加任何待办')),
+      );
+      Navigator.pop(context);
+      return;
+    }
+
+    if (widget.onConfirm != null) {
+      widget.onConfirm!(_confirmedTodos);
+    }
+    Navigator.pop(context, _confirmedTodos);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final imageFile = File(widget.imagePath);
+    final hasImage = imageFile.existsSync();
+    final bool hasMoreTodos = _currentIndex < _allTodos.length;
+    final currentTodo = hasMoreTodos ? _allTodos[_currentIndex] : null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(hasMoreTodos
+            ? '确认待办 (${_currentIndex + 1}/${_allTodos.length})'
+            : '确认完成'),
+        actions: [
+          if (_isRetrying)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (hasMoreTodos)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: '重新识别',
+              onPressed: _retryRecognition,
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // 图片预览（可折叠）
+          if (hasImage)
+            Container(
+              height: 120,
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  imageFile,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                      child: Icon(Icons.broken_image,
+                          size: 48, color: Colors.grey),
+                    );
+                  },
+                ),
+              ),
+            ),
+
+          // 重试状态提示
+          if (_retryStatus != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _isRetrying
+                      ? Colors.blue.shade50
+                      : (_retryStatus!.contains('失败')
+                          ? Colors.red.shade50
+                          : Colors.orange.shade50),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    if (_isRetrying)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      Icon(
+                        _retryStatus!.contains('失败')
+                            ? Icons.error_outline
+                            : Icons.info_outline,
+                        size: 16,
+                        color: _retryStatus!.contains('失败')
+                            ? Colors.red
+                            : Colors.orange,
+                      ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _retryStatus!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _retryStatus!.contains('失败')
+                              ? Colors.red
+                              : Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // 当前待办卡片 或 完成页面
+          Expanded(
+            child: _allTodos.isEmpty
+                ? _buildEmptyState()
+                : hasMoreTodos
+                    ? _buildCurrentTodoCard(currentTodo!)
+                    : _buildCompletedState(),
+          ),
+
+          // 底部按钮
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: hasMoreTodos ? _buildConfirmButtons() : _buildDoneButton(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.inbox, size: 64, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            '没有待办事项',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _isRetrying ? null : _retryRecognition,
+            icon: const Icon(Icons.refresh),
+            label: const Text('重新识别'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentTodoCard(ParsedTodoResult todo) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 顶部标签
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '待办 ${_currentIndex + 1}/${_allTodos.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: _editCurrentTodo,
+                    tooltip: '编辑',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // 标题
+              Text(
+                todo.title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // 备注
+              if (todo.remark != null && todo.remark!.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    todo.remark!,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // 时间信息
+              _buildTimeInfo(todo),
+
+              // 已确认数量提示
+              if (_confirmedTodos.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle,
+                          size: 16, color: Colors.green.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        '已添加 ${_confirmedTodos.length} 个待办',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeInfo(ParsedTodoResult todo) {
+    String timeText;
+    IconData timeIcon;
+
+    if (todo.isAllDay) {
+      timeIcon = Icons.today;
+      if (todo.startTime != null) {
+        timeText = '全天 | ${DateFormat('yyyy-MM-dd').format(todo.startTime!)}';
+      } else {
+        timeText = '全天';
+      }
+    } else if (todo.startTime != null && todo.endTime != null) {
+      timeIcon = Icons.schedule;
+      timeText =
+          '${DateFormat('MM-dd HH:mm').format(todo.startTime!)} - ${DateFormat('HH:mm').format(todo.endTime!)}';
+    } else if (todo.startTime != null) {
+      timeIcon = Icons.play_circle_outline;
+      timeText = '开始: ${DateFormat('MM-dd HH:mm').format(todo.startTime!)}';
+    } else if (todo.endTime != null) {
+      timeIcon = Icons.flag_outlined;
+      timeText = '截止: ${DateFormat('MM-dd HH:mm').format(todo.endTime!)}';
+    } else {
+      timeIcon = Icons.access_time;
+      timeText = '未设置时间';
+    }
+
+    return Row(
+      children: [
+        Icon(timeIcon, size: 18, color: Colors.grey.shade600),
+        const SizedBox(width: 8),
+        Text(
+          timeText,
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompletedState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_outline,
+              size: 80, color: Colors.green.shade400),
+          const SizedBox(height: 16),
+          Text(
+            '确认完成',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.green.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '已添加 ${_confirmedTodos.length} 个待办',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfirmButtons() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 添加按钮
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _isRetrying ? null : _confirmCurrentTodo,
+            icon: const Icon(Icons.add),
+            label: const Text('添加这个待办'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // 跳过按钮
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _isRetrying ? null : _skipCurrentTodo,
+                icon: const Icon(Icons.skip_next),
+                label: const Text('跳过'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _isRetrying
+                    ? null
+                    : () {
+                        // 添加剩余全部
+                        for (int i = _currentIndex; i < _allTodos.length; i++) {
+                          _confirmedTodos.add(_allTodos[i].toMap());
+                        }
+                        _finishConfirm();
+                      },
+                icon: const Icon(Icons.done_all),
+                label: const Text('全部添加'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDoneButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: () => Navigator.pop(context),
+        icon: const Icon(Icons.check),
+        label: const Text('完成'),
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ),
+    );
+  }
+}

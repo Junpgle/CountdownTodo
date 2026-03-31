@@ -227,13 +227,75 @@ class _HomeDashboardState extends State<HomeDashboard>
           llmResults: results,
           imagePath: imagePath,
           onConfirm: (confirmedResults) {
-            // 用户确认后，显示添加对话框
-            _todoSectionKey.currentState
-                ?.showAddTodoDialogWithData(confirmedResults, imagePath);
+            // 用户确认后，直接批量添加待办
+            _batchAddTodos(confirmedResults);
           },
         ),
       ),
     );
+  }
+
+  /// 批量添加待办
+  Future<void> _batchAddTodos(List<Map<String, dynamic>> todosData) async {
+    if (todosData.isEmpty) return;
+
+    final newTodos = todosData.map((data) {
+      DateTime? dueDate;
+      int? createdDate;
+
+      if (data['endTime'] != null) {
+        dueDate = DateTime.tryParse(data['endTime']);
+      }
+
+      if (data['startTime'] != null) {
+        final startTime = DateTime.tryParse(data['startTime']);
+        if (startTime != null) {
+          createdDate = startTime.millisecondsSinceEpoch;
+        }
+      }
+
+      return TodoItem(
+        title: data['title'] ?? '',
+        remark: data['remark'],
+        dueDate: dueDate,
+        createdDate: createdDate,
+      );
+    }).toList();
+
+    // 更新本地列表
+    setState(() {
+      _todos = [...newTodos, ..._todos];
+    });
+
+    // 保存到数据库
+    final allTodos = await StorageService.getTodos(widget.username);
+    for (var newT in newTodos) {
+      int idx = allTodos.indexWhere((x) => x.id == newT.id);
+      if (idx != -1) {
+        allTodos[idx] = newT;
+      } else {
+        allTodos.add(newT);
+      }
+    }
+    await StorageService.saveTodos(widget.username, allTodos);
+
+    // 将待办数据写入共享文件供 Island 读取
+    await _saveTodosToSharedFile(allTodos);
+
+    // 通知 Island 检查提醒并刷新槽位缓存
+    FloatWindowService.triggerReminderCheck();
+    FloatWindowService.invalidateSlotCache();
+    _syncTodoNotification();
+    await WidgetService.updateTodoWidget(_todos);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加 ${newTodos.length} 个待办'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   /// 检查是否有待确认的待办数据（从通知点击进入）
@@ -1179,6 +1241,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     } else {
       NotificationService.updateTodoNotification(activeTodos);
     }
+
+    // 立即检查并显示特殊待办通知
+    _checkUpcomingEvents();
   }
 
   Future<void> _saveTodosToSharedFile(List<TodoItem> todos) async {

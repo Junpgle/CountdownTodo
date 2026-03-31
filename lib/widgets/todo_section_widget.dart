@@ -561,7 +561,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                   Row(
                     children: [
                       Expanded(
-                        child: FilledButton.icon(
+                        child: FilledButton(
                           onPressed: isParsing
                               ? null
                               : () async {
@@ -623,8 +623,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       recurrence = first.recurrence;
                                       customDays = first.customIntervalDays;
                                       if (customDays != null) {
-                                        customDaysCtrl.text = customDays
-                                            .toString();
+                                        customDaysCtrl.text =
+                                            customDays.toString();
                                       }
 
                                       // ★ 解析完成后自动切回"手动输入"标签页供用户检查或修改 ★
@@ -635,15 +635,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text("解析成功，请确认或修改后保存"),
-                                          duration: Duration(seconds: 2),
+                                        SnackBar(
+                                          content: Text(
+                                            "解析成功，共${parsedResults.length}个待办",
+                                          ),
+                                          duration: const Duration(seconds: 2),
                                         ),
                                       );
                                     }
                                   }
                                 },
-                          icon: isParsing
+                          child: isParsing
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
@@ -651,13 +653,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.auto_awesome),
-                          label: Text(isParsing ? "解析中..." : "智能解析"),
+                              : const Text("智能解析"),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: OutlinedButton.icon(
+                        child: OutlinedButton(
                           onPressed: isParsing
                               ? null
                               : () async {
@@ -710,8 +711,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                   try {
                                     final results =
                                         await LLMService.parseTodoWithLLM(
-                                          aiInputCtrl.text,
-                                        );
+                                      aiInputCtrl.text,
+                                    );
 
                                     final parsedResultsList = results.map((
                                       result,
@@ -745,8 +746,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                       isParsing = false;
                                       llmRawResponse =
                                           const JsonEncoder.withIndent(
-                                            '  ',
-                                          ).convert(results);
+                                        '  ',
+                                      ).convert(results);
                                     });
 
                                     if (parsedResults.isNotEmpty) {
@@ -782,8 +783,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                         recurrence = first.recurrence;
                                         customDays = first.customIntervalDays;
                                         if (customDays != null) {
-                                          customDaysCtrl.text = customDays
-                                              .toString();
+                                          customDaysCtrl.text =
+                                              customDays.toString();
                                         }
                                         selectedTabIndex = 0;
                                       });
@@ -816,7 +817,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                     }
                                   }
                                 },
-                          icon: isParsing
+                          child: isParsing
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
@@ -824,8 +825,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.smart_toy_outlined),
-                          label: Text(isParsing ? "解析中..." : "大模型识别"),
+                              : const Text("大模型识别"),
                         ),
                       ),
                     ],
@@ -1182,8 +1182,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     );
     DateTime? recurrenceEndDate = todo.recurrenceEndDate;
 
-    bool isAllDay =
-        dueDate != null &&
+    bool isAllDay = dueDate != null &&
         createdDate.hour == 0 &&
         createdDate.minute == 0 &&
         dueDate!.hour == 23 &&
@@ -1440,8 +1439,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                         context: context,
                         firstDate: DateTime.now(),
                         lastDate: DateTime(2100),
-                        initialDate:
-                            recurrenceEndDate ??
+                        initialDate: recurrenceEndDate ??
                             DateTime.now().add(const Duration(days: 30)),
                       );
                       if (picked != null)
@@ -1498,8 +1496,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     bool isFuture,
     DateTime now,
   ) {
-    final bool isAllDay =
-        todo.dueDate != null &&
+    final bool isAllDay = todo.dueDate != null &&
         cDate.hour == 0 &&
         cDate.minute == 0 &&
         todo.dueDate!.hour == 23 &&
@@ -1538,15 +1535,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             isPast
                 ? (isLight ? 0.9 : 0.45)
                 : isFuture
-                ? (isLight ? 0.85 : 0.35)
-                : (isLight ? 0.97 : 0.75),
+                    ? (isLight ? 0.85 : 0.35)
+                    : (isLight ? 0.97 : 0.75),
           );
 
     final Color titleColor = todo.isDone
         ? colorScheme.onSurface.withOpacity(0.35)
         : (isPast || isFuture
-              ? colorScheme.onSurface.withOpacity(0.65)
-              : colorScheme.onSurface);
+            ? colorScheme.onSurface.withOpacity(0.65)
+            : colorScheme.onSurface);
 
     // ── 进度计算 ──
     DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
@@ -1739,8 +1736,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                   decoration: todo.isDone
                                       ? TextDecoration.lineThrough
                                       : null,
-                                  decorationColor: colorScheme.onSurface
-                                      .withOpacity(0.3),
+                                  decorationColor:
+                                      colorScheme.onSurface.withOpacity(0.3),
                                   color: titleColor,
                                   fontSize: 14.5,
                                   fontWeight: todo.isDone || isPast || isFuture
@@ -1810,8 +1807,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                     todo.isDone
                                         ? 0.25
                                         : isPast
-                                        ? 0.6
-                                        : 0.45,
+                                            ? 0.6
+                                            : 0.45,
                                   ),
                                   height: 1.2,
                                 ),
@@ -1845,8 +1842,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                             child: LinearProgressIndicator(
                               value: progress,
                               minHeight: 3,
-                              backgroundColor: colorScheme.onSurface
-                                  .withOpacity(0.07),
+                              backgroundColor:
+                                  colorScheme.onSurface.withOpacity(0.07),
                               valueColor: AlwaysStoppedAnimation<Color>(
                                 isPast
                                     ? Colors.redAccent.shade200
@@ -1903,8 +1900,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
     // 根据背景智能反色，深色环境用亮白色，浅色环境用半透黑色
-    final c =
-        color ??
+    final c = color ??
         (useDarkUI
             ? Colors.white70
             : Theme.of(context).colorScheme.onSurface.withOpacity(0.5));
@@ -2128,14 +2124,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             buildDefaultDragHandles: false,
             proxyDecorator:
                 (Widget child, int index, Animation<double> animation) {
-                  return Material(
-                    color: Colors.transparent,
-                    elevation: 8 * animation.value,
-                    shadowColor: Colors.black.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(14),
-                    child: child,
-                  );
-                },
+              return Material(
+                color: Colors.transparent,
+                elevation: 8 * animation.value,
+                shadowColor: Colors.black.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(14),
+                child: child,
+              );
+            },
             onReorder: (oldIndex, newIndex) {
               if (newIndex > oldIndex) newIndex -= 1;
               final List<int> todayIndices = [];
@@ -2159,11 +2155,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               final item = reordered.removeAt(oldIndex);
               reordered.insert(newIndex, item);
               final List<TodoItem> updatedList = List.from(widget.todos);
-              for (
-                int i = 0;
-                i < todayIndices.length && i < reordered.length;
-                i++
-              ) {
+              for (int i = 0;
+                  i < todayIndices.length && i < reordered.length;
+                  i++) {
                 updatedList[todayIndices[i]] = reordered[i];
               }
               widget.onTodosChanged(updatedList);

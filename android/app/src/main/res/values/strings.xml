@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Live Updates</string>
+    <string name="app_name">CountDownTodo</string>
     <!-- Notification permission -->
     <string name="permission_grant">Grant</string>
     <string name="permission_message">Please grant the notification permission.</string>

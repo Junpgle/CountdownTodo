@@ -1,15 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../services/llm_service.dart';
-import '../../../storage_service.dart';
-import '../dialogs/llm_config_dialog.dart';
+import '../llm_config_page.dart';
 
 class PreferenceSection extends StatelessWidget {
   final VoidCallback onManageHomeSections;
   final int syncInterval;
   final ValueChanged<int?> onSyncIntervalChanged;
   final String serverChoice;
-  final Function(String?) onServerChoiceChanged;
+  final VoidCallback onServerChoiceTap;
   final String themeMode;
   final ValueChanged<String?> onThemeModeChanged;
   final String taiDbPath;
@@ -27,7 +26,7 @@ class PreferenceSection extends StatelessWidget {
     required this.syncInterval,
     required this.onSyncIntervalChanged,
     required this.serverChoice,
-    required this.onServerChoiceChanged,
+    required this.onServerChoiceTap,
     required this.themeMode,
     required this.onThemeModeChanged,
     required this.taiDbPath,
@@ -85,18 +84,14 @@ class PreferenceSection extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.cloud_queue),
                 title: const Text('云端数据接口线路'),
-                subtitle: const Text('切换服务器后需要重新登录，且不同服务器的登录状态不互通'),
-                trailing: DropdownButton<String>(
-                  value: serverChoice,
-                  underline: const SizedBox(),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'cloudflare', child: Text('Cloudflare (更安全)')),
-                    DropdownMenuItem(
-                        value: 'aliyun', child: Text('阿里云ECS (更快)')),
-                  ],
-                  onChanged: onServerChoiceChanged,
+                subtitle: Text(
+                  serverChoice == 'cloudflare'
+                      ? '当前: Cloudflare (更安全)'
+                      : '当前: 阿里云ECS (更快)',
+                  style: const TextStyle(fontSize: 12),
                 ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onServerChoiceTap,
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
@@ -140,9 +135,11 @@ class PreferenceSection extends StatelessWidget {
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
-                  final result = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => const LLMConfigDialog(),
+                  final result = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LLMConfigPage(),
+                    ),
                   );
                   if (result == true) {
                     (context as Element).markNeedsBuild();

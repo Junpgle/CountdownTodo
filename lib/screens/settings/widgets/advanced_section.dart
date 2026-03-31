@@ -10,14 +10,14 @@ class AdvancedSection extends StatelessWidget {
   final VoidCallback onCheckIslandSupport;
 
   const AdvancedSection({
-    Key? key,
+    super.key,
     required this.onShowMigrationDialog,
     required this.onTestCourseNotification,
     required this.liveUpdatesStatus,
     required this.onCheckAndOpenLiveUpdates,
     required this.islandStatus,
     required this.onCheckIslandSupport,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +26,7 @@ class AdvancedSection extends StatelessWidget {
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Text('高级设置与数据迁移',
+          child: Text('高级设置',
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -36,96 +36,103 @@ class AdvancedSection extends StatelessWidget {
           elevation: 2,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            leading: const CircleAvatar(
-                backgroundColor: Colors.blueAccent,
-                child: Icon(Icons.rocket_launch, color: Colors.white)),
-            title: const Text('从 Cloudflare 后端一键全量迁移',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Text(
-                    '自动将 D1 上您的整套账户(密码)、待办、番茄钟打包移植至当前阿里云节点，实现无缝搬家。',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13))),
-            trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20))),
-                onPressed: onShowMigrationDialog,
-                child: const Text('开始')),
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                minLeadingWidth: 36,
+                leading: const CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.blueAccent,
+                    child: Icon(Icons.rocket_launch,
+                        size: 18, color: Colors.white)),
+                title: const Text('从 Cloudflare 后端一键全量迁移',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                subtitle: Text('自动将 D1 上您的整套账户(密码)、待办、番茄钟打包移植至当前阿里云节点',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                trailing: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(60, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20))),
+                    onPressed: onShowMigrationDialog,
+                    child: const Text('开始', style: TextStyle(fontSize: 12))),
+              ),
+              if (Platform.isAndroid) ...[
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 4.0),
+                  minLeadingWidth: 36,
+                  leading: const Icon(Icons.notification_important_outlined,
+                      size: 20, color: Colors.amber),
+                  title: const Text('测试课程实时通知', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('强制发送一个课程提醒用于排查显示问题',
+                      style: TextStyle(fontSize: 12)),
+                  trailing: TextButton(
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(60, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      onPressed: onTestCourseNotification,
+                      child:
+                          const Text("发送测试", style: TextStyle(fontSize: 12))),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 4.0),
+                  minLeadingWidth: 36,
+                  leading: const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.teal,
+                      child: Icon(Icons.notifications_active,
+                          size: 18, color: Colors.white)),
+                  title: const Text('Android 16 实时活动',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: Text(liveUpdatesStatus,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  trailing: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(60, 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20))),
+                      onPressed: onCheckAndOpenLiveUpdates,
+                      child: const Text('去开启', style: TextStyle(fontSize: 12))),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 4.0),
+                  minLeadingWidth: 36,
+                  leading: const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.deepPurpleAccent,
+                      child: Icon(Icons.smart_button,
+                          size: 18, color: Colors.white)),
+                  title: const Text('小米超级岛支持',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: Text(islandStatus,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  trailing: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(60, 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20))),
+                      onPressed: onCheckIslandSupport,
+                      child: const Text('检测', style: TextStyle(fontSize: 12))),
+                ),
+              ],
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        if (Platform.isAndroid) ...[
-          Card(
-            elevation: 2,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const Icon(Icons.notification_important_outlined,
-                  color: Colors.amber),
-              title: const Text('测试课程实时通知'),
-              subtitle: const Text('强制发送一个课程提醒用于排查显示问题'),
-              trailing: TextButton(
-                  onPressed: onTestCourseNotification,
-                  child: const Text("发送测试")),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            elevation: 2,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const CircleAvatar(
-                  backgroundColor: Colors.teal,
-                  child: Icon(Icons.notifications_active, color: Colors.white)),
-              title: const Text('Android 16 实时活动',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(liveUpdatesStatus,
-                      style: TextStyle(color: Colors.grey[600], fontSize: 13))),
-              trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20))),
-                  onPressed: onCheckAndOpenLiveUpdates,
-                  child: const Text('去开启')),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            elevation: 2,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: const CircleAvatar(
-                  backgroundColor: Colors.deepPurpleAccent,
-                  child: Icon(Icons.smart_button, color: Colors.white)),
-              title: const Text('小米超级岛支持',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(islandStatus,
-                      style: TextStyle(color: Colors.grey[600], fontSize: 13))),
-              trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20))),
-                  onPressed: onCheckIslandSupport,
-                  child: const Text('检测')),
-            ),
-          ),
-        ],
       ],
     );
   }
