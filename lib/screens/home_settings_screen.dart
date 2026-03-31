@@ -33,6 +33,7 @@ import 'settings/widgets/preference_section.dart';
 import 'settings/widgets/permission_section.dart';
 import 'settings/widgets/advanced_section.dart';
 import 'settings/widgets/system_section.dart';
+import 'settings/widgets/about_section.dart';
 
 // 引入拆分的弹窗组件
 import 'settings/dialogs/change_password_dialog.dart';
@@ -1020,6 +1021,10 @@ class _SettingsPageState extends State<SettingsPage> {
           onCheckUpdates: _checkUpdatesAndNotices,
           onLogout: () => _handleLogout(force: false),
         ),
+        AboutSection(
+          isCheckingUpdate: _isCheckingUpdate,
+          onCheckUpdates: _checkUpdatesAndNotices,
+        ),
         const SizedBox(height: 40),
       ],
     );
@@ -1227,6 +1232,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   isCheckingUpdate: _isCheckingUpdate,
                   onCheckUpdates: _checkUpdatesAndNotices,
                   onLogout: () => _handleLogout(force: false),
+                ),
+                AboutSection(
+                  isCheckingUpdate: _isCheckingUpdate,
+                  onCheckUpdates: _checkUpdatesAndNotices,
                 ),
                 const SizedBox(height: 40),
               ],

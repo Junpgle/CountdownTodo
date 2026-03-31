@@ -1013,6 +1013,10 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     if (currentTodo != null) {
+      // 取消特殊待办的通知
+      await NotificationService.cancelSpecialTodoNotification(
+          currentTodo.id.hashCode);
+
       setState(() {
         currentTodo!.isDone = true;
         currentTodo!.markAsChanged();

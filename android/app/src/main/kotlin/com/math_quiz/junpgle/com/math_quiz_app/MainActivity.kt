@@ -264,6 +264,22 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     result.success(null)
                 }
 
+                "cancelTodoRecognizeNotification" -> {
+                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(TODO_RECOGNIZE_NOTIFICATION_ID)
+                    result.success(null)
+                }
+
+                "cancelSpecialTodoNotification" -> {
+                    val args = call.arguments as? Map<String, Any>
+                    val notifId = (args?.get("notificationId") as? Number)?.toInt()
+                    if (notifId != null) {
+                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        nm.cancel(notifId)
+                    }
+                    result.success(null)
+                }
+
                 // 🚀 响应 Flutter 的添加小部件请求
                 "requestPinWidget" -> {
                     val success = addWidgetToHome()
@@ -887,7 +903,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         val title = "🔍 图片识别待办中..."
         val text = "第${currentAttempt}/${maxAttempts}次尝试 | ${status}"
-        val subText = "后台识别中"
+        val subText = "识别中"
         val color = 0xFF2196F3.toInt() // 蓝色
 
         val progress = if (maxAttempts > 0) (currentAttempt * 100) / maxAttempts else 0
@@ -907,7 +923,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
-    // 📸 图片识别待办成功通知（点击进入确认页面）
+    // 📸 图片识别待办成功通知（实时通知，点击进入确认页面）
     private fun updateTodoRecognizeSuccessNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val todoCount = (args["todoCount"] as? Number)?.toInt() ?: 0
@@ -917,36 +933,23 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val subText = "识别成功"
         val color = 0xFF4CAF50.toInt() // 绿色
 
-        // 创建点击意图，打开应用并导航到确认页面
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("open_todo_confirm", true)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, TODO_RECOGNIZE_NOTIFICATION_ID, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        // 使用 buildAndNotify 创建实时通知
+        buildAndNotify(
+            title = title,
+            text = text,
+            subText = subText,
+            progress = 100,
+            isOngoing = false,
+            color = color,
+            currentStep = 1,
+            totalSteps = 1,
+            isTodo = false,
+            iconResId = R.drawable.ic_done,
+            notificationId = TODO_RECOGNIZE_NOTIFICATION_ID
         )
-
-        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_done)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setSubText(subText)
-            .setColor(color)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        try {
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
-        } catch (e: Exception) {
-            Log.e(TAG, "updateTodoRecognizeSuccessNotification error", e)
-        }
     }
 
-    // 📸 图片识别待办失败通知
+    // 📸 图片识别待办失败通知（实时通知）
     private fun updateTodoRecognizeFailedNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val errorMsg = (args["errorMsg"] as? String)?.trim() ?: "未知错误"
@@ -957,22 +960,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val subText = "识别失败"
         val color = 0xFFF44336.toInt() // 红色
 
-        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_cancel)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setSubText(subText)
-            .setColor(color)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
-
-        try {
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
-        } catch (e: Exception) {
-            Log.e(TAG, "updateTodoRecognizeFailedNotification error", e)
-        }
+        // 使用 buildAndNotify 创建实时通知
+        buildAndNotify(
+            title = title,
+            text = text,
+            subText = subText,
+            progress = 0,
+            isOngoing = false,
+            color = color,
+            currentStep = 0,
+            totalSteps = 1,
+            isTodo = false,
+            iconResId = R.drawable.ic_cancel,
+            notificationId = TODO_RECOGNIZE_NOTIFICATION_ID
+        )
     }
 
     /**

@@ -424,8 +424,9 @@ class ExternalShareHandler {
         // 尝试不同的图片路径
         final currentPath = pathsToTry[(attempt - 1) % pathsToTry.length];
 
+        // 增加超时时间到 180 秒，提高后台识别成功率
         results = await LLMService.parseTodoFromImage(currentPath)
-            .timeout(const Duration(seconds: 90));
+            .timeout(const Duration(seconds: 180));
 
         success = true;
         debugPrint("后台重试第$attempt次成功!");
@@ -441,9 +442,11 @@ class ExternalShareHandler {
           status: '第$attempt次失败，准备重试...',
         );
 
-        // 如果不是最后一次，等待一段时间再重试
+        // 如果不是最后一次，等待更长时间再重试（指数退避）
         if (attempt < maxRetries) {
-          await Future.delayed(Duration(seconds: 2 * attempt));
+          final waitSeconds = 5 * attempt; // 增加等待时间
+          debugPrint("等待${waitSeconds}秒后重试...");
+          await Future.delayed(Duration(seconds: waitSeconds));
         }
       }
     }

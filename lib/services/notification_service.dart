@@ -320,6 +320,16 @@ class NotificationService {
     } catch (e) {}
   }
 
+  /// 取消特定 ID 的特殊待办通知
+  static Future<void> cancelSpecialTodoNotification(int todoId) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    try {
+      final notifId = todoId.hashCode;
+      await _channel.invokeMethod(
+          'cancelSpecialTodoNotification', {'notificationId': notifId});
+    } catch (e) {}
+  }
+
   static Future<void> scheduleReminders(
       List<Map<String, dynamic>> reminders) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -368,7 +378,7 @@ class NotificationService {
 
   static const int NOTIF_ID_TODO_RECOGNIZE = 9001;
 
-  /// 显示图片识别进度通知
+  /// 显示图片识别进度通知（实时通知）
   /// [currentAttempt] 当前尝试次数（从1开始）
   /// [maxAttempts] 最大尝试次数
   /// [status] 当前状态描述
@@ -394,19 +404,22 @@ class NotificationService {
     }
 
     try {
+      final progress =
+          maxAttempts > 0 ? (currentAttempt * 100) ~/ maxAttempts : 0;
       await _channel.invokeMethod('showOngoingNotification', {
         'type': 'todo_recognize_progress',
         'currentAttempt': currentAttempt,
         'maxAttempts': maxAttempts,
         'status': status,
         'notificationId': NOTIF_ID_TODO_RECOGNIZE,
+        'progress': progress,
       });
     } catch (e) {
       debugPrint("更新图片识别进度通知失败: $e");
     }
   }
 
-  /// 显示图片识别成功通知（点击进入确认页面）
+  /// 显示图片识别成功通知（实时通知，点击进入确认页面）
   /// [todoCount] 识别到的待办数量
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
@@ -438,7 +451,7 @@ class NotificationService {
     }
   }
 
-  /// 显示图片识别失败通知
+  /// 显示图片识别失败通知（实时通知）
   /// [errorMsg] 错误信息
   static Future<void> showTodoRecognizeFailed({
     required String errorMsg,
@@ -481,7 +494,7 @@ class NotificationService {
     }
 
     try {
-      await _channel.invokeMethod('cancelNotification');
+      await _channel.invokeMethod('cancelTodoRecognizeNotification');
     } catch (e) {}
   }
 }
