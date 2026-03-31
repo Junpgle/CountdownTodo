@@ -321,7 +321,7 @@ class NotificationService {
   }
 
   /// 取消特定 ID 的特殊待办通知
-  /// [notifId] 是通知的 ID（即 todo.id.hashCode）
+  /// [notifId] 是通知的 ID
   static Future<void> cancelSpecialTodoNotification(int notifId) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
