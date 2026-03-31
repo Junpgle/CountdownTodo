@@ -61,6 +61,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var methodChannel: MethodChannel? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
+    // 保存待处理的待办确认动作（在methodChannel初始化前）
+    private var pendingTodoConfirm = false
 
     // 专门接收"点击完成"按钮的广播接收器
     private val todoActionReceiver = object : BroadcastReceiver() {
@@ -100,6 +102,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 处理从通知栏传来的番茄钟动作
         handlePomodoroActionFromIntent(intent)
 
+        // 处理从通知栏传来的待办确认动作
+        handleTodoConfirmFromIntent(intent)
+
         // 注册 Shizuku 权限请求与生命周期监听器
         Shizuku.addRequestPermissionResultListener(this)
         Shizuku.addBinderReceivedListener(this)
@@ -130,6 +135,25 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handlePomodoroActionFromIntent(intent)
+        handleTodoConfirmFromIntent(intent)
+    }
+
+    private fun handleTodoConfirmFromIntent(intent: Intent?) {
+        val openTodoConfirm = intent?.getBooleanExtra("open_todo_confirm", false) ?: false
+        if (!openTodoConfirm) return
+        
+        Log.d(TAG, "📋 handleTodoConfirmFromIntent: open_todo_confirm=true")
+        // 清除 extra，防止重复处理
+        intent?.removeExtra("open_todo_confirm")
+
+        if (methodChannel != null) {
+            methodChannel?.invokeMethod("openTodoConfirm", null)
+            Log.d(TAG, "📋 Invoked openTodoConfirm to Flutter")
+        } else {
+            // methodChannel还未初始化，保存待处理状态
+            pendingTodoConfirm = true
+            Log.d(TAG, "📋 Saved pending todo confirm")
+        }
     }
 
     private fun handlePomodoroActionFromIntent(intent: Intent?) {
@@ -231,6 +255,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.d(TAG, "🍅 Processing pending action: $action")
             notifyFlutterPomodoroAction(action)
             pendingPomodoroAction = null
+        }
+
+        // 处理待处理的待办确认动作
+        if (pendingTodoConfirm) {
+            Log.d(TAG, "📋 Processing pending todo confirm")
+            methodChannel?.invokeMethod("openTodoConfirm", null)
+            pendingTodoConfirm = false
         }
 
         methodChannel?.setMethodCallHandler { call, result ->
@@ -933,20 +964,43 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val subText = "识别成功"
         val color = 0xFF4CAF50.toInt() // 绿色
 
-        // 使用 buildAndNotify 创建实时通知
-        buildAndNotify(
-            title = title,
-            text = text,
-            subText = subText,
-            progress = 100,
-            isOngoing = false,
-            color = color,
-            currentStep = 1,
-            totalSteps = 1,
-            isTodo = false,
-            iconResId = R.drawable.ic_done,
-            notificationId = TODO_RECOGNIZE_NOTIFICATION_ID
+        // 创建点击意图，打开应用并导航到确认页面
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("open_todo_confirm", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, TODO_RECOGNIZE_NOTIFICATION_ID, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
+        // 使用 buildAndNotify 创建实时通知，但设置自定义的 pendingIntent
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_done)
+            .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSubText(subText)
+            .setOngoing(false)
+            .setOnlyAlertOnce(true)
+            .setWhen(System.currentTimeMillis())
+            .setShowWhen(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setColor(color)
+            .setColorized(false)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setRequestPromotedOngoing(true)
+            .build()
+
+        try {
+            notificationManager.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "updateTodoRecognizeSuccessNotification error", e)
+        }
     }
 
     // 📸 图片识别待办失败通知（实时通知）
@@ -960,20 +1014,42 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val subText = "识别失败"
         val color = 0xFFF44336.toInt() // 红色
 
-        // 使用 buildAndNotify 创建实时通知
-        buildAndNotify(
-            title = title,
-            text = text,
-            subText = subText,
-            progress = 0,
-            isOngoing = false,
-            color = color,
-            currentStep = 0,
-            totalSteps = 1,
-            isTodo = false,
-            iconResId = R.drawable.ic_cancel,
-            notificationId = TODO_RECOGNIZE_NOTIFICATION_ID
+        // 创建点击意图，打开应用
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, TODO_RECOGNIZE_NOTIFICATION_ID, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
+        // 使用 NotificationCompat.Builder 创建实时通知
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_cancel)
+            .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSubText(subText)
+            .setOngoing(false)
+            .setOnlyAlertOnce(true)
+            .setWhen(System.currentTimeMillis())
+            .setShowWhen(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setColor(color)
+            .setColorized(false)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setRequestPromotedOngoing(true)
+            .build()
+
+        try {
+            notificationManager.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "updateTodoRecognizeFailedNotification error", e)
+        }
     }
 
     /**

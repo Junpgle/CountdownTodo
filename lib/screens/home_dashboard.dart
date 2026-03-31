@@ -137,6 +137,9 @@ class _HomeDashboardState extends State<HomeDashboard>
           case "markCurrentTodoDone":
             _markCurrentTodoDone();
             break;
+          case "openTodoConfirm":
+            _checkPendingTodoConfirm();
+            break;
           // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
         }
       });

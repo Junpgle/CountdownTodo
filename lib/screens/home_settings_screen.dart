@@ -33,7 +33,7 @@ import 'settings/widgets/preference_section.dart';
 import 'settings/widgets/permission_section.dart';
 import 'settings/widgets/advanced_section.dart';
 import 'settings/widgets/system_section.dart';
-import 'settings/widgets/about_section.dart';
+import 'about_screen.dart';
 
 // 引入拆分的弹窗组件
 import 'settings/dialogs/change_password_dialog.dart';
@@ -1021,9 +1021,23 @@ class _SettingsPageState extends State<SettingsPage> {
           onCheckUpdates: _checkUpdatesAndNotices,
           onLogout: () => _handleLogout(force: false),
         ),
-        AboutSection(
-          isCheckingUpdate: _isCheckingUpdate,
-          onCheckUpdates: _checkUpdatesAndNotices,
+        const SizedBox(height: 8),
+        Card(
+          elevation: 1,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            leading: const Icon(Icons.info_outline, color: Colors.blue),
+            title: const Text('关于此应用'),
+            subtitle: const Text('版本信息、更新日志、联系我们'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutScreen()),
+              );
+            },
+          ),
         ),
         const SizedBox(height: 40),
       ],
@@ -1233,9 +1247,23 @@ class _SettingsPageState extends State<SettingsPage> {
                   onCheckUpdates: _checkUpdatesAndNotices,
                   onLogout: () => _handleLogout(force: false),
                 ),
-                AboutSection(
-                  isCheckingUpdate: _isCheckingUpdate,
-                  onCheckUpdates: _checkUpdatesAndNotices,
+                const SizedBox(height: 8),
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  child: ListTile(
+                    leading: const Icon(Icons.info_outline, color: Colors.blue),
+                    title: const Text('关于此应用'),
+                    subtitle: const Text('版本信息、更新日志、联系我们'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AboutScreen()),
+                      );
+                    },
+                  ),
                 ),
                 const SizedBox(height: 40),
               ],

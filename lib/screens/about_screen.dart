@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class AboutScreen extends StatefulWidget {
-  const AboutScreen({Key? key}) : super(key: key);
+  const AboutScreen({super.key});
 
   @override
   State<AboutScreen> createState() => _AboutScreenState();
@@ -289,7 +288,6 @@ class _AboutScreenState extends State<AboutScreen> {
                       : Column(
                           children: _releases.take(5).map<Widget>((release) {
                             final tagName = release['tag_name'] ?? '';
-                            final name = release['name'] ?? tagName;
                             final body = release['body'] ?? '暂无更新说明';
                             final publishedAt = release['published_at'] ?? '';
                             String dateStr = '';

@@ -321,10 +321,10 @@ class NotificationService {
   }
 
   /// 取消特定 ID 的特殊待办通知
-  static Future<void> cancelSpecialTodoNotification(int todoId) async {
+  /// [notifId] 是通知的 ID（即 todo.id.hashCode）
+  static Future<void> cancelSpecialTodoNotification(int notifId) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
-      final notifId = todoId.hashCode;
       await _channel.invokeMethod(
           'cancelSpecialTodoNotification', {'notificationId': notifId});
     } catch (e) {}
