@@ -844,7 +844,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         val title = todoTitle
         val text = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
-        val subText = "$typeLabel - $timeStr"
+        val subText = "$typeLabel"
         val shortText = when {
             todoRemark.isNotEmpty() -> todoRemark
             else -> todoTitle
