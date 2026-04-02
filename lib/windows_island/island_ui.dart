@@ -932,7 +932,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   Widget _buildIdleCardContent() {
-    if (_cards.isEmpty) {
+    if (!_cardsLoaded || _cards.isEmpty) {
       if (!_cardsLoaded) {
         _initCards().then((_) {
           if (mounted) setState(() {});
@@ -2186,44 +2186,57 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         if (!mounted) return;
         final courses = dashboardCourses['courses'] as List? ?? [];
         if (courses.isNotEmpty) {
-          final nextCourse = courses.first;
-          final courseDateStr = nextCourse.date;
-          final todayStr =
-              '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-          String dateLabel;
-          if (courseDateStr == todayStr) {
-            dateLabel = nextCourse.formattedStartTime;
-          } else {
-            try {
-              final courseDate = DateTime.parse(courseDateStr);
-              final today = DateTime(now.year, now.month, now.day);
-              final diff =
-                  DateTime(courseDate.year, courseDate.month, courseDate.day)
-                      .difference(today)
-                      .inDays;
-              if (diff == 1) {
-                dateLabel = '明天';
-              } else if (diff == 2) {
-                dateLabel = '后天';
-              } else {
-                dateLabel = '${diff}天后';
+          final isToday = dashboardCourses['title'] == '今日课程';
+          // 过滤已结束的今日课程
+          final validCourses = isToday
+              ? courses.where((c) {
+                  final endHour = c.endTime ~/ 100;
+                  final endMin = c.endTime % 100;
+                  final courseEnd =
+                      DateTime(now.year, now.month, now.day, endHour, endMin);
+                  return now.isBefore(courseEnd);
+                }).toList()
+              : courses;
+          if (validCourses.isNotEmpty) {
+            final nextCourse = validCourses.first;
+            final courseDateStr = nextCourse.date;
+            final todayStr =
+                '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+            String dateLabel;
+            if (courseDateStr == todayStr) {
+              dateLabel = nextCourse.formattedStartTime;
+            } else {
+              try {
+                final courseDate = DateTime.parse(courseDateStr);
+                final today = DateTime(now.year, now.month, now.day);
+                final diff =
+                    DateTime(courseDate.year, courseDate.month, courseDate.day)
+                        .difference(today)
+                        .inDays;
+                if (diff == 1) {
+                  dateLabel = '明天';
+                } else if (diff == 2) {
+                  dateLabel = '后天';
+                } else {
+                  dateLabel = '${diff}天后';
+                }
+              } catch (_) {
+                dateLabel = dashboardCourses['title']?.toString() ?? '课程';
               }
-            } catch (_) {
-              dateLabel = dashboardCourses['title']?.toString() ?? '课程';
             }
-          }
-          _cards.add({
-            'type': 'course',
-            'icon': '📚',
-            'title': nextCourse.courseName,
-            'subtitle': dateLabel,
-            'color': IslandConfig.warningColor,
-            'dateLabel': dateLabel,
-            'fullDate': courseDateStr,
-            'roomName': nextCourse.roomName,
-            'startTime': nextCourse.formattedStartTime,
-          });
-        }
+            _cards.add({
+              'type': 'course',
+              'icon': '📚',
+              'title': nextCourse.courseName,
+              'subtitle': dateLabel,
+              'color': IslandConfig.warningColor,
+              'dateLabel': dateLabel,
+              'fullDate': courseDateStr,
+              'roomName': nextCourse.roomName,
+              'startTime': nextCourse.formattedStartTime,
+            });
+          } // validCourses.isNotEmpty
+        } // courses.isNotEmpty
       } catch (e) {
         debugPrint('[IslandUI] 读取课程失败: $e');
       }

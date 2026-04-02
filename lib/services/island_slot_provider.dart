@@ -173,16 +173,15 @@ class IslandSlotProvider {
 
       if (courses != null && courses.isNotEmpty) {
         final now = DateTime.now();
+        final isToday = dashboard['title'] == '今日课程';
         final valid = courses.where((c) {
           if (c is! CourseItem) return false;
-          if (dashboard['title'] == '今日课程') {
-            final endHour = c.endTime ~/ 100;
-            final endMin = c.endTime % 100;
-            final courseEnd =
-                DateTime(now.year, now.month, now.day, endHour, endMin);
-            return now.isBefore(courseEnd);
-          }
-          return true;
+          if (!isToday) return true; // 明日课程不会过期
+          final endHour = c.endTime ~/ 100;
+          final endMin = c.endTime % 100;
+          final courseEnd =
+              DateTime(now.year, now.month, now.day, endHour, endMin);
+          return now.isBefore(courseEnd);
         }).toList();
 
         if (valid.isNotEmpty) {

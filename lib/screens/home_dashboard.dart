@@ -948,6 +948,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     NotificationService.updateTodoNotification(allDayTodos);
+
+    // 每分钟刷新灵动岛, 确保已结束的课程从岛上移除
+    if (Platform.isWindows) {
+      FloatWindowService.invalidateSlotCache();
+      FloatWindowService.update();
+    }
   }
 
   Future<void> _checkUpdatesSilently() async {
@@ -1407,6 +1413,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       // 更新原生灵动岛 TopBar 数据
       if (Platform.isWindows) {
+        FloatWindowService.invalidateSlotCache();
         FloatWindowService.update();
       }
     }
