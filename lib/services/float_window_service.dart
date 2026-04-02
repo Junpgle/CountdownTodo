@@ -55,6 +55,7 @@ class FloatWindowService {
 
   // Island creation throttling
   static int _lastIslandCreateAttemptMs = 0;
+  static Future<String?>? _creatingIsland; // 互斥锁, 防止并发创建
 
   // Data provider with caching
   static final _dataProvider = IslandDataProvider();
@@ -461,20 +462,20 @@ class FloatWindowService {
           '[FloatWindow] _deliverToIsland: winId=$winId, state=${structured['state']}');
 
       if (winId == null) {
-        final nowMs = DateTime.now().millisecondsSinceEpoch;
-        if (nowMs - _lastIslandCreateAttemptMs <
-            FloatWindowConfig.islandCreateCooldownMs) {
-          debugPrint('[FloatWindow] Cooldown active, waiting...');
-          // Wait a bit and try again
-          await Future.delayed(Duration(milliseconds: 500));
-          winId = IslandManager().getCachedWindowId(islandId);
-          debugPrint('[FloatWindow] After wait, winId=$winId');
-        }
-
-        if (winId == null) {
-          _lastIslandCreateAttemptMs = nowMs;
+        // 互斥锁: 等待已在进行的创建, 或自己发起创建
+        if (_creatingIsland != null) {
+          debugPrint(
+              '[FloatWindow] Waiting for in-progress island creation...');
+          winId = await _creatingIsland;
+        } else {
           debugPrint('[FloatWindow] Creating island: $islandId');
-          winId = await IslandManager().createIsland(islandId);
+          final future = IslandManager().createIsland(islandId);
+          _creatingIsland = future;
+          try {
+            winId = await future;
+          } finally {
+            _creatingIsland = null;
+          }
           debugPrint('[FloatWindow] Created island: winId=$winId');
         }
       }

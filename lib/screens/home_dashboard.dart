@@ -163,6 +163,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) _initScreenTime();
       });
+      // 灵动岛由用户从设置中手动开启, 避免启动时 native 崩溃
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) StorageService.syncAppMappings();
       });
@@ -948,12 +949,6 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     NotificationService.updateTodoNotification(allDayTodos);
-
-    // 每分钟刷新灵动岛, 确保已结束的课程从岛上移除
-    if (Platform.isWindows) {
-      FloatWindowService.invalidateSlotCache();
-      FloatWindowService.update();
-    }
   }
 
   Future<void> _checkUpdatesSilently() async {
@@ -1411,10 +1406,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         courses: allCourses,
       ));
 
-      // 更新原生灵动岛 TopBar 数据
+      // 更新原生灵动岛 TopBar 数据（首次创建由 addPostFrameCallback 负责）
       if (Platform.isWindows) {
         FloatWindowService.invalidateSlotCache();
-        FloatWindowService.update();
       }
     }
   }

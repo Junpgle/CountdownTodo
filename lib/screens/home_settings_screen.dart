@@ -930,28 +930,27 @@ class _SettingsPageState extends State<SettingsPage> {
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setInt('float_window_style', val);
                   if (val == 2) {
-                    // Immediately destroy the island window when toggling OFF
-                    debugPrint('[Settings] Destroying island (OFF)');
+                    // 关闭: 只清缓存, 不销毁窗口 (避免 native 崩溃)
+                    debugPrint('[Settings] Disabling island (OFF)');
                     try {
                       IslandDataProvider().invalidateCache();
-                      await IslandManager().destroyCachedIsland('island-1');
-                      debugPrint('[Settings] Island destroyed');
+                      IslandManager().clearIslandCache('island-1');
+                      debugPrint('[Settings] Island cache cleared');
                     } catch (e) {
-                      debugPrint('[Settings] Destroy error: $e');
+                      debugPrint('[Settings] Clear error: $e');
                     }
                   } else {
-                    // Toggling ON: invalidate cache, destroy old island, and create new one
+                    // 开启: 清缓存后创建新岛
                     debugPrint('[Settings] Creating island (ON)');
                     try {
                       IslandDataProvider().invalidateCache();
-                      await IslandManager().destroyCachedIsland('island-1');
+                      IslandManager().clearIslandCache('island-1');
                       final winId =
                           await IslandManager().createIsland('island-1');
                       debugPrint('[Settings] Island created, winId: $winId');
                     } catch (e) {
                       debugPrint('[Settings] Create error: $e');
                     }
-                    // Also trigger update to show content
                     try {
                       await FloatWindowService.update(forceReset: true);
                       debugPrint('[Settings] FloatWindowService.update called');
@@ -972,7 +971,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     IslandDataProvider().invalidateCache();
                   } catch (_) {}
                   try {
-                    await IslandManager().destroyCachedIsland('island-1');
+                    IslandManager().clearIslandCache('island-1');
                   } catch (_) {}
                   try {
                     await FloatWindowService.update(forceReset: true);
@@ -1148,23 +1147,18 @@ class _SettingsPageState extends State<SettingsPage> {
                           final prefs = await SharedPreferences.getInstance();
                           await prefs.setInt('float_window_style', val);
                           if (val == 2) {
-                            // Immediately destroy the island window when toggling OFF
-                            debugPrint('[Settings] Destroying island (OFF)');
+                            debugPrint('[Settings] Disabling island (OFF)');
                             try {
                               IslandDataProvider().invalidateCache();
-                              await IslandManager()
-                                  .destroyCachedIsland('island-1');
-                              debugPrint('[Settings] Island destroyed');
+                              IslandManager().clearIslandCache('island-1');
                             } catch (e) {
-                              debugPrint('[Settings] Destroy error: $e');
+                              debugPrint('[Settings] Clear error: $e');
                             }
                           } else {
-                            // Toggling ON: invalidate cache, destroy old island, and create new one
                             debugPrint('[Settings] Creating island (ON)');
                             try {
                               IslandDataProvider().invalidateCache();
-                              await IslandManager()
-                                  .destroyCachedIsland('island-1');
+                              IslandManager().clearIslandCache('island-1');
                               final winId = await IslandManager()
                                   .createIsland('island-1');
                               debugPrint(
@@ -1172,11 +1166,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             } catch (e) {
                               debugPrint('[Settings] Create error: $e');
                             }
-                            // Also trigger update to show content
                             try {
                               await FloatWindowService.update(forceReset: true);
-                              debugPrint(
-                                  '[Settings] FloatWindowService.update called');
                             } catch (e) {
                               debugPrint('[Settings] Update error: $e');
                             }
@@ -1194,8 +1185,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             IslandDataProvider().invalidateCache();
                           } catch (_) {}
                           try {
-                            await IslandManager()
-                                .destroyCachedIsland('island-1');
+                            IslandManager().clearIslandCache('island-1');
                           } catch (_) {}
                           try {
                             await FloatWindowService.update(forceReset: true);

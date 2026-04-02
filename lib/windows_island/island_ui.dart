@@ -760,8 +760,22 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _startIdleAutoReturnTimer() {
     _idleAutoReturnTimer?.cancel();
     _idleAutoReturnTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted || _stack.current != IslandState.idle) return;
-      if (_isFocusing) return; // 专注模式不自动回位
+      if (!mounted) return;
+      // 专注模式：滚回计时器
+      if (_isFocusing && _isScrolledInFocus) {
+        setState(() {
+          _isScrolledInFocus = false;
+          _currentCardIndex = 0;
+        });
+        final newSize = _idleSizeForCard();
+        _sizeAnimation = Tween<Size>(
+          begin: newSize,
+          end: newSize,
+        ).animate(_sizeController);
+        _resizeWindowOnce(newSize);
+        return;
+      }
+      if (_stack.current != IslandState.idle) return;
       setState(() {
         _currentCardIndex = 0;
         _isScrolledInFocus = false;
@@ -858,7 +872,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   end: newSize,
                 ).animate(_sizeController);
                 _resizeWindowOnce(newSize);
-                if (!_isFocusing && _currentCardIndex > 0) {
+                if (_isFocusing) {
+                  _resetIdleAutoReturnTimer();
+                } else if (_currentCardIndex > 0) {
                   _resetIdleAutoReturnTimer();
                 }
               }
@@ -2083,6 +2099,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Future<void> _initCards() async {
     if (_cardsLoaded) return;
 
+    // 保存专注卡片，避免被 clear 清掉
+    final focusingCard =
+        _cards.where((c) => c['type'] == 'focusing').firstOrNull;
+
     _cards.clear();
     _currentCardIndex = 0;
 
@@ -2275,6 +2295,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     if (_cards.isEmpty) {
       _addDefaultCard();
+    }
+
+    // 恢复专注卡片
+    if (focusingCard != null) {
+      _cards.add(focusingCard);
     }
 
     _cardsLoaded = true;

@@ -4,7 +4,6 @@ import 'dart:io'; // 用于 Platform Check
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player_win/video_player_win_plugin.dart'; // video_player_win plugin
 
 import 'screens/login_screen.dart';
@@ -16,7 +15,6 @@ import 'services/float_window_service.dart';
 import 'services/window_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
-import 'windows_island/island_manager.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -200,14 +198,9 @@ class _MyAppState extends State<MyApp> {
         if (Platform.isWindows) {
           try {
             await FloatWindowService.init();
-            // Only create island if the setting is enabled (style == 1)
-            final prefs = await SharedPreferences.getInstance();
-            final style = prefs.getInt('float_window_style') ?? 0;
-            if (style == 1) {
-              await IslandManager().createIsland('island-1');
-            }
+            // 岛窗口由 HomeDashboard 加载后统一创建, 避免启动竞争
           } catch (e) {
-            debugPrint('Island create failed: $e');
+            debugPrint('FloatWindowService init failed: $e');
           }
         }
       });
@@ -304,4 +297,3 @@ class _MyAppState extends State<MyApp> {
     );
   }
 }
-

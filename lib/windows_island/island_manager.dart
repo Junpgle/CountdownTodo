@@ -70,20 +70,8 @@ class IslandManager {
       }
     }
 
-    // Before creating a new window, destroy any orphaned window from a
-    // previous session (window ID persisted to file but lost from memory).
-    try {
-      final orphanId = await _loadPersistedWindowId(islandId);
-      if (orphanId != null) {
-        debugPrint(
-            '[IslandManager] destroying orphaned window $orphanId before creating new island');
-        await IslandChannel.destroyWindow(orphanId);
-        await _clearPersistedWindowId(islandId);
-      }
-    } catch (_) {}
-
-    // Start create and cache the future so concurrent callers wait
-    final future = _doCreate(islandId);
+    // 立即注册 future 到 _creating, 阻止后续调用进入 (在任何 await 之前!)
+    final future = _createIslandInternal(islandId);
     _creating[islandId] = future;
     try {
       final res = await future;
@@ -95,6 +83,15 @@ class IslandManager {
     } finally {
       _creating.remove(islandId);
     }
+  }
+
+  Future<String?> _createIslandInternal(String islandId) async {
+    // 只清缓存, 不销毁旧窗口 (避免 native 崩溃)
+    _windowIdCache.remove(islandId);
+    try {
+      await _clearPersistedWindowId(islandId);
+    } catch (_) {}
+    return await _doCreate(islandId);
   }
 
   Future<String?> _doCreate(String islandId) async {
@@ -313,6 +310,15 @@ class IslandManager {
 
     await _clearPersistedWindowId(islandId);
     _transparentSupport.remove(islandId);
+  }
+
+  /// Clear cache without destroying the window (safe when native destroy may crash)
+  void clearIslandCache(String islandId) {
+    _windowIdCache.remove(islandId);
+    _creating.remove(islandId);
+    _transparentSupport.remove(islandId);
+    // 异步清理持久化文件, 不等待
+    _clearPersistedWindowId(islandId).catchError((_) {});
   }
 
   Map<String, int>? _lastRecreateMs;
