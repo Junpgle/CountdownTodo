@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
+import '../services/island_slot_provider.dart';
 import 'island_config.dart';
 
 /// Service for checking and managing reminders for the island window.
@@ -110,6 +111,10 @@ class IslandReminderService {
 
     if (dueDateMs == null) return null;
 
+    // Detect special todo type
+    final specialType = IslandSlotProvider.detectTodoType(title);
+    final isSpecialTodo = specialType != 'default';
+
     DateTime? startTime;
     bool hasExplicitStartTime = false;
 
@@ -126,7 +131,7 @@ class IslandReminderService {
     if (hasExplicitStartTime && startTime != null) {
       final startDiff = startTime.difference(now).inMinutes;
       if (startDiff >= 0 && startDiff <= 20) {
-        return {
+        final reminder = <String, dynamic>{
           'type': 'todo',
           'title': title,
           'subtitle': remark,
@@ -138,13 +143,17 @@ class IslandReminderService {
           'isEnding': false,
           'itemId': id,
         };
+        if (isSpecialTodo) {
+          reminder['specialType'] = specialType;
+        }
+        return reminder;
       }
     }
 
     // Check end time reminder
     final endDiff = dueDate.difference(now).inMinutes;
     if (endDiff >= 0 && endDiff <= 20) {
-      return {
+      final reminder = <String, dynamic>{
         'type': 'todo',
         'title': title,
         'subtitle': remark,
@@ -157,6 +166,10 @@ class IslandReminderService {
         'isEnding': true,
         'itemId': id,
       };
+      if (isSpecialTodo) {
+        reminder['specialType'] = specialType;
+      }
+      return reminder;
     }
 
     return null;

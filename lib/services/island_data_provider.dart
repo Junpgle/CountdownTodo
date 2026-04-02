@@ -229,6 +229,8 @@ class IslandDataProvider {
       'detail_location': detailSource.detailLocation,
       'detail_time': detailSource.detailTime,
       'detail_note': detailSource.detailNote,
+      if (detailSource.specialType.isNotEmpty)
+        'specialType': detailSource.specialType,
     };
 
     // Convert to IslandPayload and build structured format
