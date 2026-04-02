@@ -113,7 +113,23 @@ class IslandSlotProvider {
       return const IslandSlotData(display: '', type: 'todo');
     }
 
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    int urgencyScore(dynamic t) {
+      if (t.dueDate == null) return 3;
+      final dueDay =
+          DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+      if (dueDay.isBefore(today)) return 0; // 逾期
+      if (dueDay.isAtSameMomentAs(today)) return 1; // 今天到期
+      return 2; // 未来到期
+    }
+
     active.sort((a, b) {
+      final sa = urgencyScore(a);
+      final sb = urgencyScore(b);
+      if (sa != sb) return sa.compareTo(sb);
+      // 同一紧迫级别内: 有 dueDate 的按时间排, 无 dueDate 的按创建时间倒序
       if (a.dueDate == null && b.dueDate == null) {
         return b.createdAt.compareTo(a.createdAt);
       }
@@ -125,9 +141,16 @@ class IslandSlotProvider {
     final t = active.first;
     final time =
         t.dueDate != null ? DateFormat('MM-dd').format(t.dueDate!) : '';
+
+    // 判断是否逾期
+    final isOverdue = t.dueDate != null &&
+        DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day)
+            .isBefore(today);
+
+    final overdueTag = isOverdue ? '逾期 ' : '';
     final display = isLeft
-        ? (time.isNotEmpty ? '[$time] ${t.title}' : t.title)
-        : (time.isNotEmpty ? '${t.title} [$time]' : t.title);
+        ? (time.isNotEmpty ? '[$overdueTag$time] ${t.title}' : t.title)
+        : (time.isNotEmpty ? '${t.title} [$overdueTag$time]' : t.title);
 
     final timeRange =
         t.dueDate != null ? DateFormat('HH:mm').format(t.dueDate!) : '';
@@ -136,7 +159,7 @@ class IslandSlotProvider {
       display: display,
       type: 'todo',
       detailTitle: t.title,
-      detailSubtitle: t.remark ?? '',
+      detailSubtitle: isOverdue ? '已逾期' : (t.remark ?? ''),
       detailTime: timeRange,
       detailNote: time.isNotEmpty ? time : '',
     );

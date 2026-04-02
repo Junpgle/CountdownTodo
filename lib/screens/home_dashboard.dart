@@ -98,6 +98,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   // 每次自增触发首页专注记录卡片刷新
   int _pomodoroRefreshTrigger = 0;
 
+  // 待确认的待办数据（从图片识别来）
+  Map<String, dynamic>? _pendingTodoConfirm;
+
   // ── 跨端专注感知 ──
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注
   Timer? _remotePomodoroTicker;
@@ -135,7 +138,15 @@ class _HomeDashboardState extends State<HomeDashboard>
       platform.setMethodCallHandler((call) async {
         switch (call.method) {
           case "markCurrentTodoDone":
-            _markCurrentTodoDone();
+            debugPrint(
+                "📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
+            final args = call.arguments;
+            int? notifId;
+            if (args is Map) {
+              notifId = args['notificationId'] as int?;
+            }
+            debugPrint("📱 解析 notifId: $notifId");
+            _markCurrentTodoDone(notifId: notifId);
             break;
           case "openTodoConfirm":
             _checkPendingTodoConfirm();
@@ -221,7 +232,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   /// 导航到待办确认页面
   void _navigateToTodoConfirm(
       List<Map<String, dynamic>> results, String? imagePath) {
-    if (!mounted || imagePath == null) return;
+    if (!mounted || results.isEmpty) return;
 
     Navigator.push(
       context,
@@ -304,27 +315,46 @@ class _HomeDashboardState extends State<HomeDashboard>
   /// 检查是否有待确认的待办数据（从通知点击进入）
   Future<void> _checkPendingTodoConfirm() async {
     final pendingData = await ExternalShareHandler.getPendingTodoConfirm();
-    if (pendingData == null || !mounted) return;
+    if (!mounted) return;
 
-    final imagePath = pendingData['imagePath'] as String?;
-    final results = pendingData['results'] as List<dynamic>?;
+    if (pendingData != null) {
+      final imagePath = pendingData['imagePath'] as String?;
+      final results = pendingData['results'] as List<dynamic>?;
+
+      if (imagePath != null && results != null && results.isNotEmpty) {
+        // 保存待确认数据，显示入口卡片
+        setState(() {
+          _pendingTodoConfirm = pendingData;
+        });
+        return;
+      }
+    }
+
+    // 没有待确认数据，清除状态
+    setState(() {
+      _pendingTodoConfirm = null;
+    });
+  }
+
+  /// 打开待确认待办页面
+  void _openPendingTodoConfirm() {
+    if (_pendingTodoConfirm == null) return;
+
+    final imagePath = _pendingTodoConfirm!['imagePath'] as String?;
+    final results = _pendingTodoConfirm!['results'] as List<dynamic>?;
 
     if (imagePath == null || results == null || results.isEmpty) return;
 
-    // 将结果转换为正确的类型
     final List<Map<String, dynamic>> typedResults =
         results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
-    // 延迟一下再弹出确认页面，避免与主页面初始化冲突
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    if (!mounted) return;
-
-    // 显示确认页面
     _navigateToTodoConfirm(typedResults, imagePath);
 
-    // 清除待确认数据
-    await ExternalShareHandler.clearPendingTodoConfirm();
+    // 导航后清除待确认数据和入口
+    setState(() {
+      _pendingTodoConfirm = null;
+    });
+    ExternalShareHandler.clearPendingTodoConfirm();
   }
 
   Future<void> _initCrossDevicePomodoro() async {
@@ -594,6 +624,99 @@ class _HomeDashboardState extends State<HomeDashboard>
   void _stopLocalTicker() {
     _localPomodoroTicker?.cancel();
     _localPomodoroTicker = null;
+  }
+
+  /// 待确认待办入口卡片（从图片识别来）
+  Widget _buildPendingTodoConfirmCard(bool isLight) {
+    if (_pendingTodoConfirm == null) return const SizedBox.shrink();
+
+    final imagePath = _pendingTodoConfirm!['imagePath'] as String?;
+    final results = _pendingTodoConfirm!['results'] as List<dynamic>?;
+    final todoCount = results?.length ?? 0;
+
+    if (todoCount == 0) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Material(
+        color: isLight ? Colors.white : Colors.grey[900],
+        borderRadius: BorderRadius.circular(16),
+        elevation: 2,
+        child: InkWell(
+          onTap: _openPendingTodoConfirm,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // 图片缩略图
+                if (imagePath != null && File(imagePath).existsSync())
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(imagePath),
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.image, color: Colors.grey),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child:
+                        const Icon(Icons.checklist, color: Colors.deepPurple),
+                  ),
+                const SizedBox(width: 12),
+                // 文字信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AI识别完成',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: isLight ? Colors.black87 : Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '发现 $todoCount 个待办，点击查看',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // 箭头图标
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: Colors.grey[400],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// 首页顶部的专注 Banner (统一处理本地和远程)
@@ -997,7 +1120,10 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
-  void _markCurrentTodoDone() async {
+  void _markCurrentTodoDone({int? notifId}) async {
+    debugPrint(
+        "📱 _markCurrentTodoDone 被调用: notifId=$notifId, todos数量=${_todos.length}");
+
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
 
@@ -1007,48 +1133,66 @@ class _HomeDashboardState extends State<HomeDashboard>
       return !d.isAfter(today);
     }).toList();
 
+    debugPrint("📱 activeTodos数量=${activeTodos.length}");
+
+    // 普通待办通知的 ID 是 12345，特殊待办通知的 ID 是 todo.id.hashCode
+    const int normalTodoNotifId = 12345;
+
     TodoItem? currentTodo;
-    for (var t in activeTodos) {
-      if (!t.isDone) {
-        currentTodo = t;
-        break;
-      }
+
+    // 如果 notifId 为空或者是普通待办通知 ID，不执行任何操作
+    if (notifId == null || notifId == normalTodoNotifId) {
+      debugPrint("notifId 为空或为普通待办通知 ID，跳过: notifId=$notifId");
+      return;
     }
 
-    if (currentTodo != null) {
-      // 取消特殊待办的通知
-      await NotificationService.cancelSpecialTodoNotification(
-          currentTodo.id.hashCode);
+    // 打印所有待办的 hashCode 以便调试
+    for (var t in activeTodos) {
+      debugPrint(
+          "📱 待办: ${t.title}, hashCode=${t.id.hashCode}, isDone=${t.isDone}");
+    }
 
-      setState(() {
-        currentTodo!.isDone = true;
-        currentTodo!.markAsChanged();
-        _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-      });
+    // 通过 notifId 找到对应的待办
+    currentTodo = activeTodos
+        .where((t) => t.id.hashCode == notifId && !t.isDone)
+        .firstOrNull;
 
-      // 所有的待办都需要连同隐藏的逻辑删除数据一起存
-      final allTodos = await StorageService.getTodos(widget.username);
-      int idx = allTodos.indexWhere((x) => x.id == currentTodo!.id);
-      if (idx != -1) allTodos[idx] = currentTodo!;
-      await StorageService.saveTodos(widget.username, allTodos);
+    // 找不到对应的待办，不执行任何操作
+    if (currentTodo == null) {
+      debugPrint("找不到对应的待办: notifId=$notifId");
+      return;
+    }
 
-      // 将待办数据写入共享文件
-      await _saveTodosToSharedFile(allTodos);
+    debugPrint("📱 找到待办: ${currentTodo.title}");
 
-      // 通知 Island 检查提醒并刷新槽位缓存
-      FloatWindowService.triggerReminderCheck();
-      FloatWindowService.invalidateSlotCache();
+    setState(() {
+      currentTodo!.isDone = true;
+      currentTodo!.markAsChanged();
+      _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+    });
 
-      _syncTodoNotification();
-      await WidgetService.updateTodoWidget(_todos);
+    // 所有的待办都需要连同隐藏的逻辑删除数据一起存
+    final allTodos = await StorageService.getTodos(widget.username);
+    int idx = allTodos.indexWhere((x) => x.id == currentTodo!.id);
+    if (idx != -1) allTodos[idx] = currentTodo!;
+    await StorageService.saveTodos(widget.username, allTodos);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('已完成: ${currentTodo.title}'),
-              duration: const Duration(seconds: 1)),
-        );
-      }
+    // 将待办数据写入共享文件
+    await _saveTodosToSharedFile(allTodos);
+
+    // 通知 Island 检查提醒并刷新槽位缓存
+    FloatWindowService.triggerReminderCheck();
+    FloatWindowService.invalidateSlotCache();
+
+    _syncTodoNotification();
+    await WidgetService.updateTodoWidget(_todos);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('已完成: ${currentTodo.title}'),
+            duration: const Duration(seconds: 1)),
+      );
     }
   }
 
@@ -1558,6 +1702,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                 // 🚀 统一处理本地与远程专注 Banner
                 _buildFocusBanner(isLight),
 
+                // 待确认待办入口卡片（从图片识别来）
+                _buildPendingTodoConfirmCard(isLight),
+
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -1596,10 +1743,15 @@ class _HomeDashboardState extends State<HomeDashboard>
                           // 通知 Island 检查提醒并刷新槽位缓存
                           FloatWindowService.triggerReminderCheck();
                           FloatWindowService.invalidateSlotCache();
+                          FloatWindowService.update();
                           _syncTodoNotification();
                           await WidgetService.updateTodoWidget(_todos);
                         },
                         onRefreshRequested: _loadAllData,
+                        onLLMResultsParsed: (results, imagePath) {
+                          // 导航到 TodoConfirmScreen
+                          _navigateToTodoConfirm(results, imagePath);
+                        },
                       );
                       Widget screenTimeSection = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

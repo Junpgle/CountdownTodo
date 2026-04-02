@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'course_service.dart';
 import '../storage_service.dart';
@@ -106,7 +107,7 @@ class ExternalShareHandler {
 
       // 生成文件唯一标识并检查是否已处理（仅对getInitialMedia去重，防止重复处理）
       final fileKey = await _generateFileKey(filePath);
-      if (fromInitial && _isFileProcessed(fileKey)) {
+      if (fromInitial && await _isFileProcessed(fileKey)) {
         debugPrint("文件已处理过，跳过: $filePath");
         _closeDialogSafely(dialogContext);
         ReceiveSharingIntent.instance.reset();
@@ -168,7 +169,7 @@ class ExternalShareHandler {
 
           statusNotifier.value = "✅ 识别成功！\n发现${results.length}个待办事项";
           // 标记文件为已处理，防止重复处理
-          _markFileProcessed(fileKey);
+          await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
 
@@ -289,7 +290,7 @@ class ExternalShareHandler {
         if (success) {
           statusNotifier.value = "✅ 导入成功！\n正在刷新课表...";
           // 标记文件为已处理，防止重复处理
-          _markFileProcessed(fileKey);
+          await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
           onSuccess();
@@ -360,17 +361,42 @@ class ExternalShareHandler {
     }
   }
 
-  /// 检查文件是否已处理过
-  static bool _isFileProcessed(String fileKey) {
-    return _processedFileKeys.contains(fileKey);
+  /// 检查文件是否已处理过（持久化存储）
+  static Future<bool> _isFileProcessed(String fileKey) async {
+    // 先检查内存缓存
+    if (_processedFileKeys.contains(fileKey)) return true;
+
+    // 检查持久化存储
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final processedKeys = prefs.getStringList('processed_file_keys') ?? [];
+      return processedKeys.contains(fileKey);
+    } catch (e) {
+      return false;
+    }
   }
 
-  /// 标记文件为已处理
-  static void _markFileProcessed(String fileKey) {
+  /// 标记文件为已处理（持久化存储）
+  static Future<void> _markFileProcessed(String fileKey) async {
+    // 更新内存缓存
     _processedFileKeys.add(fileKey);
-    // 限制列表大小，只保留最近处理的文件
     while (_processedFileKeys.length > _maxProcessedKeys) {
       _processedFileKeys.removeAt(0);
+    }
+
+    // 持久化存储
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      List<String> processedKeys =
+          prefs.getStringList('processed_file_keys') ?? [];
+      processedKeys.add(fileKey);
+      // 限制列表大小
+      while (processedKeys.length > _maxProcessedKeys) {
+        processedKeys.removeAt(0);
+      }
+      await prefs.setStringList('processed_file_keys', processedKeys);
+    } catch (e) {
+      debugPrint("持久化存储已处理文件失败: $e");
     }
   }
 
@@ -453,7 +479,7 @@ class ExternalShareHandler {
 
     if (success && results != null && results.isNotEmpty) {
       // 标记文件为已处理
-      _markFileProcessed(fileKey);
+      await _markFileProcessed(fileKey);
 
       // 保存待确认数据
       await StorageService.savePendingTodoConfirm(

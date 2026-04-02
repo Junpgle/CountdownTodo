@@ -69,8 +69,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d(TAG, "✅ Received MARK_DONE intent: $intent")
             if (intent?.action == "com.math_quiz.MARK_DONE") {
-                methodChannel?.invokeMethod("markCurrentTodoDone", null)
-                Log.d(TAG, "✅ Invoked markCurrentTodoDone to Flutter")
+                val notifId = intent.getIntExtra("notificationId", -1)
+                Log.d(TAG, "✅ MARK_DONE with notificationId: $notifId")
+                val args = if (notifId != -1) mapOf("notificationId" to notifId) else null
+                methodChannel?.invokeMethod("markCurrentTodoDone", args)
+                Log.d(TAG, "✅ Invoked markCurrentTodoDone to Flutter with args: $args")
             }
         }
     }
@@ -113,7 +116,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 动态注册广播接收器
         val filter = IntentFilter("com.math_quiz.MARK_DONE")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(todoActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            // PendingIntent 发送的广播需要使用 RECEIVER_EXPORTED
+            registerReceiver(todoActionReceiver, filter, Context.RECEIVER_EXPORTED)
         } else {
             registerReceiver(todoActionReceiver, filter)
         }
@@ -832,7 +836,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val timeStr = args["timeStr"] as? String ?: ""
         val todoType = args["todoType"] as? String ?: "default"
         
-        Log.d(TAG, "🚴 updateSpecialTodoNotification: title=$todoTitle, todoType=$todoType")
+        val customNotifId = args["notificationId"] as? Int
+        val notifId = customNotifId ?: SPECIAL_TODO_NOTIFICATION_ID
+        
+        Log.d(TAG, "🚴 updateSpecialTodoNotification: title=$todoTitle, todoType=$todoType, customNotifId=$customNotifId, notifId=$notifId")
 
         val (iconResId, color, typeLabel) = when (todoType) {
             "delivery" -> Triple(R.drawable.local_shipping, 0xFF4CAF50.toInt(), "取件")
@@ -849,9 +856,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             todoRemark.isNotEmpty() -> todoRemark
             else -> todoTitle
         }
-        
-        val customNotifId = args["notificationId"] as? Int
-        val notifId = customNotifId ?: SPECIAL_TODO_NOTIFICATION_ID
 
         buildAndNotify(
             title = title,
@@ -1224,10 +1228,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (isTodo && isOngoing) {
             val actionIntent = Intent("com.math_quiz.MARK_DONE").apply {
                 setPackage(packageName)
+                putExtra("notificationId", notificationId)
             }
+            // 使用 notificationId 作为 request code，避免多个通知的 PendingIntent 被合并
             actionPendingIntent = PendingIntent.getBroadcast(
-                this, 100, actionIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                this, notificationId, actionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
             val nativeAction = NotificationCompat.Action.Builder(
