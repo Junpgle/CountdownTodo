@@ -1138,32 +1138,72 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 普通待办通知的 ID 是 12345，特殊待办通知的 ID 是 todo.id.hashCode
     const int normalTodoNotifId = 12345;
 
+    // 检测是否为特殊待办
+    bool isSpecialTodo(String title) {
+      final lowerTitle = title.toLowerCase();
+      return lowerTitle.contains('快递') ||
+          lowerTitle.contains('取件') ||
+          lowerTitle.contains('顺丰') ||
+          lowerTitle.contains('京东') ||
+          lowerTitle.contains('菜鸟') ||
+          lowerTitle.contains('中通') ||
+          lowerTitle.contains('圆通') ||
+          lowerTitle.contains('韵达') ||
+          lowerTitle.contains('申通') ||
+          lowerTitle.contains('奶茶') ||
+          lowerTitle.contains('咖啡') ||
+          lowerTitle.contains('古茗') ||
+          lowerTitle.contains('茶百道') ||
+          lowerTitle.contains('蜜雪冰城') ||
+          lowerTitle.contains('瑞幸') ||
+          lowerTitle.contains('星巴克') ||
+          lowerTitle.contains('库迪') ||
+          lowerTitle.contains('coco') ||
+          lowerTitle.contains('一点点') ||
+          lowerTitle.contains('取餐') ||
+          lowerTitle.contains('外卖') ||
+          lowerTitle.contains('肯德基') ||
+          lowerTitle.contains('麦当劳') ||
+          lowerTitle.contains('KFC') ||
+          lowerTitle.contains('海底捞') ||
+          lowerTitle.contains('太二') ||
+          lowerTitle.contains('外婆家') ||
+          lowerTitle.contains('西贝') ||
+          lowerTitle.contains('必胜客') ||
+          lowerTitle.contains('堂食') ||
+          lowerTitle.contains('餐饮');
+    }
+
     TodoItem? currentTodo;
 
-    // 如果 notifId 为空或者是普通待办通知 ID，不执行任何操作
     if (notifId == null || notifId == normalTodoNotifId) {
-      debugPrint("notifId 为空或为普通待办通知 ID，跳过: notifId=$notifId");
-      return;
+      // 普通待办通知：完成第一个未完成的**普通**待办（跳过特殊待办）
+      for (var t in activeTodos) {
+        if (!t.isDone && !isSpecialTodo(t.title)) {
+          currentTodo = t;
+          break;
+        }
+      }
+      debugPrint("📱 普通待办通知，完成第一个未完成的普通待办: ${currentTodo?.title}");
+    } else {
+      // 特殊待办通知：通过 notifId 找到对应的待办
+      currentTodo = activeTodos
+          .where((t) => t.id.hashCode == notifId && !t.isDone)
+          .firstOrNull;
+      debugPrint("📱 特殊待办通知，找到待办: ${currentTodo?.title}");
     }
 
-    // 打印所有待办的 hashCode 以便调试
-    for (var t in activeTodos) {
-      debugPrint(
-          "📱 待办: ${t.title}, hashCode=${t.id.hashCode}, isDone=${t.isDone}");
-    }
-
-    // 通过 notifId 找到对应的待办
-    currentTodo = activeTodos
-        .where((t) => t.id.hashCode == notifId && !t.isDone)
-        .firstOrNull;
-
-    // 找不到对应的待办，不执行任何操作
+    // 找不到待办，不执行任何操作
     if (currentTodo == null) {
       debugPrint("找不到对应的待办: notifId=$notifId");
       return;
     }
 
-    debugPrint("📱 找到待办: ${currentTodo.title}");
+    debugPrint("📱 准备完成待办: ${currentTodo.title}");
+
+    // 取消特殊待办的通知
+    await NotificationService.cancelSpecialTodoNotification(
+        currentTodo.id.hashCode);
 
     setState(() {
       currentTodo!.isDone = true;

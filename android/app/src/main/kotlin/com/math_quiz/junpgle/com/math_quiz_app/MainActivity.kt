@@ -836,10 +836,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val timeStr = args["timeStr"] as? String ?: ""
         val todoType = args["todoType"] as? String ?: "default"
         
-        val customNotifId = args["notificationId"] as? Int
+        // 使用 Number 来接收，避免类型转换问题
+        val customNotifId = (args["notificationId"] as? Number)?.toInt()
         val notifId = customNotifId ?: SPECIAL_TODO_NOTIFICATION_ID
         
-        Log.d(TAG, "🚴 updateSpecialTodoNotification: title=$todoTitle, todoType=$todoType, customNotifId=$customNotifId, notifId=$notifId")
+        Log.d(TAG, "🚴 updateSpecialTodoNotification: title=$todoTitle, todoType=$todoType, args[notificationId]=${args["notificationId"]}, customNotifId=$customNotifId, notifId=$notifId")
 
         val (iconResId, color, typeLabel) = when (todoType) {
             "delivery" -> Triple(R.drawable.local_shipping, 0xFF4CAF50.toInt(), "取件")
