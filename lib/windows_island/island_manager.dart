@@ -312,12 +312,16 @@ class IslandManager {
     _transparentSupport.remove(islandId);
   }
 
-  /// Clear cache without destroying the window (safe when native destroy may crash)
+  /// Hide window and clear cache (safe alternative to destroy)
   void clearIslandCache(String islandId) {
+    // 先隐藏旧窗口
+    final old = _windowIdCache[islandId];
+    if (old != null) {
+      IslandChannel.hideWindow(old).catchError((_) => false);
+    }
     _windowIdCache.remove(islandId);
     _creating.remove(islandId);
     _transparentSupport.remove(islandId);
-    // 异步清理持久化文件, 不等待
     _clearPersistedWindowId(islandId).catchError((_) {});
   }
 
