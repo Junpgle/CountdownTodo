@@ -1,0 +1,112 @@
+<template>
+  <div class="page column">
+    <div class="header">
+      <text class="title">{{title}}({{count}})</text>
+      <div class="placeholder"></div>
+    </div>
+      <list class="list">
+        <list-item
+          for="{{listData}}"
+          class="item" type="{{$item.status === 'done' ? 'done' : 'undone'}}"
+          onswipe="deleteItem($item)"
+        >
+          <text class="undone_icon {{$item.status !== 'done' ? '' : 'hide'}}" onclick="complete($item)"></text>
+          <text class="done_icon {{$item.status === 'done' ? '' : 'hide'}}"></text>
+          <text class="{{$item.status}}">{{$item.value}}</text>
+        </list-item>
+      </list>
+  </div>
+</template>
+
+<script>
+import router from '@system.router';
+import prompt from '@system.prompt';
+
+export default {
+  data: {
+    title: 'AllTasks',
+    count: 0,
+    listData: [],
+  },
+
+  onReady() {
+    this.count = this.listData.length;
+  },
+
+  complete(item) {
+    item.status = "done";
+    prompt.showToast({
+      message: "太棒啦！又完成了一个任务哦",
+      duration: 300
+    })
+  },
+
+  deleteItem(item, eve) {
+    if (eve.direction === "left") {
+      prompt.showToast({
+        message: "已删除",
+        duration: 300
+      })
+      this.listData = this.listData.filter(i => i != item);
+      this.count = this.listData.length;
+    }
+  }
+}
+</script>
+
+<style>
+  .column {
+    flex-direction: column;
+  }
+  
+  .center {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .page {
+    padding: 50px;
+  }
+
+  .header {
+    justify-content: space-between;
+    color: #cfe1e8;
+  }
+
+  .list {
+    width: 100%;
+    height: 100%;
+    padding-top: 20px;
+  }
+
+  .item {
+    height: 80px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    background-color: #93aeba;
+  }
+
+  .item .done {
+      text-decoration: line-through;
+    }
+
+  .done_icon,
+  .undone_icon {
+    height: 30px;
+    width: 30px;
+    border-radius: 15px;
+    margin: 25px;
+  }
+
+  .undone_icon {
+    background-color: #f0fbff;
+  }
+
+  .hide {
+    display: none;
+  }
+
+  .placeholder {
+    width: 56px;
+  }
+</style>

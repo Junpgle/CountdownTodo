@@ -1,0 +1,390 @@
+<template>
+  <div class="page">
+    <!-- 顶部导航 -->
+    <div class="header">
+      <text class="back-btn" onclick="goBack">‹</text>
+      <text class="title">今日课程</text>
+      <div class="placeholder"></div>
+    </div>
+
+    <!-- 日期显示 -->
+    <div class="date-display">
+      <text class="date-text">{{currentDate}}</text>
+      <text class="weekday-text">{{currentWeekday}}</text>
+    </div>
+
+    <!-- 课程列表 -->
+    <list class="list" if="{{todayCourses.length > 0}}">
+      <list-item for="{{todayCourses}}" class="item" type="item">
+        <div class="time-column">
+          <text class="start-time">{{$item.startTime}}</text>
+          <div class="time-line"></div>
+          <text class="end-time">{{$item.endTime}}</text>
+        </div>
+        <div class="course-card {{$item.status || 'upcoming'}}">
+          <div class="course-header">
+            <text class="course-name">{{$item.name}}</text>
+            <text class="course-status">{{getCourseStatus($item)}}</text>
+          </div>
+          <div class="course-details">
+            <div class="detail-item" if="{{$item.location}}">
+              <text class="detail-icon">📍</text>
+              <text class="detail-text">{{$item.location}}</text>
+            </div>
+            <div class="detail-item" if="{{$item.teacher}}">
+              <text class="detail-icon">👤</text>
+              <text class="detail-text">{{$item.teacher}}</text>
+            </div>
+          </div>
+          <div class="course-duration">
+            <text class="duration-text">{{getDuration($item)}}分钟</text>
+          </div>
+        </div>
+      </list-item>
+    </list>
+
+    <!-- 全部课程 -->
+    <div class="all-courses" if="{{allCourses.length > 0 && todayCourses.length === 0}}">
+      <text class="section-title">今日无课程</text>
+      <text class="section-desc">本学期共 {{allCourses.length}} 门课程</text>
+    </div>
+
+    <!-- 空状态 -->
+    <div class="empty" if="{{allCourses.length === 0}}">
+      <text class="empty-title">暂无课程</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import storage from '@system.storage'
+import prompt from '@system.prompt'
+
+export default {
+  data: {
+    currentDate: '',
+    currentWeekday: '',
+    currentWeekdayNum: 0,
+    allCourses: [],
+    todayCourses: []
+  },
+
+  onInit() {
+    this.setCurrentDate()
+    this.loadCourseData()
+  },
+
+  onShow() {
+    this.loadCourseData()
+  },
+
+  setCurrentDate() {
+    const now = new Date()
+    const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+    const month = now.getMonth() + 1
+    const date = now.getDate()
+    this.currentDate = `${month}月${date}日`
+    this.currentWeekday = weekdays[now.getDay()]
+    this.currentWeekdayNum = now.getDay() === 0 ? 7 : now.getDay() // 1=周一, 7=周日
+  },
+
+  loadCourseData() {
+    storage.get({
+      key: 'sync_course',
+      success: (data) => {
+        if (data) {
+          this.allCourses = JSON.parse(data)
+          this.filterTodayCourses()
+        }
+      },
+      fail: (error) => {
+        console.error('加载课程数据失败:', error)
+      }
+    })
+  },
+
+  filterTodayCourses() {
+    // 筛选今天的课程
+    this.todayCourses = this.allCourses.filter(c => {
+      return c.weekday === this.currentWeekdayNum
+    })
+    
+    // 按开始时间排序
+    this.todayCourses.sort((a, b) => {
+      return a.startTime.localeCompare(b.startTime)
+    })
+    
+    // 计算课程状态
+    const now = new Date()
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    
+    this.todayCourses.forEach(course => {
+      if (currentTime < course.startTime) {
+        course.status = 'upcoming'
+      } else if (currentTime >= course.startTime && currentTime <= course.endTime) {
+        course.status = 'ongoing'
+      } else {
+        course.status = 'ended'
+      }
+    })
+  },
+
+  getCourseStatus(course) {
+    const statusMap = {
+      'upcoming': '未开始',
+      'ongoing': '进行中',
+      'ended': '已结束'
+    }
+    return statusMap[course.status] || ''
+  },
+
+  getDuration(course) {
+    if (!course.startTime || !course.endTime) return 0
+    
+    const [startH, startM] = course.startTime.split(':').map(Number)
+    const [endH, endM] = course.endTime.split(':').map(Number)
+    
+    const startMinutes = startH * 60 + startM
+    const endMinutes = endH * 60 + endM
+    
+    return endMinutes - startMinutes
+  },
+
+  saveCourseData() {
+    storage.set({
+      key: 'sync_course',
+      value: JSON.stringify(this.allCourses),
+      success: () => {
+        console.log('保存课程数据成功')
+      },
+      fail: (error) => {
+        console.error('保存课程数据失败:', error)
+      }
+    })
+  },
+
+  goBack() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  padding: 28px;
+  background-color: #000000;
+}
+
+/* 顶部导航 */
+.header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.back-btn {
+  width: 56px;
+  height: 56px;
+  font-size: 40px;
+  color: #ffffff;
+  background-color: #ffffff30;
+  border-radius: 28px;
+  text-align: center;
+  line-height: 56px;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.placeholder {
+  width: 56px;
+}
+
+/* 日期显示 */
+.date-display {
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.date-text {
+  font-size: 34px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.weekday-text {
+  font-size: 20px;
+  color: #ffffffaa;
+  margin-top: 8px;
+}
+
+/* 课程列表 */
+.list {
+  flex: 1;
+}
+
+.item {
+  flex-direction: row;
+  margin-bottom: 12px;
+}
+
+/* 时间列 */
+.time-column {
+  width: 80px;
+  align-items: center;
+  margin-right: 24px;
+}
+
+.start-time {
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.time-line {
+  width: 5px;
+  flex: 1;
+  background-color: #ffffff40;
+  margin: 10px 0;
+  min-height: 32px;
+}
+
+.end-time {
+  font-size: 17px;
+  color: #ffffffaa;
+}
+
+/* 课程卡片 */
+.course-card {
+  flex: 1;
+  background-color: #333333;
+  border-radius: 26px;
+  padding: 26px;
+}
+
+.course-card.ongoing {
+  border-left-width: 4px;
+  border-left-color: #4caf50;
+}
+
+.course-card.ended {
+  opacity: 0.6;
+}
+
+.course-header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.course-name {
+  font-size: 26px;
+  font-weight: bold;
+  color: #ffffff;
+  flex: 1;
+}
+
+.course-status {
+  font-size: 17px;
+  color: #ffffff;
+  background-color: #555555;
+  padding: 8px 16px;
+  border-radius: 14px;
+}
+
+/* 课程详情 */
+.course-details {
+  margin-bottom: 8px;
+}
+
+.detail-item {
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.detail-icon {
+  font-size: 18px;
+  margin-right: 12px;
+}
+
+.detail-text {
+  font-size: 18px;
+  color: #aaaaaa;
+}
+
+/* 课程时长 */
+.course-duration {
+  align-items: flex-end;
+}
+
+.duration-text {
+  font-size: 17px;
+  color: #888888;
+}
+
+/* 全部课程 */
+.all-courses {
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+}
+
+.section-title {
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.section-desc {
+  font-size: 20px;
+  color: #ffffffaa;
+}
+
+/* 空状态 */
+.empty {
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.empty-icon-wrap {
+  width: 100px;
+  height: 100px;
+  border-radius: 50px;
+  background-color: #ffffff20;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.empty-icon {
+  font-size: 28px;
+  font-weight: bold;
+  color: #ffffff;
+  letter-spacing: 2px;
+}
+
+.empty-title {
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.empty-desc {
+  font-size: 20px;
+  color: #ffffffaa;
+}
+</style>

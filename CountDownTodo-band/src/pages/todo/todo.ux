@@ -1,0 +1,372 @@
+<template>
+  <div class="page">
+    <!-- 顶部导航 -->
+    <div class="header">
+      <text class="back-btn" onclick="goBack">‹</text>
+      <text class="title">待办事项</text>
+      <div class="placeholder"></div>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="stats" if="{{todoList.length > 0}}">
+      <div class="stat-item">
+        <text class="stat-num">{{pendingCount}}</text>
+        <text class="stat-label">待完成</text>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <text class="stat-num">{{doneCount}}</text>
+        <text class="stat-label">已完成</text>
+      </div>
+    </div>
+
+    <!-- 待完成列表 -->
+    <div class="section" if="{{pendingList.length > 0}}">
+      <text class="section-title">待完成</text>
+      <list class="list">
+        <list-item for="{{pendingList}}" class="item" type="pending">
+          <div class="checkbox" onclick="toggleTodo($item)">
+            <div class="checkbox-inner"></div>
+          </div>
+          <div class="item-content">
+            <text class="item-title">{{$item.title}}</text>
+            <text class="item-desc" if="{{$item.description}}">{{$item.description}}</text>
+          </div>
+          <div class="priority-badge {{$item.priority || 'normal'}}">
+            <text class="priority-text">{{getPriorityText($item.priority)}}</text>
+          </div>
+        </list-item>
+      </list>
+    </div>
+
+    <!-- 已完成列表 -->
+    <div class="section" if="{{doneList.length > 0}}">
+      <text class="section-title done-title">已完成</text>
+      <list class="list">
+        <list-item for="{{doneList}}" class="item done-item" type="done">
+          <div class="checkbox checked" onclick="toggleTodo($item)">
+            <text class="check-mark">✓</text>
+          </div>
+          <div class="item-content">
+            <text class="item-title done-text">{{$item.title}}</text>
+          </div>
+          <text class="delete-btn" onclick="deleteTodo($item)">×</text>
+        </list-item>
+      </list>
+    </div>
+
+    <!-- 空状态 -->
+    <div class="empty" if="{{todoList.length === 0}}">
+      <text class="empty-title">暂无待办</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import storage from '@system.storage'
+import prompt from '@system.prompt'
+
+export default {
+  data: {
+    todoList: [],
+    pendingList: [],
+    doneList: [],
+    pendingCount: 0,
+    doneCount: 0
+  },
+
+  onInit() {
+    this.loadTodoData()
+  },
+
+  onShow() {
+    this.loadTodoData()
+  },
+
+  loadTodoData() {
+    storage.get({
+      key: 'sync_todo',
+      success: (data) => {
+        if (data) {
+          this.todoList = JSON.parse(data)
+          this.updateLists()
+        }
+      },
+      fail: (error) => {
+        console.error('加载待办数据失败:', error)
+      }
+    })
+  },
+
+  updateLists() {
+    this.pendingList = this.todoList.filter(t => t.status !== 'done')
+    this.doneList = this.todoList.filter(t => t.status === 'done')
+    this.pendingCount = this.pendingList.length
+    this.doneCount = this.doneList.length
+  },
+
+  getPriorityText(priority) {
+    const map = {
+      'high': '紧急',
+      'medium': '一般',
+      'low': '普通'
+    }
+    return map[priority] || '普通'
+  },
+
+  saveTodoData() {
+    storage.set({
+      key: 'sync_todo',
+      value: JSON.stringify(this.todoList),
+      success: () => {
+        console.log('保存待办数据成功')
+      },
+      fail: (error) => {
+        console.error('保存待办数据失败:', error)
+      }
+    })
+  },
+
+  toggleTodo(item) {
+    const index = this.todoList.findIndex(i => i.id === item.id)
+    if (index !== -1) {
+      this.todoList[index].status = item.status === 'done' ? 'undone' : 'done'
+      this.todoList[index].updatedAt = Date.now()
+      this.saveTodoData()
+      this.updateLists()
+      
+      if (this.todoList[index].status === 'done') {
+        prompt.showToast({
+          message: '已完成',
+          duration: 300
+        })
+      }
+    }
+  },
+
+  deleteTodo(item) {
+    this.todoList = this.todoList.filter(i => i.id !== item.id)
+    this.saveTodoData()
+    this.updateLists()
+    prompt.showToast({
+      message: '已删除',
+      duration: 300
+    })
+  },
+
+  goBack() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  padding: 28px;
+  background-color: #000000;
+}
+
+/* 顶部导航 */
+.header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.back-btn {
+  width: 56px;
+  height: 56px;
+  font-size: 40px;
+  color: #ffffff;
+  background-color: #ffffff30;
+  border-radius: 28px;
+  text-align: center;
+  line-height: 56px;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.placeholder {
+  width: 56px;
+}
+
+/* 统计信息 */
+.stats {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  background-color: #ffffff20;
+  border-radius: 24px;
+  padding: 24px;
+  margin-bottom: 28px;
+}
+
+.stat-item {
+  align-items: center;
+  flex: 1;
+}
+
+.stat-num {
+  font-size: 48px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.stat-label {
+  font-size: 18px;
+  color: #ffffffaa;
+  margin-top: 8px;
+}
+
+.stat-divider {
+  width: 4px;
+  height: 48px;
+  background-color: #ffffff30;
+}
+
+/* 区域标题 */
+.section {
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffffffcc;
+  margin-bottom: 20px;
+  margin-left: 10px;
+}
+
+.done-title {
+  color: #ffffff80;
+}
+
+/* 列表 */
+.list {
+  margin-bottom: 8px;
+}
+
+.item {
+  flex-direction: row;
+  align-items: center;
+  background-color: #333333;
+  border-radius: 26px;
+  padding: 26px 28px;
+  margin-bottom: 18px;
+}
+
+.done-item {
+  background-color: #2a2a2a;
+}
+
+/* 复选框 */
+.checkbox {
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  border-width: 3px;
+  border-color: #666666;
+  margin-right: 18px;
+  justify-content: center;
+  align-items: center;
+}
+
+.checkbox-inner {
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  background-color: transparent;
+}
+
+.checked {
+  background-color: #4caf50;
+  border-color: #4caf50;
+}
+
+.check-mark {
+  font-size: 26px;
+  color: #ffffff;
+  font-weight: bold;
+}
+
+/* 内容 */
+.item-content {
+  flex: 1;
+  flex-direction: column;
+}
+
+.item-title {
+  font-size: 26px;
+  color: #ffffff;
+  margin-bottom: 5px;
+}
+
+.done-text {
+  text-decoration: line-through;
+  color: #888888;
+}
+
+.item-desc {
+  font-size: 18px;
+  color: #aaaaaa;
+}
+
+/* 优先级标签 */
+.priority-badge {
+  padding: 10px 18px;
+  border-radius: 16px;
+  margin-left: 16px;
+  background-color: #444444;
+}
+
+.priority-text {
+  font-size: 18px;
+  color: #ffffff;
+}
+
+/* 删除按钮 */
+.delete-btn {
+  width: 48px;
+  height: 48px;
+  font-size: 28px;
+  color: #ff6b6b;
+  background-color: #444444;
+  border-radius: 24px;
+  text-align: center;
+  line-height: 48px;
+  margin-left: 16px;
+}
+
+/* 空状态 */
+.empty {
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+}
+
+.empty-icon {
+  font-size: 72px;
+  margin-bottom: 24px;
+}
+
+.empty-title {
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.empty-desc {
+  font-size: 20px;
+  color: #ffffffaa;
+}
+</style>

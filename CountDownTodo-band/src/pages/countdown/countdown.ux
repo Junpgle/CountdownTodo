@@ -1,0 +1,257 @@
+<template>
+  <div class="page">
+    <!-- 顶部导航 -->
+    <div class="header">
+      <text class="back-btn" onclick="goBack">‹</text>
+      <text class="title">倒数日</text>
+      <div class="placeholder"></div>
+    </div>
+
+    <!-- 列表区域 -->
+    <list class="list" if="{{countdownList.length > 0}}">
+      <list-item for="{{countdownList}}" class="item" type="item">
+        <div class="item-left">
+          <div class="days-badge {{getDaysClass($item.remainingDays)}}">
+            <text class="days-num">{{$item.remainingDays}}</text>
+            <text class="days-unit">天</text>
+          </div>
+        </div>
+        <div class="item-center">
+          <text class="item-title">{{$item.title}}</text>
+          <text class="item-date">{{$item.targetDate}}</text>
+        </div>
+        <text class="delete-btn" onclick="deleteCountdown($item)">×</text>
+      </list-item>
+    </list>
+
+    <!-- 空状态 -->
+    <div class="empty" if="{{countdownList.length === 0}}">
+      <text class="empty-title">暂无倒数日</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import storage from '@system.storage'
+import prompt from '@system.prompt'
+
+export default {
+  data: {
+    countdownList: []
+  },
+
+  onInit() {
+    this.loadCountdownData()
+  },
+
+  onShow() {
+    this.loadCountdownData()
+  },
+
+  loadCountdownData() {
+    storage.get({
+      key: 'sync_countdown',
+      success: (data) => {
+        if (data) {
+          this.countdownList = JSON.parse(data)
+          this.calculateRemainingDays()
+          // 按剩余天数排序
+          this.countdownList.sort((a, b) => a.remainingDays - b.remainingDays)
+        }
+      },
+      fail: (error) => {
+        console.error('加载倒数日数据失败:', error)
+      }
+    })
+  },
+
+  calculateRemainingDays() {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+    
+    this.countdownList.forEach(item => {
+      const target = new Date(item.targetDate)
+      target.setHours(0, 0, 0, 0)
+      const diff = target - now
+      item.remainingDays = Math.ceil(diff / (1000 * 60 * 60 * 24))
+    })
+  },
+
+  getDaysClass(days) {
+    if (days < 0) return 'days-passed'
+    if (days === 0) return 'days-today'
+    if (days <= 7) return 'days-soon'
+    if (days <= 30) return 'days-normal'
+    return 'days-far'
+  },
+
+  saveCountdownData() {
+    storage.set({
+      key: 'sync_countdown',
+      value: JSON.stringify(this.countdownList),
+      success: () => {
+        console.log('保存倒数日数据成功')
+      },
+      fail: (error) => {
+        console.error('保存倒数日数据失败:', error)
+      }
+    })
+  },
+
+  deleteCountdown(item) {
+    this.countdownList = this.countdownList.filter(i => i.id !== item.id)
+    this.saveCountdownData()
+    prompt.showToast({
+      message: '已删除',
+      duration: 300
+    })
+  },
+
+  goBack() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  padding: 28px;
+  background-color: #000000;
+}
+
+/* 顶部导航 */
+.header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.back-btn {
+  width: 56px;
+  height: 56px;
+  font-size: 40px;
+  color: #ffffff;
+  background-color: #ffffff30;
+  border-radius: 28px;
+  text-align: center;
+  line-height: 56px;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.placeholder {
+  width: 56px;
+}
+
+/* 列表 */
+.list {
+  flex: 1;
+}
+
+.item {
+  flex-direction: row;
+  align-items: center;
+  background-color: #333333;
+  border-radius: 28px;
+  padding: 28px;
+  margin-bottom: 18px;
+}
+
+.item-left {
+  margin-right: 20px;
+}
+
+.days-badge {
+  width: 92px;
+  height: 92px;
+  border-radius: 26px;
+  justify-content: center;
+  align-items: center;
+  background-color: #555555;
+}
+
+.days-num {
+  font-size: 40px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.days-unit {
+  font-size: 17px;
+  color: #ffffff;
+}
+
+.item-center {
+  flex: 1;
+  flex-direction: column;
+}
+
+.item-title {
+  font-size: 26px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.item-date {
+  font-size: 18px;
+  color: #aaaaaa;
+}
+
+.delete-btn {
+  width: 48px;
+  height: 48px;
+  font-size: 30px;
+  color: #ff6b6b;
+  background-color: #444444;
+  border-radius: 24px;
+  text-align: center;
+  line-height: 48px;
+}
+
+/* 空状态 */
+.empty {
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.empty-icon-wrap {
+  width: 100px;
+  height: 100px;
+  border-radius: 50px;
+  background-color: #ffffff20;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.empty-icon {
+  font-size: 40px;
+  font-weight: bold;
+  color: #ffffff;
+  letter-spacing: 2px;
+}
+
+.empty-title {
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.empty-desc {
+  font-size: 20px;
+  color: #ffffffaa;
+}
+</style>

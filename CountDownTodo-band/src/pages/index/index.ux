@@ -1,0 +1,393 @@
+<template>
+  <div class="page">
+    <!-- 顶部状态栏 -->
+    <div class="status-bar">
+      <div class="status-indicator {{syncStatusClass}}"></div>
+      <text class="status-text">{{syncStatusText}}</text>
+    </div>
+
+    <!-- 标题区域 -->
+    <div class="header">
+      <text class="title">CDT</text>
+      <text class="date">{{currentDate}}</text>
+      <div class="sync-btn" onclick="syncAllData">
+        <text class="sync-icon {{isSyncing ? 'rotating' : ''}}">↻</text>
+      </div>
+    </div>
+
+    <!-- 功能模块 -->
+    <div class="modules">
+      <div class="module-card" onclick="routeToTodo">
+        <div class="module-icon-wrap todo-bg">
+          <text class="module-icon">TODO</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title">待办事项</text>
+          <text class="module-desc">{{todoPendingCount}} 项未完成</text>
+        </div>
+        <text class="arrow">›</text>
+      </div>
+
+      <div class="module-card" onclick="routeToCountdown">
+        <div class="module-icon-wrap countdown-bg">
+          <text class="module-icon">DAY</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title">倒数日</text>
+          <text class="module-desc">{{nearestCountdown}}</text>
+        </div>
+        <text class="arrow">›</text>
+      </div>
+
+      <div class="module-card" onclick="routeToCourse">
+        <div class="module-icon-wrap course-bg">
+          <text class="module-icon">CLS</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title">今日课程</text>
+          <text class="module-desc">{{todayCourseText}}</text>
+        </div>
+        <text class="arrow">›</text>
+      </div>
+    </div>
+
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import storage from '@system.storage'
+import SyncService from '../../common/sync_service.js'
+
+export default {
+  data: {
+    currentDate: '',
+    syncStatus: 'idle', // idle, syncing, success, fail
+    syncStatusText: '待同步',
+    syncStatusClass: 'status-idle',
+    isSyncing: false,
+    todoPendingCount: 0,
+    nearestCountdown: '暂无',
+    todayCourseText: '今日无课'
+  },
+
+  onInit() {
+    this.setCurrentDate()
+    this.loadAllData()
+  },
+
+  onShow() {
+    this.loadAllData()
+  },
+
+  setCurrentDate() {
+    const now = new Date()
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+    const month = now.getMonth() + 1
+    const date = now.getDate()
+    const weekday = weekdays[now.getDay()]
+    this.currentDate = `${month}月${date}日 周${weekday}`
+  },
+
+  loadAllData() {
+    this.loadTodoStats()
+    this.loadCountdownStats()
+    this.loadCourseStats()
+  },
+
+  loadTodoStats() {
+    storage.get({
+      key: 'sync_todo',
+      success: (data) => {
+        if (data) {
+          const todos = JSON.parse(data)
+          this.todoPendingCount = todos.filter(t => t.status !== 'done').length
+        }
+      }
+    })
+  },
+
+  loadCountdownStats() {
+    storage.get({
+      key: 'sync_countdown',
+      success: (data) => {
+        if (data) {
+          const countdowns = JSON.parse(data)
+          if (countdowns.length > 0) {
+            // 计算最近的倒数日
+            const now = Date.now()
+            let nearest = null
+            let minDiff = Infinity
+            
+            countdowns.forEach(cd => {
+              const target = new Date(cd.targetDate).getTime()
+              const diff = target - now
+              if (diff > 0 && diff < minDiff) {
+                minDiff = diff
+                nearest = cd
+              }
+            })
+            
+            if (nearest) {
+              const days = Math.ceil(minDiff / (1000 * 60 * 60 * 24))
+              this.nearestCountdown = `${nearest.title} 还有${days}天`
+            } else {
+              this.nearestCountdown = '暂无倒数日'
+            }
+          } else {
+            this.nearestCountdown = '暂无倒数日'
+          }
+        }
+      }
+    })
+  },
+
+  loadCourseStats() {
+    storage.get({
+      key: 'sync_course',
+      success: (data) => {
+        if (data) {
+          const courses = JSON.parse(data)
+          const now = new Date()
+          const today = now.getDay() // 0=周日, 1=周一...
+          
+          // 筛选今天的课程
+          const todayCourses = courses.filter(c => {
+            return c.weekday === today || c.weekday === (today === 0 ? 7 : today)
+          })
+          
+          if (todayCourses.length > 0) {
+            this.todayCourseText = `${todayCourses.length}节课`
+          } else {
+            this.todayCourseText = '今日无课'
+          }
+        }
+      }
+    })
+  },
+
+  async syncAllData() {
+    if (this.isSyncing) return
+    
+    this.isSyncing = true
+    this.syncStatus = 'syncing'
+    this.syncStatusText = '同步中...'
+    this.syncStatusClass = 'status-syncing'
+    
+    prompt.showToast({
+      message: '开始同步...',
+      duration: 300
+    })
+    
+    try {
+      const results = await SyncService.syncAll()
+      
+      let successCount = 0
+      let failCount = 0
+      
+      for (const type in results) {
+        if (results[type].success) {
+          successCount++
+        } else {
+          failCount++
+        }
+      }
+      
+      if (failCount === 0) {
+        this.syncStatus = 'success'
+        this.syncStatusText = '同步成功'
+        this.syncStatusClass = 'status-success'
+        prompt.showToast({
+          message: '同步成功',
+          duration: 300
+        })
+      } else {
+        this.syncStatus = 'fail'
+        this.syncStatusText = '部分失败'
+        this.syncStatusClass = 'status-fail'
+        prompt.showToast({
+          message: `${successCount}成功 ${failCount}失败`,
+          duration: 500
+        })
+      }
+      
+      // 刷新数据统计
+      this.loadAllData()
+      
+    } catch (error) {
+      this.syncStatus = 'fail'
+      this.syncStatusText = '同步失败'
+      this.syncStatusClass = 'status-fail'
+      prompt.showToast({
+        message: '同步失败',
+        duration: 500
+      })
+    }
+    
+    this.isSyncing = false
+    
+    // 3秒后恢复状态
+    setTimeout(() => {
+      this.syncStatus = 'idle'
+      this.syncStatusText = '待同步'
+      this.syncStatusClass = 'status-idle'
+    }, 3000)
+  },
+
+  routeToTodo() {
+    router.push({ uri: '/pages/todo' })
+  },
+
+  routeToCountdown() {
+    router.push({ uri: '/pages/countdown' })
+  },
+
+  routeToCourse() {
+    router.push({ uri: '/pages/course' })
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  padding: 32px;
+  background-color: #000000;
+}
+
+/* 状态栏 */
+.status-bar {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.status-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  margin-right: 14px;
+}
+
+.status-idle {
+  background-color: #ffffff80;
+}
+
+.status-syncing {
+  background-color: #ffd700;
+}
+
+.status-success {
+  background-color: #00ff88;
+}
+
+.status-fail {
+  background-color: #ff6b6b;
+}
+
+.status-text {
+  font-size: 20px;
+  color: #ffffffcc;
+}
+
+/* 标题 */
+.header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.title {
+  font-size: 44px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.date {
+  font-size: 26px;
+  color: #ffffffaa;
+}
+
+.sync-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
+  background-color: #ffffff30;
+  justify-content: center;
+  align-items: center;
+}
+
+.sync-icon {
+  font-size: 34px;
+  color: #ffffff;
+}
+
+/* 功能模块 */
+.modules {
+  flex-direction: column;
+  margin-bottom: 40px;
+}
+
+.module-card {
+  flex-direction: row;
+  align-items: center;
+  background-color: #333333;
+  border-radius: 34px;
+  padding: 34px 36px;
+  margin-bottom: 24px;
+}
+
+.module-icon-wrap {
+  width: 84px;
+  height: 84px;
+  border-radius: 28px;
+  justify-content: center;
+  align-items: center;
+  margin-right: 28px;
+  background-color: #555555;
+}
+
+.module-icon {
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffffff;
+  letter-spacing: 1px;
+}
+
+.module-info {
+  flex: 1;
+  flex-direction: column;
+}
+
+.module-title {
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.module-desc {
+  font-size: 22px;
+  color: #aaaaaa;
+}
+
+.arrow {
+  font-size: 36px;
+  color: #888888;
+}
+
+/* 旋转动画 */
+.rotating {
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+</style>
