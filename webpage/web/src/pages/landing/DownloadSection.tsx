@@ -1,4 +1,4 @@
-import { Monitor, Smartphone, Globe, ChevronRight, ArrowRight, HelpCircle, ExternalLink } from 'lucide-react';
+import { Monitor, Smartphone, Globe, ChevronRight, ArrowRight, HelpCircle, ExternalLink, Watch, MessageCircle } from 'lucide-react';
 import type { AppInfo } from '../../types';
 
 export const DownloadSection = ({
@@ -6,6 +6,7 @@ export const DownloadSection = ({
   windowsInfo,
   windowsProInfo,
   webInfo,
+  bandInfo,
   onOpenWeb,
   onShowInstallGuide
 }: {
@@ -13,6 +14,7 @@ export const DownloadSection = ({
   windowsInfo: AppInfo;
   windowsProInfo: AppInfo;
   webInfo: AppInfo;
+  bandInfo: AppInfo;
   onOpenWeb: () => void;
   onShowInstallGuide: () => void;
 }) => (
@@ -39,7 +41,7 @@ export const DownloadSection = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 text-left items-stretch">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6 text-left items-stretch">
         {/* Windows Lite */}
         <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-blue-500 transition-all group flex flex-col relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl group-hover:bg-blue-500/10 transition"></div>
@@ -102,6 +104,23 @@ export const DownloadSection = ({
             <button onClick={onShowInstallGuide} className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition">
               <HelpCircle className="w-4 h-4" /> 如何把网页作为 App 安装？
             </button>
+          </div>
+        </div>
+
+        {/* Xiaomi Band (Vela) */}
+        <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-teal-500 transition-all group flex flex-col relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 rounded-full blur-3xl group-hover:bg-teal-500/10 transition"></div>
+          <div className="w-14 h-14 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition duration-500 shadow-sm"><Watch className="w-7 h-7" /></div>
+          <h3 className="text-2xl font-black mb-3 text-slate-900 tracking-tight">小米手环 (Vela)</h3>
+          <p className="text-slate-500 text-sm sm:text-base mb-8 flex-1 leading-relaxed whitespace-pre-line">
+             v{bandInfo.version || '1.0.0'} <br/>
+             {bandInfo.desc || '抬腕即览待办、倒数日与课程表，蓝牙与手机无缝双向同步，手腕上的效率助手。'}
+          </p>
+          <div className="space-y-3">
+            <a href={bandInfo.url || "#"} className="flex items-center justify-center gap-3 bg-teal-600 text-white w-full py-4 rounded-xl font-black text-lg hover:bg-teal-700 transition shadow-xl shadow-teal-500/30">获取快应用 <ChevronRight className="w-6 h-6" /></a>
+            <a href="https://www.bandbbs.cn/threads/13984/" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-100 transition">
+              <MessageCircle className="w-4 h-4" /> 常见问题与安装指南
+            </a>
           </div>
         </div>
       </div>

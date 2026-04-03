@@ -21,17 +21,19 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
   const [windowsInfo, setWindowsInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
   const [windowsProInfo, setWindowsProInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
   const [webInfo, setWebInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
+  const [bandInfo, setBandInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
   const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   useEffect(() => {
     const fetchManifests = async () => {
       try {
-        const [aRes, wRes, webRes] = await Promise.all([
+        const [aRes, wRes, webRes, bandRes] = await Promise.all([
           fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json'),
           fetch('https://raw.githubusercontent.com/Junpgle/CountDownTodoLite/refs/heads/master/update_manifest.json'),
-          fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/webpage/web/update_manifest.json')
+          fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/webpage/web/update_manifest.json'),
+          fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/CountDownTodo-band/update_manifest.json')
         ]);
-        const [aData, wData, webData] = await Promise.all([aRes.json(), wRes.json(), webRes.json()]);
+        const [aData, wData, webData, bandData] = await Promise.all([aRes.json(), wRes.json(), webRes.json(), bandRes.json()]);
 
         setAndroidInfo({
           version: aData.version_name,
@@ -55,6 +57,12 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           version: webData.version_name,
           url: '',
           desc: webData.update_info.description
+        });
+
+        setBandInfo({
+          version: bandData.version_name,
+          url: bandData.update_info.full_package_url,
+          desc: bandData.update_info.description
         });
 
       } catch (e) {
@@ -85,6 +93,7 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
             windowsInfo={windowsInfo}
             windowsProInfo={windowsProInfo}
             webInfo={webInfo}
+            bandInfo={bandInfo}
             onOpenWeb={onOpenWeb}
             onShowInstallGuide={() => setShowInstallGuide(true)}
           />

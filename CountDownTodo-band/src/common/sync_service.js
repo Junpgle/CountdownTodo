@@ -8,6 +8,20 @@ function padZero(num) {
   return num < 10 ? '0' + num : '' + num
 }
 
+function flattenArray(arr) {
+  var result = []
+  for (var i = 0; i < arr.length; i++) {
+    if (Array.isArray(arr[i])) {
+      for (var j = 0; j < arr[i].length; j++) {
+        result.push(arr[i][j])
+      }
+    } else {
+      result.push(arr[i])
+    }
+  }
+  return result
+}
+
 export class SyncService {
   static connect = null
   static isConnected = false
@@ -20,38 +34,38 @@ export class SyncService {
   static init() {
     this.connect = interconnect.instance()
 
-    this.connect.onopen = (data) => {
-      this.isConnected = true
+    this.connect.onopen = function(data) {
+      SyncService.isConnected = true
     }
 
-    this.connect.onclose = (data) => {
-      this.isConnected = false
+    this.connect.onclose = function(data) {
+      SyncService.isConnected = false
     }
 
-    this.connect.onerror = (data) => {
-      this.isConnected = false
+    this.connect.onerror = function(data) {
+      SyncService.isConnected = false
     }
 
-    this.connect.onmessage = (data) => {
-      this.handleReceivedData(data)
+    this.connect.onmessage = function(data) {
+      SyncService.handleReceivedData(data)
     }
   }
 
   static destroy() {
-    for (const type in this.batchBuffer) {
-      const buffer = this.batchBuffer[type]
+    for (var type in this.batchBuffer) {
+      var buffer = this.batchBuffer[type]
       if (buffer.timeout) {
         clearTimeout(buffer.timeout)
         buffer.timeout = null
       }
     }
     this.batchBuffer = {}
-    for (const type in this.pendingSyncRequests) {
-      if (this.pendingSyncRequests[type].timeout) {
-        clearTimeout(this.pendingSyncRequests[type].timeout)
+    for (var type2 in this.pendingSyncRequests) {
+      if (this.pendingSyncRequests[type2].timeout) {
+        clearTimeout(this.pendingSyncRequests[type2].timeout)
       }
-      if (this.pendingSyncRequests[type].reject) {
-        this.pendingSyncRequests[type].reject(new Error('destroyed'))
+      if (this.pendingSyncRequests[type2].reject) {
+        this.pendingSyncRequests[type2].reject(new Error('destroyed'))
       }
     }
     this.pendingSyncRequests = {}
@@ -62,7 +76,7 @@ export class SyncService {
 
   static handleReceivedData(data) {
     try {
-      let parsedData
+      var parsedData = null
 
       if (typeof data === 'object' && data !== null && data.type) {
         parsedData = data
@@ -87,35 +101,50 @@ export class SyncService {
         var batchData = parsedData.data
 
         if (totalBatches === 1) {
-          this.replacePhoneData(parsedData.type, batchData)
+          SyncService.replacePhoneData(parsedData.type, batchData)
           return
         }
 
-        if (!this.batchBuffer[parsedData.type]) {
-          this.batchBuffer[parsedData.type] = {
+        if (!SyncService.batchBuffer[parsedData.type]) {
+          SyncService.batchBuffer[parsedData.type] = {
             batches: [],
             totalBatches: totalBatches,
             timeout: null
           }
         }
 
-        var buffer = this.batchBuffer[parsedData.type]
+        var buffer = SyncService.batchBuffer[parsedData.type]
         buffer.batches[batchNum - 1] = batchData
 
-        var receivedCount = buffer.batches.filter(function(b) { return b !== undefined }).length
+        var receivedCount = 0
+        for (var i = 0; i < buffer.batches.length; i++) {
+          if (buffer.batches[i] !== undefined) {
+            receivedCount++
+          }
+        }
 
         if (receivedCount >= buffer.totalBatches) {
-          var allData = buffer.batches.flat()
-          this.replacePhoneData(parsedData.type, allData)
-          delete this.batchBuffer[parsedData.type]
+          var allData = flattenArray(buffer.batches)
+          SyncService.replacePhoneData(parsedData.type, allData)
+          delete SyncService.batchBuffer[parsedData.type]
         } else {
           if (buffer.timeout) clearTimeout(buffer.timeout)
           var type = parsedData.type
-          var self = this
           buffer.timeout = setTimeout(function() {
-            var collectedData = buffer.batches.filter(function(b) { return b !== undefined }).flat()
-            self.replacePhoneData(type, collectedData)
-            delete self.batchBuffer[type]
+            var collectedData = []
+            for (var k = 0; k < buffer.batches.length; k++) {
+              if (buffer.batches[k] !== undefined) {
+                if (Array.isArray(buffer.batches[k])) {
+                  for (var m = 0; m < buffer.batches[k].length; m++) {
+                    collectedData.push(buffer.batches[k][m])
+                  }
+                } else {
+                  collectedData.push(buffer.batches[k])
+                }
+              }
+            }
+            SyncService.replacePhoneData(type, collectedData)
+            delete SyncService.batchBuffer[type]
           }, 10000)
         }
       }
@@ -124,25 +153,30 @@ export class SyncService {
 
   static async replacePhoneData(type, phoneData) {
     if (!Array.isArray(phoneData)) {
-      await this.saveLocalData(type, phoneData)
+      await SyncService.saveLocalData(type, phoneData)
       return
     }
 
-    var validItems = phoneData.filter(function(item) {
-      return !(item.is_deleted === 1 || item.is_deleted === true)
-    })
+    var validItems = []
+    for (var i = 0; i < phoneData.length; i++) {
+      var item = phoneData[i]
+      if (!(item.is_deleted === 1 || item.is_deleted === true)) {
+        validItems.push(item)
+      }
+    }
 
-    var adaptedItems = validItems.map(function(item) {
-      return SyncService.adaptItem(type, item)
-    })
+    var adaptedItems = []
+    for (var j = 0; j < validItems.length; j++) {
+      adaptedItems.push(SyncService.adaptItem(type, validItems[j]))
+    }
 
-    await this.saveLocalData(type, adaptedItems)
+    await SyncService.saveLocalData(type, adaptedItems)
 
-    if (this.pendingSyncRequests[type]) {
-      var req = this.pendingSyncRequests[type]
+    if (SyncService.pendingSyncRequests[type]) {
+      var req = SyncService.pendingSyncRequests[type]
       if (req.timeout) clearTimeout(req.timeout)
       if (req.resolve) req.resolve({ success: true, message: '已同步手机数据' })
-      delete this.pendingSyncRequests[type]
+      delete SyncService.pendingSyncRequests[type]
     }
   }
 
@@ -181,26 +215,30 @@ export class SyncService {
 
   static async syncData(type, data) {
     try {
-      var connected = await this.checkConnection()
+      var connected = await SyncService.checkConnection()
       if (!connected) {
         return { success: false, message: '未连接到手机App' }
       }
 
-      var lastSyncTime = await this.getLastSyncTime(type)
-      var dataToSync = data.filter(function(item) {
-        return !lastSyncTime || (item.updatedAt && item.updatedAt > lastSyncTime)
-      })
+      var lastSyncTime = await SyncService.getLastSyncTime(type)
+      var dataToSync = []
+      for (var i = 0; i < data.length; i++) {
+        var item = data[i]
+        if (!lastSyncTime || (item.updatedAt && item.updatedAt > lastSyncTime)) {
+          dataToSync.push(item)
+        }
+      }
 
       if (dataToSync.length === 0) {
         return { success: true, message: '没有新数据需要同步' }
       }
 
-      var sendResult = await this.sendDataToPhone(type, dataToSync)
+      var sendResult = await SyncService.sendDataToPhone(type, dataToSync)
       if (!sendResult) {
         return { success: false, message: '发送数据到手机失败' }
       }
 
-      await this.setLastSyncTime(type, Date.now())
+      await SyncService.setLastSyncTime(type, Date.now())
       return { success: true, message: '同步了' + dataToSync.length + '条数据' }
     } catch (error) {
       return { success: false, message: '同步异常' }
@@ -226,7 +264,12 @@ export class SyncService {
   }
 
   static adaptItem(type, item) {
-    var adapted = { ...item }
+    var adapted = {}
+    for (var key in item) {
+      if (item.hasOwnProperty(key)) {
+        adapted[key] = item[key]
+      }
+    }
 
     if (type === 'countdown') {
       if (adapted.target_time && !adapted.targetDate) {
@@ -337,12 +380,12 @@ export class SyncService {
   }
 
   static async requestSyncFromPhone(type) {
-    var connected = await this.checkConnection()
+    var connected = await SyncService.checkConnection()
     if (!connected) {
       return { success: false, message: '未连接到手机App' }
     }
 
-    var self = this
+    var self = SyncService
     return new Promise(function(resolve, reject) {
       self.pendingSyncRequests[type] = {
         resolve: resolve,
@@ -379,10 +422,24 @@ export class SyncService {
 
   static async syncAll() {
     var results = {}
-    results.todo = await this.requestSyncFromPhone('todo')
-    results.course = await this.requestSyncFromPhone('course')
-    results.countdown = await this.requestSyncFromPhone('countdown')
+    results.todo = await SyncService.requestSyncFromPhone('todo')
+    results.course = await SyncService.requestSyncFromPhone('course')
+    results.countdown = await SyncService.requestSyncFromPhone('countdown')
     return results
+  }
+
+  static sendVersionInfo() {
+    if (!this.connect) return
+    this.connect.send({
+      data: {
+        type: 'band_info',
+        version: '1.0.0',
+        version_code: 1,
+        timestamp: Date.now()
+      },
+      success: function() {},
+      fail: function() {}
+    })
   }
 }
 

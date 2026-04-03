@@ -4,7 +4,7 @@ import SyncService from './common/sync_service.js'
 export default {
   onCreate() {
     SyncService.init()
-    SyncService.sendDebugLog('手环应用已启动')
+    SyncService.sendVersionInfo()
   },
   onDestroy() {
     SyncService.sendDebugLog('手环应用已退出')
