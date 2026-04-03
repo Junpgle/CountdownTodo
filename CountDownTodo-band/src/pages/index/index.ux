@@ -1,56 +1,80 @@
 <template>
   <div class="page">
-    <!-- 顶部状态栏 -->
-    <div class="status-bar">
-      <div class="status-indicator {{syncStatusClass}}"></div>
-      <text class="status-text">{{syncStatusText}}</text>
-    </div>
 
-    <!-- 标题区域 -->
-    <div class="header">
-      <text class="title">CDT</text>
-      <text class="date">{{currentDate}}</text>
-      <div class="sync-btn" onclick="syncAllData">
-        <text class="sync-icon {{isSyncing ? 'rotating' : ''}}">↻</text>
+    <!-- 顶部状态栏 (胶囊风格化) -->
+    <div class="status-bar-wrap">
+      <div class="status-bar">
+        <div class="status-indicator {{syncStatusClass}}"></div>
+        <text class="status-text">{{syncStatusText}}</text>
       </div>
     </div>
 
-    <!-- 功能模块 -->
-    <div class="modules">
-      <div class="module-card" onclick="routeToTodo">
+    <!-- 标题区域 (固定不动) -->
+    <div class="header">
+      <div class="title-group">
+        <text class="title" static>CDT</text>
+        <text class="date">{{currentDate}}</text>
+      </div>
+      <div class="sync-btn" onclick="syncAllData">
+        <div class="sync-icon-wrap {{isSyncing ? 'rotating' : ''}}">
+          <div class="sync-ring"></div>
+          <div class="sync-mask"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 功能模块区 (支持上下滑动) -->
+    <list class="content">
+
+      <!-- 待办事项 -->
+      <list-item type="module" class="module-card" onclick="routeToTodo">
         <div class="module-icon-wrap todo-bg">
-          <text class="module-icon">TODO</text>
+          <text class="module-icon" static>TODO</text>
         </div>
         <div class="module-info">
-          <text class="module-title">待办事项</text>
+          <text class="module-title" static>待办事项</text>
           <text class="module-desc">{{todoPendingCount}} 项未完成</text>
         </div>
-        <text class="arrow">›</text>
-      </div>
+        <text class="arrow" static>›</text>
+      </list-item>
 
-      <div class="module-card" onclick="routeToCountdown">
+      <!-- 倒数日 -->
+      <list-item type="module" class="module-card" onclick="routeToCountdown">
         <div class="module-icon-wrap countdown-bg">
-          <text class="module-icon">DAY</text>
+          <text class="module-icon" static>DAY</text>
         </div>
         <div class="module-info">
-          <text class="module-title">倒数日</text>
+          <text class="module-title" static>倒数日</text>
           <text class="module-desc">{{nearestCountdown}}</text>
         </div>
-        <text class="arrow">›</text>
-      </div>
+        <text class="arrow" static>›</text>
+      </list-item>
 
-      <div class="module-card" onclick="routeToCourse">
+      <!-- 课程 -->
+      <list-item type="module" class="module-card" onclick="routeToCourse">
         <div class="module-icon-wrap course-bg">
-          <text class="module-icon">CLS</text>
+          <text class="module-icon" static>CLS</text>
         </div>
         <div class="module-info">
-          <text class="module-title">今日课程</text>
+          <text class="module-title" static>课程</text>
           <text class="module-desc">{{todayCourseText}}</text>
         </div>
-        <text class="arrow">›</text>
-      </div>
-    </div>
+        <text class="arrow" static>›</text>
+      </list-item>
 
+      <!-- 设置 -->
+      <list-item type="module" class="module-card" onclick="routeToSettings">
+        <div class="module-icon-wrap settings-bg">
+          <text class="module-icon" static>SET</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title" static>设置</text>
+          <text class="module-desc" static>清理内存</text>
+        </div>
+        <text class="arrow" static>›</text>
+      </list-item>
+
+    </list>
   </div>
 </template>
 
@@ -60,10 +84,12 @@ import prompt from '@system.prompt'
 import storage from '@system.storage'
 import SyncService from '../../common/sync_service.js'
 
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
+
 export default {
   data: {
     currentDate: '',
-    syncStatus: 'idle', // idle, syncing, success, fail
+    syncStatus: 'idle',
     syncStatusText: '待同步',
     syncStatusClass: 'status-idle',
     isSyncing: false,
@@ -71,6 +97,8 @@ export default {
     nearestCountdown: '暂无',
     todayCourseText: '今日无课'
   },
+
+  statusTimer: null,
 
   onInit() {
     this.setCurrentDate()
@@ -81,12 +109,22 @@ export default {
     this.loadAllData()
   },
 
+  onDestroy() {
+    if (this.statusTimer) {
+      clearTimeout(this.statusTimer)
+      this.statusTimer = null
+    }
+  },
+
+  padZero(num) {
+    return num < 10 ? '0' + num : '' + num
+  },
+
   setCurrentDate() {
     const now = new Date()
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六']
     const month = now.getMonth() + 1
     const date = now.getDate()
-    const weekday = weekdays[now.getDay()]
+    const weekday = WEEKDAYS[now.getDay()]
     this.currentDate = `${month}月${date}日 周${weekday}`
   },
 
@@ -102,7 +140,10 @@ export default {
       success: (data) => {
         if (data) {
           const todos = JSON.parse(data)
-          this.todoPendingCount = todos.filter(t => t.status !== 'done').length
+          this.todoPendingCount = todos.filter(t => {
+            const isDone = t.status === 'done' || t.is_completed === 1 || t.is_completed === true
+            return !isDone
+          }).length
         }
       }
     })
@@ -115,23 +156,29 @@ export default {
         if (data) {
           const countdowns = JSON.parse(data)
           if (countdowns.length > 0) {
-            // 计算最近的倒数日
             const now = Date.now()
             let nearest = null
             let minDiff = Infinity
-            
+
             countdowns.forEach(cd => {
-              const target = new Date(cd.targetDate).getTime()
+              let target
+              if (typeof cd.targetDate === 'number') {
+                target = cd.targetDate
+              } else if (typeof cd.target_time === 'number') {
+                target = cd.target_time
+              } else {
+                target = new Date(cd.targetDate).getTime()
+              }
               const diff = target - now
               if (diff > 0 && diff < minDiff) {
                 minDiff = diff
                 nearest = cd
               }
             })
-            
+
             if (nearest) {
               const days = Math.ceil(minDiff / (1000 * 60 * 60 * 24))
-              this.nearestCountdown = `${nearest.title} 还有${days}天`
+              this.nearestCountdown = `${nearest.title} ${days}天`
             } else {
               this.nearestCountdown = '暂无倒数日'
             }
@@ -150,13 +197,15 @@ export default {
         if (data) {
           const courses = JSON.parse(data)
           const now = new Date()
-          const today = now.getDay() // 0=周日, 1=周一...
-          
-          // 筛选今天的课程
+          const todayStr = `${now.getFullYear()}-${this.padZero(now.getMonth() + 1)}-${this.padZero(now.getDate())}`
+
           const todayCourses = courses.filter(c => {
-            return c.weekday === today || c.weekday === (today === 0 ? 7 : today)
+            if (c.date) {
+              return c.date === todayStr
+            }
+            return c.weekday === (now.getDay() === 0 ? 7 : now.getDay())
           })
-          
+
           if (todayCourses.length > 0) {
             this.todayCourseText = `${todayCourses.length}节课`
           } else {
@@ -169,31 +218,33 @@ export default {
 
   async syncAllData() {
     if (this.isSyncing) return
-    
+
     this.isSyncing = true
     this.syncStatus = 'syncing'
     this.syncStatusText = '同步中...'
     this.syncStatusClass = 'status-syncing'
-    
+
     prompt.showToast({
       message: '开始同步...',
       duration: 300
     })
-    
+
     try {
       const results = await SyncService.syncAll()
-      
+
       let successCount = 0
       let failCount = 0
-      
+      let failMessages = []
+
       for (const type in results) {
         if (results[type].success) {
           successCount++
         } else {
           failCount++
+          failMessages.push(type + ':' + (results[type].message || '未知'))
         }
       }
-      
+
       if (failCount === 0) {
         this.syncStatus = 'success'
         this.syncStatusText = '同步成功'
@@ -202,36 +253,46 @@ export default {
           message: '同步成功',
           duration: 300
         })
-      } else {
+      } else if (successCount > 0) {
         this.syncStatus = 'fail'
         this.syncStatusText = '部分失败'
         this.syncStatusClass = 'status-fail'
         prompt.showToast({
-          message: `${successCount}成功 ${failCount}失败`,
+          message: successCount + '成功 ' + failCount + '失败',
           duration: 500
         })
+      } else {
+        this.syncStatus = 'fail'
+        this.syncStatusText = '同步失败'
+        this.syncStatusClass = 'status-fail'
+        prompt.showToast({
+          message: failMessages.join('; '),
+          duration: 1500
+        })
       }
-      
-      // 刷新数据统计
+
       this.loadAllData()
-      
+
     } catch (error) {
       this.syncStatus = 'fail'
       this.syncStatusText = '同步失败'
       this.syncStatusClass = 'status-fail'
       prompt.showToast({
-        message: '同步失败',
-        duration: 500
+        message: '错误: ' + (error.message || '未知'),
+        duration: 1500
       })
     }
-    
+
     this.isSyncing = false
-    
-    // 3秒后恢复状态
-    setTimeout(() => {
+
+    if (this.statusTimer) {
+      clearTimeout(this.statusTimer)
+    }
+    this.statusTimer = setTimeout(() => {
       this.syncStatus = 'idle'
       this.syncStatusText = '待同步'
       this.syncStatusClass = 'status-idle'
+      this.statusTimer = null
     }, 3000)
   },
 
@@ -245,6 +306,10 @@ export default {
 
   routeToCourse() {
     router.push({ uri: '/pages/course' })
+  },
+
+  routeToSettings() {
+    router.push({ uri: '/pages/settings' })
   }
 }
 </script>
@@ -254,140 +319,178 @@ export default {
   width: 100%;
   height: 100%;
   flex-direction: column;
-  padding: 32px;
   background-color: #000000;
 }
 
-/* 状态栏 */
+.status-bar-wrap {
+  padding: 16px 24px;
+}
+
 .status-bar {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
+  background-color: #1a1a1a;
+  border-radius: 999px;
+  padding: 8px 20px;
 }
 
 .status-indicator {
-  width: 16px;
-  height: 16px;
-  border-radius: 8px;
-  margin-right: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  margin-right: 10px;
+  background-color: #666666;
 }
 
-.status-idle {
-  background-color: #ffffff80;
+.status-indicator.status-idle {
+  background-color: #666666;
 }
 
-.status-syncing {
+.status-indicator.status-syncing {
   background-color: #ffd700;
 }
 
-.status-success {
-  background-color: #00ff88;
+.status-indicator.status-success {
+  background-color: #4caf50;
 }
 
-.status-fail {
-  background-color: #ff6b6b;
+.status-indicator.status-fail {
+  background-color: #ff4d4f;
 }
 
 .status-text {
-  font-size: 20px;
-  color: #ffffffcc;
+  font-size: 22px;
+  color: #ffffff;
 }
 
-/* 标题 */
 .header {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
+  padding: 0 24px;
+  margin-top: 20px;
   margin-bottom: 32px;
 }
 
+.title-group {
+  flex-direction: column;
+}
+
 .title {
-  font-size: 44px;
+  font-size: 40px;
   font-weight: bold;
   color: #ffffff;
+  letter-spacing: 2px;
 }
 
 .date {
-  font-size: 26px;
+  font-size: 22px;
   color: #ffffffaa;
+  margin-top: 8px;
 }
 
 .sync-btn {
-  width: 64px;
-  height: 64px;
-  border-radius: 32px;
-  background-color: #ffffff30;
+  width: 72px;
+  height: 72px;
   justify-content: center;
   align-items: center;
 }
 
-.sync-icon {
-  font-size: 34px;
-  color: #ffffff;
+.sync-icon-wrap {
+  width: 56px;
+  height: 56px;
+  justify-content: center;
+  align-items: center;
 }
 
-/* 功能模块 */
-.modules {
-  flex-direction: column;
-  margin-bottom: 40px;
+.sync-icon-wrap.rotating {
+  animation: rotate 1s linear infinite;
+}
+
+.sync-ring {
+  width: 52px;
+  height: 52px;
+  border-width: 4px;
+  border-color: #ffffff;
+  border-style: solid;
+  border-top-color: transparent;
+  border-radius: 26px;
+}
+
+.sync-mask {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background-color: #000000;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.content {
+  flex: 1;
+  padding: 0 24px;
 }
 
 .module-card {
   flex-direction: row;
   align-items: center;
-  background-color: #333333;
-  border-radius: 34px;
-  padding: 34px 36px;
-  margin-bottom: 24px;
+  background-color: #262626;
+  border-radius: 999px;
+  height: 120px;
+  flex-shrink: 0;
+  margin-bottom: 28px;
 }
 
 .module-icon-wrap {
-  width: 84px;
-  height: 84px;
-  border-radius: 28px;
+  width: 130px;
+  height: 100%;
+  border-radius: 999px;
   justify-content: center;
   align-items: center;
-  margin-right: 28px;
-  background-color: #555555;
 }
 
 .module-icon {
-  font-size: 24px;
+  font-size: 35px;
   font-weight: bold;
   color: #ffffff;
-  letter-spacing: 1px;
 }
+
+.todo-bg { background-color: #4a90d9; }
+.countdown-bg { background-color: #e67e22; }
+.course-bg { background-color: #27ae60; }
+.settings-bg { background-color: #555555; }
 
 .module-info {
   flex: 1;
   flex-direction: column;
+  justify-content: center;
+  margin-left: 24px;
 }
 
 .module-title {
-  font-size: 30px;
+  font-size: 35px;
   font-weight: bold;
   color: #ffffff;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .module-desc {
-  font-size: 22px;
-  color: #aaaaaa;
-}
-
-.arrow {
-  font-size: 36px;
+  font-size: 30px;
   color: #888888;
 }
 
-/* 旋转动画 */
-.rotating {
-  animation: rotate 1s linear infinite;
-}
-
-@keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.arrow {
+  font-size: 40px;
+  color: #888888;
+  margin-right: 36px;
 }
 </style>

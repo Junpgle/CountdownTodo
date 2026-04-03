@@ -1,10 +1,15 @@
 <script>
+import SyncService from './common/sync_service.js'
+
 export default {
   onCreate() {
-    console.log('app created')
+    SyncService.init()
+    SyncService.sendDebugLog('手环应用已启动')
   },
   onDestroy() {
-    console.log('app destroyed')
+    SyncService.sendDebugLog('手环应用已退出')
+    SyncService.destroy()
+    global.runGC()
   }
 }
 </script>

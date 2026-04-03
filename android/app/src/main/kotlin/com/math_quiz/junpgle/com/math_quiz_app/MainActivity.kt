@@ -37,6 +37,7 @@ import rikka.shizuku.Shizuku
 class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener, Shizuku.OnBinderReceivedListener, Shizuku.OnBinderDeadListener {
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
+    private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
     private val NOTIFICATION_CHANNEL_ID = "live_updates_official_v2"
     // 🍅 番茄钟专属低功耗频道：IMPORTANCE_LOW 不唤醒屏幕、不振动
     private val POMODORO_CHANNEL_ID = "pomodoro_timer_low"
@@ -522,6 +523,55 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 else -> result.notImplemented()
             }
         }
+
+        // 手环通信 Channel
+        val bandChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BAND_CHANNEL)
+        val bandPlugin = BandCommunicationPlugin(this, bandChannel)
+        bandChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "init" -> {
+                    bandPlugin.init()
+                    result.success(true)
+                }
+                "getConnectedDevice" -> {
+                    bandPlugin.getConnectedDevice()
+                    result.success(true)
+                }
+                "sendMessage" -> {
+                    val data = call.argument<String>("data")
+                    if (data != null) {
+                        bandPlugin.sendMessage(data)
+                        result.success(true)
+                    } else {
+                        result.error("INVALID_ARGS", "data is required", null)
+                    }
+                }
+                "registerListener" -> {
+                    bandPlugin.registerMessageListener()
+                    result.success(true)
+                }
+                "unregisterListener" -> {
+                    bandPlugin.unregisterMessageListener()
+                    result.success(true)
+                }
+                "isAppInstalled" -> {
+                    bandPlugin.isAppInstalled()
+                    result.success(true)
+                }
+                "launchApp" -> {
+                    bandPlugin.launchApp()
+                    result.success(true)
+                }
+                "getConnectionStatus" -> {
+                    result.success(bandPlugin.getConnectionStatus())
+                }
+                "requestPermission" -> {
+                    bandPlugin.requestPermission()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun hasUsageStatsPermission(): Boolean {
@@ -982,13 +1032,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 使用 buildAndNotify 创建实时通知，但设置自定义的 pendingIntent
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
+        val extras = Bundle()
+        extras.putBoolean("android.extra.requestPromotedOngoing", true)
+
         val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_done)
             .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)
-            .setOngoing(false)
+            .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
@@ -999,6 +1052,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setRequestPromotedOngoing(true)
+            .addExtras(extras)
             .build()
 
         try {
@@ -1031,13 +1085,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 使用 NotificationCompat.Builder 创建实时通知
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
+        val extras = Bundle()
+        extras.putBoolean("android.extra.requestPromotedOngoing", true)
+
         val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_cancel)
             .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)
-            .setOngoing(false)
+            .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
@@ -1048,6 +1105,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setRequestPromotedOngoing(true)
+            .addExtras(extras)
             .build()
 
         try {

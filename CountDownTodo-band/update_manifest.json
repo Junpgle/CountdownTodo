@@ -1,0 +1,38 @@
+{
+  "version_code": 1,
+  "version_name": "1.0.1",
+  "force_update": false,
+  "update_info": {
+    "title": "版本更新 1.0.1",
+    "description":"【新增】vela快应用全新上线\n【新增】待办界面\n【新增】倒数日界面\n【新增】课程界面\n【新增】设置界面",
+    "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-release.apk"
+  },
+  "announcement": {
+    "show": false,
+    "title": "系统公告",
+    "content": "当出现同步异常:无效的token的时候,请重新登录账号"
+  },
+  "wallpaper": {
+    "show": true,
+    "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
+  },
+  "changelog_history": [
+    {
+      "version_name": "1.0.1",
+      "date": "2026-04-03",
+      "items": [
+        "【新增】vela快应用全新上线",
+        "【新增】待办界面",
+        "【新增】倒数日界面",
+        "【新增】课程界面",
+        "【新增】设置界面"
+      ]
+    },{
+      "version_name": "1.0.0",
+      "date": "2026-04-02",
+      "items": [
+        "【新增】一个跨端想法"
+      ]
+    }
+  ]
+}

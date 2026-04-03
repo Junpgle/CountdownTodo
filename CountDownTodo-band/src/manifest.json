@@ -31,12 +31,6 @@
       "pages/index": {
         "component": "index"
       },
-      "pages/list": {
-        "component": "list"
-      },
-      "pages/add": {
-        "component": "add"
-      },
       "pages/countdown": {
         "component": "countdown"
       },
@@ -45,6 +39,9 @@
       },
       "pages/course": {
         "component": "course"
+      },
+      "pages/settings": {
+        "component": "settings"
       }
     }
   }

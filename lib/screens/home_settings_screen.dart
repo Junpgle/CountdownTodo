@@ -34,6 +34,7 @@ import 'settings/widgets/permission_section.dart';
 import 'settings/widgets/advanced_section.dart';
 import 'settings/widgets/system_section.dart';
 import 'about_screen.dart';
+import 'band_sync_screen.dart';
 
 // 引入拆分的弹窗组件
 import 'settings/dialogs/change_password_dialog.dart';
@@ -1002,6 +1003,16 @@ class _SettingsPageState extends State<SettingsPage> {
           onCheckAndOpenLiveUpdates: _checkAndOpenLiveUpdates,
           islandStatus: _islandStatus,
           onCheckIslandSupport: _checkIslandSupport,
+          onOpenBandSync: Platform.isAndroid
+              ? () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BandSyncScreen(),
+                    ),
+                  );
+                }
+              : null,
         ),
         SystemSection(
           onOpenFeatureGuide: () {

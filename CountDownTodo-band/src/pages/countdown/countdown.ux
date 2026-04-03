@@ -3,30 +3,30 @@
     <!-- 顶部导航 -->
     <div class="header">
       <text class="back-btn" onclick="goBack">‹</text>
-      <text class="title">倒数日</text>
+      <text class="title" static>倒数日</text>
       <div class="placeholder"></div>
     </div>
 
     <!-- 列表区域 -->
-    <list class="list" if="{{countdownList.length > 0}}">
-      <list-item for="{{countdownList}}" class="item" type="item">
+    <block if="{{countdownList.length > 0}}">
+      <div for="{{countdownList}}" class="item">
         <div class="item-left">
           <div class="days-badge {{getDaysClass($item.remainingDays)}}">
             <text class="days-num">{{$item.remainingDays}}</text>
-            <text class="days-unit">天</text>
+            <text class="days-unit" static>天</text>
           </div>
         </div>
         <div class="item-center">
           <text class="item-title">{{$item.title}}</text>
-          <text class="item-date">{{$item.targetDate}}</text>
+          <text class="item-date">{{$item.formattedDate}}</text>
         </div>
         <text class="delete-btn" onclick="deleteCountdown($item)">×</text>
-      </list-item>
-    </list>
+      </div>
+    </block>
 
     <!-- 空状态 -->
     <div class="empty" if="{{countdownList.length === 0}}">
-      <text class="empty-title">暂无倒数日</text>
+      <text class="empty-title" static>暂无倒数日</text>
     </div>
   </div>
 </template>
@@ -49,6 +49,14 @@ export default {
     this.loadCountdownData()
   },
 
+  onDestroy() {
+    this.countdownList = null
+  },
+
+  padZero(num) {
+    return num < 10 ? '0' + num : '' + num
+  },
+
   loadCountdownData() {
     storage.get({
       key: 'sync_countdown',
@@ -56,26 +64,51 @@ export default {
         if (data) {
           this.countdownList = JSON.parse(data)
           this.calculateRemainingDays()
-          // 按剩余天数排序
+          this.formatTargetDates()
           this.countdownList.sort((a, b) => a.remainingDays - b.remainingDays)
         }
       },
-      fail: (error) => {
-        console.error('加载倒数日数据失败:', error)
-      }
+      fail: () => {}
     })
+  },
+
+  formatTargetDates() {
+    for (let i = 0; i < this.countdownList.length; i++) {
+      const item = this.countdownList[i]
+      if (!item.formattedDate) {
+        let date
+        if (typeof item.targetDate === 'number') {
+          date = new Date(item.targetDate)
+        } else if (typeof item.target_time === 'number') {
+          date = new Date(item.target_time)
+        } else if (item.targetDate) {
+          date = new Date(item.targetDate)
+        } else {
+          date = new Date()
+        }
+        item.formattedDate = `${date.getFullYear()}-${this.padZero(date.getMonth() + 1)}-${this.padZero(date.getDate())}`
+      }
+    }
   },
 
   calculateRemainingDays() {
     const now = new Date()
     now.setHours(0, 0, 0, 0)
-    
-    this.countdownList.forEach(item => {
-      const target = new Date(item.targetDate)
+
+    for (let i = 0; i < this.countdownList.length; i++) {
+      const item = this.countdownList[i]
+      let target
+      if (typeof item.targetDate === 'number') {
+        target = new Date(item.targetDate)
+      } else if (typeof item.target_time === 'number') {
+        target = new Date(item.target_time)
+      } else {
+        target = new Date(item.targetDate)
+      }
       target.setHours(0, 0, 0, 0)
       const diff = target - now
       item.remainingDays = Math.ceil(diff / (1000 * 60 * 60 * 24))
-    })
+    }
   },
 
   getDaysClass(days) {
@@ -90,18 +123,17 @@ export default {
     storage.set({
       key: 'sync_countdown',
       value: JSON.stringify(this.countdownList),
-      success: () => {
-        console.log('保存倒数日数据成功')
-      },
-      fail: (error) => {
-        console.error('保存倒数日数据失败:', error)
-      }
+      success: () => {},
+      fail: () => {}
     })
   },
 
   deleteCountdown(item) {
-    this.countdownList = this.countdownList.filter(i => i.id !== item.id)
-    this.saveCountdownData()
+    const index = this.countdownList.findIndex(i => i.id === item.id)
+    if (index !== -1) {
+      this.countdownList.splice(index, 1)
+      this.saveCountdownData()
+    }
     prompt.showToast({
       message: '已删除',
       duration: 300
@@ -123,7 +155,6 @@ export default {
   background-color: #000000;
 }
 
-/* 顶部导航 */
 .header {
   flex-direction: row;
   justify-content: space-between;
@@ -143,7 +174,7 @@ export default {
 }
 
 .title {
-  font-size: 32px;
+  font-size: 40px;
   font-weight: bold;
   color: #ffffff;
 }
@@ -152,7 +183,6 @@ export default {
   width: 56px;
 }
 
-/* 列表 */
 .list {
   flex: 1;
 }
@@ -186,7 +216,7 @@ export default {
 }
 
 .days-unit {
-  font-size: 17px;
+  font-size:20px;
   color: #ffffff;
 }
 
@@ -196,14 +226,14 @@ export default {
 }
 
 .item-title {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: bold;
   color: #ffffff;
   margin-bottom: 8px;
 }
 
 .item-date {
-  font-size: 18px;
+  font-size: 30px;
   color: #aaaaaa;
 }
 
@@ -218,7 +248,6 @@ export default {
   line-height: 48px;
 }
 
-/* 空状态 */
 .empty {
   flex: 1;
   justify-content: center;
@@ -244,7 +273,7 @@ export default {
 }
 
 .empty-title {
-  font-size: 30px;
+  font-size: 40px;
   font-weight: bold;
   color: #ffffff;
   margin-bottom: 10px;

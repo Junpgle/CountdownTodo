@@ -1,57 +1,42 @@
 <template>
   <div class="page">
-    <!-- 顶部导航 -->
     <div class="header">
       <text class="back-btn" onclick="goBack">‹</text>
-      <text class="title">今日课程</text>
+      <text class="title" static>课程</text>
       <div class="placeholder"></div>
     </div>
 
-    <!-- 日期显示 -->
-    <div class="date-display">
-      <text class="date-text">{{currentDate}}</text>
-      <text class="weekday-text">{{currentWeekday}}</text>
-    </div>
-
-    <!-- 课程列表 -->
-    <list class="list" if="{{todayCourses.length > 0}}">
-      <list-item for="{{todayCourses}}" class="item" type="item">
-        <div class="time-column">
-          <text class="start-time">{{$item.startTime}}</text>
-          <div class="time-line"></div>
-          <text class="end-time">{{$item.endTime}}</text>
+    <block if="{{displayItems.length > 0}}">
+      <div for="{{displayItems}}" class="item">
+        <div class="day-header" if="{{$item.isDayHeader}}">
+          <text class="day-label">{{$item.label}}</text>
+          <text class="day-date">{{$item.dateStr}}</text>
         </div>
-        <div class="course-card {{$item.status || 'upcoming'}}">
-          <div class="course-header">
-            <text class="course-name">{{$item.name}}</text>
-            <text class="course-status">{{getCourseStatus($item)}}</text>
+        <div class="course-card" if="{{$item.isCourse}}">
+          <div class="status-bar {{$item.barClass}}"></div>
+          <div class="time-col">
+            <text class="start-time">{{$item.startTime}}</text>
+            <text class="end-time">{{$item.endTime}}</text>
           </div>
-          <div class="course-details">
+          <div class="info-col">
+            <text class="course-name">{{$item.name}}</text>
             <div class="detail-item" if="{{$item.location}}">
-              <text class="detail-icon">📍</text>
               <text class="detail-text">{{$item.location}}</text>
             </div>
             <div class="detail-item" if="{{$item.teacher}}">
-              <text class="detail-icon">👤</text>
               <text class="detail-text">{{$item.teacher}}</text>
             </div>
           </div>
-          <div class="course-duration">
-            <text class="duration-text">{{getDuration($item)}}分钟</text>
-          </div>
+          <text class="status-badge {{$item.statusClass}}">{{$item.statusText}}</text>
         </div>
-      </list-item>
-    </list>
+        <div class="empty-day" if="{{$item.isEmptyDay}}">
+          <text class="empty-day-text">暂无课程</text>
+        </div>
+      </div>
+    </block>
 
-    <!-- 全部课程 -->
-    <div class="all-courses" if="{{allCourses.length > 0 && todayCourses.length === 0}}">
-      <text class="section-title">今日无课程</text>
-      <text class="section-desc">本学期共 {{allCourses.length}} 门课程</text>
-    </div>
-
-    <!-- 空状态 -->
     <div class="empty" if="{{allCourses.length === 0}}">
-      <text class="empty-title">暂无课程</text>
+      <text class="empty-title" static>暂无课程</text>
     </div>
   </div>
 </template>
@@ -59,19 +44,16 @@
 <script>
 import router from '@system.router'
 import storage from '@system.storage'
-import prompt from '@system.prompt'
+
+const SHORT_WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
 export default {
   data: {
-    currentDate: '',
-    currentWeekday: '',
-    currentWeekdayNum: 0,
     allCourses: [],
-    todayCourses: []
+    displayItems: []
   },
 
   onInit() {
-    this.setCurrentDate()
     this.loadCourseData()
   },
 
@@ -79,14 +61,13 @@ export default {
     this.loadCourseData()
   },
 
-  setCurrentDate() {
-    const now = new Date()
-    const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
-    const month = now.getMonth() + 1
-    const date = now.getDate()
-    this.currentDate = `${month}月${date}日`
-    this.currentWeekday = weekdays[now.getDay()]
-    this.currentWeekdayNum = now.getDay() === 0 ? 7 : now.getDay() // 1=周一, 7=周日
+  onDestroy() {
+    this.allCourses = null
+    this.displayItems = null
+  },
+
+  padZero(num) {
+    return num < 10 ? '0' + num : '' + num
   },
 
   loadCourseData() {
@@ -95,73 +76,95 @@ export default {
       success: (data) => {
         if (data) {
           this.allCourses = JSON.parse(data)
-          this.filterTodayCourses()
+          this.buildDisplayItems()
         }
       },
-      fail: (error) => {
-        console.error('加载课程数据失败:', error)
-      }
+      fail: () => {}
     })
   },
 
-  filterTodayCourses() {
-    // 筛选今天的课程
-    this.todayCourses = this.allCourses.filter(c => {
-      return c.weekday === this.currentWeekdayNum
-    })
-    
-    // 按开始时间排序
-    this.todayCourses.sort((a, b) => {
-      return a.startTime.localeCompare(b.startTime)
-    })
-    
-    // 计算课程状态
+  buildDisplayItems() {
     const now = new Date()
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    
-    this.todayCourses.forEach(course => {
-      if (currentTime < course.startTime) {
-        course.status = 'upcoming'
-      } else if (currentTime >= course.startTime && currentTime <= course.endTime) {
-        course.status = 'ongoing'
+    const currentTime = this.padZero(now.getHours()) + ':' + this.padZero(now.getMinutes())
+    const items = []
+
+    for (let d = 0; d < 3; d++) {
+      const targetDate = new Date(now.getTime() + d * 24 * 60 * 60 * 1000)
+      const weekdayNum = targetDate.getDay() === 0 ? 7 : targetDate.getDay()
+      const month = targetDate.getMonth() + 1
+      const date = targetDate.getDate()
+
+      let label
+      if (d === 0) label = '今天'
+      else if (d === 1) label = '明天'
+      else label = '后天'
+
+      const dateStr = month + '月' + date + '日 ' + SHORT_WEEKDAYS[targetDate.getDay()]
+
+      items.push({
+        isDayHeader: true,
+        label: label,
+        dateStr: dateStr
+      })
+
+      const dayCourses = this.allCourses.filter(c => {
+        if (c.date) {
+          const dateStr2 = targetDate.getFullYear() + '-' + this.padZero(month) + '-' + this.padZero(date)
+          return c.date === dateStr2
+        }
+        return c.weekday === weekdayNum
+      })
+
+      dayCourses.sort((a, b) => {
+        return a.startTime.localeCompare(b.startTime)
+      })
+
+      if (dayCourses.length > 0) {
+        for (let i = 0; i < dayCourses.length; i++) {
+          const course = dayCourses[i]
+          let statusText = ''
+          let statusClass = ''
+          let barClass = ''
+          if (d === 0) {
+            if (currentTime >= course.startTime && currentTime <= course.endTime) {
+              statusText = '进行中'
+              statusClass = 'badge-ongoing'
+              barClass = 'bar-ongoing'
+            } else if (currentTime > course.endTime) {
+              statusText = '已结束'
+              statusClass = 'badge-ended'
+              barClass = 'bar-ended'
+            } else {
+              statusText = '未开始'
+              statusClass = 'badge-upcoming'
+              barClass = 'bar-upcoming'
+            }
+          } else {
+            statusText = '未开始'
+            statusClass = 'badge-upcoming'
+            barClass = 'bar-upcoming'
+          }
+
+          items.push({
+            isCourse: true,
+            name: course.name || '未知课程',
+            startTime: course.startTime || '--:--',
+            endTime: course.endTime || '--:--',
+            location: course.location || '',
+            teacher: course.teacher || '',
+            statusText: statusText,
+            statusClass: statusClass,
+            barClass: barClass
+          })
+        }
       } else {
-        course.status = 'ended'
+        items.push({
+          isEmptyDay: true
+        })
       }
-    })
-  },
-
-  getCourseStatus(course) {
-    const statusMap = {
-      'upcoming': '未开始',
-      'ongoing': '进行中',
-      'ended': '已结束'
     }
-    return statusMap[course.status] || ''
-  },
 
-  getDuration(course) {
-    if (!course.startTime || !course.endTime) return 0
-    
-    const [startH, startM] = course.startTime.split(':').map(Number)
-    const [endH, endM] = course.endTime.split(':').map(Number)
-    
-    const startMinutes = startH * 60 + startM
-    const endMinutes = endH * 60 + endM
-    
-    return endMinutes - startMinutes
-  },
-
-  saveCourseData() {
-    storage.set({
-      key: 'sync_course',
-      value: JSON.stringify(this.allCourses),
-      success: () => {
-        console.log('保存课程数据成功')
-      },
-      fail: (error) => {
-        console.error('保存课程数据失败:', error)
-      }
-    })
+    this.displayItems = items
   },
 
   goBack() {
@@ -179,12 +182,11 @@ export default {
   background-color: #000000;
 }
 
-/* 顶部导航 */
 .header {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .back-btn {
@@ -199,7 +201,7 @@ export default {
 }
 
 .title {
-  font-size: 32px;
+  font-size: 40px;
   font-weight: bold;
   color: #ffffff;
 }
@@ -208,150 +210,133 @@ export default {
   width: 56px;
 }
 
-/* 日期显示 */
-.date-display {
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.date-text {
-  font-size: 34px;
-  font-weight: bold;
-  color: #ffffff;
-}
-
-.weekday-text {
-  font-size: 20px;
-  color: #ffffffaa;
-  margin-top: 8px;
-}
-
-/* 课程列表 */
-.list {
-  flex: 1;
-}
-
 .item {
+  margin-bottom: 10px;
+}
+
+.day-header {
   flex-direction: row;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 8px 0;
+  margin-bottom: 4px;
 }
 
-/* 时间列 */
-.time-column {
-  width: 80px;
-  align-items: center;
-  margin-right: 24px;
-}
-
-.start-time {
-  font-size: 24px;
+.day-label {
+  font-size: 35px;
   font-weight: bold;
   color: #ffffff;
 }
 
-.time-line {
-  width: 5px;
-  flex: 1;
-  background-color: #ffffff40;
-  margin: 10px 0;
-  min-height: 32px;
+.day-date {
+  font-size: 25px;
+  color: #aaaaaa;
 }
 
-.end-time {
-  font-size: 17px;
-  color: #ffffffaa;
-}
-
-/* 课程卡片 */
 .course-card {
-  flex: 1;
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
   background-color: #333333;
   border-radius: 26px;
   padding: 26px;
 }
 
-.course-card.ongoing {
-  border-left-width: 4px;
-  border-left-color: #4caf50;
+.status-bar {
+  width: 6px;
+  border-radius: 3px;
+  margin-right: 16px;
+  flex-shrink: 0;
 }
 
-.course-card.ended {
-  opacity: 0.6;
+.bar-upcoming {
+  background-color: #4a90d9;
 }
 
-.course-header {
-  flex-direction: row;
-  justify-content: space-between;
+.bar-ongoing {
+  background-color: #4caf50;
+}
+
+.bar-ended {
+  background-color: #666666;
+}
+
+.time-col {
+  width: 90px;
+  flex-direction: column;
   align-items: center;
-  margin-bottom: 12px;
+  justify-content: center;
+  margin-right: 20px;
+  flex-shrink: 0;
 }
 
-.course-name {
-  font-size: 26px;
+.start-time {
+  font-size: 25px;
   font-weight: bold;
   color: #ffffff;
-  flex: 1;
-}
-
-.course-status {
-  font-size: 17px;
-  color: #ffffff;
-  background-color: #555555;
-  padding: 8px 16px;
-  border-radius: 14px;
-}
-
-/* 课程详情 */
-.course-details {
   margin-bottom: 8px;
 }
 
-.detail-item {
-  flex-direction: row;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.detail-icon {
-  font-size: 18px;
-  margin-right: 12px;
-}
-
-.detail-text {
-  font-size: 18px;
+.end-time {
+  font-size: 25px;
   color: #aaaaaa;
 }
 
-/* 课程时长 */
-.course-duration {
-  align-items: flex-end;
-}
-
-.duration-text {
-  font-size: 17px;
-  color: #888888;
-}
-
-/* 全部课程 */
-.all-courses {
+.info-col {
   flex: 1;
+  flex-direction: column;
   justify-content: center;
-  align-items: center;
 }
 
-.section-title {
+.course-name {
   font-size: 30px;
   font-weight: bold;
   color: #ffffff;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
-.section-desc {
-  font-size: 20px;
-  color: #ffffffaa;
+.detail-item {
+  margin-bottom: 6px;
 }
 
-/* 空状态 */
+.detail-text {
+  font-size: 25px;
+  color: #aaaaaa;
+}
+
+.status-badge {
+  font-size: 22px;
+  padding: 6px 14px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.badge-upcoming {
+  background-color: #1a2a3a;
+  color: #4a90d9;
+}
+
+.badge-ongoing {
+  background-color: #162e20;
+  color: #4caf50;
+}
+
+.badge-ended {
+  background-color: #333333;
+  color: #888888;
+}
+
+.empty-day {
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.empty-day-text {
+  font-size: 30px;
+  color: #555555;
+}
+
 .empty {
   flex: 1;
   justify-content: center;
@@ -359,32 +344,10 @@ export default {
   flex-direction: column;
 }
 
-.empty-icon-wrap {
-  width: 100px;
-  height: 100px;
-  border-radius: 50px;
-  background-color: #ffffff20;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.empty-icon {
-  font-size: 28px;
-  font-weight: bold;
-  color: #ffffff;
-  letter-spacing: 2px;
-}
-
 .empty-title {
-  font-size: 30px;
+  font-size: 40px;
   font-weight: bold;
   color: #ffffff;
   margin-bottom: 10px;
-}
-
-.empty-desc {
-  font-size: 20px;
-  color: #ffffffaa;
 }
 </style>

@@ -1,63 +1,32 @@
 <template>
   <div class="page">
-    <!-- 顶部导航 -->
     <div class="header">
       <text class="back-btn" onclick="goBack">‹</text>
-      <text class="title">待办事项</text>
+      <text class="title" static>待办事项</text>
       <div class="placeholder"></div>
     </div>
 
-    <!-- 统计信息 -->
-    <div class="stats" if="{{todoList.length > 0}}">
-      <div class="stat-item">
-        <text class="stat-num">{{pendingCount}}</text>
-        <text class="stat-label">待完成</text>
+    <block if="{{todoList.length > 0}}">
+      <div for="{{todoList}}" class="item">
+        <div class="checkbox" onclick="toggleTodo($item)">
+          <div class="checkbox-inner"></div>
+        </div>
+        <div class="item-content">
+          <text class="item-title">{{$item.title}}</text>
+          <text class="item-remark" if="{{$item.description}}">{{$item.description}}</text>
+          <div class="item-times" if="{{$item.startDate || $item.endDate}}">
+            <text class="item-time" if="{{$item.startDate}}">开始: {{formatTimestamp($item.startDate)}}</text>
+            <text class="item-time" if="{{$item.endDate}}">截止: {{formatTimestamp($item.endDate)}}</text>
+          </div>
+          <div class="progress-bar-bg" if="{{$item.progress !== undefined && !$item.isDone}}">
+            <div class="progress-bar-fill {{$item.progressClass}}" style="width: {{$item.progressWidth}}"></div>
+          </div>
+        </div>
       </div>
-      <div class="stat-divider"></div>
-      <div class="stat-item">
-        <text class="stat-num">{{doneCount}}</text>
-        <text class="stat-label">已完成</text>
-      </div>
-    </div>
+    </block>
 
-    <!-- 待完成列表 -->
-    <div class="section" if="{{pendingList.length > 0}}">
-      <text class="section-title">待完成</text>
-      <list class="list">
-        <list-item for="{{pendingList}}" class="item" type="pending">
-          <div class="checkbox" onclick="toggleTodo($item)">
-            <div class="checkbox-inner"></div>
-          </div>
-          <div class="item-content">
-            <text class="item-title">{{$item.title}}</text>
-            <text class="item-desc" if="{{$item.description}}">{{$item.description}}</text>
-          </div>
-          <div class="priority-badge {{$item.priority || 'normal'}}">
-            <text class="priority-text">{{getPriorityText($item.priority)}}</text>
-          </div>
-        </list-item>
-      </list>
-    </div>
-
-    <!-- 已完成列表 -->
-    <div class="section" if="{{doneList.length > 0}}">
-      <text class="section-title done-title">已完成</text>
-      <list class="list">
-        <list-item for="{{doneList}}" class="item done-item" type="done">
-          <div class="checkbox checked" onclick="toggleTodo($item)">
-            <text class="check-mark">✓</text>
-          </div>
-          <div class="item-content">
-            <text class="item-title done-text">{{$item.title}}</text>
-          </div>
-          <text class="delete-btn" onclick="deleteTodo($item)">×</text>
-        </list-item>
-      </list>
-    </div>
-
-    <!-- 空状态 -->
     <div class="empty" if="{{todoList.length === 0}}">
-      <text class="empty-title">暂无待办</text>
+      <text class="empty-title" static>暂无待办</text>
     </div>
   </div>
 </template>
@@ -69,12 +38,10 @@ import prompt from '@system.prompt'
 
 export default {
   data: {
-    todoList: [],
-    pendingList: [],
-    doneList: [],
-    pendingCount: 0,
-    doneCount: 0
+    todoList: []
   },
+
+  syncTimer: null,
 
   onInit() {
     this.loadTodoData()
@@ -84,75 +51,129 @@ export default {
     this.loadTodoData()
   },
 
+  onDestroy() {
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer)
+      this.syncTimer = null
+    }
+    this.todoList = null
+  },
+
+  padZero(num) {
+    return num < 10 ? '0' + num : '' + num
+  },
+
   loadTodoData() {
     storage.get({
       key: 'sync_todo',
       success: (data) => {
         if (data) {
           this.todoList = JSON.parse(data)
-          this.updateLists()
+          this.sortTodos()
+          this.calculateProgress()
         }
       },
-      fail: (error) => {
-        console.error('加载待办数据失败:', error)
-      }
+      fail: () => {}
     })
   },
 
-  updateLists() {
-    this.pendingList = this.todoList.filter(t => t.status !== 'done')
-    this.doneList = this.todoList.filter(t => t.status === 'done')
-    this.pendingCount = this.pendingList.length
-    this.doneCount = this.doneList.length
+  sortTodos() {
+    const now = Date.now()
+    this.todoList.sort((a, b) => {
+      const aDone = a.status === 'done'
+      const bDone = b.status === 'done'
+      if (aDone && !bDone) return 1
+      if (!aDone && bDone) return -1
+      if (aDone && bDone) return 0
+
+      const aStart = a.startDate || a.createdDate || now
+      const aEnd = a.endDate || (aStart + 24 * 60 * 60 * 1000)
+      const bStart = b.startDate || b.createdDate || now
+      const bEnd = b.endDate || (bStart + 24 * 60 * 60 * 1000)
+
+      const aTotal = aEnd - aStart || 1
+      const bTotal = bEnd - bStart || 1
+
+      const aProg = Math.min(1, Math.max(0, (now - aStart) / aTotal))
+      const bProg = Math.min(1, Math.max(0, (now - bStart) / bTotal))
+
+      if (bProg !== aProg) return bProg - aProg
+      return aEnd - bEnd
+    })
   },
 
-  getPriorityText(priority) {
-    const map = {
-      'high': '紧急',
-      'medium': '一般',
-      'low': '普通'
+  calculateProgress() {
+    const now = Date.now()
+    for (let i = 0; i < this.todoList.length; i++) {
+      const item = this.todoList[i]
+      if (item.status === 'done') {
+        item.progress = 100
+        item.progressClass = 'progress-done'
+        item.progressWidth = '100%'
+        continue
+      }
+      const start = item.startDate || item.createdDate || now
+      const end = item.endDate || (start + 24 * 60 * 60 * 1000)
+      const total = end - start
+      if (total <= 0) {
+        item.progress = 0
+        item.progressClass = 'progress-normal'
+        item.progressWidth = '0%'
+        continue
+      }
+      let pct = ((now - start) / total) * 100
+      if (pct < 0) pct = 0
+      if (pct > 100) pct = 100
+      item.progress = Math.round(pct)
+      item.progressWidth = pct + '%'
+      if (pct >= 100) {
+        item.progressClass = 'progress-overdue'
+      } else if (pct >= 75) {
+        item.progressClass = 'progress-warning'
+      } else if (pct >= 50) {
+        item.progressClass = 'progress-normal'
+      } else {
+        item.progressClass = 'progress-early'
+      }
     }
-    return map[priority] || '普通'
   },
 
-  saveTodoData() {
-    storage.set({
-      key: 'sync_todo',
-      value: JSON.stringify(this.todoList),
-      success: () => {
-        console.log('保存待办数据成功')
-      },
-      fail: (error) => {
-        console.error('保存待办数据失败:', error)
-      }
-    })
+  formatTimestamp(ts) {
+    if (!ts) return ''
+    const d = new Date(ts)
+    return `${d.getMonth() + 1}/${d.getDate()} ${this.padZero(d.getHours())}:${this.padZero(d.getMinutes())}`
   },
 
   toggleTodo(item) {
     const index = this.todoList.findIndex(i => i.id === item.id)
     if (index !== -1) {
+      const oldStatus = this.todoList[index].status
       this.todoList[index].status = item.status === 'done' ? 'undone' : 'done'
       this.todoList[index].updatedAt = Date.now()
-      this.saveTodoData()
-      this.updateLists()
-      
-      if (this.todoList[index].status === 'done') {
-        prompt.showToast({
-          message: '已完成',
-          duration: 300
-        })
-      }
+      const newStatus = this.todoList[index].status
+      storage.set({
+        key: 'sync_todo',
+        value: JSON.stringify(this.todoList),
+        success: () => {
+          prompt.showToast({ message: '已同步到手机', duration: 300 })
+          import('../../common/sync_service.js').then((mod) => {
+            mod.SyncService.sendDebugLog('[待办] ' + item.title + ' ' + oldStatus + '→' + newStatus)
+          })
+          this.syncTodoToPhone()
+        }
+      })
     }
   },
 
-  deleteTodo(item) {
-    this.todoList = this.todoList.filter(i => i.id !== item.id)
-    this.saveTodoData()
-    this.updateLists()
-    prompt.showToast({
-      message: '已删除',
-      duration: 300
-    })
+  syncTodoToPhone() {
+    try {
+      import('../../common/sync_service.js').then((mod) => {
+        const SyncService = mod.SyncService
+        this.syncTimer = setTimeout(() => {
+          SyncService.syncData('todo', this.todoList)
+        }, 500)
+      })
+    } catch (e) {}
   },
 
   goBack() {
@@ -170,7 +191,6 @@ export default {
   background-color: #000000;
 }
 
-/* 顶部导航 */
 .header {
   flex-direction: row;
   justify-content: space-between;
@@ -190,69 +210,13 @@ export default {
 }
 
 .title {
-  font-size: 32px;
+  font-size: 40px;
   font-weight: bold;
   color: #ffffff;
 }
 
 .placeholder {
   width: 56px;
-}
-
-/* 统计信息 */
-.stats {
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  background-color: #ffffff20;
-  border-radius: 24px;
-  padding: 24px;
-  margin-bottom: 28px;
-}
-
-.stat-item {
-  align-items: center;
-  flex: 1;
-}
-
-.stat-num {
-  font-size: 48px;
-  font-weight: bold;
-  color: #ffffff;
-}
-
-.stat-label {
-  font-size: 18px;
-  color: #ffffffaa;
-  margin-top: 8px;
-}
-
-.stat-divider {
-  width: 4px;
-  height: 48px;
-  background-color: #ffffff30;
-}
-
-/* 区域标题 */
-.section {
-  margin-bottom: 12px;
-}
-
-.section-title {
-  font-size: 24px;
-  font-weight: bold;
-  color: #ffffffcc;
-  margin-bottom: 20px;
-  margin-left: 10px;
-}
-
-.done-title {
-  color: #ffffff80;
-}
-
-/* 列表 */
-.list {
-  margin-bottom: 8px;
 }
 
 .item {
@@ -264,11 +228,6 @@ export default {
   margin-bottom: 18px;
 }
 
-.done-item {
-  background-color: #2a2a2a;
-}
-
-/* 复选框 */
 .checkbox {
   width: 48px;
   height: 48px;
@@ -278,6 +237,7 @@ export default {
   margin-right: 18px;
   justify-content: center;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .checkbox-inner {
@@ -287,86 +247,75 @@ export default {
   background-color: transparent;
 }
 
-.checked {
-  background-color: #4caf50;
-  border-color: #4caf50;
-}
-
-.check-mark {
-  font-size: 26px;
-  color: #ffffff;
-  font-weight: bold;
-}
-
-/* 内容 */
 .item-content {
   flex: 1;
   flex-direction: column;
 }
 
 .item-title {
-  font-size: 26px;
+  font-size: 35px;
   color: #ffffff;
-  margin-bottom: 5px;
 }
 
-.done-text {
-  text-decoration: line-through;
+.item-remark {
+  font-size: 30px;
+  color: #aaaaaa;
+  margin-top: 6px;
+}
+
+.item-times {
+  flex-direction: row;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.item-time {
+  font-size: 17px;
   color: #888888;
 }
 
-.item-desc {
-  font-size: 18px;
-  color: #aaaaaa;
-}
-
-/* 优先级标签 */
-.priority-badge {
-  padding: 10px 18px;
-  border-radius: 16px;
-  margin-left: 16px;
+.progress-bar-bg {
+  width: 100%;
+  height: 6px;
   background-color: #444444;
+  border-radius: 3px;
+  margin-top: 10px;
 }
 
-.priority-text {
-  font-size: 18px;
-  color: #ffffff;
+.progress-bar-fill {
+  height: 6px;
+  border-radius: 3px;
 }
 
-/* 删除按钮 */
-.delete-btn {
-  width: 48px;
-  height: 48px;
-  font-size: 28px;
-  color: #ff6b6b;
-  background-color: #444444;
-  border-radius: 24px;
-  text-align: center;
-  line-height: 48px;
-  margin-left: 16px;
+.progress-early {
+  background-color: #4a90d9;
 }
 
-/* 空状态 */
+.progress-normal {
+  background-color: #f0ad4e;
+}
+
+.progress-warning {
+  background-color: #e67e22;
+}
+
+.progress-overdue {
+  background-color: #ff6b6b;
+}
+
+.progress-done {
+  background-color: #4caf50;
+}
+
 .empty {
   flex: 1;
   justify-content: center;
   align-items: center;
 }
 
-.empty-icon {
-  font-size: 72px;
-  margin-bottom: 24px;
-}
-
 .empty-title {
-  font-size: 30px;
+  font-size: 40px;
   font-weight: bold;
   color: #ffffff;
-  margin-bottom: 10px;
-}
-
-.empty-desc {
-  font-size: 20px;
-  color: #ffffffaa;
 }
 </style>
