@@ -16,6 +16,7 @@ export const Navbar = () => {
     { name: '桌面端', href: '#desktop' },
     { name: '移动端', href: '#mobile' },
     { name: '网页版', href: '#web' },
+    { name: '手环端', href: '#band' },
     { name: '获取软件', href: '#download' },
   ];
 

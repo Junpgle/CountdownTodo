@@ -16,12 +16,22 @@ import { AnalyticsPreview } from './landing/AnalyticsPreview';
 import { DownloadSection } from './landing/DownloadSection';
 import { Footer } from './landing/Footer';
 
+interface ChangelogEntry {
+  version_name: string;
+  date: string;
+  items: string[];
+}
+
+interface PlatformData {
+  info: AppInfo;
+  changelog: ChangelogEntry[];
+}
+
 export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
-  const [androidInfo, setAndroidInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
-  const [windowsInfo, setWindowsInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
-  const [windowsProInfo, setWindowsProInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
-  const [webInfo, setWebInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
-  const [bandInfo, setBandInfo] = useState<AppInfo>({ version: '', url: '', desc: '' });
+  const [androidData, setAndroidData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
+  const [windowsLiteData, setWindowsLiteData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
+  const [webData, setWebData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
+  const [bandData, setBandData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
   const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   useEffect(() => {
@@ -35,34 +45,40 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
         ]);
         const [aData, wData, webData, bandData] = await Promise.all([aRes.json(), wRes.json(), webRes.json(), bandRes.json()]);
 
-        setAndroidInfo({
-          version: aData.version_name,
-          url: aData.update_info.full_package_url,
-          desc: aData.update_info.description
+        setAndroidData({
+          info: {
+            version: aData.version_name,
+            url: aData.update_info.full_package_url,
+            desc: aData.update_info.description
+          },
+          changelog: aData.changelog_history || []
         });
 
-        setWindowsProInfo({
-          version: aData.version_name,
-          url: aData.update_info.PC_package_url,
-          desc: aData.update_info.description
+        setWindowsLiteData({
+          info: {
+            version: wData.version_name,
+            url: wData.update_info.full_package_url,
+            desc: wData.update_info.description
+          },
+          changelog: wData.changelog_history || []
         });
 
-        setWindowsInfo({
-          version: wData.version_name,
-          url: wData.update_info.full_package_url,
-          desc: wData.update_info.description
+        setWebData({
+          info: {
+            version: webData.version_name,
+            url: '',
+            desc: webData.update_info.description
+          },
+          changelog: webData.changelog_history || []
         });
 
-        setWebInfo({
-          version: webData.version_name,
-          url: '',
-          desc: webData.update_info.description
-        });
-
-        setBandInfo({
-          version: bandData.version_name,
-          url: bandData.update_info.full_package_url,
-          desc: bandData.update_info.description
+        setBandData({
+          info: {
+            version: bandData.version_name,
+            url: bandData.update_info.full_package_url,
+            desc: bandData.update_info.description
+          },
+          changelog: bandData.changelog_history || []
         });
 
       } catch (e) {
@@ -89,11 +105,16 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           <BandShowcase />
           <AnalyticsPreview />
           <DownloadSection
-            androidInfo={androidInfo}
-            windowsInfo={windowsInfo}
-            windowsProInfo={windowsProInfo}
-            webInfo={webInfo}
-            bandInfo={bandInfo}
+            androidInfo={androidData.info}
+            androidChangelog={androidData.changelog}
+            windowsLiteInfo={windowsLiteData.info}
+            windowsLiteChangelog={windowsLiteData.changelog}
+            windowsProInfo={androidData.info}
+            windowsProChangelog={androidData.changelog}
+            webInfo={webData.info}
+            webChangelog={webData.changelog}
+            bandInfo={bandData.info}
+            bandChangelog={bandData.changelog}
             onOpenWeb={onOpenWeb}
             onShowInstallGuide={() => setShowInstallGuide(true)}
           />
