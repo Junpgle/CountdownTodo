@@ -438,7 +438,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   InkWell(
                     onTap: () async {
                       final url = Uri.parse(
-                          'https://bigmodel.cn/login?redirect=%2Fusercenter%2Fproj-mgmt%2Fapikeys');
+                          'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D');
                       try {
                         await launchUrl(url, mode: LaunchMode.platformDefault);
                       } catch (e) {

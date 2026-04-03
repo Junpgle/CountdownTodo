@@ -11,6 +11,7 @@ import '../screens/historical_todos_screen.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../screens/home_settings_screen.dart';
+import '../screens/add_todo_screen.dart';
 import 'home_sections.dart';
 
 class TodoSectionWidget extends StatefulWidget {
@@ -20,6 +21,9 @@ class TodoSectionWidget extends StatefulWidget {
   final Function(List<TodoItem>) onTodosChanged;
   final VoidCallback onRefreshRequested;
 
+  /// 大模型识别成功后的回调，用于导航到确认页面
+  final Function(List<Map<String, dynamic>>, String?)? onLLMResultsParsed;
+
   const TodoSectionWidget({
     super.key,
     required this.todos,
@@ -27,6 +31,7 @@ class TodoSectionWidget extends StatefulWidget {
     required this.isLight,
     required this.onTodosChanged,
     required this.onRefreshRequested,
+    this.onLLMResultsParsed,
   });
 
   @override
@@ -78,7 +83,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   }
 
   void showAddTodoDialog() {
-    _showAddTodoDialogWithData(null, null);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddTodoScreen(
+          onTodoAdded: (todo) {
+            final updatedList = List<TodoItem>.from(widget.todos)..add(todo);
+            widget.onTodosChanged(updatedList);
+          },
+          onLLMResultsParsed: widget.onLLMResultsParsed,
+        ),
+      ),
+    );
   }
 
   /// 显示添加待办对话框并预填充大模型识别的数据
@@ -88,7 +103,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
     List<Map<String, dynamic>> llmResults, [
     String? imagePath,
   ]) {
-    _showAddTodoDialogWithData(llmResults, imagePath);
+    if (widget.onLLMResultsParsed != null) {
+      widget.onLLMResultsParsed!(llmResults, imagePath);
+    } else {
+      // 如果没有回调，使用旧的对话框方式
+      _showAddTodoDialogWithData(llmResults, imagePath);
+    }
   }
 
   void _showAddTodoDialogWithData(
@@ -751,6 +771,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                                     });
 
                                     if (parsedResults.isNotEmpty) {
+                                      // 如果有回调，关闭对话框并导航到确认页面
+                                      if (widget.onLLMResultsParsed != null) {
+                                        Navigator.pop(ctx);
+                                        widget.onLLMResultsParsed!(
+                                            results, null);
+                                        return;
+                                      }
+
                                       final first = parsedResults[0];
                                       setDialogState(() {
                                         titleCtrl.text = first.title;
@@ -1013,7 +1041,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
                           : remarkCtrl.text.trim(),
                     );
                     List<TodoItem> updatedList = List.from(widget.todos)
-                      ..insert(0, newTodo);
+                      ..add(newTodo);
                     widget.onTodosChanged(updatedList);
                     if (mounted) Navigator.pop(ctx);
                   }

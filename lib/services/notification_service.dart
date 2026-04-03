@@ -214,9 +214,10 @@ class NotificationService {
         "${DateFormat('HH:mm').format(startDate)} - ${DateFormat('HH:mm').format(todo.dueDate!.toLocal())}";
     final todoType = _detectTodoType(todo.title);
     final isSpecialTodo = todoType != 'default';
+    final notifId = isSpecialTodo ? todo.id.hashCode : null;
 
     debugPrint(
-        "🔔 showUpcomingTodoNotification: title=${todo.title}, todoType=$todoType, isSpecialTodo=$isSpecialTodo");
+        "🔔 showUpcomingTodoNotification: title=${todo.title}, todoId=${todo.id}, hashCode=${todo.id.hashCode}, todoType=$todoType, isSpecialTodo=$isSpecialTodo, notifId=$notifId");
 
     if (Platform.isWindows) {
       await _plugin.show(
@@ -236,10 +237,10 @@ class NotificationService {
         'todoRemark': todo.remark ?? '',
         'timeStr': timeStr,
         'todoType': todoType,
-        'notificationId': isSpecialTodo ? todo.id.hashCode : null,
+        'notificationId': notifId,
       });
       debugPrint(
-          "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}");
+          "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
     } catch (e) {
       debugPrint("更新即将开始的待办通知失败: $e");
     }

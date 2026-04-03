@@ -244,8 +244,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               lastDate: DateTime.now().add(const Duration(days: 1)));
           if (p != null) setState(() => _focusedDate = p);
         },
-        child: Text(
-            DateFormat('MM月dd日').format(_focusedDate),
+        child: Text(DateFormat('MM月dd日').format(_focusedDate),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
       IconButton(
@@ -699,53 +698,54 @@ class _WeekView extends StatelessWidget {
   }
 
   Widget _buildTopBar(BuildContext ctx, int todayMin) => Container(
-    padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-    color: _TC.topBar(ctx),
-    child: Row(children: [
-      // 今日统计
-      _TopBarChip(
-        label: '今日 ${todayMin}min',
-        color: const Color(0xFF22C55E),
-        ctx: ctx,
-      ),
-      const Spacer(),
-      _TopBarChip(
-        label: '标签',
-        icon: Icons.label_outline,
-        color: _TC.textSub(ctx).withOpacity(0.8),
-        ctx: ctx,
-        onTap: onManageTags,
-      ),
-      const SizedBox(width: 6),
-      _TopBarChip(
-        label: '补录',
-        icon: Icons.edit_calendar_outlined,
-        color: Theme.of(ctx).colorScheme.primary,
-        ctx: ctx,
-        onTap: onAddLog,
-        filled: true,
-      ),
-      const SizedBox(width: 6),
-      Builder(builder: (bCtx) => _TopBarChip(
-        label: '恢复',
-        icon: Icons.cloud_download_outlined,
-        color: const Color(0xFF22C55E),
-        ctx: ctx,
-        onTap: () async {
-          await StorageService.resetSyncTime(username);
-          await StorageService.syncData(username,
-              forceFullSync: true,
-              syncTodos: true,
-              syncCountdowns: true,
-              syncTimeLogs: true);
-          if (bCtx.mounted)
-            ScaffoldMessenger.of(bCtx).showSnackBar(const SnackBar(
-                content: Text('🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面'),
-                duration: Duration(seconds: 4)));
-        },
-      )),
-    ]),
-  );
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+        color: _TC.topBar(ctx),
+        child: Row(children: [
+          // 今日统计
+          _TopBarChip(
+            label: '今日 ${todayMin}min',
+            color: const Color(0xFF22C55E),
+            ctx: ctx,
+          ),
+          const Spacer(),
+          _TopBarChip(
+            label: '标签',
+            icon: Icons.label_outline,
+            color: _TC.textSub(ctx).withOpacity(0.8),
+            ctx: ctx,
+            onTap: onManageTags,
+          ),
+          const SizedBox(width: 6),
+          _TopBarChip(
+            label: '补录',
+            icon: Icons.edit_calendar_outlined,
+            color: Theme.of(ctx).colorScheme.primary,
+            ctx: ctx,
+            onTap: onAddLog,
+            filled: true,
+          ),
+          const SizedBox(width: 6),
+          Builder(
+              builder: (bCtx) => _TopBarChip(
+                    label: '恢复',
+                    icon: Icons.cloud_download_outlined,
+                    color: const Color(0xFF22C55E),
+                    ctx: ctx,
+                    onTap: () async {
+                      await StorageService.resetSyncTime(username);
+                      await StorageService.syncData(username,
+                          forceFullSync: true,
+                          syncTodos: true,
+                          syncCountdowns: true,
+                          syncTimeLogs: true);
+                      if (bCtx.mounted)
+                        ScaffoldMessenger.of(bCtx).showSnackBar(const SnackBar(
+                            content: Text('🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面'),
+                            duration: Duration(seconds: 4)));
+                    },
+                  )),
+        ]),
+      );
 
   Widget _buildGrid(BuildContext ctx, List<DateTime> days, double availW) {
     const totalW = kWeekTimeW + kWeekDayW * 7;
@@ -1144,7 +1144,7 @@ class _WeekColPainter extends CustomPainter {
       String title = '专注';
       if (p.tagUuids.isNotEmpty) {
         final t = tags.cast<PomodoroTag?>().firstWhere(
-                (t) => p.tagUuids.contains(t?.uuid),
+            (t) => p.tagUuids.contains(t?.uuid),
             orElse: () => null);
         if (t != null) {
           c = hexColor(t.color, opacity: 0.45);
@@ -1160,7 +1160,7 @@ class _WeekColPainter extends CustomPainter {
       String title = l.title.isNotEmpty ? l.title : '补录';
       if (l.tagUuids.isNotEmpty) {
         final t = tags.cast<PomodoroTag?>().firstWhere(
-                (t) => l.tagUuids.contains(t?.uuid),
+            (t) => l.tagUuids.contains(t?.uuid),
             orElse: () => null);
         if (t != null) {
           c = hexColor(t.color, opacity: 0.45);
@@ -1174,9 +1174,9 @@ class _WeekColPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _WeekColPainter o) =>
       o.isDark != isDark ||
-          o.hourH != hourH ||
-          o.dayLogs.length != dayLogs.length ||
-          o.dayPoms.length != dayPoms.length;
+      o.hourH != hourH ||
+      o.dayLogs.length != dayLogs.length ||
+      o.dayPoms.length != dayPoms.length;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1422,18 +1422,22 @@ class _GridCanvas extends StatelessWidget {
       if (nowTotalMin >= 0) _buildNowLine(nowTotalMin),
       // 番茄钟
       ...dPoms.expand((pom) {
-        final pe = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
+        final pe =
+            pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
         PomodoroTag? tag;
         if (pom.tagUuids.isNotEmpty)
           tag = tags.cast<PomodoroTag?>().firstWhere(
-                  (t) => pom.tagUuids.contains(t?.uuid), orElse: () => null);
+              (t) => pom.tagUuids.contains(t?.uuid),
+              orElse: () => null);
         final base = tag != null ? hexColor(tag.color) : Colors.redAccent;
         final title = tag?.name ?? '专注';
         return _buildEventBlocks(
           startMs: max(pom.startTime, dayStartMs),
           endMs: min(pe, dayStartMs + 86400000),
           dayStartMs: dayStartMs,
-          colW: colW, rowW: rowW, rowH: rowH,
+          colW: colW,
+          rowW: rowW,
+          rowH: rowH,
           fillColor: base.withOpacity(isDark ? 0.30 : 0.22),
           barColor: base,
           title: title,
@@ -1446,14 +1450,18 @@ class _GridCanvas extends StatelessWidget {
         PomodoroTag? tag;
         if (log.tagUuids.isNotEmpty)
           tag = tags.cast<PomodoroTag?>().firstWhere(
-                  (t) => log.tagUuids.contains(t?.uuid), orElse: () => null);
-        final base = tag != null ? hexColor(tag.color) : const Color(0xFF3B82F6);
+              (t) => log.tagUuids.contains(t?.uuid),
+              orElse: () => null);
+        final base =
+            tag != null ? hexColor(tag.color) : const Color(0xFF3B82F6);
         final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
         return _buildEventBlocks(
           startMs: max(log.startTime, dayStartMs),
           endMs: min(log.endTime, dayStartMs + 86400000),
           dayStartMs: dayStartMs,
-          colW: colW, rowW: rowW, rowH: rowH,
+          colW: colW,
+          rowW: rowW,
+          rowH: rowH,
           fillColor: base.withOpacity(isDark ? 0.26 : 0.18),
           barColor: base,
           title: title,
@@ -1517,7 +1525,7 @@ class _GridCanvas extends StatelessWidget {
     if (endMs <= startMs) return [];
 
     final startMinF = (startMs - dayStartMs) / 60000.0;
-    final endMinF   = (endMs   - dayStartMs) / 60000.0;
+    final endMinF = (endMs - dayStartMs) / 60000.0;
     final List<Widget> result = [];
 
     int row = startMinF ~/ 60;
@@ -1525,9 +1533,9 @@ class _GridCanvas extends StatelessWidget {
 
     while (row < kTotalRows) {
       final rowStartMin = row * 60.0;
-      final rowEndMin   = rowStartMin + 60.0;
+      final rowEndMin = rowStartMin + 60.0;
       final segStartMin = startMinF.clamp(rowStartMin, rowEndMin);
-      final segEndMin   = endMinF.clamp(rowStartMin, rowEndMin);
+      final segEndMin = endMinF.clamp(rowStartMin, rowEndMin);
 
       if (segEndMin <= segStartMin) {
         if (endMinF <= rowStartMin) break;
@@ -1536,17 +1544,16 @@ class _GridCanvas extends StatelessWidget {
       }
 
       final colStart = (segStartMin - rowStartMin) / kMinsPerCol;
-      final colEnd   = (segEndMin   - rowStartMin) / kMinsPerCol;
-      final left     = colStart * colW;
-      final width    = (colEnd - colStart) * colW;
-      final renderW  = width.clamp(1.0, double.infinity);
-      final isLast   = endMinF <= rowEndMin;
+      final colEnd = (segEndMin - rowStartMin) / kMinsPerCol;
+      final left = colStart * colW;
+      final width = ((colEnd - colStart) * colW).clamp(1.0, double.infinity);
+      final isLast = endMinF <= rowEndMin;
 
       // ── 色块背景（每一行都画）──────────────────────────
       result.add(Positioned(
-        top:    row * rowH + 1,
-        left:   left + 1,
-        width:  renderW - 2,
+        top: row * rowH + 1,
+        left: left + 1,
+        width: width - 2,
         height: rowH - 2,
         child: GestureDetector(
           onTap: onTap,
@@ -1555,17 +1562,21 @@ class _GridCanvas extends StatelessWidget {
             decoration: BoxDecoration(
               color: fillColor,
               border: Border(
-                left:   BorderSide(color: barColor, width: 2.5),
-                top:    isFirst ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0) : BorderSide.none,
-                bottom: isLast  ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0) : BorderSide.none,
-                right:  isLast && colEnd < kColsPerH
+                left: BorderSide(color: barColor, width: 2.5),
+                top: isFirst
+                    ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0)
+                    : BorderSide.none,
+                bottom: isLast
+                    ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0)
+                    : BorderSide.none,
+                right: isLast && colEnd < kColsPerH
                     ? BorderSide(color: barColor.withOpacity(0.25), width: 1.0)
                     : BorderSide.none,
               ),
               borderRadius: BorderRadius.only(
-                topLeft:     Radius.circular(isFirst ? 3 : 0),
-                bottomLeft:  Radius.circular(isLast  ? 3 : 0),
-                topRight:    Radius.circular(isFirst && isLast ? 3 : 0),
+                topLeft: Radius.circular(isFirst ? 3 : 0),
+                bottomLeft: Radius.circular(isLast ? 3 : 0),
+                topRight: Radius.circular(isFirst && isLast ? 3 : 0),
                 bottomRight: Radius.circular(isFirst && isLast ? 3 : 0),
               ),
             ),
@@ -1576,9 +1587,9 @@ class _GridCanvas extends StatelessWidget {
       // ── 文字：只在第一行，横跨整行宽度（从 left+3 到行末）──
       if (isFirst) {
         result.add(Positioned(
-          top:   row * rowH + 1,
-          left:  left + 3,          // 紧贴左边彩条右侧
-          right: 2,                 // 贴到行右边，让文字尽量展开
+          top: row * rowH + 1,
+          left: left + 3, // 紧贴左边彩条右侧
+          right: 2, // 贴到行右边，让文字尽量展开
           height: rowH - 2,
           child: GestureDetector(
             onTap: onTap,

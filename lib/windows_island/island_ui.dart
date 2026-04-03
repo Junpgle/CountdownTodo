@@ -760,8 +760,22 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _startIdleAutoReturnTimer() {
     _idleAutoReturnTimer?.cancel();
     _idleAutoReturnTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted || _stack.current != IslandState.idle) return;
-      if (_isFocusing) return; // 专注模式不自动回位
+      if (!mounted) return;
+      // 专注模式：滚回计时器
+      if (_isFocusing && _isScrolledInFocus) {
+        setState(() {
+          _isScrolledInFocus = false;
+          _currentCardIndex = 0;
+        });
+        final newSize = _idleSizeForCard();
+        _sizeAnimation = Tween<Size>(
+          begin: newSize,
+          end: newSize,
+        ).animate(_sizeController);
+        _resizeWindowOnce(newSize);
+        return;
+      }
+      if (_stack.current != IslandState.idle) return;
       setState(() {
         _currentCardIndex = 0;
         _isScrolledInFocus = false;
@@ -858,7 +872,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   end: newSize,
                 ).animate(_sizeController);
                 _resizeWindowOnce(newSize);
-                if (!_isFocusing && _currentCardIndex > 0) {
+                if (_isFocusing) {
+                  _resetIdleAutoReturnTimer();
+                } else if (_currentCardIndex > 0) {
                   _resetIdleAutoReturnTimer();
                 }
               }
@@ -932,7 +948,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   Widget _buildIdleCardContent() {
-    if (_cards.isEmpty) {
+    if (!_cardsLoaded || _cards.isEmpty) {
       if (!_cardsLoaded) {
         _initCards().then((_) {
           if (mounted) setState(() {});
@@ -1664,13 +1680,32 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final d = _reminderPopupData;
     if (d == null) return const SizedBox.shrink();
 
+    final isSpecial = _isSpecialTodo(d);
+    final specialType = d['specialType']?.toString();
     final type = d['type']?.toString() ?? 'todo';
-    final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
-    final label = type == 'course' ? '课程' : (type == 'todo' ? '待办' : '倒计时');
+
+    final IconData iconData;
+    final Color iconColor;
+    final String iconStr;
+    final String label;
+
+    if (isSpecial) {
+      iconData = _getSpecialTodoIcon(specialType);
+      iconColor = _getSpecialTodoColor(specialType);
+      iconStr = '';
+      label = _getSpecialTodoLabel(specialType);
+    } else {
+      iconData = Icons.task_alt;
+      iconColor = IslandConfig.warningColor;
+      iconStr = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
+      label = type == 'course' ? '课程' : (type == 'todo' ? '待办' : '倒计时');
+    }
+
     final mins = d['minutesUntil'] as int? ?? 0;
     final isEnd = d['isEnding'] as bool? ?? false;
     final status = isEnd ? '还有 $mins 分钟结束' : '还有 $mins 分钟开始';
     final itemId = d['itemId']?.toString();
+    final subtitle = (d['subtitle'] ?? '').toString();
 
     return GestureDetector(
       key: const ValueKey('reminderPopup'),
@@ -1682,23 +1717,42 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '$icon $label：${d['title']}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            // Header row: icon + title
+            Row(
+              children: [
+                if (isSpecial)
+                  Icon(iconData, color: iconColor, size: 20)
+                else
+                  Text(iconStr, style: const TextStyle(fontSize: 16)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$label：${d['title']}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-            if ((d['subtitle'] ?? '').toString().isNotEmpty)
+            // Subtitle (remark/code) - highlighted for special todos
+            if (subtitle.isNotEmpty) ...[
+              const SizedBox(height: 4),
               Text(
-                d['subtitle'],
-                style: const TextStyle(color: Colors.white70, fontSize: 11),
+                subtitle,
+                style: TextStyle(
+                  color: isSpecial ? Colors.white : Colors.white70,
+                  fontSize: isSpecial ? 13 : 11,
+                  fontWeight: isSpecial ? FontWeight.bold : FontWeight.normal,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+            ],
             const SizedBox(height: 6),
             Text(
               status,
@@ -1717,11 +1771,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     debugPrint(
                         '[IslandUI] reminder_ok clicked (popup), itemId=$itemId');
                     widget.onAction?.call('reminder_ok', 0);
-                    // 标记此提醒已确认
                     if (itemId != null) {
                       _acknowledgedReminderIds.add(itemId);
                     }
-                    // 清除提醒数据并回到 idle 状态
                     _reminderPopupData = null;
                     _stack.clearToIdle();
                     _animateToState(IslandState.idle);
@@ -1733,11 +1785,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   child: _btn('稍后提醒', IslandConfig.warningColor, () {
                     debugPrint('[IslandUI] remind_later clicked (popup)');
                     widget.onAction?.call('remind_later', 0);
-                    // 标记此提醒已确认
                     if (itemId != null) {
                       _acknowledgedReminderIds.add(itemId);
                     }
-                    // 清除提醒数据并回到 idle 状态
                     _reminderPopupData = null;
                     _stack.clearToIdle();
                     _animateToState(IslandState.idle);
@@ -1760,10 +1810,26 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       return _buildFocusTimerDisplay();
     }
 
+    final isSpecial = _isSpecialTodo(d);
+    final specialType = d['specialType']?.toString();
     final type = d['type']?.toString() ?? 'todo';
-    final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
     final mins = '${d['minutesUntil'] as int? ?? 0}min';
     final expanded = _expandedReminderPart;
+
+    final Widget reminderCapsule;
+    if (isSpecial) {
+      final iconData = _getSpecialTodoIcon(specialType);
+      final color = _getSpecialTodoColor(specialType);
+      reminderCapsule = _capsuleWithWidget(
+        Icon(iconData, color: Colors.white, size: 12),
+        '${d['title']} $mins',
+        color,
+      );
+    } else {
+      final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
+      reminderCapsule =
+          _capsule(icon, '${d['title']} $mins', IslandConfig.warningColor);
+    }
 
     final row = Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1805,8 +1871,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             });
             Future.microtask(() => _animateToState(IslandState.reminderSplit));
           },
-          child:
-              _capsule(icon, '${d['title']} $mins', IslandConfig.warningColor),
+          child: reminderCapsule,
         ),
       ],
     );
@@ -1839,6 +1904,37 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(icon, style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 60),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+
+  /// Capsule variant that accepts a Widget icon (e.g. Material Icons)
+  Widget _capsuleWithWidget(Widget iconWidget, String text, Color color) =>
+      Container(
+        height: 30,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            iconWidget,
             const SizedBox(width: 4),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 60),
@@ -1915,13 +2011,30 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final d = _reminderPopupData;
     if (d == null) return const SizedBox.shrink();
 
+    final isSpecial = _isSpecialTodo(d);
+    final specialType = d['specialType']?.toString();
     final type = d['type']?.toString() ?? 'todo';
-    final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
-    final label = type == 'course' ? '课程' : (type == 'todo' ? '待办' : '倒计时');
+
+    final IconData iconData;
+    final Color iconColor;
+    final String label;
+
+    if (isSpecial) {
+      iconData = _getSpecialTodoIcon(specialType);
+      iconColor = _getSpecialTodoColor(specialType);
+      label = _getSpecialTodoLabel(specialType);
+    } else {
+      iconData = Icons.task_alt;
+      iconColor = Colors.transparent;
+      label = type == 'course' ? '课程' : (type == 'todo' ? '待办' : '倒计时');
+    }
+
+    final iconStr = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
     final mins = d['minutesUntil'] as int? ?? 0;
     final isEnd = d['isEnding'] as bool? ?? false;
     final status = isEnd ? '还有 $mins 分钟结束' : '还有 $mins 分钟开始';
     final itemId = d['itemId']?.toString();
+    final subtitle = (d['subtitle'] ?? '').toString();
 
     return Container(
       width: double.infinity,
@@ -1935,21 +2048,48 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '$icon $label：${d['title']}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+          // Header row: icon + title
+          Row(
+            children: [
+              if (isSpecial)
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(iconData, color: iconColor, size: 20),
+                )
+              else
+                Text(iconStr, style: const TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isSpecial ? '$label：${d['title']}' : '$label：${d['title']}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
-          if ((d['subtitle'] ?? '').toString().isNotEmpty)
+          if (subtitle.isNotEmpty) ...[
+            const SizedBox(height: 4),
             Text(
-              d['subtitle'],
-              style: const TextStyle(color: Colors.white70, fontSize: 11),
+              subtitle,
+              style: TextStyle(
+                color: isSpecial ? Colors.white : Colors.white70,
+                fontSize: isSpecial ? 13 : 11,
+                fontWeight: isSpecial ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
+          ],
+          const SizedBox(height: 2),
           Text(status,
               style: const TextStyle(color: Colors.white, fontSize: 11)),
           const SizedBox(height: 12),
@@ -1960,14 +2100,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 child: _btn('好的', IslandConfig.successColor, () {
                   debugPrint('[IslandUI] reminder_ok clicked, itemId=$itemId');
                   widget.onAction?.call('reminder_ok', 0);
-                  // 标记此提醒已确认
                   if (itemId != null) {
                     _acknowledgedReminderIds.add(itemId);
                   }
-                  // 清除提醒数据
                   _reminderPopupData = null;
                   _expandedReminderPart = null;
-                  // 恢复 focusing 状态
                   _stack.replaceTop(IslandState.focusing,
                       data: _currentPayload);
                   _animateToState(IslandState.focusing);
@@ -1979,11 +2116,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 child: _btn('稍后提醒', IslandConfig.warningColor, () {
                   debugPrint('[IslandUI] remind_later clicked');
                   widget.onAction?.call('remind_later', 0);
-                  // 标记此提醒已确认（稍后会重新触发）
                   if (itemId != null) {
                     _acknowledgedReminderIds.add(itemId);
                   }
-                  // 收起展开卡片，但保持双胶囊状态
                   setState(() => _expandedReminderPart = null);
                   _animateToState(IslandState.reminderSplit);
                 }),
@@ -2001,8 +2136,24 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final d = _reminderPopupData;
     if (d == null) return const SizedBox.shrink();
 
+    final isSpecial = _isSpecialTodo(d);
+    final specialType = d['specialType']?.toString();
     final type = d['type']?.toString() ?? 'todo';
-    final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
+
+    final Widget capsuleWidget;
+    if (isSpecial) {
+      final iconData = _getSpecialTodoIcon(specialType);
+      final color = _getSpecialTodoColor(specialType);
+      capsuleWidget = _capsuleWithWidget(
+        Icon(iconData, color: Colors.white, size: 12),
+        '${d['title']} ${d['minutesUntil']}min',
+        color,
+      );
+    } else {
+      final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
+      capsuleWidget = _capsule(icon, '${d['title']} ${d['minutesUntil']}min',
+          IslandConfig.warningColor);
+    }
 
     return GestureDetector(
       key: const ValueKey('reminderCapsule'),
@@ -2015,10 +2166,65 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       child: Container(
         color: Colors.transparent,
         padding: const EdgeInsets.all(8),
-        child: _capsule(icon, '${d['title']} ${d['minutesUntil']}min',
-            IslandConfig.warningColor),
+        child: capsuleWidget,
       ),
     );
+  }
+
+  // ── 特殊待办工具方法 ─────────────────────────────────────────────────────
+
+  /// Get Material icon for special todo type (matches Android res/drawable icons)
+  static IconData _getSpecialTodoIcon(String? specialType) {
+    switch (specialType) {
+      case 'delivery':
+        return Icons.local_shipping; // matches local_shipping.xml
+      case 'food':
+        return Icons.shopping_bag; // matches shopping_bag.xml
+      case 'cafe':
+        return Icons.local_cafe; // matches local_cafe.xml
+      case 'restaurant':
+        return Icons.restaurant; // matches restaurant.xml
+      default:
+        return Icons.task_alt;
+    }
+  }
+
+  /// Get color for special todo type (matches Android drawable fillColor)
+  static Color _getSpecialTodoColor(String? specialType) {
+    switch (specialType) {
+      case 'delivery':
+        return const Color(0xFFFF8142); // orange from local_shipping.xml
+      case 'food':
+        return const Color(0xFFFFAF22); // yellow from shopping_bag.xml
+      case 'cafe':
+        return const Color(0xFF6CCE25); // green from local_cafe.xml
+      case 'restaurant':
+        return const Color(0xFFF5726E); // red from restaurant.xml
+      default:
+        return IslandConfig.warningColor;
+    }
+  }
+
+  /// Get display label for special todo type
+  static String _getSpecialTodoLabel(String? specialType) {
+    switch (specialType) {
+      case 'delivery':
+        return '快递';
+      case 'food':
+        return '外卖';
+      case 'cafe':
+        return '饮品';
+      case 'restaurant':
+        return '餐饮';
+      default:
+        return '待办';
+    }
+  }
+
+  /// Check if reminder data represents a special todo
+  static bool _isSpecialTodo(Map<String, dynamic>? data) {
+    return data?['specialType'] != null &&
+        data!['specialType'].toString().isNotEmpty;
   }
 
   // ── 通用按钮 ─────────────────────────────────────────────────────────────
@@ -2082,6 +2288,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // 初始化卡片列表
   Future<void> _initCards() async {
     if (_cardsLoaded) return;
+
+    // 保存专注卡片，避免被 clear 清掉
+    final focusingCard =
+        _cards.where((c) => c['type'] == 'focusing').firstOrNull;
 
     _cards.clear();
     _currentCardIndex = 0;
@@ -2186,44 +2396,57 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         if (!mounted) return;
         final courses = dashboardCourses['courses'] as List? ?? [];
         if (courses.isNotEmpty) {
-          final nextCourse = courses.first;
-          final courseDateStr = nextCourse.date;
-          final todayStr =
-              '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-          String dateLabel;
-          if (courseDateStr == todayStr) {
-            dateLabel = nextCourse.formattedStartTime;
-          } else {
-            try {
-              final courseDate = DateTime.parse(courseDateStr);
-              final today = DateTime(now.year, now.month, now.day);
-              final diff =
-                  DateTime(courseDate.year, courseDate.month, courseDate.day)
-                      .difference(today)
-                      .inDays;
-              if (diff == 1) {
-                dateLabel = '明天';
-              } else if (diff == 2) {
-                dateLabel = '后天';
-              } else {
-                dateLabel = '${diff}天后';
+          final isToday = dashboardCourses['title'] == '今日课程';
+          // 过滤已结束的今日课程
+          final validCourses = isToday
+              ? courses.where((c) {
+                  final endHour = c.endTime ~/ 100;
+                  final endMin = c.endTime % 100;
+                  final courseEnd =
+                      DateTime(now.year, now.month, now.day, endHour, endMin);
+                  return now.isBefore(courseEnd);
+                }).toList()
+              : courses;
+          if (validCourses.isNotEmpty) {
+            final nextCourse = validCourses.first;
+            final courseDateStr = nextCourse.date;
+            final todayStr =
+                '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+            String dateLabel;
+            if (courseDateStr == todayStr) {
+              dateLabel = nextCourse.formattedStartTime;
+            } else {
+              try {
+                final courseDate = DateTime.parse(courseDateStr);
+                final today = DateTime(now.year, now.month, now.day);
+                final diff =
+                    DateTime(courseDate.year, courseDate.month, courseDate.day)
+                        .difference(today)
+                        .inDays;
+                if (diff == 1) {
+                  dateLabel = '明天';
+                } else if (diff == 2) {
+                  dateLabel = '后天';
+                } else {
+                  dateLabel = '${diff}天后';
+                }
+              } catch (_) {
+                dateLabel = dashboardCourses['title']?.toString() ?? '课程';
               }
-            } catch (_) {
-              dateLabel = dashboardCourses['title']?.toString() ?? '课程';
             }
-          }
-          _cards.add({
-            'type': 'course',
-            'icon': '📚',
-            'title': nextCourse.courseName,
-            'subtitle': dateLabel,
-            'color': IslandConfig.warningColor,
-            'dateLabel': dateLabel,
-            'fullDate': courseDateStr,
-            'roomName': nextCourse.roomName,
-            'startTime': nextCourse.formattedStartTime,
-          });
-        }
+            _cards.add({
+              'type': 'course',
+              'icon': '📚',
+              'title': nextCourse.courseName,
+              'subtitle': dateLabel,
+              'color': IslandConfig.warningColor,
+              'dateLabel': dateLabel,
+              'fullDate': courseDateStr,
+              'roomName': nextCourse.roomName,
+              'startTime': nextCourse.formattedStartTime,
+            });
+          } // validCourses.isNotEmpty
+        } // courses.isNotEmpty
       } catch (e) {
         debugPrint('[IslandUI] 读取课程失败: $e');
       }
@@ -2262,6 +2485,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     if (_cards.isEmpty) {
       _addDefaultCard();
+    }
+
+    // 恢复专注卡片
+    if (focusingCard != null) {
+      _cards.add(focusingCard);
     }
 
     _cardsLoaded = true;

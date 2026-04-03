@@ -13,6 +13,7 @@ class IslandSlotData {
   final String detailLocation;
   final String detailTime;
   final String detailNote;
+  final String specialType; // delivery/cafe/food/restaurant
 
   const IslandSlotData({
     required this.display,
@@ -22,6 +23,7 @@ class IslandSlotData {
     this.detailLocation = '',
     this.detailTime = '',
     this.detailNote = '',
+    this.specialType = '',
   });
 
   const IslandSlotData.empty()
@@ -31,7 +33,8 @@ class IslandSlotData {
         detailSubtitle = '',
         detailLocation = '',
         detailTime = '',
-        detailNote = '';
+        detailNote = '',
+        specialType = '';
 
   bool get isEmpty => display.isEmpty;
   bool get isNotEmpty => display.isNotEmpty;
@@ -44,6 +47,7 @@ class IslandSlotData {
         'detail_location': detailLocation,
         'detail_time': detailTime,
         'detail_note': detailNote,
+        if (specialType.isNotEmpty) 'specialType': specialType,
       };
 }
 
@@ -51,6 +55,50 @@ class IslandSlotData {
 /// Centralizes data retrieval logic for the island display.
 class IslandSlotProvider {
   IslandSlotProvider._();
+
+  /// Detect special todo type from title keywords
+  static String detectTodoType(String title) {
+    final lower = title.toLowerCase();
+    if (lower.contains('快递') ||
+        lower.contains('取件') ||
+        lower.contains('顺丰') ||
+        lower.contains('京东') ||
+        lower.contains('菜鸟') ||
+        lower.contains('中通') ||
+        lower.contains('圆通') ||
+        lower.contains('韵达') ||
+        lower.contains('申通') ||
+        lower.contains('极兔') ||
+        lower.contains('德邦')) {
+      return 'delivery';
+    } else if (lower.contains('奶茶') ||
+        lower.contains('咖啡') ||
+        lower.contains('古茗') ||
+        lower.contains('茶百道') ||
+        lower.contains('蜜雪冰城') ||
+        lower.contains('瑞幸') ||
+        lower.contains('星巴克') ||
+        lower.contains('库迪') ||
+        lower.contains('coco') ||
+        lower.contains('一点点')) {
+      return 'cafe';
+    } else if (lower.contains('取餐') ||
+        lower.contains('外卖') ||
+        lower.contains('肯德基') ||
+        lower.contains('麦当劳') ||
+        lower.contains('kfc')) {
+      return 'food';
+    } else if (lower.contains('海底捞') ||
+        lower.contains('太二') ||
+        lower.contains('外婆家') ||
+        lower.contains('西贝') ||
+        lower.contains('必胜客') ||
+        lower.contains('堂食') ||
+        lower.contains('餐饮')) {
+      return 'restaurant';
+    }
+    return 'default';
+  }
 
   /// Get slot data for a specific type
   static Future<IslandSlotData> getSlotData(String type,
@@ -113,7 +161,23 @@ class IslandSlotProvider {
       return const IslandSlotData(display: '', type: 'todo');
     }
 
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    int urgencyScore(dynamic t) {
+      if (t.dueDate == null) return 3;
+      final dueDay =
+          DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+      if (dueDay.isBefore(today)) return 0; // 逾期
+      if (dueDay.isAtSameMomentAs(today)) return 1; // 今天到期
+      return 2; // 未来到期
+    }
+
     active.sort((a, b) {
+      final sa = urgencyScore(a);
+      final sb = urgencyScore(b);
+      if (sa != sb) return sa.compareTo(sb);
+      // 同一紧迫级别内: 有 dueDate 的按时间排, 无 dueDate 的按创建时间倒序
       if (a.dueDate == null && b.dueDate == null) {
         return b.createdAt.compareTo(a.createdAt);
       }
@@ -125,9 +189,19 @@ class IslandSlotProvider {
     final t = active.first;
     final time =
         t.dueDate != null ? DateFormat('MM-dd').format(t.dueDate!) : '';
+
+    // 判断是否逾期
+    final isOverdue = t.dueDate != null &&
+        DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day)
+            .isBefore(today);
+
+    // 检测特殊待办类型
+    final specialType = detectTodoType(t.title);
+
+    final overdueTag = isOverdue ? '逾期 ' : '';
     final display = isLeft
-        ? (time.isNotEmpty ? '[$time] ${t.title}' : t.title)
-        : (time.isNotEmpty ? '${t.title} [$time]' : t.title);
+        ? (time.isNotEmpty ? '[$overdueTag$time] ${t.title}' : t.title)
+        : (time.isNotEmpty ? '${t.title} [$overdueTag$time]' : t.title);
 
     final timeRange =
         t.dueDate != null ? DateFormat('HH:mm').format(t.dueDate!) : '';
@@ -136,9 +210,10 @@ class IslandSlotProvider {
       display: display,
       type: 'todo',
       detailTitle: t.title,
-      detailSubtitle: t.remark ?? '',
+      detailSubtitle: isOverdue ? '已逾期' : (t.remark ?? ''),
       detailTime: timeRange,
       detailNote: time.isNotEmpty ? time : '',
+      specialType: specialType,
     );
   }
 
@@ -150,16 +225,15 @@ class IslandSlotProvider {
 
       if (courses != null && courses.isNotEmpty) {
         final now = DateTime.now();
+        final isToday = dashboard['title'] == '今日课程';
         final valid = courses.where((c) {
           if (c is! CourseItem) return false;
-          if (dashboard['title'] == '今日课程') {
-            final endHour = c.endTime ~/ 100;
-            final endMin = c.endTime % 100;
-            final courseEnd =
-                DateTime(now.year, now.month, now.day, endHour, endMin);
-            return now.isBefore(courseEnd);
-          }
-          return true;
+          if (!isToday) return true; // 明日课程不会过期
+          final endHour = c.endTime ~/ 100;
+          final endMin = c.endTime % 100;
+          final courseEnd =
+              DateTime(now.year, now.month, now.day, endHour, endMin);
+          return now.isBefore(courseEnd);
         }).toList();
 
         if (valid.isNotEmpty) {

@@ -229,6 +229,8 @@ class IslandDataProvider {
       'detail_location': detailSource.detailLocation,
       'detail_time': detailSource.detailTime,
       'detail_note': detailSource.detailNote,
+      if (detailSource.specialType.isNotEmpty)
+        'specialType': detailSource.specialType,
     };
 
     // Convert to IslandPayload and build structured format
@@ -318,6 +320,8 @@ class IslandDataProvider {
   /// Invalidate only slot cache (call when todos/courses change)
   void invalidateSlotCache() {
     _slotCache = null;
+    // 重置追踪状态, 确保下次 buildPayload 不会被"状态未变"跳过
+    _lastSentPayload = null;
   }
 
   /// Reset tracking state (call when switching sessions)

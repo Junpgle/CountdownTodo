@@ -1,0 +1,321 @@
+<template>
+  <div class="page">
+    <div class="header">
+      <text class="back-btn" onclick="goBack">‹</text>
+      <text class="title" static>待办事项</text>
+      <div class="placeholder"></div>
+    </div>
+
+    <block if="{{todoList.length > 0}}">
+      <div for="{{todoList}}" class="item">
+        <div class="checkbox" onclick="toggleTodo($item)">
+          <div class="checkbox-inner"></div>
+        </div>
+        <div class="item-content">
+          <text class="item-title">{{$item.title}}</text>
+          <text class="item-remark" if="{{$item.description}}">{{$item.description}}</text>
+          <div class="item-times" if="{{$item.startDate || $item.endDate}}">
+            <text class="item-time" if="{{$item.startDate}}">开始: {{formatTimestamp($item.startDate)}}</text>
+            <text class="item-time" if="{{$item.endDate}}">截止: {{formatTimestamp($item.endDate)}}</text>
+          </div>
+          <div class="progress-bar-bg" if="{{$item.progress !== undefined && !$item.isDone}}">
+            <div class="progress-bar-fill {{$item.progressClass}}" style="width: {{$item.progressWidth}}"></div>
+          </div>
+        </div>
+      </div>
+    </block>
+
+    <div class="empty" if="{{todoList.length === 0}}">
+      <text class="empty-title" static>暂无待办</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import storage from '@system.storage'
+import prompt from '@system.prompt'
+
+export default {
+  data: {
+    todoList: []
+  },
+
+  syncTimer: null,
+
+  onInit() {
+    this.loadTodoData()
+  },
+
+  onShow() {
+    this.loadTodoData()
+  },
+
+  onDestroy() {
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer)
+      this.syncTimer = null
+    }
+    this.todoList = null
+  },
+
+  padZero(num) {
+    return num < 10 ? '0' + num : '' + num
+  },
+
+  loadTodoData() {
+    storage.get({
+      key: 'sync_todo',
+      success: (data) => {
+        if (data) {
+          this.todoList = JSON.parse(data)
+          this.sortTodos()
+          this.calculateProgress()
+        }
+      },
+      fail: () => {}
+    })
+  },
+
+  sortTodos() {
+    const now = Date.now()
+    this.todoList.sort((a, b) => {
+      const aDone = a.status === 'done'
+      const bDone = b.status === 'done'
+      if (aDone && !bDone) return 1
+      if (!aDone && bDone) return -1
+      if (aDone && bDone) return 0
+
+      const aStart = a.startDate || a.createdDate || now
+      const aEnd = a.endDate || (aStart + 24 * 60 * 60 * 1000)
+      const bStart = b.startDate || b.createdDate || now
+      const bEnd = b.endDate || (bStart + 24 * 60 * 60 * 1000)
+
+      const aTotal = aEnd - aStart || 1
+      const bTotal = bEnd - bStart || 1
+
+      const aProg = Math.min(1, Math.max(0, (now - aStart) / aTotal))
+      const bProg = Math.min(1, Math.max(0, (now - bStart) / bTotal))
+
+      if (bProg !== aProg) return bProg - aProg
+      return aEnd - bEnd
+    })
+  },
+
+  calculateProgress() {
+    const now = Date.now()
+    for (let i = 0; i < this.todoList.length; i++) {
+      const item = this.todoList[i]
+      if (item.status === 'done') {
+        item.progress = 100
+        item.progressClass = 'progress-done'
+        item.progressWidth = '100%'
+        continue
+      }
+      const start = item.startDate || item.createdDate || now
+      const end = item.endDate || (start + 24 * 60 * 60 * 1000)
+      const total = end - start
+      if (total <= 0) {
+        item.progress = 0
+        item.progressClass = 'progress-normal'
+        item.progressWidth = '0%'
+        continue
+      }
+      let pct = ((now - start) / total) * 100
+      if (pct < 0) pct = 0
+      if (pct > 100) pct = 100
+      item.progress = Math.round(pct)
+      item.progressWidth = pct + '%'
+      if (pct >= 100) {
+        item.progressClass = 'progress-overdue'
+      } else if (pct >= 75) {
+        item.progressClass = 'progress-warning'
+      } else if (pct >= 50) {
+        item.progressClass = 'progress-normal'
+      } else {
+        item.progressClass = 'progress-early'
+      }
+    }
+  },
+
+  formatTimestamp(ts) {
+    if (!ts) return ''
+    const d = new Date(ts)
+    return `${d.getMonth() + 1}/${d.getDate()} ${this.padZero(d.getHours())}:${this.padZero(d.getMinutes())}`
+  },
+
+  toggleTodo(item) {
+    const index = this.todoList.findIndex(i => i.id === item.id)
+    if (index !== -1) {
+      const oldStatus = this.todoList[index].status
+      this.todoList[index].status = item.status === 'done' ? 'undone' : 'done'
+      this.todoList[index].updatedAt = Date.now()
+      const newStatus = this.todoList[index].status
+      storage.set({
+        key: 'sync_todo',
+        value: JSON.stringify(this.todoList),
+        success: () => {
+          prompt.showToast({ message: '已同步到手机', duration: 300 })
+          import('../../common/sync_service.js').then((mod) => {
+            mod.SyncService.sendDebugLog('[待办] ' + item.title + ' ' + oldStatus + '→' + newStatus)
+          })
+          this.syncTodoToPhone()
+        }
+      })
+    }
+  },
+
+  syncTodoToPhone() {
+    try {
+      import('../../common/sync_service.js').then((mod) => {
+        const SyncService = mod.SyncService
+        this.syncTimer = setTimeout(() => {
+          SyncService.syncData('todo', this.todoList)
+        }, 500)
+      })
+    } catch (e) {}
+  },
+
+  goBack() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  padding: 28px;
+  background-color: #000000;
+}
+
+.header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.back-btn {
+  width: 56px;
+  height: 56px;
+  font-size: 40px;
+  color: #ffffff;
+  background-color: #ffffff30;
+  border-radius: 28px;
+  text-align: center;
+  line-height: 56px;
+}
+
+.title {
+  font-size: 40px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.placeholder {
+  width: 56px;
+}
+
+.item {
+  flex-direction: row;
+  align-items: center;
+  background-color: #333333;
+  border-radius: 26px;
+  padding: 26px 28px;
+  margin-bottom: 18px;
+}
+
+.checkbox {
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  border-width: 3px;
+  border-color: #666666;
+  margin-right: 18px;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.checkbox-inner {
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  background-color: transparent;
+}
+
+.item-content {
+  flex: 1;
+  flex-direction: column;
+}
+
+.item-title {
+  font-size: 35px;
+  color: #ffffff;
+}
+
+.item-remark {
+  font-size: 30px;
+  color: #aaaaaa;
+  margin-top: 6px;
+}
+
+.item-times {
+  flex-direction: row;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.item-time {
+  font-size: 17px;
+  color: #888888;
+}
+
+.progress-bar-bg {
+  width: 100%;
+  height: 6px;
+  background-color: #444444;
+  border-radius: 3px;
+  margin-top: 10px;
+}
+
+.progress-bar-fill {
+  height: 6px;
+  border-radius: 3px;
+}
+
+.progress-early {
+  background-color: #4a90d9;
+}
+
+.progress-normal {
+  background-color: #f0ad4e;
+}
+
+.progress-warning {
+  background-color: #e67e22;
+}
+
+.progress-overdue {
+  background-color: #ff6b6b;
+}
+
+.progress-done {
+  background-color: #4caf50;
+}
+
+.empty {
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+}
+
+.empty-title {
+  font-size: 40px;
+  font-weight: bold;
+  color: #ffffff;
+}
+</style>

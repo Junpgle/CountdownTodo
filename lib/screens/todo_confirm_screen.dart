@@ -40,13 +40,13 @@ class ParsedTodoResult {
 
 class TodoConfirmScreen extends StatefulWidget {
   final List<Map<String, dynamic>> llmResults;
-  final String imagePath;
+  final String? imagePath;
   final Function(List<Map<String, dynamic>>)? onConfirm;
 
   const TodoConfirmScreen({
     Key? key,
     required this.llmResults,
-    required this.imagePath,
+    this.imagePath,
     this.onConfirm,
   }) : super(key: key);
 
@@ -103,6 +103,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Future<void> _retryRecognition() async {
+    final imagePath = widget.imagePath;
+    if (imagePath == null) return;
+
     setState(() {
       _isRetrying = true;
       _retryStatus = '正在重试...';
@@ -136,7 +139,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             status: '正在分析图片...',
           );
 
-          results = await LLMService.parseTodoFromImage(widget.imagePath)
+          results = await LLMService.parseTodoFromImage(imagePath)
               .timeout(const Duration(seconds: 90));
 
           success = true;
@@ -382,8 +385,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final imageFile = File(widget.imagePath);
-    final hasImage = imageFile.existsSync();
+    final imagePath = widget.imagePath;
+    final imageFile = imagePath != null ? File(imagePath) : null;
+    final hasImage = imageFile?.existsSync() ?? false;
     final bool hasMoreTodos = _currentIndex < _allTodos.length;
     final currentTodo = hasMoreTodos ? _allTodos[_currentIndex] : null;
 
@@ -424,16 +428,21 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.file(
-                  imageFile,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Center(
-                      child: Icon(Icons.broken_image,
-                          size: 48, color: Colors.grey),
-                    );
-                  },
-                ),
+                child: imageFile != null
+                    ? Image.file(
+                        imageFile,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Center(
+                            child: Icon(Icons.broken_image,
+                                size: 48, color: Colors.grey),
+                          );
+                        },
+                      )
+                    : const Center(
+                        child: Icon(Icons.broken_image,
+                            size: 48, color: Colors.grey),
+                      ),
               ),
             ),
 
