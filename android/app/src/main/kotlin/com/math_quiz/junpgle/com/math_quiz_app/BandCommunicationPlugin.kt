@@ -1,6 +1,8 @@
 package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.xiaomi.xms.wearable.Wearable
 import com.xiaomi.xms.wearable.auth.AuthApi
@@ -19,6 +21,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         private const val TAG = "BandCommunication"
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var nodeApi: NodeApi? = null
     private var messageApi: MessageApi? = null
     private var serviceApi: ServiceApi? = null
@@ -26,6 +29,16 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     private var currentNode: Node? = null
     private var messageListener: OnMessageReceivedListener? = null
     private var hasDeviceManagerPermission = false
+
+    private fun invokeMethod(method: String, args: Any?) {
+        mainHandler.post {
+            try {
+                channel.invokeMethod(method, args)
+            } catch (e: Exception) {
+                Log.e(TAG, "invokeMethod $method failed: ${e.message}")
+            }
+        }
+    }
 
     // 服务连接监听器
     private val serviceConnectionListener = object : OnServiceConnectionListener {
@@ -38,7 +51,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             Log.d(TAG, "小米穿戴服务已断开")
             currentNode = null
             hasDeviceManagerPermission = false
-            channel.invokeMethod("onServiceDisconnected", null)
+            invokeMethod("onServiceDisconnected", null)
         }
     }
 
@@ -70,18 +83,16 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                     "isConnected" to true
                 )
                 Log.d(TAG, "获取到已连接设备: $deviceInfo")
-                channel.invokeMethod("onDeviceConnected", deviceInfo)
-
-                // 连接成功后自动检查并申请权限
+                invokeMethod("onDeviceConnected", deviceInfo)
                 checkAndRequestPermission()
             } else {
                 Log.d(TAG, "没有已连接的设备")
                 currentNode = null
-                channel.invokeMethod("onDeviceDisconnected", null)
+                invokeMethod("onDeviceDisconnected", null)
             }
         }?.addOnFailureListener { e ->
             Log.e(TAG, "获取已连接设备失败", e)
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1000,
                 "message" to "获取设备失败: ${e.message}"
             ))
@@ -112,13 +123,13 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             ?.addOnSuccessListener { permissions ->
                 hasDeviceManagerPermission = true
                 Log.d(TAG, "权限申请成功: ${permissions.map { it.name }}")
-                channel.invokeMethod("onPermissionGranted", mapOf(
+                invokeMethod("onPermissionGranted", mapOf(
                     "permissions" to permissions.map { it.name }
                 ))
             }
             ?.addOnFailureListener { e ->
                 Log.e(TAG, "权限申请失败", e)
-                channel.invokeMethod("onError", mapOf(
+                invokeMethod("onError", mapOf(
                     "code" to 1000,
                     "message" to "权限申请失败: ${e.message}"
                 ))
@@ -126,11 +137,44 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     }
 
     // 发送消息到手环
+    fun sendNotificationToBand(title: String, content: String, todoType: String, notificationId: Int) {
+        val node = currentNode
+        if (node == null) {
+            Log.e(TAG, "发送手环通知失败: 没有已连接的设备")
+            return
+        }
+        if (!hasDeviceManagerPermission) {
+            Log.e(TAG, "发送手环通知失败: 没有 DEVICE_MANAGER 权限")
+            return
+        }
+        val payload = org.json.JSONObject().apply {
+            put("type", "special_todo_notification")
+            put("data", org.json.JSONObject().apply {
+                put("title", title)
+                put("content", content)
+                put("todoType", todoType)
+                put("notificationId", notificationId)
+                put("timestamp", System.currentTimeMillis())
+            })
+        }.toString()
+        Log.d(TAG, "发送手环通知: $payload")
+        messageApi?.sendMessage(node.id, payload.toByteArray())?.addOnSuccessListener {
+            Log.d(TAG, "手环通知发送成功: $title")
+            nodeApi?.launchWearApp(node.id, "/home")?.addOnSuccessListener {
+                Log.d(TAG, "已自动打开手环应用（消息处理后将跳转提醒页面）")
+            }?.addOnFailureListener { e ->
+                Log.e(TAG, "打开手环应用失败", e)
+            }
+        }?.addOnFailureListener { e ->
+            Log.e(TAG, "手环通知发送失败", e)
+        }
+    }
+
     fun sendMessage(data: String) {
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "发送消息失败: 没有已连接的设备")
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1006,
                 "message" to "没有已连接的设备"
             ))
@@ -139,7 +183,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
         if (!hasDeviceManagerPermission) {
             Log.e(TAG, "发送消息失败: 没有 DEVICE_MANAGER 权限")
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1001,
                 "message" to "缺少 DEVICE_MANAGER 权限"
             ))
@@ -148,10 +192,10 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
         messageApi?.sendMessage(node.id, data.toByteArray())?.addOnSuccessListener {
             Log.d(TAG, "消息发送成功: $data")
-            channel.invokeMethod("onMessageSent", mapOf("success" to true))
+            invokeMethod("onMessageSent", mapOf("success" to true))
         }?.addOnFailureListener { e ->
             Log.e(TAG, "消息发送失败", e)
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1000,
                 "message" to "发送失败: ${e.message}"
             ))
@@ -170,14 +214,14 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                     doRegisterListener()
                 } else {
                     Log.e(TAG, "注册监听器失败: 没有已连接的设备")
-                    channel.invokeMethod("onError", mapOf(
+                    invokeMethod("onError", mapOf(
                         "code" to 1006,
                         "message" to "没有已连接的设备"
                     ))
                 }
             }?.addOnFailureListener { e ->
                 Log.e(TAG, "获取设备失败", e)
-                channel.invokeMethod("onError", mapOf(
+                invokeMethod("onError", mapOf(
                     "code" to 1000,
                     "message" to "获取设备失败: ${e.message}"
                 ))
@@ -192,7 +236,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "doRegisterListener: node is null")
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1006,
                 "message" to "设备未连接"
             ))
@@ -201,7 +245,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
         if (messageApi == null) {
             Log.e(TAG, "doRegisterListener: messageApi is null")
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1000,
                 "message" to "SDK 未初始化"
             ))
@@ -210,7 +254,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
         if (!hasDeviceManagerPermission) {
             Log.e(TAG, "doRegisterListener: 没有 DEVICE_MANAGER 权限")
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1001,
                 "message" to "缺少 DEVICE_MANAGER 权限，请先申请权限"
             ))
@@ -225,18 +269,18 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         messageListener = OnMessageReceivedListener { nodeId, message ->
             val messageStr = String(message)
             Log.d(TAG, "收到手环消息: $messageStr")
-            channel.invokeMethod("onMessageReceived", mapOf("data" to messageStr))
+            invokeMethod("onMessageReceived", mapOf("data" to messageStr))
         }
 
         Log.d(TAG, "调用 addListener...")
         messageApi?.addListener(node.id, messageListener!!)
             ?.addOnSuccessListener {
                 Log.d(TAG, "消息监听器注册成功")
-                channel.invokeMethod("onListenerRegistered", mapOf("success" to true))
+                invokeMethod("onListenerRegistered", mapOf("success" to true))
             }
             ?.addOnFailureListener { e ->
                 Log.e(TAG, "消息监听器注册失败: ${e.message}", e)
-                channel.invokeMethod("onError", mapOf(
+                invokeMethod("onError", mapOf(
                     "code" to 1000,
                     "message" to "注册监听器失败: ${e.message}"
                 ))
@@ -260,16 +304,16 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     fun isAppInstalled() {
         val node = currentNode
         if (node == null) {
-            channel.invokeMethod("onAppInstallResult", mapOf("installed" to false))
+            invokeMethod("onAppInstallResult", mapOf("installed" to false))
             return
         }
 
         nodeApi?.isWearAppInstalled(node.id)?.addOnSuccessListener { installed ->
             Log.d(TAG, "手环端应用安装状态: $installed")
-            channel.invokeMethod("onAppInstallResult", mapOf("installed" to installed))
+            invokeMethod("onAppInstallResult", mapOf("installed" to installed))
         }?.addOnFailureListener { e ->
             Log.e(TAG, "检查应用安装状态失败", e)
-            channel.invokeMethod("onAppInstallResult", mapOf("installed" to false))
+            invokeMethod("onAppInstallResult", mapOf("installed" to false))
         }
     }
 
@@ -278,7 +322,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "启动应用失败: 没有已连接的设备")
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1006,
                 "message" to "没有已连接的设备"
             ))
@@ -287,10 +331,10 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
         nodeApi?.launchWearApp(node.id, "/home")?.addOnSuccessListener {
             Log.d(TAG, "手环端应用启动成功")
-            channel.invokeMethod("onAppLaunched", mapOf("success" to true))
+            invokeMethod("onAppLaunched", mapOf("success" to true))
         }?.addOnFailureListener { e ->
             Log.e(TAG, "手环端应用启动失败", e)
-            channel.invokeMethod("onError", mapOf(
+            invokeMethod("onError", mapOf(
                 "code" to 1000,
                 "message" to "启动应用失败: ${e.message}"
             ))
@@ -319,4 +363,3 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         hasDeviceManagerPermission = false
     }
 }
-

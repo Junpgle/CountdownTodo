@@ -42,6 +42,12 @@
       },
       "pages/settings": {
         "component": "settings"
+      },
+      "pages/pomodoro": {
+        "component": "pomodoro"
+      },
+      "pages/alert": {
+        "component": "alert"
       }
     }
   }

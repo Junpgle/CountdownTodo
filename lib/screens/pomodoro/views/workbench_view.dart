@@ -11,6 +11,7 @@ import '../../../storage_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
+import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../update_service.dart';
 import '../pomodoro_utils.dart';
@@ -101,6 +102,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   StreamSubscription? _islandSub;
+  StreamSubscription? _bandSub;
   void _listenToIslandActions() {
     _islandSub = IslandChannel.actionStream.listen((actionData) {
       if (!mounted) return;
@@ -115,6 +117,19 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           windowManager.focus();
           _abandonFocus(true);
         }
+      }
+    });
+    _bandSub = BandSyncService.onBandPomodoroAction.listen((actionData) {
+      if (!mounted) return;
+      final action = actionData['action']?.toString();
+      if (action == 'finish') {
+        windowManager.show();
+        windowManager.focus();
+        _finishEarly();
+      } else if (action == 'abandon') {
+        windowManager.show();
+        windowManager.focus();
+        _abandonFocus(true);
       }
     });
   }

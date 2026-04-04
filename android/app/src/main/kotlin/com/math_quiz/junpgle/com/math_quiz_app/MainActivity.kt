@@ -64,6 +64,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingPomodoroAction: String? = null
     // 保存待处理的待办确认动作（在methodChannel初始化前）
     private var pendingTodoConfirm = false
+    // 手环通信插件，全局可访问
+    private var bandPlugin: BandCommunicationPlugin? = null
 
     // 专门接收"点击完成"按钮的广播接收器
     private val todoActionReceiver = object : BroadcastReceiver() {
@@ -526,47 +528,48 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 手环通信 Channel
         val bandChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BAND_CHANNEL)
-        val bandPlugin = BandCommunicationPlugin(this, bandChannel)
+        bandPlugin = BandCommunicationPlugin(this, bandChannel)
+        val plugin = bandPlugin
         bandChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "init" -> {
-                    bandPlugin.init()
+                    plugin?.init()
                     result.success(true)
                 }
                 "getConnectedDevice" -> {
-                    bandPlugin.getConnectedDevice()
+                    plugin?.getConnectedDevice()
                     result.success(true)
                 }
                 "sendMessage" -> {
                     val data = call.argument<String>("data")
                     if (data != null) {
-                        bandPlugin.sendMessage(data)
+                        plugin?.sendMessage(data)
                         result.success(true)
                     } else {
                         result.error("INVALID_ARGS", "data is required", null)
                     }
                 }
                 "registerListener" -> {
-                    bandPlugin.registerMessageListener()
+                    plugin?.registerMessageListener()
                     result.success(true)
                 }
                 "unregisterListener" -> {
-                    bandPlugin.unregisterMessageListener()
+                    plugin?.unregisterMessageListener()
                     result.success(true)
                 }
                 "isAppInstalled" -> {
-                    bandPlugin.isAppInstalled()
+                    plugin?.isAppInstalled()
                     result.success(true)
                 }
                 "launchApp" -> {
-                    bandPlugin.launchApp()
+                    plugin?.launchApp()
                     result.success(true)
                 }
                 "getConnectionStatus" -> {
-                    result.success(bandPlugin.getConnectionStatus())
+                    result.success(plugin?.getConnectionStatus() ?: mapOf("isConnected" to false))
                 }
                 "requestPermission" -> {
-                    bandPlugin.requestPermission()
+                    plugin?.requestPermission()
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -924,6 +927,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             notificationId = notifId,
             islandBizTag = SPECIAL_TODO_ISLAND_BIZ_TAG
         )
+
+        // 📳 同步发送到手环
+        bandPlugin?.sendNotificationToBand(title, text, todoType, notifId)
     }
 
     // 负责"全天"待办的汇总显示

@@ -18,6 +18,12 @@ class BandSyncService {
   static final List<String> _logs = [];
   static final List<Map<String, dynamic>> _receivedMessages = [];
 
+  // 番茄钟操作广播流
+  static final _pomodoroActionCtrl =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static Stream<Map<String, dynamic>> get onBandPomodoroAction =>
+      _pomodoroActionCtrl.stream;
+
   // 回调
   static Function(Map<String, dynamic>)? _onDeviceConnected;
   static Function()? _onDeviceDisconnected;
@@ -84,6 +90,15 @@ class BandSyncService {
           try {
             final jsonData = jsonDecode(data) as Map<String, dynamic>;
             _receivedMessages.add(jsonData);
+
+            if (jsonData['type'] == 'pomodoro' &&
+                (jsonData['action'] == 'finish' ||
+                    jsonData['action'] == 'abandon')) {
+              _addLog('手环番茄钟操作: ${jsonData['action']}');
+              if (!_pomodoroActionCtrl.isClosed) {
+                _pomodoroActionCtrl.add(jsonData);
+              }
+            }
 
             if (jsonData['action'] == 'request_sync') {
               _addLog('手环请求同步: ${jsonData['type']}');
@@ -190,6 +205,14 @@ class BandSyncService {
   static Future<bool> syncCountdowns(
       List<Map<String, dynamic>> countdowns) async {
     final success = await sendData('countdown', countdowns);
+    if (success) _updateLastSyncTime();
+    return success;
+  }
+
+  /// 同步番茄钟运行状态
+  static Future<bool> syncPomodoro(
+      List<Map<String, dynamic>> pomodoroData) async {
+    final success = await sendData('pomodoro', pomodoroData);
     if (success) _updateLastSyncTime();
     return success;
   }
