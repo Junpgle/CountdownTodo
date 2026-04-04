@@ -500,7 +500,26 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             child: _allTodos.isEmpty
                 ? _buildEmptyState()
                 : hasMoreTodos
-                    ? _buildCurrentTodoCard(currentTodo!)
+                    ? AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 350),
+                        transitionBuilder: (child, animation) {
+                          final slideAnimation = Tween<Offset>(
+                            begin: const Offset(0.3, 0.0),
+                            end: Offset.zero,
+                          ).animate(CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOutCubic,
+                          ));
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: slideAnimation,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: _buildCurrentTodoCard(currentTodo!),
+                      )
                     : _buildCompletedState(),
           ),
 
@@ -540,6 +559,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
   Widget _buildCurrentTodoCard(ParsedTodoResult todo) {
     return SingleChildScrollView(
+      key: ValueKey(_currentIndex),
       padding: const EdgeInsets.all(16),
       child: Card(
         elevation: 2,

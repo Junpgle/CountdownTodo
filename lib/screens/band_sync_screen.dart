@@ -33,6 +33,26 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   }
 
   Future<void> _initBandService() async {
+    if (BandSyncService.isInitialized) {
+      _logs.add('手环服务已全局初始化');
+      final status = await BandSyncService.getConnectionStatus();
+      if (status['isConnected'] == true) {
+        setState(() {
+          _isConnected = true;
+          _deviceName = status['name'] ?? '小米手环';
+          _hasPermission = status['hasPermission'] == true;
+        });
+        _logs.add('当前设备: $_deviceName');
+        if (!_hasPermission) {
+          _logs.add('缺少权限，自动申请...');
+          await BandSyncService.requestPermission();
+        } else {
+          await BandSyncService.registerListener();
+        }
+      }
+      return;
+    }
+
     final success = await BandSyncService.init(
       onDeviceConnected: (info) {
         setState(() {
@@ -65,13 +85,6 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         });
         _logs.add('权限已授予，自动注册监听...');
         BandSyncService.registerListener();
-      },
-      onSyncRequestFromBand: (data) {
-        final type = data['type'] as String? ?? '';
-        setState(() {
-          _logs.add('手环请求同步: $type');
-        });
-        _handleSyncRequest(type);
       },
     );
 

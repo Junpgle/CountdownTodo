@@ -8,8 +8,10 @@ import '../services/pomodoro_service.dart';
 class PomodoroTodaySection extends StatefulWidget {
   final String username;
   final bool isLight;
+
   /// 每次自增时触发重新加载（由首页 resumed 回调驱动）
   final int refreshTrigger;
+
   /// 点击整个卡片时的回调（跳转统计看板）
   final VoidCallback? onTap;
 
@@ -25,16 +27,22 @@ class PomodoroTodaySection extends StatefulWidget {
   State<PomodoroTodaySection> createState() => _PomodoroTodaySectionState();
 }
 
-class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
+class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
+    with SingleTickerProviderStateMixin {
   List<PomodoroRecord> _records = [];
   List<PomodoroTag> _tags = [];
   bool _loading = true;
   bool _collapsed = false;
-  bool _isToday = true; // 当前显示的是今日还是昨日
+  bool _isToday = true;
+  late AnimationController _chartAnimationController;
 
   @override
   void initState() {
     super.initState();
+    _chartAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _loadData();
   }
 
@@ -46,24 +54,30 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
     }
   }
 
+  @override
+  void dispose() {
+    _chartAnimationController.dispose();
+    super.dispose();
+  }
+
   /// 只读本地数据（云端同步已由首页 _handleManualSync / _checkAutoSync 统一负责）
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _loading = true);
     final result = await PomodoroService.getRecentRecords();
-    final tags   = await PomodoroService.getTags();
+    final tags = await PomodoroService.getTags();
     if (mounted) {
       setState(() {
         _records = result.records;
-        _tags    = tags;
+        _tags = tags;
         _isToday = result.isToday;
         _loading = false;
       });
+      _chartAnimationController.forward(from: 0.0);
     }
   }
 
-  int get _totalSeconds =>
-      _records.fold(0, (s, r) => s + r.effectiveDuration);
+  int get _totalSeconds => _records.fold(0, (s, r) => s + r.effectiveDuration);
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +100,12 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: widget.isLight ? Colors.white.withOpacity(0.15) : Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                    color: widget.isLight
+                        ? Colors.white.withOpacity(0.15)
+                        : Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(Icons.bar_chart_rounded,
@@ -108,7 +127,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
                 // 今日 / 昨日 标签
                 if (!_loading)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: widget.isLight
                           ? Colors.white.withOpacity(0.2)
@@ -140,9 +160,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
                 const Spacer(),
                 // 跳转箭头
                 if (widget.onTap != null)
-                  Icon(Icons.chevron_right,
-                      size: 20,
-                      color: subColor),
+                  Icon(Icons.chevron_right, size: 20, color: subColor),
                 if (_records.isNotEmpty)
                   GestureDetector(
                     onTap: () => setState(() => _collapsed = !_collapsed),
@@ -172,27 +190,39 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
               padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: widget.isLight ? Colors.white.withOpacity(0.1) : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                color: widget.isLight
+                    ? Colors.white.withOpacity(0.1)
+                    : Theme.of(context)
+                        .colorScheme
+                        .surfaceVariant
+                        .withOpacity(0.3),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: widget.isLight ? Colors.white24 : Theme.of(context).dividerColor.withOpacity(0.5)),
+                border: Border.all(
+                    color: widget.isLight
+                        ? Colors.white24
+                        : Theme.of(context).dividerColor.withOpacity(0.5)),
               ),
               child: Column(
                 children: [
-                  Icon(Icons.timer_outlined, size: 32, color: subColor?.withOpacity(0.5)),
+                  Icon(Icons.timer_outlined,
+                      size: 32, color: subColor?.withOpacity(0.5)),
                   const SizedBox(height: 8),
                   Text('暂无专注记录，开始你的第一个番茄钟吧！',
-                      style: TextStyle(color: subColor, fontSize: 13, fontWeight: FontWeight.w500)),
+                      style: TextStyle(
+                          color: subColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500)),
                 ],
               ),
             )
           else if (!_collapsed)
-              Column(
-                children: [
-                  _buildHourlyChart(subColor),
-                  const SizedBox(height: 12),
-                  _buildTagStatistics(subColor),
-                ],
-              ),
+            Column(
+              children: [
+                _buildHourlyChart(subColor),
+                const SizedBox(height: 12),
+                _buildTagStatistics(subColor),
+              ],
+            ),
         ],
       ),
     );
@@ -205,14 +235,14 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
     List<int> hourlySeconds = List.filled(24, 0);
     for (var r in _records) {
       final startLocal =
-      DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
+          DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true)
+              .toLocal();
       hourlySeconds[startLocal.hour] += r.effectiveDuration;
     }
 
     final maxSeconds = hourlySeconds.reduce(max);
-    final primaryColor = widget.isLight
-        ? Colors.white
-        : Theme.of(context).colorScheme.primary;
+    final primaryColor =
+        widget.isLight ? Colors.white : Theme.of(context).colorScheme.primary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -221,14 +251,25 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
             ? Colors.white.withOpacity(0.1)
             : Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: widget.isLight ? [] : [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
-        ],
+        boxShadow: widget.isLight
+            ? []
+            : [
+                BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4))
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('时段分布', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: widget.isLight ? Colors.white70 : Theme.of(context).colorScheme.outline)),
+          Text('时段分布',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: widget.isLight
+                      ? Colors.white70
+                      : Theme.of(context).colorScheme.outline)),
           const SizedBox(height: 16),
           SizedBox(
             height: 90,
@@ -245,26 +286,37 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Expanded(
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: FractionallySizedBox(
-                              heightFactor: factor > 0 ? max(factor, 0.05) : 0,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  // 采用漂亮的线性渐变填充柱子
-                                  gradient: factor > 0 ? LinearGradient(
-                                      begin: Alignment.bottomCenter,
-                                      end: Alignment.topCenter,
-                                      colors: [
-                                        primaryColor.withOpacity(0.5),
-                                        primaryColor,
-                                      ]
-                                  ) : null,
-                                  color: factor > 0 ? null : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(4),
+                          child: AnimatedBuilder(
+                            animation: _chartAnimationController,
+                            builder: (context, child) {
+                              final animatedFactor =
+                                  factor * _chartAnimationController.value;
+                              return Align(
+                                alignment: Alignment.bottomCenter,
+                                child: FractionallySizedBox(
+                                  heightFactor: animatedFactor > 0
+                                      ? max(animatedFactor, 0.05)
+                                      : 0,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: animatedFactor > 0
+                                          ? LinearGradient(
+                                              begin: Alignment.bottomCenter,
+                                              end: Alignment.topCenter,
+                                              colors: [
+                                                  primaryColor.withOpacity(0.5),
+                                                  primaryColor,
+                                                ])
+                                          : null,
+                                      color: animatedFactor > 0
+                                          ? null
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -318,23 +370,33 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
             ? Colors.white.withOpacity(0.1)
             : Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: widget.isLight ? [] : [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
-        ],
+        boxShadow: widget.isLight
+            ? []
+            : [
+                BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4))
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('专注项目', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: widget.isLight ? Colors.white70 : Theme.of(context).colorScheme.outline)),
+          Text('专注项目',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: widget.isLight
+                      ? Colors.white70
+                      : Theme.of(context).colorScheme.outline)),
           const SizedBox(height: 16),
           if (sortedTags.isEmpty && untaggedSeconds == 0)
             Text('暂无数据', style: TextStyle(color: subColor, fontSize: 13)),
-
           ...sortedTags.map((entry) {
             final tag = _tags.cast<PomodoroTag?>().firstWhere(
                   (t) => t?.uuid == entry.key,
-              orElse: () => null,
-            );
+                  orElse: () => null,
+                );
             if (tag == null) return const SizedBox.shrink();
 
             return _buildTagStatRow(
@@ -345,7 +407,6 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
               subColor: subColor,
             );
           }),
-
           if (untaggedSeconds > 0)
             _buildTagStatRow(
               name: '未分类',
@@ -377,8 +438,12 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
           Container(
             width: 12,
             height: 12,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [
-              BoxShadow(color: color.withOpacity(0.4), blurRadius: 4, offset: const Offset(0, 2))
+            decoration:
+                BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [
+              BoxShadow(
+                  color: color.withOpacity(0.4),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2))
             ]),
           ),
           const SizedBox(width: 10),
@@ -386,7 +451,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
             flex: 2,
             child: Text(
               name,
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textColor),
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w500, color: textColor),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -409,9 +475,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection> {
             child: Text(
               PomodoroService.formatDuration(seconds),
               style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: textColor),
+                  fontSize: 13, fontWeight: FontWeight.w700, color: textColor),
               textAlign: TextAlign.right,
             ),
           ),

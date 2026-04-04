@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../storage_service.dart';
 
 class NotificationService {
   static const MethodChannel _channel =
@@ -46,6 +47,7 @@ class NotificationService {
     required String timeStr,
     required String teacher,
   }) async {
+    if (!await StorageService.isCourseNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     if (Platform.isWindows) {
@@ -79,6 +81,7 @@ class NotificationService {
     required bool isOver,
     int score = 0,
   }) async {
+    if (!await StorageService.isQuizNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     if (isOver) {
@@ -101,6 +104,7 @@ class NotificationService {
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
+    if (!await StorageService.isTodoSummaryNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     final DateTime now = DateTime.now();
@@ -206,14 +210,21 @@ class NotificationService {
     if (todo.dueDate == null) return;
     if (!_isSameDay(todo.dueDate!.toLocal(), DateTime.now())) return;
 
+    final todoType = _detectTodoType(todo.title);
+    final isSpecialTodo = todoType != 'default';
+
+    if (isSpecialTodo) {
+      if (!await StorageService.isSpecialTodoNotificationEnabled()) return;
+    } else {
+      if (!await StorageService.isTodoSummaryNotificationEnabled()) return;
+    }
+
     DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
             todo.createdDate ?? todo.createdAt,
             isUtc: true)
         .toLocal();
     String timeStr =
         "${DateFormat('HH:mm').format(startDate)} - ${DateFormat('HH:mm').format(todo.dueDate!.toLocal())}";
-    final todoType = _detectTodoType(todo.title);
-    final isSpecialTodo = todoType != 'default';
     final notifId = isSpecialTodo ? todo.id.hashCode : null;
 
     debugPrint(
@@ -255,6 +266,7 @@ class NotificationService {
     List<String> tagNames = const [],
     String alertKey = '',
   }) async {
+    if (!await StorageService.isPomodoroNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     final String countdownStr;
@@ -284,6 +296,7 @@ class NotificationService {
     String? todoTitle,
     bool isBreak = false,
   }) async {
+    if (!await StorageService.isPomodoroEndNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     if (Platform.isWindows) {
@@ -333,6 +346,7 @@ class NotificationService {
 
   static Future<void> scheduleReminders(
       List<Map<String, dynamic>> reminders) async {
+    if (!await StorageService.isReminderNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
     if (reminders.isEmpty) return;
     try {
@@ -388,6 +402,7 @@ class NotificationService {
     required int maxAttempts,
     required String status,
   }) async {
+    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     final title = '🔍 图片识别待办中...';
@@ -425,6 +440,7 @@ class NotificationService {
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
   }) async {
+    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     final title = '✅ 图片识别完成';
@@ -457,6 +473,7 @@ class NotificationService {
   static Future<void> showTodoRecognizeFailed({
     required String errorMsg,
   }) async {
+    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     final title = '❌ 图片识别失败';

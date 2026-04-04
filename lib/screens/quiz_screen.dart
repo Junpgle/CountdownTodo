@@ -26,7 +26,8 @@ class QuizScreen extends StatefulWidget {
   State<QuizScreen> createState() => _QuizScreenState();
 }
 
-class _QuizScreenState extends State<QuizScreen> {
+class _QuizScreenState extends State<QuizScreen>
+    with SingleTickerProviderStateMixin {
   // 新增：静态变量，用于在页面销毁后依然保留状态（只要App没被杀掉）
   static QuizSession? _currentSession;
 
@@ -36,15 +37,31 @@ class _QuizScreenState extends State<QuizScreen> {
   late DateTime startTime;
   bool isLoading = true;
 
+  // 动画相关
+  late PageController _pageController;
+  late AnimationController _shakeController;
+  late Animation<double> _shakeAnimation;
+  bool? _lastAnswerCorrect; // null=无反馈, true=正确, false=错误
+  Color _feedbackColor = Colors.transparent;
+
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
+    _shakeController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
+    );
     _checkAndLoadSession();
   }
 
   @override
   void dispose() {
-    // 退出界面时不取消通知，也不清空 _currentSession，实现“暂存”
+    _pageController.dispose();
+    _shakeController.dispose();
     _answerController.dispose();
     super.dispose();
   }
@@ -52,7 +69,8 @@ class _QuizScreenState extends State<QuizScreen> {
   // 新增：检查是否有可恢复的会话
   void _checkAndLoadSession() {
     // 如果有存档，且存档的用户是当前用户，则恢复
-    if (_currentSession != null && _currentSession!.username == widget.username) {
+    if (_currentSession != null &&
+        _currentSession!.username == widget.username) {
       print("恢复上次的答题进度");
       setState(() {
         questions = _currentSession!.questions;
@@ -62,7 +80,8 @@ class _QuizScreenState extends State<QuizScreen> {
       });
 
       // 恢复输入框内容（如果当前题已作答）
-      if (questions[currentIndex].isAnswered && questions[currentIndex].userAnswer != null) {
+      if (questions[currentIndex].isAnswered &&
+          questions[currentIndex].userAnswer != null) {
         _answerController.text = questions[currentIndex].userAnswer.toString();
       }
 
@@ -75,7 +94,9 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   void startNewTest() async {
-    setState(() { isLoading = true; });
+    setState(() {
+      isLoading = true;
+    });
 
     // 获取配置
     var settings = await StorageService.getSettings();
@@ -85,7 +106,10 @@ class _QuizScreenState extends State<QuizScreen> {
     if (!mounted) return;
 
     if (newQuestions.isEmpty) {
-      setState(() { isLoading = false; questions = []; });
+      setState(() {
+        isLoading = false;
+        questions = [];
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('生成的题目为空，请检查设置范围是否合理')),
       );
@@ -101,15 +125,18 @@ class _QuizScreenState extends State<QuizScreen> {
       startTime = now;
       _answerController.clear();
       isLoading = false;
+      _lastAnswerCorrect = null;
+      _feedbackColor = Colors.transparent;
     });
+
+    _pageController.jumpToPage(0);
 
     // 新增：保存到静态会话中
     _currentSession = QuizSession(
         questions: newQuestions,
         currentIndex: 0,
         startTime: now,
-        username: widget.username
-    );
+        username: widget.username);
 
     // 题目生成成功，立即发送第一题的通知
     _updateNotification();
@@ -135,27 +162,74 @@ class _QuizScreenState extends State<QuizScreen> {
   void _submitAnswer() {
     if (_answerController.text.isEmpty) return;
 
+    bool isCorrect = int.tryParse(_answerController.text) ==
+        questions[currentIndex].correctAnswer;
+
     setState(() {
       questions[currentIndex].userAnswer = int.tryParse(_answerController.text);
       questions[currentIndex].isAnswered = true;
+      _lastAnswerCorrect = isCorrect;
+      _feedbackColor = isCorrect
+          ? Colors.green.withOpacity(0.3)
+          : Colors.red.withOpacity(0.3);
     });
 
-    if (currentIndex < questions.length - 1) {
-      setState(() {
-        currentIndex++;
-        _answerController.clear();
-      });
-
-      // 新增：同步进度到静态会话
-      if (_currentSession != null) {
-        _currentSession!.currentIndex = currentIndex;
-      }
-
-      // 切换到下一题，更新通知
-      _updateNotification();
+    if (isCorrect) {
+      // 正确：绿色闪烁
+      _playCorrectFlash();
     } else {
-      _finishTest();
+      // 错误：红色抖动
+      _shakeController.forward(from: 0);
     }
+
+    // 延迟后自动切换到下一题
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+      if (currentIndex < questions.length - 1) {
+        _goToNextQuestion();
+      } else {
+        _finishTest();
+      }
+    });
+  }
+
+  void _playCorrectFlash() {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      setState(() {
+        _feedbackColor = Colors.green.withOpacity(0.1);
+      });
+    });
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      setState(() {
+        _feedbackColor = Colors.transparent;
+      });
+    });
+  }
+
+  void _goToNextQuestion() {
+    int nextIndex = currentIndex + 1;
+    setState(() {
+      currentIndex = nextIndex;
+      _answerController.clear();
+      _lastAnswerCorrect = null;
+      _feedbackColor = Colors.transparent;
+    });
+
+    _pageController.animateToPage(
+      currentIndex,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+
+    // 新增：同步进度到静态会话
+    if (_currentSession != null) {
+      _currentSession!.currentIndex = currentIndex;
+    }
+
+    // 切换到下一题，更新通知
+    _updateNotification();
   }
 
   void _prevQuestion() {
@@ -163,11 +237,20 @@ class _QuizScreenState extends State<QuizScreen> {
       setState(() {
         currentIndex--;
         if (questions[currentIndex].isAnswered) {
-          _answerController.text = questions[currentIndex].userAnswer.toString();
+          _answerController.text =
+              questions[currentIndex].userAnswer.toString();
         } else {
           _answerController.clear();
         }
+        _lastAnswerCorrect = null;
+        _feedbackColor = Colors.transparent;
       });
+
+      _pageController.animateToPage(
+        currentIndex,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
 
       // 新增：同步进度到静态会话
       if (_currentSession != null) {
@@ -177,6 +260,25 @@ class _QuizScreenState extends State<QuizScreen> {
       // 返回上一题，更新通知
       _updateNotification();
     }
+  }
+
+  void _onPageChanged(int page) {
+    setState(() {
+      currentIndex = page;
+      if (questions[currentIndex].isAnswered) {
+        _answerController.text = questions[currentIndex].userAnswer.toString();
+      } else {
+        _answerController.clear();
+      }
+      _lastAnswerCorrect = null;
+      _feedbackColor = Colors.transparent;
+    });
+
+    if (_currentSession != null) {
+      _currentSession!.currentIndex = currentIndex;
+    }
+
+    _updateNotification();
   }
 
   void _finishTest() async {
@@ -208,10 +310,15 @@ class _QuizScreenState extends State<QuizScreen> {
     String comment;
     if (score >= 90) {
       comment = "SMART";
-    } else if (score >= 80) {comment = "GOOD";}
-    else if (score >= 70) {comment = "OK";}
-    else if (score >= 60) {comment = "PASS";}
-    else {comment = "TRY AGAIN";}
+    } else if (score >= 80) {
+      comment = "GOOD";
+    } else if (score >= 70) {
+      comment = "OK";
+    } else if (score >= 60) {
+      comment = "PASS";
+    } else {
+      comment = "TRY AGAIN";
+    }
 
     if (!mounted) return;
 
@@ -220,7 +327,30 @@ class _QuizScreenState extends State<QuizScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text("测试完成"),
-        content: Text("得分: $score\n用时: $duration秒\n评价: $comment"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TweenAnimationBuilder<int>(
+              tween: IntTween(begin: 0, end: score),
+              duration: const Duration(milliseconds: 1500),
+              curve: Curves.easeOut,
+              builder: (context, value, child) {
+                return Text(
+                  "得分: $value",
+                  style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            Text("用时: $duration秒"),
+            const SizedBox(height: 4),
+            Text("评价: $comment",
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () {
@@ -248,6 +378,47 @@ class _QuizScreenState extends State<QuizScreen> {
     Navigator.pop(context);
   }
 
+  Widget _buildQuestionCard(Question q, int index) {
+    String displayOp = q.operatorSymbol;
+    if (displayOp == '*') displayOp = '×';
+    if (displayOp == '/') displayOp = '÷';
+
+    return AnimatedBuilder(
+      animation: _shakeAnimation,
+      builder: (context, child) {
+        double shakeOffset = 0;
+        if (_lastAnswerCorrect == false && _shakeController.isAnimating) {
+          shakeOffset =
+              (_shakeAnimation.value * 10) * (index == currentIndex ? 1 : 0);
+          if (shakeOffset.abs() < 0.5) shakeOffset = 0;
+        }
+        return Transform.translate(
+          offset: Offset(shakeOffset, 0),
+          child: child,
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: _feedbackColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _lastAnswerCorrect != null && index == currentIndex
+                ? (_lastAnswerCorrect! ? Colors.green : Colors.red)
+                : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            "${q.num1} $displayOp ${q.num2} = ?",
+            style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -264,16 +435,9 @@ class _QuizScreenState extends State<QuizScreen> {
       );
     }
 
-    Question q = questions[currentIndex];
-    // 显示更友好的运算符号
-    String displayOp = q.operatorSymbol;
-    if (displayOp == '*') displayOp = '×';
-    if (displayOp == '/') displayOp = '÷';
-
     return Scaffold(
       appBar: AppBar(
-        title: Text("第 ${currentIndex + 1} / 10 题"),
-        // 可选：添加一个强制重置的按钮，以防用户想从头开始
+        title: Text("第 ${currentIndex + 1} / ${questions.length} 题"),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -285,8 +449,12 @@ class _QuizScreenState extends State<QuizScreen> {
                   title: const Text("重新开始？"),
                   content: const Text("当前进度将丢失。"),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
-                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("确定")),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text("取消")),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text("确定")),
                   ],
                 ),
               );
@@ -301,10 +469,47 @@ class _QuizScreenState extends State<QuizScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            const Spacer(),
-            Text(
-              "${q.num1} $displayOp ${q.num2} = ?",
-              style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+            // 进度条
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: 0,
+                end: questions.isNotEmpty
+                    ? (currentIndex + 1) / questions.length
+                    : 0,
+              ),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+              builder: (context, value, child) {
+                return Column(
+                  children: [
+                    LinearProgressIndicator(
+                      value: value,
+                      backgroundColor: Colors.grey[200],
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(Colors.blue),
+                      minHeight: 8,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "进度: ${currentIndex + 1} / ${questions.length}",
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+            // PageView 题目区域
+            Expanded(
+              flex: 2,
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                itemCount: questions.length,
+                itemBuilder: (context, index) {
+                  return _buildQuestionCard(questions[index], index);
+                },
+              ),
             ),
             const SizedBox(height: 30),
             TextField(
@@ -328,8 +533,11 @@ class _QuizScreenState extends State<QuizScreen> {
                 ),
                 ElevatedButton(
                   onPressed: _submitAnswer,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-                  child: Text(currentIndex == questions.length - 1 ? "提交试卷" : "下一题"),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white),
+                  child: Text(
+                      currentIndex == questions.length - 1 ? "提交试卷" : "下一题"),
                 ),
               ],
             ),

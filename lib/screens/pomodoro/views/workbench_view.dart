@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -123,13 +124,21 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       if (!mounted) return;
       final action = actionData['action']?.toString();
       if (action == 'finish') {
-        windowManager.show();
-        windowManager.focus();
-        _finishEarly();
+        if (!Platform.isWindows) {
+          _finishEarly();
+        } else {
+          windowManager.show();
+          windowManager.focus();
+          _finishEarly();
+        }
       } else if (action == 'abandon') {
-        windowManager.show();
-        windowManager.focus();
-        _abandonFocus(true);
+        if (!Platform.isWindows) {
+          _abandonFocus(true);
+        } else {
+          windowManager.show();
+          windowManager.focus();
+          _abandonFocus(true);
+        }
       }
     });
   }
@@ -892,8 +901,30 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       targetEndMs: end,
       tagNames: tagNames,
       mode: _settings.mode.index,
-      customTimestamp: _sessionStartMs, // 🚀 关键：使用真实的起点时间
+      customTimestamp: _sessionStartMs,
     );
+
+    // 同步到手环
+    final pomodoroData = [
+      {
+        'sessionUuid': _currentSessionUuid,
+        'phase': PomodoroPhase.focusing.index,
+        'targetEndMs': end,
+        'currentCycle': _currentCycle,
+        'totalCycles': _settings.cycles,
+        'focusSeconds': isCountUp ? 0 : _settings.focusMinutes * 60,
+        'breakSeconds': _settings.breakMinutes * 60,
+        'todoUuid': _boundTodo?.id,
+        'todoTitle': _boundTodo?.title,
+        'tagUuids': _selectedTagUuids,
+        'tagNames': tagNames.map((n) => {'name': n}).toList(),
+        'sessionStartMs': now,
+        'plannedFocusSeconds': isCountUp ? 0 : _settings.focusMinutes * 60,
+        'isCountUp': isCountUp,
+        'mode': _settings.mode.index,
+      }
+    ];
+    BandSyncService.syncPomodoro(pomodoroData);
   }
 
   Future<void> _switchTask(TodoItem newTodo) async {

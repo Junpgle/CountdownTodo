@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
 
-class WorkbenchActions extends StatelessWidget {
+class WorkbenchActions extends StatefulWidget {
   final bool isIdle;
   final bool isFocusing;
   final bool isRemoteWatching;
@@ -14,10 +14,7 @@ class WorkbenchActions extends StatelessWidget {
   final VoidCallback onAbandonFocus;
   final VoidCallback onSkipBreak;
 
-  // New: compact rendering flag
   final bool isCompact;
-
-  // New: whether to show the mode toggle (caller can hide it in landscape active state)
   final bool showModeToggle;
 
   const WorkbenchActions({
@@ -37,32 +34,90 @@ class WorkbenchActions extends StatelessWidget {
   });
 
   @override
+  State<WorkbenchActions> createState() => _WorkbenchActionsState();
+}
+
+class _WorkbenchActionsState extends State<WorkbenchActions>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pressController;
+  late Animation<double> _pressAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+      reverseDuration: const Duration(milliseconds: 300),
+    );
+    _pressAnimation = Tween<double>(begin: 1.0, end: 0.92).animate(
+      CurvedAnimation(
+        parent: _pressController,
+        curve: Curves.easeInOut,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pressController.dispose();
+    super.dispose();
+  }
+
+  void _onStartFocusPressed() {
+    _pressController.forward().then((_) {
+      _pressController.reverse();
+    });
+    widget.onStartFocus();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (isRemoteWatching) {
-      final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    if (widget.isRemoteWatching) {
+      final isLandscape =
+          MediaQuery.of(context).orientation == Orientation.landscape;
       return Padding(
-        padding: EdgeInsets.only(bottom: isLandscape ? 0 : (isCompact ? 6 : 8)),
+        padding: EdgeInsets.only(
+            bottom: isLandscape ? 0 : (widget.isCompact ? 6 : 8)),
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: isCompact ? 12 : 16, vertical: isCompact ? 10 : 12),
+          padding: EdgeInsets.symmetric(
+              horizontal: widget.isCompact ? 12 : 16,
+              vertical: widget.isCompact ? 10 : 12),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            color: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            border: Border.all(
+                color: Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withValues(alpha: 0.5)),
           ),
           child: Row(
-            mainAxisAlignment: isLandscape ? MainAxisAlignment.start : MainAxisAlignment.center,
+            mainAxisAlignment: isLandscape
+                ? MainAxisAlignment.start
+                : MainAxisAlignment.center,
             mainAxisSize: isLandscape ? MainAxisSize.max : MainAxisSize.min,
             children: [
-              Icon(Icons.devices_outlined, size: isCompact ? 16 : 18,
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.7)),
-              SizedBox(width: isCompact ? 8 : 10),
+              Icon(Icons.devices_outlined,
+                  size: widget.isCompact ? 16 : 18,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.7)),
+              SizedBox(width: widget.isCompact ? 8 : 10),
               Flexible(
                 child: Text(
                   '同步模式：请在发起端进行操作',
                   style: TextStyle(
-                    fontSize: isCompact ? 12 : 13,
+                    fontSize: widget.isCompact ? 12 : 13,
                     fontWeight: FontWeight.w500,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant
+                        .withValues(alpha: 0.8),
                   ),
                 ),
               ),
@@ -72,60 +127,94 @@ class WorkbenchActions extends StatelessWidget {
       );
     }
 
-    if (isIdle) {
+    if (widget.isIdle) {
       return Padding(
-        padding: EdgeInsets.only(bottom: isCompact ? 6 : 8),
+        padding: EdgeInsets.only(bottom: widget.isCompact ? 6 : 8),
         child: Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: onShowBindTodo,
+                onPressed: widget.onShowBindTodo,
                 icon: Icon(
-                  boundTodo != null ? Icons.task_alt : Icons.add_task,
-                  size: isCompact ? 18 : 20,
-                  color: boundTodo != null
+                  widget.boundTodo != null ? Icons.task_alt : Icons.add_task,
+                  size: widget.isCompact ? 18 : 20,
+                  color: widget.boundTodo != null
                       ? Theme.of(context).colorScheme.primary
                       : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 label: Text(
-                  boundTodo?.title ?? '绑定任务',
+                  widget.boundTodo?.title ?? '绑定任务',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: isCompact ? 13 : 14,
-                    fontWeight: boundTodo != null ? FontWeight.w600 : FontWeight.normal,
-                    color: boundTodo != null
+                    fontSize: widget.isCompact ? 13 : 14,
+                    fontWeight: widget.boundTodo != null
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                    color: widget.boundTodo != null
                         ? Theme.of(context).colorScheme.primary
                         : Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(horizontal: isCompact ? 10 : 12, vertical: isCompact ? 10 : 14),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: widget.isCompact ? 10 : 12,
+                      vertical: widget.isCompact ? 10 : 14),
                   side: BorderSide(
-                    color: boundTodo != null
-                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.6)
+                    color: widget.boundTodo != null
+                        ? Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.6)
                         : Theme.of(context).colorScheme.outlineVariant,
                   ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                 ),
               ),
             ),
-            SizedBox(width: isCompact ? 8 : 12),
+            SizedBox(width: widget.isCompact ? 8 : 12),
             Expanded(
-              child: FilledButton.icon(
-                key: const ValueKey('start_btn'),
-                onPressed: onStartFocus,
-                icon: Icon(Icons.play_arrow_rounded, size: isCompact ? 20 : 24),
-                label: Text(
-                  phase == PomodoroPhase.finished ? '再来一轮' : '开始专注',
-                  style: TextStyle(fontSize: isCompact ? 14 : 16, fontWeight: FontWeight.bold),
-                ),
-                style: FilledButton.styleFrom(
-                  padding: EdgeInsets.symmetric(vertical: isCompact ? 12 : 14),
-                  backgroundColor: const Color(0xFFFF6B6B),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 2,
-                ),
+              child: AnimatedBuilder(
+                animation: _pressAnimation,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _pressAnimation.value,
+                    child: TweenAnimationBuilder<Color?>(
+                      tween: ColorTween(
+                        begin: const Color(0xFFFF6B6B),
+                        end: widget.phase == PomodoroPhase.finished
+                            ? const Color(0xFF4ECDC4)
+                            : const Color(0xFFFF6B6B),
+                      ),
+                      duration: const Duration(milliseconds: 400),
+                      builder: (context, color, child) {
+                        return FilledButton.icon(
+                          key: const ValueKey('start_btn'),
+                          onPressed: _onStartFocusPressed,
+                          icon: Icon(Icons.play_arrow_rounded,
+                              size: widget.isCompact ? 20 : 24),
+                          label: Text(
+                            widget.phase == PomodoroPhase.finished
+                                ? '再来一轮'
+                                : '开始专注',
+                            style: TextStyle(
+                                fontSize: widget.isCompact ? 14 : 16,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          style: FilledButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                                vertical: widget.isCompact ? 12 : 14),
+                            backgroundColor: color ?? const Color(0xFFFF6B6B),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            elevation: 2,
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -133,7 +222,7 @@ class WorkbenchActions extends StatelessWidget {
       );
     }
 
-    if (isFocusing) {
+    if (widget.isFocusing) {
       return Column(
         key: const ValueKey('focus_btns'),
         mainAxisSize: MainAxisSize.min,
@@ -142,26 +231,37 @@ class WorkbenchActions extends StatelessWidget {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: onFinishEarly,
-                  icon: Icon(Icons.check_circle_outline, size: isCompact ? 18 : 20),
-                  label: Text('提前完成', style: TextStyle(fontSize: isCompact ? 14 : 15, fontWeight: FontWeight.bold)),
+                  onPressed: widget.onFinishEarly,
+                  icon: Icon(Icons.check_circle_outline,
+                      size: widget.isCompact ? 18 : 20),
+                  label: Text('提前完成',
+                      style: TextStyle(
+                          fontSize: widget.isCompact ? 14 : 15,
+                          fontWeight: FontWeight.bold)),
                   style: FilledButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: isCompact ? 12 : 14),
+                    padding: EdgeInsets.symmetric(
+                        vertical: widget.isCompact ? 12 : 14),
                     backgroundColor: const Color(0xFF4CAF50),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
                   ),
                 ),
               ),
-              SizedBox(width: isCompact ? 8 : 12),
+              SizedBox(width: widget.isCompact ? 8 : 12),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: onAbandonFocus,
-                  icon: Icon(Icons.stop_circle_outlined, size: isCompact ? 18 : 20),
-                  label: Text('放弃专注', style: TextStyle(fontSize: isCompact ? 14 : 15)),
+                  onPressed: widget.onAbandonFocus,
+                  icon: Icon(Icons.stop_circle_outlined,
+                      size: widget.isCompact ? 18 : 20),
+                  label: Text('放弃专注',
+                      style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
                   style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: isCompact ? 12 : 14),
-                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: EdgeInsets.symmetric(
+                        vertical: widget.isCompact ? 12 : 14),
+                    foregroundColor:
+                        Theme.of(context).colorScheme.onSurfaceVariant,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
                   ),
                 ),
               ),
@@ -172,16 +272,18 @@ class WorkbenchActions extends StatelessWidget {
     }
 
     return Padding(
-      padding: EdgeInsets.only(bottom: isCompact ? 6 : 8),
+      padding: EdgeInsets.only(bottom: widget.isCompact ? 6 : 8),
       child: OutlinedButton.icon(
         key: const ValueKey('skip_break_btn'),
-        onPressed: onSkipBreak,
-        icon: Icon(Icons.skip_next_rounded, size: isCompact ? 18 : 24),
-        label: Text('跳过休息', style: TextStyle(fontSize: isCompact ? 14 : 16)),
+        onPressed: widget.onSkipBreak,
+        icon: Icon(Icons.skip_next_rounded, size: widget.isCompact ? 18 : 24),
+        label: Text('跳过休息',
+            style: TextStyle(fontSize: widget.isCompact ? 14 : 16)),
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(double.infinity, 52),
-          padding: EdgeInsets.symmetric(vertical: isCompact ? 12 : 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          padding: EdgeInsets.symmetric(vertical: widget.isCompact ? 12 : 14),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );

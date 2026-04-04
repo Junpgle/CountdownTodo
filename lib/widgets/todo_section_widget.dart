@@ -38,7 +38,8 @@ class TodoSectionWidget extends StatefulWidget {
   State<TodoSectionWidget> createState() => TodoSectionWidgetState();
 }
 
-class TodoSectionWidgetState extends State<TodoSectionWidget> {
+class TodoSectionWidgetState extends State<TodoSectionWidget>
+    with TickerProviderStateMixin {
   bool _isWholeListExpanded = true;
   bool _isTodayExpanded = true;
   bool _isTodayManuallyExpanded = false;
@@ -47,6 +48,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
   bool _hasInitializedExpansion = false;
 
   final Map<String, Key> _todoKeys = {};
+  final Map<String, AnimationController> _completingAnimations = {};
+  final Map<String, bool> _isCompleting = {};
+
+  @override
+  void dispose() {
+    for (final controller in _completingAnimations.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   Key _getTodoKey(String idPrefix, String todoId) {
     String mapKey = '${idPrefix}_$todoId';
@@ -1688,202 +1699,252 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           debugPrint("删除失败: $e");
         }
       },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isPast && !todo.isDone
-                ? Colors.redAccent.withOpacity(0.25)
-                : colorScheme.outline.withOpacity(isLight ? 0.06 : 0.12),
-            width: 1,
-          ),
-          boxShadow: (!todo.isDone && isLight)
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : [],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
+      child: AnimatedBuilder(
+        animation:
+            _completingAnimations[todo.id] ?? AlwaysStoppedAnimation(0.0),
+        builder: (context, child) {
+          final anim = _completingAnimations[todo.id];
+          final isAnimating = anim != null && anim.isAnimating;
+          final value = isAnimating ? anim.value : 0.0;
+          final scale = 1.0 - (value * 0.08);
+          final opacity = 1.0 - (value * 0.7);
+
+          return Transform.scale(
+            scale: scale,
+            child: Opacity(
+              opacity: opacity,
+              child: child,
+            ),
+          );
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          decoration: BoxDecoration(
+            color: cardBg,
             borderRadius: BorderRadius.circular(14),
-            onTap: () => _editTodo(todo),
-            child: Padding(
-              // ✨ 核心：更小的内边距
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // ── 复选框 ──
-                  SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: Checkbox(
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isPast && !todo.isDone
+                  ? Colors.redAccent.withOpacity(0.25)
+                  : colorScheme.outline.withOpacity(isLight ? 0.06 : 0.12),
+              width: 1,
+            ),
+            boxShadow: (!todo.isDone && isLight)
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => _editTodo(todo),
+              child: Padding(
+                // ✨ 核心：更小的内边距
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // ── 复选框 ──
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Checkbox(
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        activeColor: colorScheme.primary,
+                        value: todo.isDone,
+                        onChanged: (val) {
+                          if (val == true && !todo.isDone) {
+                            _completingAnimations[todo.id]?.dispose();
+                            final controller = AnimationController(
+                              duration: const Duration(milliseconds: 400),
+                              vsync: this,
+                            );
+                            _completingAnimations[todo.id] = controller;
+                            _isCompleting[todo.id] = true;
+                            controller.forward().then((_) {
+                              _isCompleting[todo.id] = false;
+                              todo.isDone = true;
+                              todo.markAsChanged();
+                              List<TodoItem> updatedList =
+                                  List.from(widget.todos);
+                              updatedList.sort(
+                                (a, b) => a.isDone == b.isDone
+                                    ? 0
+                                    : (a.isDone ? 1 : -1),
+                              );
+                              widget.onTodosChanged(updatedList);
+                            });
+                          } else {
+                            _completingAnimations[todo.id]?.dispose();
+                            _completingAnimations.remove(todo.id);
+                            _isCompleting.remove(todo.id);
+                            todo.isDone = val!;
+                            todo.markAsChanged();
+                            List<TodoItem> updatedList =
+                                List.from(widget.todos);
+                            updatedList.sort(
+                              (a, b) => a.isDone == b.isDone
+                                  ? 0
+                                  : (a.isDone ? 1 : -1),
+                            );
+                            widget.onTodosChanged(updatedList);
+                          }
+                        },
                       ),
-                      activeColor: colorScheme.primary,
-                      value: todo.isDone,
-                      onChanged: (val) {
-                        todo.isDone = val!;
-                        todo.markAsChanged();
-                        List<TodoItem> updatedList = List.from(widget.todos);
-                        updatedList.sort(
-                          (a, b) =>
-                              a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1),
-                        );
-                        widget.onTodosChanged(updatedList);
-                      },
                     ),
-                  ),
-                  const SizedBox(width: 10),
+                    const SizedBox(width: 10),
 
-                  // ── 主内容区 ──
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 标题行
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                todo.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  decoration: todo.isDone
-                                      ? TextDecoration.lineThrough
-                                      : null,
-                                  decorationColor:
-                                      colorScheme.onSurface.withOpacity(0.3),
-                                  color: titleColor,
-                                  fontSize: 14.5,
-                                  fontWeight: todo.isDone || isPast || isFuture
-                                      ? FontWeight.w500
-                                      : FontWeight.w600,
-                                  height: 1.2,
-                                ),
-                              ),
-                            ),
-                            if (recurrenceIcon != null) ...[
-                              const SizedBox(width: 4),
-                              recurrenceIcon,
-                            ],
-                            const SizedBox(width: 6),
-                            // 时间徽章
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: todo.isDone
-                                    ? colorScheme.onSurface.withOpacity(0.06)
-                                    : badgeBg,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                badge,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: todo.isDone
-                                      ? colorScheme.onSurface.withOpacity(0.3)
-                                      : badgeColor,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // ── 时间信息行 ──
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.schedule_rounded,
-                              size: 11,
-                              color: colorScheme.onSurface.withOpacity(
-                                todo.isDone ? 0.25 : (isPast ? 0.55 : 0.4),
-                              ),
-                            ),
-                            const SizedBox(width: 3),
-                            Expanded(
-                              child: Text(
-                                _buildTimeLabel(
-                                  todo,
-                                  cDate,
-                                  isPast,
-                                  isFuture,
-                                  now,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurface.withOpacity(
-                                    todo.isDone
-                                        ? 0.25
-                                        : isPast
-                                            ? 0.6
-                                            : 0.45,
+                    // ── 主内容区 ──
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 标题行
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  todo.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    decoration: todo.isDone
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                    decorationColor:
+                                        colorScheme.onSurface.withOpacity(0.3),
+                                    color: titleColor,
+                                    fontSize: 14.5,
+                                    fontWeight:
+                                        todo.isDone || isPast || isFuture
+                                            ? FontWeight.w500
+                                            : FontWeight.w600,
+                                    height: 1.2,
                                   ),
-                                  height: 1.2,
+                                ),
+                              ),
+                              if (recurrenceIcon != null) ...[
+                                const SizedBox(width: 4),
+                                recurrenceIcon,
+                              ],
+                              const SizedBox(width: 6),
+                              // 时间徽章
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: todo.isDone
+                                      ? colorScheme.onSurface.withOpacity(0.06)
+                                      : badgeBg,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  badge,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: todo.isDone
+                                        ? colorScheme.onSurface.withOpacity(0.3)
+                                        : badgeColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          // ── 时间信息行 ──
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.schedule_rounded,
+                                size: 11,
+                                color: colorScheme.onSurface.withOpacity(
+                                  todo.isDone ? 0.25 : (isPast ? 0.55 : 0.4),
+                                ),
+                              ),
+                              const SizedBox(width: 3),
+                              Expanded(
+                                child: Text(
+                                  _buildTimeLabel(
+                                    todo,
+                                    cDate,
+                                    isPast,
+                                    isFuture,
+                                    now,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurface.withOpacity(
+                                      todo.isDone
+                                          ? 0.25
+                                          : isPast
+                                              ? 0.6
+                                              : 0.45,
+                                    ),
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          // 备注（可选，单行截断）
+                          if (todo.remark != null &&
+                              todo.remark!.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              todo.remark!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurface.withOpacity(
+                                  todo.isDone ? 0.22 : 0.4,
+                                ),
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
+
+                          // 进度条（仅未完成项显示）
+                          if (!todo.isDone) ...[
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 3,
+                                backgroundColor:
+                                    colorScheme.onSurface.withOpacity(0.07),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  isPast
+                                      ? Colors.redAccent.shade200
+                                      : colorScheme.primary.withOpacity(0.75),
                                 ),
                               ),
                             ),
                           ],
-                        ),
-
-                        // 备注（可选，单行截断）
-                        if (todo.remark != null && todo.remark!.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            todo.remark!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colorScheme.onSurface.withOpacity(
-                                todo.isDone ? 0.22 : 0.4,
-                              ),
-                              height: 1.2,
-                            ),
-                          ),
                         ],
-
-                        // 进度条（仅未完成项显示）
-                        if (!todo.isDone) ...[
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 3,
-                              backgroundColor:
-                                  colorScheme.onSurface.withOpacity(0.07),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                isPast
-                                    ? Colors.redAccent.shade200
-                                    : colorScheme.primary.withOpacity(0.75),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1940,12 +2001,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         padding: const EdgeInsets.only(top: 10, bottom: 4, left: 2),
         child: Row(
           children: [
-            Icon(
-              expanded
-                  ? Icons.keyboard_arrow_down_rounded
-                  : Icons.chevron_right_rounded,
-              size: 16,
-              color: c,
+            AnimatedRotation(
+              turns: expanded ? 0.0 : -0.25,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 16,
+                color: c,
+              ),
             ),
             if (icon != null) ...[
               const SizedBox(width: 4),
@@ -1963,6 +2027,30 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedSection({
+    required bool expanded,
+    required Widget child,
+  }) {
+    return ClipRect(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return SizeTransition(
+            sizeFactor: animation,
+            axis: Axis.vertical,
+            axisAlignment: 0.0,
+            child: FadeTransition(opacity: animation, child: child),
+          );
+        },
+        child: expanded
+            ? Container(key: const ValueKey('expanded'), child: child)
+            : const SizedBox.shrink(key: ValueKey('collapsed')),
       ),
     );
   }
@@ -2071,18 +2159,23 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
               setState(() => _isPastTodosExpanded = !_isPastTodosExpanded),
         ),
       );
-      if (_isPastTodosExpanded) {
-        sections.addAll(
-          pastTodos.map(
-            (t) => _buildTodoItemCard(
-              t,
-              isPast: true,
-              isFuture: false,
-              key: _getTodoKey('dismiss', t.id),
-            ),
+      sections.add(
+        _buildAnimatedSection(
+          expanded: _isPastTodosExpanded,
+          child: Column(
+            children: pastTodos
+                .map(
+                  (t) => _buildTodoItemCard(
+                    t,
+                    isPast: true,
+                    isFuture: false,
+                    key: _getTodoKey('dismiss', t.id),
+                  ),
+                )
+                .toList(),
           ),
-        );
-      }
+        ),
+      );
     }
 
     // ── 今日待办 ──
@@ -2145,65 +2238,68 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
         );
 
         sections.add(
-          ReorderableListView(
-            padding: EdgeInsets.zero,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            buildDefaultDragHandles: false,
-            proxyDecorator:
-                (Widget child, int index, Animation<double> animation) {
-              return Material(
-                color: Colors.transparent,
-                elevation: 8 * animation.value,
-                shadowColor: Colors.black.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(14),
-                child: child,
-              );
-            },
-            onReorder: (oldIndex, newIndex) {
-              if (newIndex > oldIndex) newIndex -= 1;
-              final List<int> todayIndices = [];
-              for (int i = 0; i < widget.todos.length; i++) {
-                final t = widget.todos[i];
-                if (_isHistoricalTodo(t) || t.isDeleted) continue;
-                if (t.dueDate != null) {
-                  final DateTime d = DateTime(
-                    t.dueDate!.year,
-                    t.dueDate!.month,
-                    t.dueDate!.day,
-                  );
-                  if (!d.isBefore(today) && !d.isAfter(today)) {
+          _buildAnimatedSection(
+            expanded: _isTodayExpanded,
+            child: ReorderableListView(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              proxyDecorator:
+                  (Widget child, int index, Animation<double> animation) {
+                return Material(
+                  color: Colors.transparent,
+                  elevation: 8 * animation.value,
+                  shadowColor: Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(14),
+                  child: child,
+                );
+              },
+              onReorder: (oldIndex, newIndex) {
+                if (newIndex > oldIndex) newIndex -= 1;
+                final List<int> todayIndices = [];
+                for (int i = 0; i < widget.todos.length; i++) {
+                  final t = widget.todos[i];
+                  if (_isHistoricalTodo(t) || t.isDeleted) continue;
+                  if (t.dueDate != null) {
+                    final DateTime d = DateTime(
+                      t.dueDate!.year,
+                      t.dueDate!.month,
+                      t.dueDate!.day,
+                    );
+                    if (!d.isBefore(today) && !d.isAfter(today)) {
+                      todayIndices.add(i);
+                    }
+                  } else {
                     todayIndices.add(i);
                   }
-                } else {
-                  todayIndices.add(i);
                 }
-              }
-              final List<TodoItem> reordered = List.from(sortedTodayTodos);
-              final item = reordered.removeAt(oldIndex);
-              reordered.insert(newIndex, item);
-              final List<TodoItem> updatedList = List.from(widget.todos);
-              for (int i = 0;
-                  i < todayIndices.length && i < reordered.length;
-                  i++) {
-                updatedList[todayIndices[i]] = reordered[i];
-              }
-              widget.onTodosChanged(updatedList);
-            },
-            children: sortedTodayTodos.asMap().entries.map((entry) {
-              final int index = entry.key;
-              final TodoItem t = entry.value;
-              return ReorderableDelayedDragStartListener(
-                key: _getTodoKey('drag', t.id),
-                index: index,
-                child: _buildTodoItemCard(
-                  t,
-                  isPast: false,
-                  isFuture: false,
-                  key: _getTodoKey('dismiss', t.id),
-                ),
-              );
-            }).toList(),
+                final List<TodoItem> reordered = List.from(sortedTodayTodos);
+                final item = reordered.removeAt(oldIndex);
+                reordered.insert(newIndex, item);
+                final List<TodoItem> updatedList = List.from(widget.todos);
+                for (int i = 0;
+                    i < todayIndices.length && i < reordered.length;
+                    i++) {
+                  updatedList[todayIndices[i]] = reordered[i];
+                }
+                widget.onTodosChanged(updatedList);
+              },
+              children: sortedTodayTodos.asMap().entries.map((entry) {
+                final int index = entry.key;
+                final TodoItem t = entry.value;
+                return ReorderableDelayedDragStartListener(
+                  key: _getTodoKey('drag', t.id),
+                  index: index,
+                  child: _buildTodoItemCard(
+                    t,
+                    isPast: false,
+                    isFuture: false,
+                    key: _getTodoKey('dismiss', t.id),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
         );
       } else if (futureTodos.isEmpty) {
@@ -2233,18 +2329,23 @@ class TodoSectionWidgetState extends State<TodoSectionWidget> {
           onTap: () => setState(() => _isFutureExpanded = !_isFutureExpanded),
         ),
       );
-      if (_isFutureExpanded) {
-        sections.addAll(
-          sortedFutureTodos.map(
-            (t) => _buildTodoItemCard(
-              t,
-              isPast: false,
-              isFuture: true,
-              key: _getTodoKey('dismiss', t.id),
-            ),
+      sections.add(
+        _buildAnimatedSection(
+          expanded: _isFutureExpanded,
+          child: Column(
+            children: sortedFutureTodos
+                .map(
+                  (t) => _buildTodoItemCard(
+                    t,
+                    isPast: false,
+                    isFuture: true,
+                    key: _getTodoKey('dismiss', t.id),
+                  ),
+                )
+                .toList(),
           ),
-        );
-      }
+        ),
+      );
     }
 
     return Column(

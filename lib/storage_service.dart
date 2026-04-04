@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 import 'services/api_service.dart';
+import 'services/band_sync_service.dart';
 
 class StorageService {
   static SharedPreferences? _prefs;
@@ -47,6 +48,22 @@ class StorageService {
 
   static const String KEY_LLM_RETRY_COUNT = "llm_retry_count";
   static const String KEY_PENDING_TODO_CONFIRM = "pending_todo_confirm";
+
+  // Notification settings keys
+  static const String KEY_NOTIFY_LIVE_ENABLED = "notify_live_activity_enabled";
+  static const String KEY_NOTIFY_NORMAL_ENABLED = "notify_normal_enabled";
+  static const String KEY_NOTIFY_COURSE_ENABLED = "notify_course_enabled";
+  static const String KEY_NOTIFY_QUIZ_ENABLED = "notify_quiz_enabled";
+  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED =
+      "notify_todo_summary_enabled";
+  static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
+      "notify_special_todo_enabled";
+  static const String KEY_NOTIFY_POMODORO_ENABLED = "notify_pomodoro_enabled";
+  static const String KEY_NOTIFY_TODO_RECOGNIZE_ENABLED =
+      "notify_todo_recognize_enabled";
+  static const String KEY_NOTIFY_POMODORO_END_ENABLED =
+      "notify_pomodoro_end_enabled";
+  static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -359,6 +376,16 @@ class StorageService {
         dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
     if (sync) Future.microtask(() => syncData(username));
+    Future.microtask(() => _syncTodosToBand(items));
+  }
+
+  static Future<void> _syncTodosToBand(List<TodoItem> items) async {
+    if (!BandSyncService.isInitialized || !BandSyncService.isConnected) return;
+    try {
+      final activeTodos =
+          items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
+      await BandSyncService.syncTodos(activeTodos);
+    } catch (_) {}
   }
 
   static Future<List<TodoItem>> getTodos(String username) async {
@@ -1073,5 +1100,109 @@ class StorageService {
   static Future<void> clearPendingTodoConfirm() async {
     final prefs = await StorageService.prefs;
     await prefs.remove(KEY_PENDING_TODO_CONFIRM);
+  }
+
+  // ==========================================
+  // 🔔 通知管理设置
+  // ==========================================
+
+  static Future<bool> isLiveActivityNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_LIVE_ENABLED) ?? true;
+  }
+
+  static Future<void> setLiveActivityNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_LIVE_ENABLED, enabled);
+  }
+
+  static Future<bool> isNormalNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_NORMAL_ENABLED) ?? true;
+  }
+
+  static Future<void> setNormalNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_NORMAL_ENABLED, enabled);
+  }
+
+  static Future<bool> isCourseNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_COURSE_ENABLED) ?? true;
+  }
+
+  static Future<void> setCourseNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_COURSE_ENABLED, enabled);
+  }
+
+  static Future<bool> isQuizNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_QUIZ_ENABLED) ?? true;
+  }
+
+  static Future<void> setQuizNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_QUIZ_ENABLED, enabled);
+  }
+
+  static Future<bool> isTodoSummaryNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_TODO_SUMMARY_ENABLED) ?? true;
+  }
+
+  static Future<void> setTodoSummaryNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_TODO_SUMMARY_ENABLED, enabled);
+  }
+
+  static Future<bool> isSpecialTodoNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_SPECIAL_TODO_ENABLED) ?? true;
+  }
+
+  static Future<void> setSpecialTodoNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_SPECIAL_TODO_ENABLED, enabled);
+  }
+
+  static Future<bool> isPomodoroNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_POMODORO_ENABLED) ?? true;
+  }
+
+  static Future<void> setPomodoroNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_POMODORO_ENABLED, enabled);
+  }
+
+  static Future<bool> isTodoRecognizeNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_TODO_RECOGNIZE_ENABLED) ?? true;
+  }
+
+  static Future<void> setTodoRecognizeNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_TODO_RECOGNIZE_ENABLED, enabled);
+  }
+
+  static Future<bool> isPomodoroEndNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_POMODORO_END_ENABLED) ?? true;
+  }
+
+  static Future<void> setPomodoroEndNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_POMODORO_END_ENABLED, enabled);
+  }
+
+  static Future<bool> isReminderNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_REMINDER_ENABLED) ?? true;
+  }
+
+  static Future<void> setReminderNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_REMINDER_ENABLED, enabled);
   }
 }

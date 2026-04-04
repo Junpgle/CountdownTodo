@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart'; // 引入 kIsWeb
 import 'package:flutter/material.dart';
 import 'dart:io'; // 用于 Platform Check
@@ -13,6 +14,8 @@ import 'storage_service.dart';
 import 'services/api_service.dart';
 import 'services/float_window_service.dart';
 import 'services/window_service.dart';
+import 'services/band_sync_service.dart';
+import 'services/pomodoro_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 
@@ -164,6 +167,117 @@ class _MyAppState extends State<MyApp> {
 
     // 3. 异步初始化耗时的底层插件
     _initHeavyPlugins();
+
+    // 4. 初始化手环通信服务（全局）
+    _initBandService();
+  }
+
+  StreamSubscription? _bandPomodoroSub;
+
+  Future<void> _initBandService() async {
+    try {
+      await BandSyncService.init(
+        onDeviceConnected: (info) {
+          debugPrint('[Band] 设备已连接: ${info['name']}');
+          BandSyncService.registerListener();
+        },
+        onDeviceDisconnected: () {
+          debugPrint('[Band] 设备已断开');
+        },
+        onMessageReceived: (data) {
+          debugPrint('[Band] 收到消息: $data');
+        },
+        onPermissionGranted: (permissions) {
+          debugPrint('[Band] 权限已授予: $permissions');
+          BandSyncService.registerListener();
+        },
+      );
+    } catch (e) {
+      debugPrint('[Band] 初始化失败: $e');
+    }
+
+    // 设置同步数据提供者
+    BandSyncService.setSyncDataProvider(_provideSyncData);
+
+    // 全局监听手环番茄钟操作（finish/abandon）
+    _bandPomodoroSub =
+        BandSyncService.onBandPomodoroAction.listen((actionData) {
+      final action = actionData['action']?.toString();
+      debugPrint('[Band] 番茄钟操作: $action');
+      if (action == 'finish' || action == 'abandon') {
+        _handleBandPomodoroAction(action!);
+      }
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> _provideSyncData(String type) async {
+    final user = _loggedInUser;
+    if (user == null || user.isEmpty) return [];
+
+    switch (type) {
+      case 'todo':
+        final todos = await StorageService.getTodos(user);
+        return todos.where((t) => !t.isDeleted && !t.isDone).map((t) {
+          final j = t.toJson();
+          j['is_completed'] = 0;
+          j['content'] = t.title;
+          if (t.dueDate != null)
+            j['due_date'] = t.dueDate!.millisecondsSinceEpoch;
+          if (t.createdDate != null) j['created_date'] = t.createdDate!;
+          if (t.remark != null && t.remark!.isNotEmpty) j['remark'] = t.remark;
+          return j;
+        }).toList();
+      case 'course':
+        return [];
+      case 'countdown':
+        return [];
+      case 'pomodoro':
+        return [];
+      default:
+        return [];
+    }
+  }
+
+  Future<void> _handleBandPomodoroAction(String action) async {
+    debugPrint('[Band] _handleBandPomodoroAction called: $action');
+    final runState = await PomodoroService.loadRunState();
+    debugPrint('[Band] loadRunState result: ${runState?.phase}');
+    if (runState == null || runState.phase == PomodoroPhase.idle) {
+      debugPrint('[Band] 无运行中的番茄钟，忽略操作: $action');
+      return;
+    }
+
+    debugPrint('[Band] 处理手环操作: $action');
+    if (action == 'finish') {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final actualSeconds = ((now - runState.sessionStartMs) / 1000).round();
+      final plannedSeconds = runState.plannedFocusSeconds;
+      final record = PomodoroRecord(
+        startTime: runState.sessionStartMs,
+        endTime: now,
+        plannedDuration: plannedSeconds,
+        actualDuration: actualSeconds,
+        tagUuids: runState.tagUuids,
+        todoUuid: runState.todoUuid,
+        todoTitle: runState.todoTitle,
+        status: PomodoroRecordStatus.completed,
+      );
+      debugPrint('[Band] Adding record: ${actualSeconds}s');
+      await PomodoroService.addRecord(record);
+      debugPrint('[Band] Clearing run state');
+      await PomodoroService.clearRunState();
+      debugPrint('[Band] 番茄钟已完成，已记录 ${actualSeconds}s');
+    } else if (action == 'abandon') {
+      debugPrint('[Band] Clearing run state (abandon)');
+      await PomodoroService.clearRunState();
+      debugPrint('[Band] 番茄钟已放弃');
+    }
+  }
+
+  @override
+  void dispose() {
+    _bandPomodoroSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _initHeavyPlugins() async {

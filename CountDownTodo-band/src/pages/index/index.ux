@@ -7,6 +7,7 @@
         <div class="status-indicator {{syncStatusClass}}"></div>
         <text class="status-text">{{syncStatusText}}</text>
       </div>
+      <text class="last-sync-time">{{lastSyncTimeText}}</text>
     </div>
 
     <!-- 标题区域 (固定不动) -->
@@ -108,7 +109,8 @@ export default {
     todoPendingCount: 0,
     nearestCountdown: '暂无',
     todayCourseText: '今日无课',
-    pomodoroStatusText: '暂无专注'
+    pomodoroStatusText: '暂无专注',
+    lastSyncTimeText: ''
   },
 
   statusTimer: null,
@@ -117,11 +119,13 @@ export default {
     SyncService.init()
     this.setCurrentDate()
     this.loadAllData()
+    this.loadLastSyncTime()
   },
 
   onShow() {
     this.loadAllData()
     this.checkPendingAlert()
+    this.loadLastSyncTime()
   },
 
   onDestroy() {
@@ -345,11 +349,13 @@ export default {
         self.syncStatusText = '同步成功'
         self.syncStatusClass = 'status-success'
         prompt.showToast({ message: '成功 [' + diag + ']', duration: 2000 })
+        self.saveLastSyncTime()
       } else if (successCount > 0) {
         self.syncStatus = 'fail'
         self.syncStatusText = '部分失败'
         self.syncStatusClass = 'status-fail'
         prompt.showToast({ message: successCount + '成功 ' + failCount + '失败 [' + diag + ']', duration: 3000 })
+        self.saveLastSyncTime()
       } else {
         self.syncStatus = 'fail'
         self.syncStatusText = '同步失败'
@@ -394,6 +400,46 @@ export default {
 
   routeToSettings() {
     router.push({ uri: '/pages/settings' })
+  },
+
+  loadLastSyncTime() {
+    var self = this
+    storage.get({
+      key: 'last_sync_time',
+      success: function(data) {
+        if (data) {
+          try {
+            var ts = parseInt(data)
+            var now = Date.now()
+            var diff = now - ts
+            if (diff < 60000) {
+              self.lastSyncTimeText = '刚刚同步'
+            } else if (diff < 3600000) {
+              self.lastSyncTimeText = Math.floor(diff / 60000) + '分钟前'
+            } else if (diff < 86400000) {
+              self.lastSyncTimeText = Math.floor(diff / 3600000) + '小时前'
+            } else {
+              var d = new Date(ts)
+              self.lastSyncTimeText = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + self.padZero(d.getHours()) + ':' + self.padZero(d.getMinutes())
+            }
+          } catch (e) {
+            self.lastSyncTimeText = ''
+          }
+        } else {
+          self.lastSyncTimeText = ''
+        }
+      },
+      fail: function() {
+        self.lastSyncTimeText = ''
+      }
+    })
+  },
+
+  saveLastSyncTime() {
+    storage.set({
+      key: 'last_sync_time',
+      value: String(Date.now())
+    })
   }
 }
 </script>
@@ -446,6 +492,13 @@ export default {
 .status-text {
   font-size: 22px;
   color: #ffffff;
+}
+
+.last-sync-time {
+  font-size: 16px;
+  color: #666666;
+  text-align: center;
+  margin-top: 4px;
 }
 
 .header {

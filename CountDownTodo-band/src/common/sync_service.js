@@ -304,6 +304,17 @@ function destroy() {
   isInitialized = false
 }
 
+function sendPomodoroAction(action, sessionUuid) {
+  var conn = getConnect()
+  if (!conn) return
+  if (typeof conn.send !== 'function') return
+  conn.send({
+    data: { type: 'pomodoro', action: action, sessionUuid: sessionUuid, timestamp: Date.now() },
+    success: function() {},
+    fail: function() {}
+  })
+}
+
 function sendVersionInfo() {
   var conn = getConnect()
   if (!conn) return
@@ -386,6 +397,7 @@ module.exports = {
   syncAll: syncAll,
   sendVersionInfo: sendVersionInfo,
   sendDebugLog: sendDebugLog,
+  sendPomodoroAction: sendPomodoroAction,
   syncTodo: syncTodo,
   syncCourse: syncCourse,
   syncCountdown: syncCountdown,

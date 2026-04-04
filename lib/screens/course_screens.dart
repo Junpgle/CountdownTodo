@@ -8,13 +8,15 @@ import 'time_log_screen.dart'; // 🚀 1. 引入时间日志页面
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
   final String username;
-  const WeeklyCourseScreen({Key? key, required this.username}) : super(key: key);
+  const WeeklyCourseScreen({Key? key, required this.username})
+      : super(key: key);
 
   @override
   State<WeeklyCourseScreen> createState() => _WeeklyCourseScreenState();
 }
 
-class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
+class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
+    with SingleTickerProviderStateMixin {
   int _currentWeek = 1;
   List<int> _availableWeeks = [];
   List<CourseItem> _weekCourses = [];
@@ -29,15 +31,35 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   DateTime? _semesterMonday;
   int _viewMode = 0; // 0: 混合查看, 1: 只看课表, 2: 只看待办
 
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
+  late PageController _pageController;
+
   // 时间轴参数配置
   final double timeColumnWidth = 45.0; // 稍微拓宽左侧，适应更大的时间字体
-  final int startHour = 7;             // 轴起点：早上 7:00
-  final int endHour = 23;              // 轴终点：晚上 23:00
+  final int startHour = 7; // 轴起点：早上 7:00
+  final int endHour = 23; // 轴终点：晚上 23:00
 
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _pageController = PageController(initialPage: 0);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _pageController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -57,11 +79,15 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
         allCourses.sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
         final firstCourse = allCourses.first;
         if (firstCourse.date.isNotEmpty) {
-          DateTime firstCourseDate = DateFormat('yyyy-MM-dd').parse(firstCourse.date);
-          DateTime firstMonday = firstCourseDate.subtract(Duration(days: firstCourse.weekday - 1));
-          _semesterMonday = firstMonday.subtract(Duration(days: (firstCourse.weekIndex - 1) * 7));
+          DateTime firstCourseDate =
+              DateFormat('yyyy-MM-dd').parse(firstCourse.date);
+          DateTime firstMonday =
+              firstCourseDate.subtract(Duration(days: firstCourse.weekday - 1));
+          _semesterMonday = firstMonday
+              .subtract(Duration(days: (firstCourse.weekIndex - 1) * 7));
         } else {
-          _semesterMonday = DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1));
+          _semesterMonday = DateTime.now()
+              .subtract(Duration(days: DateTime.now().weekday - 1));
         }
 
         // 自动定位到当前自然周
@@ -82,7 +108,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       DateTime? semStart = await StorageService.getSemesterStart();
       DateTime now = DateTime.now();
       if (semStart != null) {
-        _semesterMonday = semStart.subtract(Duration(days: semStart.weekday - 1));
+        _semesterMonday =
+            semStart.subtract(Duration(days: semStart.weekday - 1));
         int daysDiff = now.difference(_semesterMonday!).inDays;
         _currentWeek = (daysDiff ~/ 7) + 1;
         if (_currentWeek < 1) _currentWeek = 1;
@@ -104,23 +131,33 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
     if (_semesterMonday == null) return;
 
-    DateTime currentWeekMonday = _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
-    DateTime currentWeekMondayStart = DateTime(currentWeekMonday.year, currentWeekMonday.month, currentWeekMonday.day);
+    DateTime currentWeekMonday =
+        _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+    DateTime currentWeekMondayStart = DateTime(
+        currentWeekMonday.year, currentWeekMonday.month, currentWeekMonday.day);
 
     for (var todo in _allTodos) {
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
+      DateTime start = DateTime.fromMillisecondsSinceEpoch(
+              todo.createdDate ?? todo.createdAt,
+              isUtc: true)
+          .toLocal();
       DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
       bool isAllDayFlag = todo.dueDate != null &&
-          start.hour == 0 && start.minute == 0 &&
-          todo.dueDate!.hour == 23 && todo.dueDate!.minute == 59;
-      bool isCrossDay = !(start.year == end.year && start.month == end.month && start.day == end.day);
+          start.hour == 0 &&
+          start.minute == 0 &&
+          todo.dueDate!.hour == 23 &&
+          todo.dueDate!.minute == 59;
+      bool isCrossDay = !(start.year == end.year &&
+          start.month == end.month &&
+          start.day == end.day);
       bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
       for (int i = 1; i <= 7; i++) {
         DateTime dayStart = currentWeekMondayStart.add(Duration(days: i - 1));
-        DateTime dayEnd = dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+        DateTime dayEnd =
+            dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
 
         if (start.isBefore(dayEnd) && end.isAfter(dayStart)) {
           if (treatAsAllDay) {
@@ -151,7 +188,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   // 周标签：学期内显示周数，学期外显示日期范围
   String _getWeekLabel() {
     if (_semesterMonday == null) return '第 $_currentWeek 周';
-    DateTime monday = _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+    DateTime monday =
+        _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
     DateTime sunday = monday.add(const Duration(days: 6));
 
     int maxWeek = _availableWeeks.isNotEmpty ? _availableWeeks.last : 20;
@@ -166,7 +204,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
   // 跳转弹窗
   void _showWeekJumpDialog() {
-    final TextEditingController controller = TextEditingController(text: '$_currentWeek');
+    final TextEditingController controller =
+        TextEditingController(text: '$_currentWeek');
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -225,7 +264,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () {
               int? week = int.tryParse(controller.text.trim());
@@ -292,24 +332,34 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     return colors[hash % colors.length];
   }
 
-  void _showAllDayTodos(BuildContext context, List<TodoItem> todos, String dateStr) {
+  void _showAllDayTodos(
+      BuildContext context, List<TodoItem> todos, String dateStr) {
     showModalBottomSheet(
         context: context,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
         builder: (ctx) {
           return SafeArea(
             child: Container(
                 padding: const EdgeInsets.all(16),
-                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+                constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.5),
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Center(
-                        child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+                        child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(2))),
                       ),
                       const SizedBox(height: 16),
-                      Text("$dateStr 全天/跨天待办", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text("$dateStr 全天/跨天待办",
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 16),
                       Expanded(
                           child: ListView.builder(
@@ -317,30 +367,41 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                               itemBuilder: (context, index) {
                                 final todo = todos[index];
                                 return ListTile(
-                                  leading: Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, color: todo.isDone ? Colors.green : Colors.amber),
-                                  title: Text(todo.title, style: TextStyle(decoration: todo.isDone ? TextDecoration.lineThrough : null)),
+                                  leading: Icon(
+                                      todo.isDone
+                                          ? Icons.check_circle
+                                          : Icons.task_alt,
+                                      color: todo.isDone
+                                          ? Colors.green
+                                          : Colors.amber),
+                                  title: Text(todo.title,
+                                      style: TextStyle(
+                                          decoration: todo.isDone
+                                              ? TextDecoration.lineThrough
+                                              : null)),
                                   // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-                                  subtitle: Text("开始: ${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
+                                  subtitle: Text(
+                                      "开始: ${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
                                   onTap: () {
                                     Navigator.pop(ctx);
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)));
+                                    Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                TodoDetailScreen(todo: todo)));
                                   },
                                 );
-                              }
-                          )
-                      )
-                    ]
-                )
-            ),
+                              }))
+                    ])),
           );
-        }
-    );
+        });
   }
 
   Widget _buildAllDayHeaderRow(DateTime? monday) {
     if (monday == null || _viewMode == 1) return const SizedBox.shrink();
 
-    bool hasAnyAllDay = _allDayTodosPerDay.values.any((list) => list.isNotEmpty);
+    bool hasAnyAllDay =
+        _allDayTodosPerDay.values.any((list) => list.isNotEmpty);
     if (!hasAnyAllDay) return const SizedBox.shrink(); // 无待办直接消失，不占高度
 
     // 以下只在真正有全天待办时才渲染
@@ -425,7 +486,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                 Text(
                   weekdays[index],
                   style: TextStyle(
-                    color: isToday ? Colors.blue : (isDark ? Colors.white70 : Colors.black87),
+                    color: isToday
+                        ? Colors.blue
+                        : (isDark ? Colors.white70 : Colors.black87),
                     fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
                     fontSize: 13,
                   ),
@@ -455,48 +518,45 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
     for (int hour = startHour; hour <= endHour; hour++) {
       double y = _timeToY(hour, 0, minuteHeight);
 
-      children.add(
-          Positioned(
-            top: y,
-            left: timeColumnWidth,
-            right: 0,
-            height: 1,
-            child: Container(color: lineColor),
-          )
-      );
+      children.add(Positioned(
+        top: y,
+        left: timeColumnWidth,
+        right: 0,
+        height: 1,
+        child: Container(color: lineColor),
+      ));
 
       if (hour < endHour) {
-        children.add(
-            Positioned(
-              top: y,
-              left: 0,
-              width: timeColumnWidth,
-              height: 60 * minuteHeight,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2.0),
-                  child: Text(
-                    '${hour.toString().padLeft(2, '0')}:00',
-                    style: TextStyle(fontSize: 12, color: textColor, fontWeight: FontWeight.w500),
-                  ),
-                ),
+        children.add(Positioned(
+          top: y,
+          left: 0,
+          width: timeColumnWidth,
+          height: 60 * minuteHeight,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2.0),
+              child: Text(
+                '${hour.toString().padLeft(2, '0')}:00',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: textColor,
+                    fontWeight: FontWeight.w500),
               ),
-            )
-        );
+            ),
+          ),
+        ));
       }
     }
 
     for (int i = 0; i <= 7; i++) {
-      children.add(
-          Positioned(
-            top: 0,
-            bottom: 0,
-            left: timeColumnWidth + i * cellWidth,
-            width: 0.5,
-            child: Container(color: lineColor),
-          )
-      );
+      children.add(Positioned(
+        top: 0,
+        bottom: 0,
+        left: timeColumnWidth + i * cellWidth,
+        width: 0.5,
+        child: Container(color: lineColor),
+      ));
     }
 
     if (_viewMode != 1) {
@@ -505,7 +565,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var todo in _intraDayTodosPerDay[weekday]!) {
           // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-          DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
+          DateTime start = DateTime.fromMillisecondsSinceEpoch(
+                  todo.createdDate ?? todo.createdAt,
+                  isUtc: true)
+              .toLocal();
           DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
           double top = _timeToY(start.hour, start.minute, minuteHeight);
@@ -527,27 +590,38 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
             finalWidth -= 4.0 * stackIndex;
           }
 
-          children.add(
-              Positioned(
-                top: top,
-                left: finalLeft,
-                width: finalWidth,
-                height: height,
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)));
-                  },
-                  child: Container(
-                    clipBehavior: Clip.hardEdge,
-                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                    decoration: BoxDecoration(
-                        color: todo.isDone ? Colors.green.withOpacity(0.5) : Colors.amber.shade500.withOpacity(0.85),
-                        borderRadius: BorderRadius.circular(4),
-                        boxShadow: stackIndex > 0 ? [const BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(-1, 1))] : null
-                    ),
-                    child: height < 20 
-                      ? Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 10, color: Colors.white)
-                      : Column(
+          children.add(Positioned(
+            top: top,
+            left: finalLeft,
+            width: finalWidth,
+            height: height,
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => TodoDetailScreen(todo: todo)));
+              },
+              child: Container(
+                clipBehavior: Clip.hardEdge,
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                decoration: BoxDecoration(
+                    color: todo.isDone
+                        ? Colors.green.withOpacity(0.5)
+                        : Colors.amber.shade500.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: stackIndex > 0
+                        ? [
+                            const BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 2,
+                                offset: Offset(-1, 1))
+                          ]
+                        : null),
+                child: height < 20
+                    ? Icon(todo.isDone ? Icons.check_circle : Icons.task_alt,
+                        size: 10, color: Colors.white)
+                    : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -556,7 +630,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                             children: [
                               Padding(
                                 padding: const EdgeInsets.only(top: 2.0),
-                                child: Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 10, color: Colors.white),
+                                child: Icon(
+                                    todo.isDone
+                                        ? Icons.check_circle
+                                        : Icons.task_alt,
+                                    size: 10,
+                                    color: Colors.white),
                               ),
                               const SizedBox(width: 2),
                               Expanded(
@@ -566,9 +645,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                                       color: Colors.white,
                                       fontSize: 10, // 稍微缩小字体
                                       fontWeight: FontWeight.bold,
-                                      decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                                      height: 1.0
-                                  ),
+                                      decoration: todo.isDone
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                      height: 1.0),
                                   maxLines: height < 30 ? 1 : 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -577,10 +657,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                           ),
                         ],
                       ),
-                  ),
-                ),
-              )
-          );
+              ),
+            ),
+          ));
         }
       }
     }
@@ -599,85 +678,106 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
 
         Color bgColor = _getCourseColor(course.courseName);
 
-        children.add(
-            Positioned(
-              top: top + 1,
-              left: left + 1,
-              width: courseWidth,
-              height: height - 2,
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(
+        children.add(Positioned(
+          top: top + 1,
+          left: left + 1,
+          width: courseWidth,
+          height: height - 2,
+          child: GestureDetector(
+            onTap: () {
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(
                     builder: (_) => CourseDetailScreen(course: course),
                   ));
-                },
-                child: Container(
-                  clipBehavior: Clip.hardEdge,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                      color: bgColor.withOpacity(0.95),
-                      borderRadius: BorderRadius.circular(4),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 1, offset: Offset(0, 1))]
+            },
+            child: Container(
+              clipBehavior: Clip.hardEdge,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                  color: bgColor.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 1,
+                        offset: Offset(0, 1))
+                  ]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    course.courseName,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        height: 1.15),
+                    maxLines: height < 35 ? 1 : 4,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        course.courseName,
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, height: 1.15),
-                        maxLines: height < 35 ? 1 : 4,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (height > 40) const Spacer(),
-                      if (height > 40)
-                        Text(
-                          course.roomName,
-                          style: const TextStyle(color: Colors.white, fontSize: 10, height: 1.1),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
-                  ),
-                ),
+                  if (height > 40) const Spacer(),
+                  if (height > 40)
+                    Text(
+                      course.roomName,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 10, height: 1.1),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
               ),
-            )
-        );
+            ),
+          ),
+        ));
       }
     }
 
     DateTime now = DateTime.now();
     if (now.hour >= startHour && now.hour <= endHour) {
       if (_semesterMonday != null) {
-        DateTime currentMonday = _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
-        int diffDays = DateTime(now.year, now.month, now.day).difference(currentMonday).inDays;
+        DateTime currentMonday =
+            _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+        int diffDays = DateTime(now.year, now.month, now.day)
+            .difference(currentMonday)
+            .inDays;
 
         if (diffDays >= 0 && diffDays <= 6) {
           double nowY = _timeToY(now.hour, now.minute, minuteHeight);
           double lineLeft = timeColumnWidth + diffDays * cellWidth;
 
-          children.add(
-              Positioned(
-                top: nowY,
-                left: timeColumnWidth,
-                width: cellWidth * 7,
-                height: 1,
-                child: Container(color: Colors.redAccent.withOpacity(0.5)),
-              )
-          );
-          children.add(
-              Positioned(
-                top: nowY - 2.5,
-                left: lineLeft - 2,
-                width: 6,
-                height: 6,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.redAccent,
+          children.add(Positioned(
+            top: nowY,
+            left: timeColumnWidth,
+            width: cellWidth * 7,
+            height: 1,
+            child: AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (context, child) {
+                return Container(
+                  color: Colors.redAccent
+                      .withOpacity(0.3 + 0.2 * _pulseAnimation.value),
+                );
+              },
+            ),
+          ));
+          children.add(Positioned(
+            top: nowY - 2.5,
+            left: lineLeft - 2,
+            width: 6,
+            height: 6,
+            child: AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (context, child) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withOpacity(_pulseAnimation.value),
                     shape: BoxShape.circle,
                   ),
-                ),
-              )
-          );
+                );
+              },
+            ),
+          ));
         }
       }
     }
@@ -689,7 +789,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('课表与待办', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('课表与待办',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         centerTitle: false,
         actions: [
           Row(
@@ -717,9 +818,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
             icon: const Icon(Icons.edit_calendar, size: 20),
             tooltip: '记录时间日志',
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(
-                builder: (_) => TimeLogScreen(username: widget.username),
-              ));
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TimeLogScreen(username: widget.username),
+                  ));
             },
           ),
           PopupMenuButton<int>(
@@ -740,10 +843,15 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                      _viewMode == 1 ? "只看课表" : (_viewMode == 2 ? "只看待办" : "混合查看"),
-                      style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)
-                  ),
-                  Icon(Icons.arrow_drop_down, size: 20, color: Theme.of(context).colorScheme.primary),
+                      _viewMode == 1
+                          ? "只看课表"
+                          : (_viewMode == 2 ? "只看待办" : "混合查看"),
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold)),
+                  Icon(Icons.arrow_drop_down,
+                      size: 20, color: Theme.of(context).colorScheme.primary),
                 ],
               ),
             ),
@@ -754,26 +862,55 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
-        children: [
-          _buildHeader(_getMondayOfCurrentWeek()),
-          _buildAllDayHeaderRow(_getMondayOfCurrentWeek()),
-          Divider(height: 1, thickness: 0.5, color: Theme.of(context).brightness == Brightness.dark ? Colors.white10 : Colors.black12),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                double cellWidth = (constraints.maxWidth - timeColumnWidth) / 7;
-                double minuteHeight = constraints.maxHeight / ((endHour - startHour) * 60);
+              children: [
+                _buildHeader(_getMondayOfCurrentWeek()),
+                _buildAllDayHeaderRow(_getMondayOfCurrentWeek()),
+                Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white10
+                        : Colors.black12),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      double cellWidth =
+                          (constraints.maxWidth - timeColumnWidth) / 7;
+                      double minuteHeight =
+                          constraints.maxHeight / ((endHour - startHour) * 60);
 
-                return SizedBox(
-                  width: constraints.maxWidth,
-                  height: constraints.maxHeight,
-                  child: _buildGrid(cellWidth, minuteHeight),
-                );
-              },
+                      return AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        switchInCurve: Curves.easeInOut,
+                        switchOutCurve: Curves.easeInOut,
+                        transitionBuilder:
+                            (Widget child, Animation<double> animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0.0, 0.05),
+                                end: Offset.zero,
+                              ).animate(CurvedAnimation(
+                                parent: animation,
+                                curve: Curves.easeInOut,
+                              )),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: SizedBox(
+                          key: ValueKey<int>(_viewMode),
+                          width: constraints.maxWidth,
+                          height: constraints.maxHeight,
+                          child: _buildGrid(cellWidth, minuteHeight),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -792,19 +929,31 @@ class CourseDetailScreen extends StatelessWidget {
         children: [
           const Icon(Icons.class_, size: 80, color: Colors.blueAccent),
           const SizedBox(height: 16),
-          Text(course.courseName, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(course.courseName,
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 32),
           _buildDetailRow(Icons.person, '授课教师', course.teacherName),
           const Divider(),
           _buildDetailRow(Icons.location_on, '上课地点', course.roomName),
           const Divider(),
-          _buildDetailRow(Icons.calendar_today, '日期', '${course.date} (第${course.weekIndex}周 周${course.weekday})'),
+          _buildDetailRow(Icons.calendar_today, '日期',
+              '${course.date} (第${course.weekIndex}周 周${course.weekday})'),
           const Divider(),
-          _buildDetailRow(Icons.access_time, '时间', '${course.formattedStartTime} - ${course.formattedEndTime}'),
+          _buildDetailRow(Icons.access_time, '时间',
+              '${course.formattedStartTime} - ${course.formattedEndTime}'),
           if (course.lessonType != null && course.lessonType!.isNotEmpty) ...[
             const Divider(),
             // 自动翻译内部可能存在的英文类型
-            _buildDetailRow(Icons.category, '类型/备注', course.lessonType! == 'EXPERIMENT' ? '实验课' : (course.lessonType! == 'THEORY' ? '理论课' : course.lessonType!)),
+            _buildDetailRow(
+                Icons.category,
+                '类型/备注',
+                course.lessonType! == 'EXPERIMENT'
+                    ? '实验课'
+                    : (course.lessonType! == 'THEORY'
+                        ? '理论课'
+                        : course.lessonType!)),
           ]
         ],
       ),
@@ -841,10 +990,15 @@ class TodoDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
+    DateTime createdAt = DateTime.fromMillisecondsSinceEpoch(
+            todo.createdDate ?? todo.createdAt,
+            isUtc: true)
+        .toLocal();
     bool isAllDay = todo.dueDate != null &&
-        createdAt.hour == 0 && createdAt.minute == 0 &&
-        todo.dueDate!.hour == 23 && todo.dueDate!.minute == 59;
+        createdAt.hour == 0 &&
+        createdAt.minute == 0 &&
+        todo.dueDate!.hour == 23 &&
+        todo.dueDate!.minute == 59;
 
     String startTimeStr = isAllDay
         ? DateFormat('yyyy-MM-dd (全天)').format(createdAt)
@@ -853,14 +1007,15 @@ class TodoDetailScreen extends StatelessWidget {
     String endTimeStr = todo.dueDate == null
         ? '无截止时间'
         : (isAllDay
-        ? DateFormat('yyyy-MM-dd (全天)').format(todo.dueDate!)
-        : DateFormat('yyyy-MM-dd HH:mm').format(todo.dueDate!));
+            ? DateFormat('yyyy-MM-dd (全天)').format(todo.dueDate!)
+            : DateFormat('yyyy-MM-dd HH:mm').format(todo.dueDate!));
 
     // 计算进度
     double progress = 0.0;
     DateTime now = DateTime.now();
     DateTime start = createdAt;
-    DateTime end = todo.dueDate ?? DateTime(start.year, start.month, start.day, 23, 59, 59);
+    DateTime end = todo.dueDate ??
+        DateTime(start.year, start.month, start.day, 23, 59, 59);
 
     if (todo.isDone) {
       progress = 1.0;
@@ -881,18 +1036,16 @@ class TodoDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Icon(todo.isDone ? Icons.check_circle : Icons.task_alt, size: 80, color: todo.isDone ? Colors.green : Colors.amber),
+          Icon(todo.isDone ? Icons.check_circle : Icons.task_alt,
+              size: 80, color: todo.isDone ? Colors.green : Colors.amber),
           const SizedBox(height: 16),
-          Text(
-              todo.title,
+          Text(todo.title,
               textAlign: TextAlign.center,
               style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                  color: todo.isDone ? Colors.grey : null
-              )
-          ),
+                  color: todo.isDone ? Colors.grey : null)),
           const SizedBox(height: 32),
 
           // 进度条渲染
@@ -902,8 +1055,12 @@ class TodoDetailScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text("时间进度", style: TextStyle(color: Colors.grey, fontSize: 14)),
-                  Text("${(progress * 100).toInt()}%", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+                  const Text("时间进度",
+                      style: TextStyle(color: Colors.grey, fontSize: 14)),
+                  Text("${(progress * 100).toInt()}%",
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold)),
                 ],
               ),
               const SizedBox(height: 8),
@@ -912,8 +1069,11 @@ class TodoDetailScreen extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: progress,
                   minHeight: 10,
-                  backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
-                  valueColor: AlwaysStoppedAnimation<Color>(todo.isDone ? Colors.green : Theme.of(context).colorScheme.primary),
+                  backgroundColor:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
+                  valueColor: AlwaysStoppedAnimation<Color>(todo.isDone
+                      ? Colors.green
+                      : Theme.of(context).colorScheme.primary),
                 ),
               ),
             ],
@@ -926,7 +1086,13 @@ class TodoDetailScreen extends StatelessWidget {
           const Divider(),
           _buildDetailRow(Icons.stop_circle_outlined, '截止时间', endTimeStr),
           const Divider(),
-          _buildDetailRow(Icons.update, '最近更新', DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())),
+          _buildDetailRow(
+              Icons.update,
+              '最近更新',
+              DateFormat('yyyy-MM-dd HH:mm').format(
+                  DateTime.fromMillisecondsSinceEpoch(todo.updatedAt,
+                          isUtc: true)
+                      .toLocal())),
         ],
       ),
     );
