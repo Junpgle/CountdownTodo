@@ -13,6 +13,9 @@ class BandSyncService {
   static bool _isConnected = false;
   static String _nodeId = '';
   static String _deviceName = '';
+  static String _bandVersion = '';
+  static final ValueNotifier<String> bandVersionNotifier =
+      ValueNotifier<String>('');
   static DateTime? _lastSyncTime;
   static final List<String> _logs = [];
   static final List<Map<String, dynamic>> _receivedMessages = [];
@@ -21,6 +24,12 @@ class BandSyncService {
       StreamController<Map<String, dynamic>>.broadcast();
   static Stream<Map<String, dynamic>> get onBandPomodoroAction =>
       _pomodoroActionCtrl.stream;
+
+  static void dispose() {
+    if (!_pomodoroActionCtrl.isClosed) _pomodoroActionCtrl.close();
+    _logs.clear();
+    _receivedMessages.clear();
+  }
 
   static Function(Map<String, dynamic>)? _onDeviceConnected;
   static Function()? _onDeviceDisconnected;
@@ -86,6 +95,7 @@ class BandSyncService {
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final data = args['data'] as String?;
         if (data != null) {
+          _isConnected = true;
           _addLog('收到消息: $data');
           try {
             final jsonData = jsonDecode(data) as Map<String, dynamic>;
@@ -100,6 +110,14 @@ class BandSyncService {
               if (!_pomodoroActionCtrl.isClosed) {
                 _pomodoroActionCtrl.add(jsonData);
               }
+            }
+
+            if (jsonData['type'] == 'band_info') {
+              final version = jsonData['version'] as String? ?? '未知';
+              final versionCode = jsonData['version_code'] as int? ?? 0;
+              _bandVersion = '$version (v$versionCode)';
+              bandVersionNotifier.value = _bandVersion;
+              _addLog('手环版本: $_bandVersion');
             }
 
             if (jsonData['action'] == 'request_sync') {
@@ -365,6 +383,7 @@ class BandSyncService {
   static bool get isConnected => _isConnected;
   static String get nodeId => _nodeId;
   static String get deviceName => _deviceName;
+  static String get bandVersion => _bandVersion;
   static List<String> get logs => List.unmodifiable(_logs);
   static List<Map<String, dynamic>> get receivedMessages =>
       List.unmodifiable(_receivedMessages);

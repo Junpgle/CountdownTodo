@@ -4,6 +4,7 @@ import '../../models.dart';
 import '../../storage_service.dart';
 import '../screens/historical_countdowns_screen.dart';
 import '../widgets/home_sections.dart';
+import '../utils/page_transitions.dart';
 
 class CountdownSectionWidget extends StatefulWidget {
   final List<CountdownItem> countdowns;
@@ -166,9 +167,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               onPressed: () async {
                 await Navigator.push(
                     context,
-                    MaterialPageRoute(
-                        builder: (_) => HistoricalCountdownsScreen(
-                            username: widget.username)));
+                    PageTransitions.slideHorizontal(
+                        HistoricalCountdownsScreen(username: widget.username)));
                 widget.onDataChanged();
               },
             ),

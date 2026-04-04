@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 import 'package:video_player_win/video_player_win_plugin.dart'; // video_player_win plugin
 
+import 'utils/page_transitions.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
 import 'screens/feature_guide_screen.dart';
@@ -16,6 +17,8 @@ import 'services/float_window_service.dart';
 import 'services/window_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
+import 'services/pomodoro_sync_service.dart';
+import 'services/widget_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 
@@ -29,8 +32,6 @@ void registerCloseDialogCallback(CloseDialogCallback callback) {
 }
 
 Future<bool> showCloseDialog() async {
-  debugPrint(
-      '[Main] showCloseDialog called, callback: ${_onShowCloseDialog != null}');
   if (_onShowCloseDialog != null) {
     final result = await _onShowCloseDialog!();
     debugPrint('[Main] Dialog result: $result');
@@ -52,6 +53,7 @@ class MyHttpOverrides extends HttpOverrides {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  await PageTransitions.init();
 
   // If this engine was launched by desktop_multi_window for a secondary
   // window, the embedder will pass arguments like: ["multi_window", windowId, windowArgument]
@@ -277,6 +279,11 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _bandPomodoroSub?.cancel();
+    BandSyncService.dispose();
+    PomodoroService.dispose();
+    PomodoroSyncService.instance.dispose();
+    StorageService.dispose();
+    WidgetService.dispose();
     super.dispose();
   }
 
@@ -323,11 +330,9 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    // 关键点：使用 ValueListenableBuilder 监听全局主题状态
     return ValueListenableBuilder<String>(
       valueListenable: StorageService.themeNotifier,
       builder: (context, themeModeString, child) {
-        // 将设置中的字符串映射为 Flutter 引擎识别的 ThemeMode
         ThemeMode currentThemeMode;
         switch (themeModeString) {
           case 'light':
@@ -344,11 +349,7 @@ class _MyAppState extends State<MyApp> {
           title: 'CountDownTodo',
           debugShowCheckedModeBanner: false,
           navigatorKey: appNavigatorKey,
-
-          // 绑定动态主题模式
           themeMode: currentThemeMode,
-
-          // 配置浅色模式主题
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(
               seedColor: Colors.blue,
@@ -356,16 +357,13 @@ class _MyAppState extends State<MyApp> {
             ),
             useMaterial3: true,
           ),
-
-          // 核心修复：配置深色模式主题 (必须要配置这个，darkTheme 才生效)
           darkTheme: ThemeData(
             colorScheme: ColorScheme.fromSeed(
               seedColor: Colors.blue,
-              brightness: Brightness.dark, // 设为暗色模式
+              brightness: Brightness.dark,
             ),
             useMaterial3: true,
           ),
-
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -375,21 +373,14 @@ class _MyAppState extends State<MyApp> {
             Locale('zh', 'CN'),
             Locale('en', 'US'),
           ],
-
-          // 🚀 添加这一段
           routes: {
             '/login': (context) => const LoginScreen(),
             '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
             '/dev/island': (context) => const IslandDebugPage(),
           },
-
-          // No in-layout island overlay - using independent window island only
           builder: (context, child) {
             return child ?? const SizedBox.shrink();
           },
-
-          // 路由控制：加载中 → 升级引导 → 主页/登录
-          // 若有进行中的番茄钟，先进主页，再由主页自动 push 番茄钟（保留返回栈）
           home: _isChecking
               ? Scaffold(
                   backgroundColor: currentThemeMode == ThemeMode.dark

@@ -22,7 +22,6 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   bool _isConnected = false;
   bool _hasPermission = false;
   String _deviceName = '';
-  String _bandVersion = '';
   bool _isSyncing = false;
   final List<String> _logs = [];
 
@@ -43,6 +42,12 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
           _hasPermission = status['hasPermission'] == true;
         });
         _logs.add('当前设备: $_deviceName');
+        if (BandSyncService.bandVersion.isNotEmpty) {
+          setState(() {});
+          _logs.add('手环版本: ${BandSyncService.bandVersion}');
+        } else {
+          _logs.add('手环版本: 等待手环发送...');
+        }
         if (!_hasPermission) {
           _logs.add('缺少权限，自动申请...');
           await BandSyncService.requestPermission();
@@ -152,6 +157,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
           children: [
             _buildConnectionCard(),
             const SizedBox(height: 16),
+            _buildBandVersionCard(),
+            const SizedBox(height: 16),
             _buildLastSyncCard(),
             const SizedBox(height: 16),
             _buildPermissionCard(),
@@ -228,6 +235,48 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBandVersionCard() {
+    return ValueListenableBuilder<String>(
+      valueListenable: BandSyncService.bandVersionNotifier,
+      builder: (context, version, _) {
+        return Card(
+          elevation: 2,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.purple, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '手环版本',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        version.isNotEmpty ? version : '等待连接...',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.purple,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -633,10 +682,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     if (type == 'band_info') {
       final version = data['version'] as String? ?? '未知';
       final versionCode = data['version_code'] as int? ?? 0;
-      setState(() {
-        _bandVersion = '$version (v$versionCode)';
-      });
-      _logs.add('手环版本: $_bandVersion');
+      _logs.add('手环版本: $version (v$versionCode)');
+      setState(() {});
       return;
     }
 

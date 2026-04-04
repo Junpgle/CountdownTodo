@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'quiz_screen.dart';
 import 'other_screens.dart';
 import 'settings_screen.dart';
+import '../utils/page_transitions.dart';
 
 class MathMenuScreen extends StatefulWidget {
   final String username;
@@ -14,6 +15,10 @@ class MathMenuScreen extends StatefulWidget {
 class _MathMenuScreenState extends State<MathMenuScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
+  final GlobalKey _quizCardKey = GlobalKey();
+  final GlobalKey _settingsCardKey = GlobalKey();
+  final GlobalKey _leaderboardCardKey = GlobalKey();
+  final GlobalKey _historyCardKey = GlobalKey();
 
   @override
   void initState() {
@@ -104,62 +109,68 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                           index: 0,
                           animationController: _animationController,
                           child: _MenuCard(
+                            key: _quizCardKey,
                             title: "开始答题",
                             subtitle: "进入测验",
                             colorStart: const Color(0xFF4facfe),
                             colorEnd: const Color(0xFF00f2fe),
                             icon: Icons.play_arrow_rounded,
-                            onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        QuizScreen(username: widget.username))),
+                            onTap: () => PageTransitions.pushFromRect(
+                              context: context,
+                              page: QuizScreen(username: widget.username),
+                              sourceKey: _quizCardKey,
+                            ),
                           ),
                         ),
                         _AnimatedMenuCard(
                           index: 1,
                           animationController: _animationController,
                           child: _MenuCard(
+                            key: _settingsCardKey,
                             title: "题目设置",
                             subtitle: "调整难度",
                             colorStart: const Color(0xFF43e97b),
                             colorEnd: const Color(0xFF38f9d7),
                             icon: Icons.tune_rounded,
-                            onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const SettingsScreen())),
+                            onTap: () => PageTransitions.pushFromRect(
+                              context: context,
+                              page: const SettingsScreen(),
+                              sourceKey: _settingsCardKey,
+                            ),
                           ),
                         ),
                         _AnimatedMenuCard(
                           index: 2,
                           animationController: _animationController,
                           child: _MenuCard(
+                            key: _leaderboardCardKey,
                             title: "排行榜",
                             subtitle: "查看排名",
                             colorStart: const Color(0xFFfa709a),
                             colorEnd: const Color(0xFFfee140),
                             icon: Icons.emoji_events_rounded,
-                            onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const LeaderboardScreen())),
+                            onTap: () => PageTransitions.pushFromRect(
+                              context: context,
+                              page: const LeaderboardScreen(),
+                              sourceKey: _leaderboardCardKey,
+                            ),
                           ),
                         ),
                         _AnimatedMenuCard(
                           index: 3,
                           animationController: _animationController,
                           child: _MenuCard(
+                            key: _historyCardKey,
                             title: "历史记录",
                             subtitle: "过往成绩",
                             colorStart: const Color(0xFF667eea),
                             colorEnd: const Color(0xFF764ba2),
                             icon: Icons.history_edu_rounded,
-                            onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => HistoryScreen(
-                                        username: widget.username))),
+                            onTap: () => PageTransitions.pushFromRect(
+                              context: context,
+                              page: HistoryScreen(username: widget.username),
+                              sourceKey: _historyCardKey,
+                            ),
                           ),
                         ),
                       ],
@@ -185,13 +196,15 @@ class _MenuCard extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _MenuCard(
-      {required this.title,
-      required this.subtitle,
-      required this.colorStart,
-      required this.colorEnd,
-      required this.icon,
-      required this.onTap});
+  const _MenuCard({
+    Key? key,
+    required this.title,
+    required this.subtitle,
+    required this.colorStart,
+    required this.colorEnd,
+    required this.icon,
+    required this.onTap,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {

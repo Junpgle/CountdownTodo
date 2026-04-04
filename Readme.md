@@ -99,7 +99,3 @@ npx wrangler deploy
 - [windows_island/ 灵动岛](lib/windows_island/README.md)
 
 ---
-
-## 📄 开源协议
-
-本项目遵循 MIT 协议。

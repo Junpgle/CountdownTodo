@@ -28,6 +28,15 @@ class IslandChannel {
       _actionController.stream;
   static Timer? _actionFileTimer;
 
+  static void dispose() {
+    _actionFileTimer?.cancel();
+    _actionFileTimer = null;
+    if (!_actionController.isClosed) _actionController.close();
+    _readyCompleters.clear();
+    _anonReadyQueue.clear();
+    _readySet.clear();
+  }
+
   static void ensureInitialized() {
     if (_handlerSet) return;
     _handlerSet = true;
@@ -35,7 +44,7 @@ class IslandChannel {
     // File IPC Polling: Check every 200ms if sub-window has written an action file.
     // This bypasses Flutter's engine/isolate isolation for custom method calls.
     _actionFileTimer =
-        Timer.periodic(const Duration(milliseconds: 200), (_) async {
+        Timer.periodic(const Duration(milliseconds: 500), (_) async {
       try {
         final dir = await getApplicationSupportDirectory();
         final file = File('${dir.path}/island_action.json');

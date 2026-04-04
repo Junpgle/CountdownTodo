@@ -200,90 +200,54 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     debugPrint(
         '[PomodoroWorkbench] _init start: ${_initStart.toIso8601String()}');
     Timer? _initWatchdog = Timer(const Duration(seconds: 6), () {
-      debugPrint('[PomodoroWorkbench] WARNING: _init still running after 6s');
     });
 
     try {
-      debugPrint('[PomodoroWorkbench] getSettings() start');
       _settings = await PomodoroService.getSettings();
-      debugPrint('[PomodoroWorkbench] getSettings() done');
-
-      debugPrint('[PomodoroWorkbench] getTags() start');
       _allTags = await PomodoroService.getTags();
-      debugPrint(
-          '[PomodoroWorkbench] getTags() done (count=${_allTags.length})');
-
-      debugPrint('[PomodoroWorkbench] StorageService.getDeviceId() start');
       _deviceId = await StorageService.getDeviceId();
-      debugPrint(
-          '[PomodoroWorkbench] StorageService.getDeviceId() done: $_deviceId');
-
-      debugPrint('[PomodoroWorkbench] PackageInfo.fromPlatform() start');
       try {
         final info = await PackageInfo.fromPlatform();
         _appVersion = info.version;
-        debugPrint('[PomodoroWorkbench] PackageInfo done: $_appVersion');
       } catch (e, st) {
-        debugPrint('[PomodoroWorkbench] PackageInfo failed: $e\n$st');
       }
 
-      debugPrint('[PomodoroWorkbench] StorageService.getTodos() start');
+      //debugPrint('[PomodoroWorkbench] StorageService.getTodos() start');
       try {
         final todosRaw = await StorageService.getTodos(widget.username)
             .timeout(const Duration(seconds: 5), onTimeout: () {
-          debugPrint(
-              '[PomodoroWorkbench] WARNING: StorageService.getTodos() timed out');
           return <TodoItem>[];
         });
         _todos = (todosRaw).where((t) => !t.isDeleted && !t.isDone).toList();
-        debugPrint(
-            '[PomodoroWorkbench] StorageService.getTodos() done (count=${_todos.length})');
-      } catch (e, st) {
-        debugPrint('[PomodoroWorkbench] getTodos error: $e\n$st');
+        } catch (e, st) {
         _todos = [];
       }
 
-      debugPrint('[PomodoroWorkbench] PomodoroService.loadRunState() start');
       PomodoroRunState? saved;
       try {
         saved = await PomodoroService.loadRunState()
             .timeout(const Duration(seconds: 5));
       } on TimeoutException catch (_) {
-        debugPrint(
-            '[PomodoroWorkbench] WARNING: PomodoroService.loadRunState() timed out');
         saved = null;
       } catch (e, st) {
-        debugPrint(
-            '[PomodoroWorkbench] PomodoroService.loadRunState() error: $e\n$st');
         saved = null;
       }
-      debugPrint(
-          '[PomodoroWorkbench] PomodoroService.loadRunState() done: ${saved != null}');
 
       if (saved != null && saved.phase != PomodoroPhase.idle) {
-        debugPrint('[PomodoroWorkbench] _recoverState() start');
         try {
           try {
             await _recoverState(saved).timeout(const Duration(seconds: 5));
-            debugPrint('[PomodoroWorkbench] _recoverState() done');
           } on TimeoutException catch (_) {
-            debugPrint(
-                '[PomodoroWorkbench] WARNING: _recoverState() timed out');
           }
         } catch (e, st) {
-          debugPrint('[PomodoroWorkbench] _recoverState() error: $e\n$st');
         }
       } else {
         try {
-          debugPrint(
-              '[PomodoroWorkbench] reading persisted idle binding from SharedPreferences');
           SharedPreferences? prefs;
           try {
             prefs = await SharedPreferences.getInstance()
                 .timeout(const Duration(seconds: 5));
           } catch (e, st) {
-            debugPrint(
-                '[PomodoroWorkbench] WARNING: SharedPreferences.getInstance() timed out or failed: $e\n$st');
             prefs = null;
           }
           if (prefs != null) {
@@ -322,21 +286,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             }
           }
         } catch (e, st) {
-          debugPrint('[PomodoroWorkbench] error reading prefs: $e\n$st');
         }
       }
 
-      debugPrint('[PomodoroWorkbench] _connectCrossDevice() start');
       try {
         try {
           await _connectCrossDevice().timeout(const Duration(seconds: 5));
-          debugPrint('[PomodoroWorkbench] _connectCrossDevice() done');
         } on TimeoutException catch (_) {
-          debugPrint(
-              '[PomodoroWorkbench] WARNING: _connectCrossDevice() timed out');
-        }
+          }
       } catch (e, st) {
-        debugPrint('[PomodoroWorkbench] _connectCrossDevice() error: $e\n$st');
       }
 
       await Future.delayed(const Duration(milliseconds: 400));
@@ -353,24 +311,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               await _syncService
                   .forceReconnect(_userId, 'flutter_$_deviceId')
                   .timeout(const Duration(seconds: 5));
-              debugPrint(
-                  '[PomodoroWorkbench] _syncService.forceReconnect() done');
             } on TimeoutException catch (_) {
-              debugPrint(
-                  '[PomodoroWorkbench] WARNING: _syncService.forceReconnect() timed out');
             }
           } catch (e, st) {
-            debugPrint(
-                '[PomodoroWorkbench] _syncService.forceReconnect() error: $e\n$st');
-          }
+            }
         }
       }
     } catch (e, st) {
-      debugPrint('[PomodoroWorkbench] _init error: $e\n$st');
     } finally {
       _initWatchdog?.cancel();
       final elapsed = DateTime.now().difference(_initStart).inMilliseconds;
-      debugPrint('[PomodoroWorkbench] _init finished in ${elapsed}ms');
     }
   }
 

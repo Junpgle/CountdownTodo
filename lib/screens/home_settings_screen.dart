@@ -17,6 +17,7 @@ import '../services/notification_service.dart';
 import 'login_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../utils/page_transitions.dart';
 import 'feature_guide_screen.dart';
 import '../services/course_service.dart';
 import '../services/reminder_schedule_service.dart';
@@ -35,6 +36,7 @@ import 'settings/widgets/advanced_section.dart';
 import 'settings/widgets/system_section.dart';
 import 'settings/notification_settings_page.dart';
 import 'about_screen.dart';
+import 'animation_settings_page.dart';
 import 'band_sync_screen.dart';
 
 // 引入拆分的弹窗组件
@@ -47,6 +49,7 @@ import 'settings/dialogs/island_priority_dialog.dart';
 import 'settings/handlers/course_import_handler.dart';
 import 'settings/handlers/permission_handler.dart';
 import 'settings/handlers/storage_management_handler.dart';
+import '../services/animation_config_service.dart';
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
@@ -107,6 +110,16 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _advancedExpanded = true;
   bool _systemExpanded = true;
   bool _aboutExpanded = true;
+  bool _animationExpanded = true;
+
+  // 动画设置状态
+  bool _animationsEnabled = true;
+  bool _motionBlurEnabled = false;
+  bool _layerBlurEnabled = false;
+  bool _lazyLoadEnabled = true;
+  bool _screenRadiusEnabled = true;
+  bool _predictiveBackEnabled = true;
+  int _animationDuration = 350;
 
   // 处理器状态代理
   String _cacheSizeStr = "计算中...";
@@ -295,6 +308,19 @@ class _SettingsPageState extends State<SettingsPage> {
     String? noCourseBehaviorPref = prefs.getString('no_course_behavior');
     int style = prefs.getInt('float_window_style') ?? 0;
 
+    final animationsEnabled =
+        await AnimationConfigService.isAnimationsEnabled();
+    final motionBlurEnabled =
+        await AnimationConfigService.isMotionBlurEnabled();
+    final layerBlurEnabled = await AnimationConfigService.isLayerBlurEnabled();
+    final lazyLoadEnabled = await AnimationConfigService.isLazyLoadEnabled();
+    final screenRadiusEnabled =
+        await AnimationConfigService.isScreenRadiusEnabled();
+    final predictiveBackEnabled =
+        await AnimationConfigService.isPredictiveBackEnabled();
+    final animationDuration =
+        await AnimationConfigService.getAnimationDuration();
+
     setState(() {
       _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? "未登录";
       _userId = prefs.getInt('current_user_id');
@@ -309,6 +335,13 @@ class _SettingsPageState extends State<SettingsPage> {
         _noCourseBehavior = noCourseBehaviorPref;
       }
       _floatWindowStyle = style;
+      _animationsEnabled = animationsEnabled;
+      _motionBlurEnabled = motionBlurEnabled;
+      _layerBlurEnabled = layerBlurEnabled;
+      _lazyLoadEnabled = lazyLoadEnabled;
+      _screenRadiusEnabled = screenRadiusEnabled;
+      _predictiveBackEnabled = predictiveBackEnabled;
+      _animationDuration = animationDuration;
     });
     if (Platform.isWindows) {
       final taiPath = await TaiService.getSavedDbPath() ??
@@ -826,10 +859,7 @@ class _SettingsPageState extends State<SettingsPage> {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses();
       await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
-      debugPrint("✅ 设置页面：已触发提醒重新调度");
-    } catch (e) {
-      debugPrint("❌ 设置页面：重新调度提醒失败: $e");
-    }
+    } catch (e) {}
   }
 
   // ─── 一键迁移弹窗逻辑 ──────────────────────────────────────
@@ -843,6 +873,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  // ─── 动画设置区块 ──────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -942,8 +973,8 @@ class _SettingsPageState extends State<SettingsPage> {
             onServerChoiceTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => ServerChoicePage(
+                PageTransitions.slideHorizontal(
+                  ServerChoicePage(
                     initialServerChoice: _serverChoice,
                   ),
                 ),
@@ -964,19 +995,14 @@ class _SettingsPageState extends State<SettingsPage> {
             onFloatWindowStyleChanged: Platform.isWindows
                 ? (val) async {
                     if (val == null) return;
-                    debugPrint('[Settings] Float window style changed: $val');
                     setState(() => _floatWindowStyle = val);
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setInt('float_window_style', val);
                     if (val == 2) {
-                      debugPrint('[Settings] Disabling island (OFF)');
                       try {
                         IslandDataProvider().invalidateCache();
                         IslandManager().clearIslandCache('island-1');
-                        debugPrint('[Settings] Island cache cleared');
-                      } catch (e) {
-                        debugPrint('[Settings] Clear error: $e');
-                      }
+                      } catch (e) {}
                     } else {
                       debugPrint('[Settings] Creating island (ON)');
                       try {
@@ -1026,6 +1052,33 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
         _buildExpandableSection(
+          title: '动画设置',
+          icon: Icons.animation_outlined,
+          expanded: _animationExpanded,
+          onToggle: () =>
+              setState(() => _animationExpanded = !_animationExpanded),
+          child: Card(
+            elevation: 1,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              leading: const Icon(Icons.animation_outlined, color: Colors.blue),
+              title: const Text('动画设置',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('页面切换动画、Container Transform、性能选项'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    const AnimationSettingsPage(),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        _buildExpandableSection(
           title: '通知管理',
           icon: Icons.notifications_outlined,
           expanded: _notificationExpanded,
@@ -1045,8 +1098,8 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const NotificationSettingsPage(),
+                  PageTransitions.slideHorizontal(
+                    const NotificationSettingsPage(),
                   ),
                 );
               },
@@ -1085,8 +1138,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ? () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const BandSyncScreen(),
+                      PageTransitions.slideHorizontal(
+                        const BandSyncScreen(),
                       ),
                     );
                   }
@@ -1102,9 +1155,8 @@ class _SettingsPageState extends State<SettingsPage> {
             onOpenFeatureGuide: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      const FeatureGuideScreen(isManualReview: true),
+                PageTransitions.slideHorizontal(
+                  const FeatureGuideScreen(isManualReview: true),
                 ),
               );
             },
@@ -1134,7 +1186,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const AboutScreen()),
+                  PageTransitions.slideHorizontal(const AboutScreen()),
                 );
               },
             ),
@@ -1274,8 +1326,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   onServerChoiceTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => ServerChoicePage(
+                      PageTransitions.slideHorizontal(
+                        ServerChoicePage(
                           initialServerChoice: _serverChoice,
                         ),
                       ),
@@ -1359,6 +1411,27 @@ class _SettingsPageState extends State<SettingsPage> {
                   },
                 ),
                 Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  child: ListTile(
+                    leading: const Icon(Icons.animation_outlined,
+                        color: Colors.blue),
+                    title: const Text('动画设置',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('页面切换动画、Container Transform、性能选项'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                          const AnimationSettingsPage(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Card(
                   elevation: 2,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
@@ -1372,8 +1445,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const NotificationSettingsPage(),
+                        PageTransitions.slideHorizontal(
+                          const NotificationSettingsPage(),
                         ),
                       );
                     },
@@ -1399,9 +1472,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   onOpenFeatureGuide: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const FeatureGuideScreen(isManualReview: true),
+                      PageTransitions.slideHorizontal(
+                        const FeatureGuideScreen(isManualReview: true),
                       ),
                     );
                   },
@@ -1426,7 +1498,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const AboutScreen()),
+                        PageTransitions.slideHorizontal(const AboutScreen()),
                       );
                     },
                   ),

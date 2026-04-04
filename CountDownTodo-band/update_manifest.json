@@ -1,11 +1,11 @@
 {
   "version_code": 1,
-  "version_name": "1.0.0",
+  "version_name": "1.0.2",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 1.0.0",
-    "description": "【新增】Vela快应用全新上线\n【新增】待办事项（进度条、智能排序）\n【新增】倒数日\n【新增】课程表（三天视图）\n【新增】设置/缓存管理\n【新增】手机蓝牙双向同步",
-    "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/com.math_quiz.junpgle.com.math_quiz_app.release.1.0.0.rpk"
+    "title": "版本更新 1.0.2",
+    "description": "【新增】番茄钟同步,可以手环控制手机",
+    "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/com.math_quiz.junpgle.com.math_quiz_app.release.1.0.2.rpk"
   },
   "announcement": {
     "show": false,
@@ -14,6 +14,12 @@
   },
   "changelog_history": [
     {
+      "version_name": "1.0.2",
+      "date": "2026-04-04",
+      "items": [
+        "【新增】番茄钟同步,可以手环控制手机"
+      ]
+    },{
       "version_name": "1.0.0",
       "date": "2026-04-03",
       "items": [

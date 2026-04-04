@@ -13,7 +13,10 @@
     <!-- 标题区域 (固定不动) -->
     <div class="header">
       <div class="title-group">
-        <text class="title" static>CDT</text>
+        <div class="title-row">
+          <text class="title" static>CDT</text>
+          <text class="version-badge">{{bandVersion}}</text>
+        </div>
         <text class="date">{{currentDate}}</text>
       </div>
       <div class="sync-btn" onclick="syncAllData">
@@ -110,7 +113,8 @@ export default {
     nearestCountdown: '暂无',
     todayCourseText: '今日无课',
     pomodoroStatusText: '暂无专注',
-    lastSyncTimeText: ''
+    lastSyncTimeText: '',
+    bandVersion: ''
   },
 
   statusTimer: null,
@@ -120,6 +124,7 @@ export default {
     this.setCurrentDate()
     this.loadAllData()
     this.loadLastSyncTime()
+    this.bandVersion = 'v' + SyncService.getVersion()
   },
 
   onShow() {
@@ -303,15 +308,18 @@ export default {
   },
 
   syncAllData() {
-    if (this.isSyncing) return
+    if (this.isSyncing) {
+      prompt.showToast({ message: '已在同步中', duration: 1000 })
+      return
+    }
 
     this.isSyncing = true
     this.syncStatus = 'syncing'
     this.syncStatusText = '同步中...'
     this.syncStatusClass = 'status-syncing'
+    prompt.showToast({ message: '开始同步', duration: 1000 })
 
     var self = this
-    var startTime = Date.now()
     var timeoutId = setTimeout(function() {
       if (self.isSyncing) {
         self.isSyncing = false
@@ -321,7 +329,7 @@ export default {
         prompt.showToast({ message: '超时:' + SyncService.getDiagMsg(), duration: 3000 })
         self.resetSyncStatus()
       }
-    }, 15000)
+    }, 20000)
 
     SyncService.syncAll(function(results) {
       clearTimeout(timeoutId)
@@ -329,16 +337,11 @@ export default {
 
       var successCount = 0
       var failCount = 0
-      var failMessages = []
-
       for (var type in results) {
         if (results[type] && results[type].success) {
           successCount++
         } else {
           failCount++
-          if (results[type]) {
-            failMessages.push(type + ':' + (results[type].message || '未知'))
-          }
         }
       }
 
@@ -354,13 +357,13 @@ export default {
         self.syncStatus = 'fail'
         self.syncStatusText = '部分失败'
         self.syncStatusClass = 'status-fail'
-        prompt.showToast({ message: successCount + '成功 ' + failCount + '失败 [' + diag + ']', duration: 3000 })
+        prompt.showToast({ message: successCount + '成功 ' + failCount + '失败', duration: 2000 })
         self.saveLastSyncTime()
       } else {
         self.syncStatus = 'fail'
         self.syncStatusText = '同步失败'
         self.syncStatusClass = 'status-fail'
-        prompt.showToast({ message: failMessages.join('; ') + ' [' + diag + ']', duration: 3000 })
+        prompt.showToast({ message: '失败:' + diag, duration: 3000 })
       }
 
       self.isSyncing = false
@@ -514,11 +517,22 @@ export default {
   flex-direction: column;
 }
 
+.title-row {
+  flex-direction: row;
+  align-items: center;
+}
+
 .title {
   font-size: 40px;
   font-weight: bold;
   color: #ffffff;
   letter-spacing: 2px;
+}
+
+.version-badge {
+  font-size: 18px;
+  color: #666666;
+  margin-left: 12px;
 }
 
 .date {

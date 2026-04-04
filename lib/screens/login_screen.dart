@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../services/api_service.dart';
 import '../storage_service.dart';
 import 'home_dashboard.dart';
+import '../utils/page_transitions.dart';
 
 // ─────────────────────────────────────────────
 //  Adaptive color tokens
@@ -915,7 +916,7 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = false);
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => HomeDashboard(username: username)),
+      PageTransitions.fadeThrough(HomeDashboard(username: username)),
     );
   }
 

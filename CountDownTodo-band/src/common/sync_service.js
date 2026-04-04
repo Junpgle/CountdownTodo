@@ -1,6 +1,6 @@
 var storage = require('@system.storage')
 var interconnect = require('@system.interconnect')
-var prompt = require('@system.prompt')
+var app = require('@system.app')
 
 var SYNC_KEY_PREFIX = 'sync_'
 var connect = null
@@ -9,6 +9,8 @@ var batchBuffer = {}
 var pendingRequests = {}
 var isInitialized = false
 var diagMsg = ''
+var appVersion = '...'
+var appVersionCode = 0
 
 function getConnect() {
   if (!connect) {
@@ -19,12 +21,6 @@ function getConnect() {
     }
   }
   return connect
-}
-
-function toast(msg) {
-  try {
-    prompt.showToast({ message: msg, duration: 3000 })
-  } catch (e) {}
 }
 
 function padZero(num) {
@@ -107,6 +103,7 @@ function resolveRequest(type, result) {
       clearTimeout(pendingRequests[type].timeout)
     }
     if (pendingRequests[type].callback) {
+      diagMsg = type + ':' + (result ? result.message : 'null')
       pendingRequests[type].callback(result)
     }
     delete pendingRequests[type]
@@ -211,7 +208,7 @@ function doSend(type, callback) {
     success: function() {
       callback(true)
     },
-    fail: function(err, code) {
+    fail: function() {
       callback(false)
     }
   })
@@ -254,7 +251,7 @@ function init() {
       diagMsg = 'init:send=' + hasSend + ' grs=' + hasGRS
       connect.onopen = function(data) {
         isConnected = true
-        sendVersionInfo()
+        setTimeout(sendVersionInfo, 500)
       }
       connect.onclose = function(data) {
         isConnected = false
@@ -272,11 +269,14 @@ function init() {
             var status = data ? data.status : -1
             if (status === 1) {
               isConnected = true
-              sendVersionInfo()
+              setTimeout(sendVersionInfo, 500)
             }
           },
           fail: function() {}
         })
+      } else {
+        isConnected = true
+        setTimeout(sendVersionInfo, 500)
       }
 
       isInitialized = true
@@ -317,12 +317,74 @@ function sendPomodoroAction(action, sessionUuid) {
 
 function sendVersionInfo() {
   var conn = getConnect()
-  if (!conn) return
-  if (typeof conn.send !== 'function') return
+  if (!conn) {
+    return
+  }
+  if (typeof conn.send !== 'function') {
+    return
+  }
   conn.send({
-    data: { type: 'band_info', version: '1.0.0', version_code: 1, timestamp: Date.now() },
+    data: { type: 'band_info', version: appVersion, version_code: appVersionCode, timestamp: Date.now() },
     success: function() {},
     fail: function() {}
+  })
+}
+
+function init() {
+  if (isInitialized && connect) {
+    return
+  }
+  try {
+    var instance = interconnect.instance()
+    if (instance) {
+      connect = instance
+      var hasSend = typeof connect.send === 'function'
+      var hasGRS = typeof connect.getReadyState === 'function'
+      diagMsg = 'init:send=' + hasSend + ' grs=' + hasGRS
+      connect.onopen = function(data) {
+        isConnected = true
+        setTimeout(sendVersionInfo, 500)
+      }
+      connect.onclose = function(data) {
+        isConnected = false
+      }
+      connect.onerror = function(data) {
+        isConnected = false
+      }
+      connect.onmessage = function(data) {
+        handleReceivedData(data)
+      }
+
+      if (hasGRS) {
+        connect.getReadyState({
+          success: function(data) {
+            var status = data ? data.status : -1
+            if (status === 1) {
+              isConnected = true
+              setTimeout(sendVersionInfo, 500)
+            }
+          },
+          fail: function() {}
+        })
+      } else {
+        isConnected = true
+        setTimeout(sendVersionInfo, 500)
+      }
+
+      isInitialized = true
+    }
+  } catch (e) {
+    diagMsg = 'init err:' + e.message
+  }
+}
+  if (typeof conn.send !== 'function') {
+    diagMsg = 'ver:no send'
+    return
+  }
+  conn.send({
+    data: { type: 'band_info', version: '1.0.0', version_code: 1, timestamp: Date.now() },
+    success: function() { diagMsg = 'ver:sent' },
+    fail: function() { diagMsg = 'ver:fail' }
   })
 }
 
@@ -339,6 +401,10 @@ function sendDebugLog(message) {
 
 function getDiagMsg() {
   return diagMsg
+}
+
+function getVersion() {
+  return appVersion
 }
 
 function syncTodo(onResult) {
@@ -359,32 +425,38 @@ function syncPomodoro(onResult) {
 
 function syncAll(onResult) {
   var results = {}
-  var completed = 0
-  var total = 4
+  var types = ['todo', 'course', 'countdown', 'pomodoro']
+  var idx = 0
+  var done = false
 
-  function checkDone() {
-    completed++
-    if (completed >= total && onResult) {
+  var masterTimeout = setTimeout(function() {
+    if (!done && onResult) {
+      done = true
+      for (var i = idx; i < types.length; i++) {
+        results[types[i]] = { success: false, message: '超时' }
+      }
       onResult(results)
     }
+  }, 30000)
+
+  function runNext() {
+    if (done) return
+    if (idx >= types.length) {
+      done = true
+      clearTimeout(masterTimeout)
+      if (onResult) onResult(results)
+      return
+    }
+    var type = types[idx]
+    idx++
+    requestSyncFromPhone(type, function(r) {
+      if (done) return
+      results[type] = r
+      setTimeout(runNext, 300)
+    })
   }
 
-  syncTodo(function(r) {
-    results.todo = r
-    checkDone()
-  })
-  syncCourse(function(r) {
-    results.course = r
-    checkDone()
-  })
-  syncCountdown(function(r) {
-    results.countdown = r
-    checkDone()
-  })
-  syncPomodoro(function(r) {
-    results.pomodoro = r
-    checkDone()
-  })
+  runNext()
 }
 
 module.exports = {
@@ -402,5 +474,6 @@ module.exports = {
   syncCourse: syncCourse,
   syncCountdown: syncCountdown,
   syncPomodoro: syncPomodoro,
-  getDiagMsg: getDiagMsg
+  getDiagMsg: getDiagMsg,
+  getVersion: getVersion
 }

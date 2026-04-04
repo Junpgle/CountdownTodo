@@ -70,7 +70,6 @@ class NotificationService {
         'teacher': teacher,
       });
     } catch (e) {
-      debugPrint("更新课程通知失败: $e");
     }
   }
 
@@ -99,7 +98,7 @@ class NotificationService {
         'score': score,
       });
     } catch (e) {
-      debugPrint("更新测验通知失败: $e");
+
     }
   }
 
@@ -160,7 +159,6 @@ class NotificationService {
 
   static String _detectTodoType(String title) {
     final lowerTitle = title.toLowerCase();
-    debugPrint("🔍 _detectTodoType 检测: title=$title, lowerTitle=$lowerTitle");
     if (lowerTitle.contains('快递') ||
         lowerTitle.contains('取件') ||
         lowerTitle.contains('顺丰') ||
@@ -170,7 +168,6 @@ class NotificationService {
         lowerTitle.contains('圆通') ||
         lowerTitle.contains('韵达') ||
         lowerTitle.contains('申通')) {
-      debugPrint("🔍 匹配到: delivery");
       return 'delivery';
     } else if (lowerTitle.contains('奶茶') ||
         lowerTitle.contains('咖啡') ||
@@ -182,7 +179,6 @@ class NotificationService {
         lowerTitle.contains('库迪') ||
         lowerTitle.contains('coco') ||
         lowerTitle.contains('一点点')) {
-      debugPrint("🔍 匹配到: cafe");
       return 'cafe';
     } else if (lowerTitle.contains('海底捞') ||
         lowerTitle.contains('太二') ||
@@ -191,17 +187,14 @@ class NotificationService {
         lowerTitle.contains('必胜客') ||
         lowerTitle.contains('堂食') ||
         lowerTitle.contains('餐饮')) {
-      debugPrint("🔍 匹配到: restaurant");
       return 'restaurant';
     } else if (lowerTitle.contains('取餐') ||
         lowerTitle.contains('外卖') ||
         lowerTitle.contains('肯德基') ||
         lowerTitle.contains('麦当劳') ||
         lowerTitle.contains('KFC')) {
-      debugPrint("🔍 匹配到: food");
       return 'food';
     }
-    debugPrint("🔍 匹配到: default");
     return 'default';
   }
 

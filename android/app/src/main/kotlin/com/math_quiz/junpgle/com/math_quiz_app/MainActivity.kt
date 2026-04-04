@@ -1425,7 +1425,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             try {
                 val canPost = notificationManager.javaClass.getMethod("canPostPromotedNotifications").invoke(notificationManager) as? Boolean ?: false
                 val hasPromo = notification.javaClass.getMethod("hasPromotableCharacteristics").invoke(notification) as? Boolean ?: false
-                Log.w(TAG, "🚀 Live Updates Status -> Permitted by user: $canPost | Has Promotable Flags: $hasPromo")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to check Live Updates status via reflection", e)
             }

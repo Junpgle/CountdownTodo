@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../services/course_service.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/page_transitions.dart';
 import 'time_log_screen.dart'; // 🚀 1. 引入时间日志页面
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
@@ -386,9 +387,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                     Navigator.pop(ctx);
                                     Navigator.push(
                                         context,
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                TodoDetailScreen(todo: todo)));
+                                        PageTransitions.slideHorizontal(
+                                            TodoDetailScreen(todo: todo)));
                                   },
                                 );
                               }))
@@ -599,8 +599,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               onTap: () {
                 Navigator.push(
                     context,
-                    MaterialPageRoute(
-                        builder: (_) => TodoDetailScreen(todo: todo)));
+                    PageTransitions.slideHorizontal(
+                        TodoDetailScreen(todo: todo)));
               },
               child: Container(
                 clipBehavior: Clip.hardEdge,
@@ -687,8 +687,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             onTap: () {
               Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => CourseDetailScreen(course: course),
+                  PageTransitions.slideHorizontal(
+                    CourseDetailScreen(course: course),
                   ));
             },
             child: Container(
@@ -820,8 +820,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             onPressed: () {
               Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => TimeLogScreen(username: widget.username),
+                  PageTransitions.slideHorizontal(
+                    TimeLogScreen(username: widget.username),
                   ));
             },
           ),

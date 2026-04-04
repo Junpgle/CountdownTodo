@@ -70,13 +70,13 @@ enum PomodoroRecordStatus { completed, interrupted, switched }
 
 class PomodoroRecord {
   String uuid;
-  String? todoUuid;         // 关联 todos.uuid
-  String? todoTitle;        // 冗余存储（便于离线显示）
-  List<String> tagUuids;    // 通过 todo_tags 关联，本地缓存用
-  int startTime;            // UTC ms
-  int? endTime;             // UTC ms
-  int plannedDuration;      // 计划专注时长（秒）
-  int? actualDuration;      // 实际专注时长（秒）
+  String? todoUuid; // 关联 todos.uuid
+  String? todoTitle; // 冗余存储（便于离线显示）
+  List<String> tagUuids; // 通过 todo_tags 关联，本地缓存用
+  int startTime; // UTC ms
+  int? endTime; // UTC ms
+  int plannedDuration; // 计划专注时长（秒）
+  int? actualDuration; // 实际专注时长（秒）
   PomodoroRecordStatus status;
   String? deviceId;
   bool isDeleted;
@@ -165,17 +165,23 @@ class PomodoroRecord {
 
   static String _statusStr(PomodoroRecordStatus s) {
     switch (s) {
-      case PomodoroRecordStatus.completed:  return 'completed';
-      case PomodoroRecordStatus.interrupted: return 'interrupted';
-      case PomodoroRecordStatus.switched:   return 'switched';
+      case PomodoroRecordStatus.completed:
+        return 'completed';
+      case PomodoroRecordStatus.interrupted:
+        return 'interrupted';
+      case PomodoroRecordStatus.switched:
+        return 'switched';
     }
   }
 
   static PomodoroRecordStatus _parseStatus(dynamic v) {
     switch (v?.toString()) {
-      case 'interrupted': return PomodoroRecordStatus.interrupted;
-      case 'switched':    return PomodoroRecordStatus.switched;
-      default:            return PomodoroRecordStatus.completed;
+      case 'interrupted':
+        return PomodoroRecordStatus.interrupted;
+      case 'switched':
+        return PomodoroRecordStatus.switched;
+      default:
+        return PomodoroRecordStatus.completed;
     }
   }
 
@@ -199,10 +205,10 @@ typedef PomodoroSession = PomodoroRecord;
 enum TimerMode { countdown, countUp }
 
 class PomodoroSettings {
-  int focusMinutes;  // default_focus_duration / 60
-  int breakMinutes;  // default_rest_duration  / 60
-  int cycles;        // default_loop_count
-  TimerMode mode;    // 🚀 新增：倒计时或正计时模式
+  int focusMinutes; // default_focus_duration / 60
+  int breakMinutes; // default_rest_duration  / 60
+  int cycles; // default_loop_count
+  TimerMode mode; // 🚀 新增：倒计时或正计时模式
 
   PomodoroSettings({
     this.focusMinutes = 25,
@@ -253,7 +259,7 @@ enum PomodoroPhase { idle, focusing, breaking, finished, remoteWatching }
 class PomodoroRunState {
   PomodoroPhase phase;
   String sessionUuid; // 🚀 新增：记录当前正在运行的番茄钟 UUID
-  int targetEndMs;    // 本阶段绝对结束时间戳（UTC ms）
+  int targetEndMs; // 本阶段绝对结束时间戳（UTC ms）
   int currentCycle;
   int totalCycles;
   int focusSeconds;
@@ -267,7 +273,7 @@ class PomodoroRunState {
 
   PomodoroRunState({
     this.phase = PomodoroPhase.idle,
-    String? sessionUuid, 
+    String? sessionUuid,
     this.targetEndMs = 0,
     this.currentCycle = 1,
     this.totalCycles = 4,
@@ -279,7 +285,7 @@ class PomodoroRunState {
     this.sessionStartMs = 0,
     this.plannedFocusSeconds = 25 * 60,
     this.mode = TimerMode.countdown,
-  }) : sessionUuid = sessionUuid ?? const Uuid().v4(), 
+  })  : sessionUuid = sessionUuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [];
 
   Map<String, dynamic> toJson() => {
@@ -301,25 +307,27 @@ class PomodoroRunState {
 
   factory PomodoroRunState.fromJson(Map<String, dynamic> j) {
     final focusSecs = j['focusSeconds'] as int? ?? 25 * 60;
-    final modeIdx = j['mode'] as int? ?? (j['isCountUp'] == true || focusSecs == 0 ? 1 : 0);
+    final modeIdx =
+        j['mode'] as int? ?? (j['isCountUp'] == true || focusSecs == 0 ? 1 : 0);
 
     return PomodoroRunState(
-        phase: PomodoroPhase.values[j['phase'] as int? ?? 0],
-        sessionUuid: j['sessionUuid']?.toString() ?? const Uuid().v4(),
-        targetEndMs: j['targetEndMs'] as int? ?? 0,
-        currentCycle: j['currentCycle'] as int? ?? 1,
-        totalCycles: j['totalCycles'] as int? ?? 4,
-        focusSeconds: focusSecs,
-        breakSeconds: j['breakSeconds'] as int? ?? 5 * 60,
-        todoUuid: j['todoUuid'] as String?,
-        todoTitle: j['todoTitle'] as String?,
-        tagUuids: (j['tagUuids'] as List?)?.map((e) => e.toString()).toList() ?? [],
-        sessionStartMs: j['sessionStartMs'] as int? ?? 0,
-        plannedFocusSeconds: j['plannedFocusSeconds'] as int?
-            ?? j['actualFocusedSeconds'] as int?
-            ?? focusSecs,
-        mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
-      );
+      phase: PomodoroPhase.values[j['phase'] as int? ?? 0],
+      sessionUuid: j['sessionUuid']?.toString() ?? const Uuid().v4(),
+      targetEndMs: j['targetEndMs'] as int? ?? 0,
+      currentCycle: j['currentCycle'] as int? ?? 1,
+      totalCycles: j['totalCycles'] as int? ?? 4,
+      focusSeconds: focusSecs,
+      breakSeconds: j['breakSeconds'] as int? ?? 5 * 60,
+      todoUuid: j['todoUuid'] as String?,
+      todoTitle: j['todoTitle'] as String?,
+      tagUuids:
+          (j['tagUuids'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      sessionStartMs: j['sessionStartMs'] as int? ?? 0,
+      plannedFocusSeconds: j['plannedFocusSeconds'] as int? ??
+          j['actualFocusedSeconds'] as int? ??
+          focusSecs,
+      mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
+    );
   }
 }
 
@@ -328,14 +336,19 @@ class PomodoroRunState {
 // ============================================================
 
 class PomodoroService {
-  static const _keySettings  = 'pomodoro_settings_v2';
-  static const _keyRunState  = 'pomodoro_run_state';
-  static const _keyTags      = 'pomodoro_tags_v2';
-  static const _keyRecords   = 'pomodoro_records';   // 本地缓存记录列表
-  
+  static const _keySettings = 'pomodoro_settings_v2';
+  static const _keyRunState = 'pomodoro_run_state';
+  static const _keyTags = 'pomodoro_tags_v2';
+  static const _keyRecords = 'pomodoro_records'; // 本地缓存记录列表
+
   // ── 流控（用于 UI 实时响应状态变更，替代轮询） ──────────
   static final _runStateCtrl = StreamController<PomodoroRunState?>.broadcast();
-  static Stream<PomodoroRunState?> get onRunStateChanged => _runStateCtrl.stream;
+  static Stream<PomodoroRunState?> get onRunStateChanged =>
+      _runStateCtrl.stream;
+
+  static void dispose() {
+    if (!_runStateCtrl.isClosed) _runStateCtrl.close();
+  }
 
   // ── 设置 ─────────────────────────────────────────────────
 
@@ -343,8 +356,11 @@ class PomodoroService {
     final prefs = await SharedPreferences.getInstance();
     final s = prefs.getString(_keySettings);
     if (s == null) return PomodoroSettings();
-    try { return PomodoroSettings.fromJson(jsonDecode(s)); }
-    catch (_) { return PomodoroSettings(); }
+    try {
+      return PomodoroSettings.fromJson(jsonDecode(s));
+    } catch (_) {
+      return PomodoroSettings();
+    }
   }
 
   static Future<void> saveSettings(PomodoroSettings settings) async {
@@ -360,8 +376,11 @@ class PomodoroService {
     final prefs = await SharedPreferences.getInstance();
     final s = prefs.getString(_keyRunState);
     if (s == null) return null;
-    try { return PomodoroRunState.fromJson(jsonDecode(s)); }
-    catch (_) { return null; }
+    try {
+      return PomodoroRunState.fromJson(jsonDecode(s));
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<void> saveRunState(PomodoroRunState state) async {
@@ -387,7 +406,9 @@ class PomodoroService {
           .map((e) => PomodoroTag.fromJson(e))
           .where((t) => !t.isDeleted)
           .toList();
-    } catch (_) { return []; }
+    } catch (_) {
+      return [];
+    }
   }
 
   /// 保存标签（自动检测丢失的项并转化为墓碑，防止云端同步时复活）
@@ -398,12 +419,16 @@ class PomodoroService {
     List<PomodoroTag> allLocal = [];
     if (s != null) {
       try {
-        allLocal = (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
+        allLocal = (jsonDecode(s) as List)
+            .map((e) => PomodoroTag.fromJson(e))
+            .toList();
       } catch (_) {}
     }
 
     // 将本次要保存的活动标签存入 Map
-    final Map<String, PomodoroTag> newMap = {for (var t in tagsToSave) t.uuid: t};
+    final Map<String, PomodoroTag> newMap = {
+      for (var t in tagsToSave) t.uuid: t
+    };
 
     // 遍历本地全量历史数据，找回被“硬删除”的项和原有的墓碑
     for (var old in allLocal) {
@@ -420,7 +445,8 @@ class PomodoroService {
       }
     }
 
-    await prefs.setString(_keyTags, jsonEncode(newMap.values.map((t) => t.toJson()).toList()));
+    await prefs.setString(
+        _keyTags, jsonEncode(newMap.values.map((t) => t.toJson()).toList()));
   }
 
   /// 软删除一个标签（打上 tombstone 标记），以便同步时告诉云端删除
@@ -429,9 +455,8 @@ class PomodoroService {
     final s = prefs.getString(_keyTags);
     if (s == null) return;
 
-    final allTags = (jsonDecode(s) as List)
-        .map((e) => PomodoroTag.fromJson(e))
-        .toList();
+    final allTags =
+        (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
 
     final idx = allTags.indexWhere((t) => t.uuid == uuid);
     if (idx != -1 && !allTags[idx].isDeleted) {
@@ -439,7 +464,8 @@ class PomodoroService {
       allTags[idx].updatedAt = DateTime.now().millisecondsSinceEpoch;
       allTags[idx].version += 1;
 
-      await prefs.setString(_keyTags, jsonEncode(allTags.map((t) => t.toJson()).toList()));
+      await prefs.setString(
+          _keyTags, jsonEncode(allTags.map((t) => t.toJson()).toList()));
 
       // 立即触发一次云端同步，让云端也跟着删掉
       syncTagsToCloud().catchError((_) {});
@@ -450,12 +476,12 @@ class PomodoroService {
     final prefs = await SharedPreferences.getInstance();
     final s = prefs.getString(_keyTags);
     if (s == null) return;
-    final allTags = (jsonDecode(s) as List)
-        .map((e) => PomodoroTag.fromJson(e))
-        .toList();
+    final allTags =
+        (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
     if (allTags.isEmpty) return;
     await ApiService.syncPomodoroTags(allTags.map((t) => t.toJson()).toList());
-    await prefs.setInt('pomodoro_last_tag_sync', DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(
+        'pomodoro_last_tag_sync', DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<void> syncTagsFromCloud() async {
@@ -467,7 +493,8 @@ class PomodoroService {
     // 读取所有本地标签（含已删除）
     final prefs = await SharedPreferences.getInstance();
     final s = prefs.getString(_keyTags);
-    final localAll = s == null ? <PomodoroTag>[]
+    final localAll = s == null
+        ? <PomodoroTag>[]
         : (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
     final Map<String, PomodoroTag> merged = {for (var t in localAll) t.uuid: t};
     for (final rt in remoteTags) {
@@ -487,7 +514,8 @@ class PomodoroService {
 
   static Future<void> _saveRecords(List<PomodoroRecord> records) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyRecords, jsonEncode(records.map((r) => r.toJson()).toList()));
+    await prefs.setString(
+        _keyRecords, jsonEncode(records.map((r) => r.toJson()).toList()));
   }
 
   /// 添加一条专注记录，本地保存后立即尝试上传云端；失败时保留本地记录等待下次 syncRecordsToCloud 补传
@@ -500,7 +528,8 @@ class PomodoroService {
       all.insert(0, record);
     }
     await _saveRecords(all);
-    debugPrint('[PomodoroService] addRecord OK, uuid=${record.uuid}, total=${all.length}');
+    debugPrint(
+        '[PomodoroService] addRecord OK, uuid=${record.uuid}, total=${all.length}');
     // 立即尝试上传（静默失败，本地已保存）
     try {
       final ok = await ApiService.uploadPomodoroRecord(record.toJson());
@@ -517,11 +546,14 @@ class PomodoroService {
   }
 
   /// 按时间范围查询（仅有效）
-  static Future<List<PomodoroRecord>> getRecordsInRange(DateTime from, DateTime to) async {
+  static Future<List<PomodoroRecord>> getRecordsInRange(
+      DateTime from, DateTime to) async {
     final all = await getRecords();
     final fromMs = from.millisecondsSinceEpoch;
-    final toMs   = to.millisecondsSinceEpoch;
-    return all.where((r) => r.startTime >= fromMs && r.startTime <= toMs).toList();
+    final toMs = to.millisecondsSinceEpoch;
+    return all
+        .where((r) => r.startTime >= fromMs && r.startTime <= toMs)
+        .toList();
   }
 
   // ── 统计工具 ─────────────────────────────────────────────
@@ -559,7 +591,8 @@ class PomodoroService {
   /// 从云端增量拉取专注记录（LWW 合并），返回是否有新增/变更
   static Future<bool> syncRecordsFromCloud({int? fromMs}) async {
     try {
-      final todayStart = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+      final todayStart = DateTime(
+          DateTime.now().year, DateTime.now().month, DateTime.now().day);
       final recordsRaw = await ApiService.fetchPomodoroSessions(
         fromMs: todayStart.millisecondsSinceEpoch,
       );
@@ -574,9 +607,13 @@ class PomodoroService {
       final s = prefs.getString(_keyRecords);
       final localAll = s == null
           ? <PomodoroRecord>[]
-          : (jsonDecode(s) as List).map((e) => PomodoroRecord.fromJson(e)).toList();
+          : (jsonDecode(s) as List)
+              .map((e) => PomodoroRecord.fromJson(e))
+              .toList();
 
-      final Map<String, PomodoroRecord> merged = {for (var r in localAll) r.uuid: r};
+      final Map<String, PomodoroRecord> merged = {
+        for (var r in localAll) r.uuid: r
+      };
       bool hasChange = false;
 
       for (final rr in remoteRecords) {
@@ -591,17 +628,21 @@ class PomodoroService {
           // 2. 任何情况下：若云端有 tagUuids/todoTitle 而本地没有 → 补全（修复旧记录标签丢失）
           final cloudNewer = rr.updatedAt > ex.updatedAt;
           final needPatch = (rr.tagUuids.isNotEmpty && ex.tagUuids.isEmpty) ||
-                            (rr.todoTitle?.isNotEmpty == true && ex.todoTitle == null);
+              (rr.todoTitle?.isNotEmpty == true && ex.todoTitle == null);
           if (cloudNewer || needPatch) {
             merged[rr.uuid] = PomodoroRecord(
               uuid: rr.uuid,
               todoUuid: rr.todoUuid ?? ex.todoUuid,
-              todoTitle: (rr.todoTitle?.isNotEmpty == true) ? rr.todoTitle : ex.todoTitle,
+              todoTitle: (rr.todoTitle?.isNotEmpty == true)
+                  ? rr.todoTitle
+                  : ex.todoTitle,
               tagUuids: rr.tagUuids.isNotEmpty ? rr.tagUuids : ex.tagUuids,
               startTime: cloudNewer ? rr.startTime : ex.startTime,
               endTime: cloudNewer ? rr.endTime : ex.endTime,
-              plannedDuration: cloudNewer ? rr.plannedDuration : ex.plannedDuration,
-              actualDuration: cloudNewer ? rr.actualDuration : ex.actualDuration,
+              plannedDuration:
+                  cloudNewer ? rr.plannedDuration : ex.plannedDuration,
+              actualDuration:
+                  cloudNewer ? rr.actualDuration : ex.actualDuration,
               status: cloudNewer ? rr.status : ex.status,
               deviceId: rr.deviceId ?? ex.deviceId,
               isDeleted: cloudNewer ? rr.isDeleted : ex.isDeleted,
@@ -626,6 +667,7 @@ class PomodoroService {
       return false;
     }
   }
+
   static const _keyLastRecordUpload = 'pomodoro_last_record_upload';
 
   static Future<void> syncRecordsToCloud() async {
@@ -653,7 +695,9 @@ class PomodoroService {
     final s = prefs.getString(_keyRecords);
     if (s == null) return [];
     try {
-      return (jsonDecode(s) as List).map((e) => PomodoroRecord.fromJson(e)).toList();
+      return (jsonDecode(s) as List)
+          .map((e) => PomodoroRecord.fromJson(e))
+          .toList();
     } catch (e) {
       debugPrint('[PomodoroService] _getAllRecordsRaw parse error: $e');
       return [];
@@ -671,13 +715,15 @@ class PomodoroService {
   /// 昨日专注记录（本地，不含已删除）
   static Future<List<PomodoroRecord>> getYesterdayRecords() async {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+    final start = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
     final end = start.add(const Duration(days: 1));
     return getRecordsInRange(start, end);
   }
 
   /// 最近专注：今日有则返回今日，否则返回昨日；同时返回是哪天
-  static Future<({List<PomodoroRecord> records, bool isToday})> getRecentRecords() async {
+  static Future<({List<PomodoroRecord> records, bool isToday})>
+      getRecentRecords() async {
     final today = await getTodayRecords();
     if (today.isNotEmpty) return (records: today, isToday: true);
     final yesterday = await getYesterdayRecords();
@@ -686,9 +732,11 @@ class PomodoroService {
 
   static Future<List<PomodoroRecord>> getSessions() => getRecords();
   static Future<void> addSession(PomodoroRecord session) => addRecord(session);
-  static Future<List<PomodoroRecord>> getSessionsInRange(DateTime from, DateTime to) =>
+  static Future<List<PomodoroRecord>> getSessionsInRange(
+          DateTime from, DateTime to) =>
       getRecordsInRange(from, to);
-  static int totalFocusSecondsFromSessions(List<PomodoroRecord> s) => totalFocusSeconds(s);
+  static int totalFocusSecondsFromSessions(List<PomodoroRecord> s) =>
+      totalFocusSeconds(s);
 
   /// 更新一条记录（修改标签 / 绑定任务等）
   /// 先本地保存（立即返回），云端上传在后台异步进行
@@ -699,7 +747,8 @@ class PomodoroService {
       all[idx] = updated;
       await _saveRecords(all); // 本地保存完成，立即返回
       // 后台异步上传，不阻塞调用方
-      ApiService.uploadPomodoroRecord(updated.toJson()).catchError((_) => false);
+      ApiService.uploadPomodoroRecord(updated.toJson())
+          .catchError((_) => false);
     }
   }
 
@@ -726,7 +775,8 @@ class PomodoroService {
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await _saveRecords(all);
-      ApiService.uploadPomodoroRecord(all[idx].toJson()).catchError((_) => false);
+      ApiService.uploadPomodoroRecord(all[idx].toJson())
+          .catchError((_) => false);
     }
   }
 
@@ -734,4 +784,3 @@ class PomodoroService {
   static Future<void> updateSession(PomodoroRecord s) => updateRecord(s);
   static Future<void> deleteSession(String uuid) => deleteRecord(uuid);
 }
-

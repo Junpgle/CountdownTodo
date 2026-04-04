@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../screens/course_screens.dart';
 import '../screens/home_settings_screen.dart';
+import '../utils/page_transitions.dart';
 
 class ShimmerWidget extends StatefulWidget {
   final bool isLight;
@@ -82,6 +83,8 @@ class HomeAppBar extends StatefulWidget {
   final bool isSyncing;
   final VoidCallback onSync;
   final VoidCallback onSettings;
+  final GlobalKey? settingsKey;
+  final GlobalKey? courseKey;
 
   const HomeAppBar({
     super.key,
@@ -92,6 +95,8 @@ class HomeAppBar extends StatefulWidget {
     required this.isSyncing,
     required this.onSync,
     required this.onSettings,
+    this.settingsKey,
+    this.courseKey,
   });
 
   @override
@@ -131,8 +136,10 @@ class _HomeAppBarState extends State<HomeAppBar>
   Widget _buildActionButton(BuildContext context,
       {required IconData icon,
       required VoidCallback onPressed,
-      bool isLoading = false}) {
+      bool isLoading = false,
+      Key? buttonKey}) {
     return Container(
+      key: buttonKey,
       margin: const EdgeInsets.only(right: 8, top: 4, bottom: 4),
       decoration: BoxDecoration(
         color: widget.isLight
@@ -209,13 +216,14 @@ class _HomeAppBarState extends State<HomeAppBar>
         _buildActionButton(
           context,
           icon: Icons.calendar_month_rounded,
-          onPressed: () {
-            Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) =>
-                        WeeklyCourseScreen(username: widget.username)));
+          onPressed: () async {
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: WeeklyCourseScreen(username: widget.username),
+              sourceKey: widget.courseKey ?? GlobalKey(),
+            );
           },
+          buttonKey: widget.courseKey,
         ),
         _buildActionButton(
           context,
@@ -227,6 +235,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           context,
           icon: Icons.settings_rounded,
           onPressed: widget.onSettings,
+          buttonKey: widget.settingsKey,
         ),
         const SizedBox(width: 8),
       ],

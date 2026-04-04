@@ -7,6 +7,7 @@ import '../storage_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../screens/home_settings_screen.dart';
+import '../utils/page_transitions.dart';
 
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
@@ -196,7 +197,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       );
       if (goToSettings == true && mounted) {
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SettingsPage()),
+          PageTransitions.slideHorizontal(const SettingsPage()),
         );
       }
       return;

@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:ui' as ui;
 import '../storage_service.dart';
 import '../services/api_service.dart';
+import '../utils/page_transitions.dart';
 
 // ─────────────────────────────────────────────
 // 设备过滤枚举
@@ -770,14 +771,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         return InkWell(
           onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(
-                  builder: (_) => CategoryDetailScreen(
-                        categoryName: name,
-                        stats: cat['items'],
-                        isAllFilter: _currentFilter == DeviceFilter.all,
-                        historyStats: _historyStats,
-                        currentFilter: _currentFilter,
-                      ))),
+              PageTransitions.slideHorizontal(CategoryDetailScreen(
+                categoryName: name,
+                stats: cat['items'],
+                isAllFilter: _currentFilter == DeviceFilter.all,
+                historyStats: _historyStats,
+                currentFilter: _currentFilter,
+              ))),
           borderRadius: BorderRadius.circular(18),
           child: Container(
             decoration: BoxDecoration(
@@ -968,12 +968,11 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   void _navigateToAppDetail(String appName) {
     Navigator.push(
         context,
-        MaterialPageRoute(
-            builder: (_) => AppDetailScreen(
-                  appName: appName,
-                  historyStats: _historyStats,
-                  filter: _currentFilter,
-                )));
+        PageTransitions.slideHorizontal(AppDetailScreen(
+          appName: appName,
+          historyStats: _historyStats,
+          filter: _currentFilter,
+        )));
   }
 
   // ─── 通用卡片装饰 ───
@@ -1106,12 +1105,12 @@ class CategoryDetailScreen extends StatelessWidget {
                             return InkWell(
                               onTap: () => Navigator.push(
                                   ctx,
-                                  MaterialPageRoute(
-                                      builder: (_) => AppDetailScreen(
-                                            appName: app.key,
-                                            historyStats: historyStats,
-                                            filter: currentFilter,
-                                          ))),
+                                  PageTransitions.slideHorizontal(
+                                      AppDetailScreen(
+                                    appName: app.key,
+                                    historyStats: historyStats,
+                                    filter: currentFilter,
+                                  ))),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 16, vertical: 12),
