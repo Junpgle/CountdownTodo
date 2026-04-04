@@ -12,6 +12,7 @@ import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
+import '../screens/todo_chat_screen.dart';
 import 'home_sections.dart';
 import '../utils/page_transitions.dart';
 
@@ -2122,6 +2123,48 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       ),
                     ),
                   ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    Icons.smart_toy_outlined,
+                    size: 20,
+                    color: useDarkUI ? Colors.white70 : Colors.grey,
+                  ),
+                  onPressed: () {
+                    final todosForChat = widget.todos
+                        .where((t) => !t.isDeleted && !_isHistoricalTodo(t))
+                        .map((t) {
+                      return {
+                        'title': t.title,
+                        'remark': t.remark ?? '',
+                        'startTime': t.createdDate != null
+                            ? DateTime.fromMillisecondsSinceEpoch(
+                                t.createdDate!,
+                                isUtc: true,
+                              ).toLocal().toIso8601String()
+                            : '',
+                        'endTime': t.dueDate != null
+                            ? t.dueDate!.toIso8601String()
+                            : '',
+                        'isAllDay': t.dueDate != null &&
+                            t.dueDate!.hour == 23 &&
+                            t.dueDate!.minute == 59,
+                        'recurrence': t.recurrence.name,
+                      };
+                    }).toList();
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TodoChatScreen(
+                          username: widget.username,
+                          todos: todosForChat,
+                        ),
+                      ),
+                    );
+                  },
+                  tooltip: 'AI待办助手',
+                ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(

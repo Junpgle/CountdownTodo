@@ -38,6 +38,7 @@ dependencies:
   video_player: ^2.11.1
   video_player_win: ^3.2.2
   flutter_image_compress: ^2.3.0
+  flutter_markdown: ^0.7.1
 
 
 dev_dependencies:

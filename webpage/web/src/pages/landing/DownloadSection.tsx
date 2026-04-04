@@ -123,7 +123,6 @@ export const DownloadSection = ({
   windowsLiteInfo,
   windowsLiteChangelog,
   windowsProInfo,
-  windowsProChangelog,
   webInfo,
   webChangelog,
   bandInfo,
