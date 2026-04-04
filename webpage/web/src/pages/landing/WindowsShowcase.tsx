@@ -13,14 +13,14 @@ export const WindowsShowcase = () => (
       </p>
       <div className="flex justify-center relative group w-full max-w-[900px] mx-auto pb-20 px-2 sm:px-6">
         <div className="absolute -inset-20 bg-blue-500/10 blur-[120px] rounded-full pointer-events-none"></div>
-        <MonitorFrame src="./6.jpg" className="transition-transform duration-700 group-hover:scale-[1.01]" />
+        <MonitorFrame src="./6.webp" className="transition-transform duration-700 group-hover:scale-[1.01]" />
         <div className="absolute top-1/4 -left-2 sm:-left-12 z-30 transform -rotate-3 hover:rotate-0 hover:scale-105 transition-all duration-500 w-[40%] max-w-[320px]">
            <div className="bg-slate-800 p-2 md:p-3 rounded-[1.2rem] md:rounded-[2.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] border border-white/10 overflow-hidden">
               <div className="flex items-center gap-1.5 px-3 py-1.5 md:py-3 border-b border-white/5 bg-white/5 mb-1 rounded-t-xl md:rounded-t-3xl">
                  <div className="w-2 md:w-3 h-2 md:h-3 rounded-full bg-red-500"></div>
                  <span className="text-[8px] md:text-xs font-mono text-slate-400 font-bold tracking-tight">TodoWidget.exe</span>
               </div>
-              <img src="./1.jpg" alt="桌面悬浮小部件" className="w-full rounded-lg md:rounded-2xl shadow-inner" />
+               <img src="./1.webp" alt="桌面悬浮小部件" className="w-full rounded-lg md:rounded-2xl shadow-inner" />
               <div className="p-2 md:p-4 bg-slate-800/50 text-left">
                  <p className="text-[10px] md:text-sm font-black text-blue-400 mb-0.5 md:mb-1">悬浮微件预览</p>
                  <p className="text-[8px] md:text-xs text-slate-400 font-medium leading-tight">支持像素级 Alpha 透明渲染与桌面无缝贴合</p>

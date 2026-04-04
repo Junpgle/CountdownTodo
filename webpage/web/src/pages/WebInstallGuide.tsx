@@ -60,7 +60,7 @@ export const WebInstallGuide = ({ onBack }: { onBack: () => void }) => {
                                     </div>
                                     <div className="flex-1 group">
                                         <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-2xl group-hover:scale-[1.02] transition-transform">
-                                            <img src="./web-install-pc.png" alt="PC 安装演示" className="w-full" />
+                                            <img src="./web-install-pc.webp" alt="PC 安装演示" className="w-full" />
                                         </div>
                                         <p className="text-xs text-slate-400 mt-4 text-center italic">以 Microsoft Edge 浏览器为例</p>
                                     </div>

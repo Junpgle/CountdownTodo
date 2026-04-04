@@ -101,7 +101,7 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           <WebShowcase onOpenWeb={onOpenWeb} />
           <TimetableShowcase />
           <LiveUpdatesShowcase />
-          <WindowsIslandShowcase imageSrc="./island_screenshot.jpg" />
+          <WindowsIslandShowcase imageSrc="./island_screenshot.webp" />
           <BandShowcase />
           <AnalyticsPreview />
           <DownloadSection

@@ -25,7 +25,7 @@ export const WebShowcase = ({ onOpenWeb }: { onOpenWeb: () => void }) => (
                </div>
                <span className="text-xs font-mono text-slate-500 ml-4 font-bold tracking-tight">app.countdowntodo.com</span>
             </div>
-            <img src="./11.jpg" alt="网页版主界面" className="w-full rounded-b-[2rem] shadow-inner" />
+            <img src="./11.webp" alt="网页版主界面" className="w-full rounded-b-[2rem] shadow-inner" />
             <div className="p-8">
               <h3 className="text-2xl font-bold text-white mb-3 flex items-center gap-2">
                 <LayoutDashboard className="w-6 h-6 text-indigo-400" />
@@ -44,7 +44,7 @@ export const WebShowcase = ({ onOpenWeb }: { onOpenWeb: () => void }) => (
             <div className="flex items-center gap-2 px-6 py-4 border-b border-white/5 bg-white/5 rounded-t-[2.2rem]">
                <span className="text-xs font-mono text-slate-500 font-bold tracking-widest uppercase">Insight analytics</span>
             </div>
-            <img src="./12.jpg" alt="网页版屏幕使用时间" className="w-full rounded-b-[2rem] shadow-inner" />
+            <img src="./12.webp" alt="网页版屏幕使用时间" className="w-full rounded-b-[2rem] shadow-inner" />
             <div className="p-8">
               <h3 className="text-2xl font-bold text-white mb-3 flex items-center gap-2">
                 <PieChart className="w-6 h-6 text-emerald-400" />

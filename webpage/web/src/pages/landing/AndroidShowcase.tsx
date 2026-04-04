@@ -35,14 +35,14 @@ export const AndroidShowcase = () => (
 
         <div className="lg:w-7/12 w-full flex items-center justify-center relative mt-16 lg:mt-0">
           <div className="relative z-20 w-[40%] sm:w-[35%] max-w-[260px] transform -rotate-2 hover:rotate-0 transition-all duration-500">
-             <MobileFrame src="./2.jpg" />
+              <MobileFrame src="./2.webp" />
              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full shadow-xl border border-slate-100 flex items-center gap-1.5 sm:gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                 <span className="text-[10px] sm:text-xs font-black text-slate-700 uppercase tracking-tighter whitespace-nowrap">Phone</span>
              </div>
           </div>
           <div className="relative z-10 w-[65%] sm:w-[60%] max-w-[550px] -ml-[15%] sm:-ml-[10%] transform translate-y-12 sm:translate-y-20 rotate-2 hover:rotate-0 transition-all duration-500">
-             <TabletFrame src="./2-2.jpg" />
+              <TabletFrame src="./2-2.webp" />
              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full shadow-xl border border-slate-100 flex items-center gap-1.5 sm:gap-2">
                 <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
                 <span className="text-[10px] sm:text-xs font-black text-slate-700 uppercase tracking-tighter whitespace-nowrap">Tablet Pro</span>

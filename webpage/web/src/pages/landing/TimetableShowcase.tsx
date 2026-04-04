@@ -27,12 +27,12 @@ export const TimetableShowcase = () => {
             <div className="w-full lg:w-1/3 flex justify-center order-2 lg:order-1 relative group">
                 <div className="absolute inset-0 bg-blue-500/10 blur-[80px] rounded-full pointer-events-none"></div>
                 <div className="w-[60%] sm:w-[50%] lg:w-[80%] max-w-[300px] transform group-hover:-translate-y-2 transition-transform duration-500">
-                    <MobileFrame src="./9.jpg" />
+                    <MobileFrame src="./9.webp" />
                 </div>
             </div>
             <div className="w-full lg:w-2/3 order-1 lg:order-2 group">
               <div className="bg-white p-2 sm:p-4 rounded-[1.5rem] sm:rounded-[2.5rem] shadow-2xl border border-slate-200 transform group-hover:scale-[1.01] transition-transform duration-500">
-                <img src="./8.jpg" alt="PC 端日历课表" className="w-full rounded-xl sm:rounded-2xl border border-slate-100" />
+                <img src="./8.webp" alt="PC 端日历课表" className="w-full rounded-xl sm:rounded-2xl border border-slate-100" />
               </div>
             </div>
           </div>
