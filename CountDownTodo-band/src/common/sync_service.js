@@ -11,6 +11,7 @@ var isInitialized = false
 var diagMsg = ''
 var appVersion = '...'
 var appVersionCode = 0
+var onVersionReady = null
 
 function getConnect() {
   if (!connect) {
@@ -238,10 +239,27 @@ function requestSyncFromPhone(type, onResult) {
   })
 }
 
-function init() {
+function init(opts) {
   if (isInitialized && connect) {
     return
   }
+  if (opts && opts.onVersionReady) onVersionReady = opts.onVersionReady
+
+  try {
+    app.getInfo({
+      success: function(info) {
+        if (info) {
+          appVersion = info.versionName || appVersion
+          appVersionCode = info.versionCode || appVersionCode
+        }
+        if (onVersionReady) onVersionReady(appVersion)
+      },
+      fail: function() {
+        if (onVersionReady) onVersionReady(appVersion)
+      }
+    })
+  } catch (e) {}
+
   try {
     var instance = interconnect.instance()
     if (instance) {
@@ -317,74 +335,12 @@ function sendPomodoroAction(action, sessionUuid) {
 
 function sendVersionInfo() {
   var conn = getConnect()
-  if (!conn) {
-    return
-  }
-  if (typeof conn.send !== 'function') {
-    return
-  }
+  if (!conn) return
+  if (typeof conn.send !== 'function') return
   conn.send({
     data: { type: 'band_info', version: appVersion, version_code: appVersionCode, timestamp: Date.now() },
     success: function() {},
     fail: function() {}
-  })
-}
-
-function init() {
-  if (isInitialized && connect) {
-    return
-  }
-  try {
-    var instance = interconnect.instance()
-    if (instance) {
-      connect = instance
-      var hasSend = typeof connect.send === 'function'
-      var hasGRS = typeof connect.getReadyState === 'function'
-      diagMsg = 'init:send=' + hasSend + ' grs=' + hasGRS
-      connect.onopen = function(data) {
-        isConnected = true
-        setTimeout(sendVersionInfo, 500)
-      }
-      connect.onclose = function(data) {
-        isConnected = false
-      }
-      connect.onerror = function(data) {
-        isConnected = false
-      }
-      connect.onmessage = function(data) {
-        handleReceivedData(data)
-      }
-
-      if (hasGRS) {
-        connect.getReadyState({
-          success: function(data) {
-            var status = data ? data.status : -1
-            if (status === 1) {
-              isConnected = true
-              setTimeout(sendVersionInfo, 500)
-            }
-          },
-          fail: function() {}
-        })
-      } else {
-        isConnected = true
-        setTimeout(sendVersionInfo, 500)
-      }
-
-      isInitialized = true
-    }
-  } catch (e) {
-    diagMsg = 'init err:' + e.message
-  }
-}
-  if (typeof conn.send !== 'function') {
-    diagMsg = 'ver:no send'
-    return
-  }
-  conn.send({
-    data: { type: 'band_info', version: '1.0.0', version_code: 1, timestamp: Date.now() },
-    success: function() { diagMsg = 'ver:sent' },
-    fail: function() { diagMsg = 'ver:fail' }
   })
 }
 

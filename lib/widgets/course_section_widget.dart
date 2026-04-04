@@ -49,8 +49,8 @@ class CourseSectionWidget extends StatelessWidget {
   });
 
   void _showCourseDetail(
-      BuildContext context, CourseItem course, BuildContext cardCtx) {
-    final renderBox = cardCtx.findRenderObject() as RenderBox?;
+      BuildContext context, CourseItem course, GlobalKey cardKey) {
+    final renderBox = cardKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) {
       _showCourseDetailFallback(context, course);
       return;
@@ -244,7 +244,7 @@ class CourseSectionWidget extends StatelessWidget {
               return _CourseCompactCard(
                 course: course,
                 isLight: isLight,
-                onTap: (cardCtx) => _showCourseDetail(context, course, cardCtx),
+                onTap: (cardKey) => _showCourseDetail(context, course, cardKey),
               );
             },
           ),
@@ -378,10 +378,10 @@ class _CourseDetailPageState extends State<_CourseDetailPage> {
 // ─────────────────────────────────────────────
 // 紧凑卡片（与待办风格对齐）
 // ─────────────────────────────────────────────
-class _CourseCompactCard extends StatelessWidget {
+class _CourseCompactCard extends StatefulWidget {
   final CourseItem course;
   final bool isLight;
-  final Function(BuildContext) onTap;
+  final Function(GlobalKey cardKey) onTap;
 
   const _CourseCompactCard({
     required this.course,
@@ -390,152 +390,156 @@ class _CourseCompactCard extends StatelessWidget {
   });
 
   @override
+  State<_CourseCompactCard> createState() => _CourseCompactCardState();
+}
+
+class _CourseCompactCardState extends State<_CourseCompactCard> {
+  late final GlobalKey _cardKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final String typeLabel = _lessonTypeLabel(course.lessonType);
+    final String typeLabel = _lessonTypeLabel(widget.course.lessonType);
 
-    return Builder(
-      builder: (cardCtx) => Container(
-        key: ValueKey('course_card_${course.courseName}_${course.startTime}'),
-        margin: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          color: colorScheme.surface.withOpacity(isLight ? 0.97 : 0.75),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: colorScheme.outline.withOpacity(isLight ? 0.06 : 0.12),
-            width: 1,
-          ),
-          boxShadow: isLight
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  )
-                ]
-              : [],
+    return Container(
+      key: _cardKey,
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withOpacity(widget.isLight ? 0.97 : 0.75),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: colorScheme.outline.withOpacity(widget.isLight ? 0.06 : 0.12),
+          width: 1,
         ),
-        child: Material(
-          color: Colors.transparent,
+        boxShadow: widget.isLight
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                )
+              ]
+            : [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () => onTap(cardCtx),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              child: Row(
-                children: [
-                  // 左侧竖条
-                  Container(
-                    width: 3,
-                    height: 36,
-                    margin: const EdgeInsets.only(right: 10),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+          onTap: () => widget.onTap(_cardKey),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                // 左侧竖条
+                Container(
+                  width: 3,
+                  height: 36,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  // 时间列
-                  SizedBox(
-                    width: 50,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _periodToTime(course.startTime),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.primary,
-                            height: 1.2,
-                          ),
+                ),
+                // 时间列
+                SizedBox(
+                  width: 50,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _periodToTime(widget.course.startTime),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
+                          height: 1.2,
                         ),
-                        Text(
-                          _periodToTime(course.endTime),
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: colorScheme.primary.withOpacity(0.55),
-                            height: 1.2,
-                          ),
+                      ),
+                      Text(
+                        _periodToTime(widget.course.endTime),
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: colorScheme.primary.withOpacity(0.55),
+                          height: 1.2,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  // 课程名 + 地点教师
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
+                ),
+                const SizedBox(width: 10),
+                // 课程名 + 地点教师
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.course.courseName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600,
+                                color: colorScheme.onSurface,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                          if (typeLabel.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: colorScheme.secondaryContainer
+                                    .withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
                               child: Text(
-                                course.courseName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                typeLabel,
                                 style: TextStyle(
-                                  fontSize: 14.5,
+                                  fontSize: 10.5,
                                   fontWeight: FontWeight.w600,
-                                  color: colorScheme.onSurface,
-                                  height: 1.2,
-                                ),
-                              ),
-                            ),
-                            if (typeLabel.isNotEmpty) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.secondaryContainer
-                                      .withOpacity(0.8),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  typeLabel,
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: colorScheme.onSecondaryContainer,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Icon(Icons.location_on_rounded,
-                                size: 11,
-                                color: colorScheme.onSurface.withOpacity(0.4)),
-                            const SizedBox(width: 3),
-                            Expanded(
-                              child: Text(
-                                '${course.roomName}  ·  ${course.teacherName}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color:
-                                      colorScheme.onSurface.withOpacity(0.45),
-                                  height: 1.2,
+                                  color: colorScheme.onSecondaryContainer,
                                 ),
                               ),
                             ),
                           ],
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_rounded,
+                              size: 11,
+                              color: colorScheme.onSurface.withOpacity(0.4)),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              '${widget.course.roomName}  ·  ${widget.course.teacherName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurface.withOpacity(0.45),
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.chevron_right_rounded,
-                      size: 16, color: colorScheme.onSurface.withOpacity(0.25)),
-                ],
-              ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded,
+                    size: 16, color: colorScheme.onSurface.withOpacity(0.25)),
+              ],
             ),
           ),
         ),

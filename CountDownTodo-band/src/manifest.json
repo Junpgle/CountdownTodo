@@ -1,5 +1,5 @@
 {
-  "package": "com.math_quiz.junpgle.com.math_quiz_app",
+  "package": "com.countdowntodo.band",
   "name": "CountDownTodo",
   "versionName": "1.0.2",
   "versionCode": 3,
@@ -14,6 +14,8 @@
     },
     {
       "name": "system.prompt"
+    },{
+      "name": "system.app"
     },
     {
       "name": "system.storage"

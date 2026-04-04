@@ -120,11 +120,16 @@ export default {
   statusTimer: null,
 
   onInit() {
-    SyncService.init()
+    var self = this
+    this.bandVersion = 'v...'
+    SyncService.init({
+      onVersionReady: function(ver) {
+        self.bandVersion = 'v' + ver
+      }
+    })
     this.setCurrentDate()
     this.loadAllData()
     this.loadLastSyncTime()
-    this.bandVersion = 'v' + SyncService.getVersion()
   },
 
   onShow() {
