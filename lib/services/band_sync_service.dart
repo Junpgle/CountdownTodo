@@ -1,48 +1,64 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// 手环通信服务
-/// 通过 Platform Channel 与小米穿戴 SDK 通信
 class BandSyncService {
   static const MethodChannel _channel =
       MethodChannel('com.math_quiz_app/band_communication');
 
-  // 状态
   static bool _isInitialized = false;
   static bool _isConnected = false;
   static String _nodeId = '';
   static String _deviceName = '';
+  static String _bandVersion = '';
+  static final ValueNotifier<String> bandVersionNotifier =
+      ValueNotifier<String>('');
   static DateTime? _lastSyncTime;
   static final List<String> _logs = [];
   static final List<Map<String, dynamic>> _receivedMessages = [];
 
-  // 回调
+  static final _pomodoroActionCtrl =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static Stream<Map<String, dynamic>> get onBandPomodoroAction =>
+      _pomodoroActionCtrl.stream;
+
+  static void dispose() {
+    if (!_pomodoroActionCtrl.isClosed) _pomodoroActionCtrl.close();
+    _logs.clear();
+    _receivedMessages.clear();
+  }
+
   static Function(Map<String, dynamic>)? _onDeviceConnected;
   static Function()? _onDeviceDisconnected;
   static Function(Map<String, dynamic>)? _onMessageReceived;
   static Function(Map<String, dynamic>)? _onError;
   static Function(List<String>)? _onPermissionGranted;
-  static Function(Map<String, dynamic>)? _onSyncRequestFromBand;
 
-  /// 初始化服务
+  // 同步数据提供者（由外部设置，默认从本地存储读取）
+  static Future<List<Map<String, dynamic>>> Function(String type)?
+      _syncDataProvider;
+
+  static void setSyncDataProvider(
+      Future<List<Map<String, dynamic>>> Function(String type) provider) {
+    _syncDataProvider = provider;
+  }
+
   static Future<bool> init({
     Function(Map<String, dynamic>)? onDeviceConnected,
     Function()? onDeviceDisconnected,
     Function(Map<String, dynamic>)? onMessageReceived,
     Function(Map<String, dynamic>)? onError,
     Function(List<String>)? onPermissionGranted,
-    Function(Map<String, dynamic>)? onSyncRequestFromBand,
   }) async {
     _onDeviceConnected = onDeviceConnected;
     _onDeviceDisconnected = onDeviceDisconnected;
     _onMessageReceived = onMessageReceived;
     _onError = onError;
     _onPermissionGranted = onPermissionGranted;
-    _onSyncRequestFromBand = onSyncRequestFromBand;
 
-    // 设置方法调用处理器
     _channel.setMethodCallHandler(_handleMethodCall);
 
     try {
@@ -56,7 +72,6 @@ class BandSyncService {
     }
   }
 
-  /// 处理来自 Android 的方法调用
   static Future<dynamic> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
       case 'onDeviceConnected':
@@ -80,14 +95,36 @@ class BandSyncService {
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final data = args['data'] as String?;
         if (data != null) {
+          _isConnected = true;
           _addLog('收到消息: $data');
           try {
             final jsonData = jsonDecode(data) as Map<String, dynamic>;
             _receivedMessages.add(jsonData);
 
+            if (jsonData['type'] == 'pomodoro' &&
+                (jsonData['action'] == 'finish' ||
+                    jsonData['action'] == 'abandon')) {
+              _addLog('手环番茄钟操作: ${jsonData['action']}');
+              debugPrint(
+                  '[BandSyncService] Emitting pomodoro action: ${jsonData['action']}');
+              if (!_pomodoroActionCtrl.isClosed) {
+                _pomodoroActionCtrl.add(jsonData);
+              }
+            }
+
+            if (jsonData['type'] == 'band_info') {
+              final version = jsonData['version'] as String? ?? '未知';
+              final versionCode = jsonData['version_code'] as int? ?? 0;
+              _bandVersion = '$version (v$versionCode)';
+              bandVersionNotifier.value = _bandVersion;
+              _addLog('手环版本: $_bandVersion');
+            }
+
             if (jsonData['action'] == 'request_sync') {
-              _addLog('手环请求同步: ${jsonData['type']}');
-              _onSyncRequestFromBand?.call(jsonData);
+              final type = jsonData['type'] as String? ?? '';
+              _addLog('手环请求同步: $type');
+              // 内部直接处理同步请求，不依赖外部回调
+              await _handleSyncRequest(type);
             } else {
               _onMessageReceived?.call(jsonData);
             }
@@ -132,6 +169,51 @@ class BandSyncService {
         _addLog('权限已授予: ${permissions.join(", ")}');
         _onPermissionGranted?.call(permissions);
         break;
+    }
+  }
+
+  // 内部处理同步请求
+  static Future<void> _handleSyncRequest(String type) async {
+    if (!_isConnected) {
+      _addLog('同步请求被忽略: 设备未连接');
+      return;
+    }
+    final provider = _syncDataProvider;
+    if (provider == null) {
+      _addLog('同步请求被忽略: 未设置数据提供者');
+      return;
+    }
+    try {
+      final dataList = await provider(type);
+      if (dataList.isEmpty) {
+        _addLog('同步 $type: 无数据');
+        await sendData(type, dataList);
+        return;
+      }
+
+      // 自动分批发送，避免消息体过大
+      const maxBatchSize = 5;
+      final totalBatches = (dataList.length / maxBatchSize).ceil();
+      _addLog('同步 $type: 共 ${dataList.length} 条，分 $totalBatches 批');
+
+      for (int i = 0; i < totalBatches; i++) {
+        final start = i * maxBatchSize;
+        final end = (start + maxBatchSize < dataList.length)
+            ? start + maxBatchSize
+            : dataList.length;
+        final batch = dataList.sublist(start, end);
+        final success = await sendData(type, batch,
+            batchNum: i + 1, totalBatches: totalBatches);
+        if (!success) {
+          _addLog('同步 $type: 第 ${i + 1} 批发送失败');
+          break;
+        }
+        // 每批之间间隔，避免 SDK 限流
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      _addLog('已同步 $type: ${dataList.length} 条');
+    } catch (e) {
+      _addLog('同步 $type 异常: $e');
     }
   }
 
@@ -190,6 +272,14 @@ class BandSyncService {
   static Future<bool> syncCountdowns(
       List<Map<String, dynamic>> countdowns) async {
     final success = await sendData('countdown', countdowns);
+    if (success) _updateLastSyncTime();
+    return success;
+  }
+
+  /// 同步番茄钟运行状态
+  static Future<bool> syncPomodoro(
+      List<Map<String, dynamic>> pomodoroData) async {
+    final success = await sendData('pomodoro', pomodoroData);
     if (success) _updateLastSyncTime();
     return success;
   }
@@ -293,6 +383,7 @@ class BandSyncService {
   static bool get isConnected => _isConnected;
   static String get nodeId => _nodeId;
   static String get deviceName => _deviceName;
+  static String get bandVersion => _bandVersion;
   static List<String> get logs => List.unmodifiable(_logs);
   static List<Map<String, dynamic>> get receivedMessages =>
       List.unmodifiable(_receivedMessages);

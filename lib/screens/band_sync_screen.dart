@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../services/band_sync_service.dart';
 import '../services/course_service.dart';
+import '../services/pomodoro_service.dart';
 import '../storage_service.dart';
+import '../update_service.dart';
 
 /// 手环同步界面
 class BandSyncScreen extends StatefulWidget {
@@ -29,6 +32,32 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   }
 
   Future<void> _initBandService() async {
+    if (BandSyncService.isInitialized) {
+      _logs.add('手环服务已全局初始化');
+      final status = await BandSyncService.getConnectionStatus();
+      if (status['isConnected'] == true) {
+        setState(() {
+          _isConnected = true;
+          _deviceName = status['name'] ?? '小米手环';
+          _hasPermission = status['hasPermission'] == true;
+        });
+        _logs.add('当前设备: $_deviceName');
+        if (BandSyncService.bandVersion.isNotEmpty) {
+          setState(() {});
+          _logs.add('手环版本: ${BandSyncService.bandVersion}');
+        } else {
+          _logs.add('手环版本: 等待手环发送...');
+        }
+        if (!_hasPermission) {
+          _logs.add('缺少权限，自动申请...');
+          await BandSyncService.requestPermission();
+        } else {
+          await BandSyncService.registerListener();
+        }
+      }
+      return;
+    }
+
     final success = await BandSyncService.init(
       onDeviceConnected: (info) {
         setState(() {
@@ -62,13 +91,6 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         _logs.add('权限已授予，自动注册监听...');
         BandSyncService.registerListener();
       },
-      onSyncRequestFromBand: (data) {
-        final type = data['type'] as String? ?? '';
-        setState(() {
-          _logs.add('手环请求同步: $type');
-        });
-        _handleSyncRequest(type);
-      },
     );
 
     if (success) {
@@ -77,18 +99,26 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   }
 
   Future<void> _handleSyncRequest(String type) async {
-    switch (type) {
-      case 'todo':
-        await _syncTodos();
-        break;
-      case 'course':
-        await _syncCourses();
-        break;
-      case 'countdown':
-        await _syncCountdowns();
-        break;
-      default:
-        _logs.add('未知同步请求: $type');
+    _logs.add('开始处理同步请求: $type');
+    try {
+      switch (type) {
+        case 'todo':
+          await _syncTodos();
+          break;
+        case 'course':
+          await _syncCourses();
+          break;
+        case 'countdown':
+          await _syncCountdowns();
+          break;
+        case 'pomodoro':
+          await _syncPomodoro();
+          break;
+        default:
+          _logs.add('未知同步请求: $type');
+      }
+    } catch (e) {
+      _logs.add('同步异常: $e');
     }
   }
 
@@ -126,6 +156,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildConnectionCard(),
+            const SizedBox(height: 16),
+            _buildBandVersionCard(),
             const SizedBox(height: 16),
             _buildLastSyncCard(),
             const SizedBox(height: 16),
@@ -203,6 +235,48 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBandVersionCard() {
+    return ValueListenableBuilder<String>(
+      valueListenable: BandSyncService.bandVersionNotifier,
+      builder: (context, version, _) {
+        return Card(
+          elevation: 2,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.purple, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '手环版本',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        version.isNotEmpty ? version : '等待连接...',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.purple,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -335,10 +409,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
           children: [
             Expanded(
               child: _buildSyncButton(
-                icon: Icons.timer,
-                label: '同步倒计时',
-                color: Colors.purple,
-                onPressed: canSync ? _syncCountdowns : null,
+                icon: Icons.local_fire_department,
+                label: '同步番茄钟',
+                color: Colors.red,
+                onPressed: canSync ? _syncPomodoro : null,
               ),
             ),
             const SizedBox(width: 8),
@@ -401,6 +475,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   }
 
   Widget _buildLogArea() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final logBgColor = isDark ? Colors.grey[900] : Colors.grey[100];
+    final logTextColor = isDark ? Colors.grey[300] : Colors.grey[800];
+    final emptyTextColor = isDark ? Colors.grey[600] : Colors.grey;
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -444,14 +522,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
             Container(
               height: 150,
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: logBgColor,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _logs.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         '暂无日志',
-                        style: TextStyle(color: Colors.grey),
+                        style: TextStyle(color: emptyTextColor),
                       ),
                     )
                   : ListView.builder(
@@ -466,9 +544,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             child: Text(
                               _logs[index],
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontFamily: 'monospace',
+                                color: logTextColor,
                               ),
                             ),
                           ),
@@ -483,6 +562,11 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   }
 
   Widget _buildReceivedMessages() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final msgBgColor = isDark ? Colors.grey[900] : Colors.grey[100];
+    final msgTextColor = isDark ? Colors.grey[300] : Colors.grey[800];
+    final emptyTextColor = isDark ? Colors.grey[600] : Colors.grey;
+    final cardColor = isDark ? Colors.grey[850] : null;
     final messages = BandSyncService.receivedMessages;
     return Card(
       elevation: 2,
@@ -528,14 +612,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
             Container(
               height: 150,
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: msgBgColor,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: messages.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         '暂无消息',
-                        style: TextStyle(color: Colors.grey),
+                        style: TextStyle(color: emptyTextColor),
                       ),
                     )
                   : ListView.builder(
@@ -550,13 +634,15 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                           },
                           child: Card(
                             margin: const EdgeInsets.only(bottom: 8),
+                            color: cardColor,
                             child: Padding(
                               padding: const EdgeInsets.all(8),
                               child: Text(
                                 msgStr,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
                                   fontFamily: 'monospace',
+                                  color: msgTextColor,
                                 ),
                               ),
                             ),
@@ -592,6 +678,15 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   /// 处理手环发回的消息（todo状态变更等）
   Future<void> _handleBandMessage(Map<String, dynamic> data) async {
     final type = data['type'] as String?;
+
+    if (type == 'band_info') {
+      final version = data['version'] as String? ?? '未知';
+      final versionCode = data['version_code'] as int? ?? 0;
+      _logs.add('手环版本: $version (v$versionCode)');
+      setState(() {});
+      return;
+    }
+
     final bandData = data['data'];
 
     if (type == null || bandData == null) {
@@ -607,6 +702,13 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
     if (type == 'todo') {
       await _handleBandTodoUpdate(bandData, username);
+    } else if (type == 'pomodoro') {
+      final action = bandData['action'] as String?;
+      if (action == 'finish' || action == 'abandon') {
+        _logs.add('手环${action == 'finish' ? '提前完成' : '放弃'}番茄钟');
+      } else {
+        _logs.add('收到番茄钟消息（无操作指令）');
+      }
     } else if (type == 'debug') {
       final message = bandData['message'] as String? ?? '';
       setState(() {
@@ -820,6 +922,60 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     });
   }
 
+  Future<void> _syncPomodoro() async {
+    setState(() => _isSyncing = true);
+    _logs.add('开始同步番茄钟...');
+
+    try {
+      final runState = await PomodoroService.loadRunState();
+      if (runState == null || runState.phase == PomodoroPhase.idle) {
+        _logs.add('当前无运行中的番茄钟');
+        await BandSyncService.syncPomodoro([]);
+        setState(() => _isSyncing = false);
+        return;
+      }
+
+      final tags = await PomodoroService.getTags();
+      final tagNames = tags
+          .where((t) => runState.tagUuids.contains(t.uuid))
+          .map((t) => {
+                'name': t.name,
+                'color': t.color,
+              })
+          .toList();
+
+      final pomodoroData = [
+        {
+          'sessionUuid': runState.sessionUuid,
+          'phase': runState.phase.index,
+          'targetEndMs': runState.targetEndMs,
+          'currentCycle': runState.currentCycle,
+          'totalCycles': runState.totalCycles,
+          'focusSeconds': runState.focusSeconds,
+          'breakSeconds': runState.breakSeconds,
+          'todoUuid': runState.todoUuid,
+          'todoTitle': runState.todoTitle,
+          'tagUuids': runState.tagUuids,
+          'tagNames': tagNames,
+          'sessionStartMs': runState.sessionStartMs,
+          'plannedFocusSeconds': runState.plannedFocusSeconds,
+          'isCountUp': runState.mode == TimerMode.countUp,
+          'mode': runState.mode.index,
+        }
+      ];
+
+      _logs.add('同步运行中的番茄钟: ${runState.todoTitle ?? "自由专注"}');
+      final success = await BandSyncService.syncPomodoro(pomodoroData);
+      setState(() {
+        _isSyncing = false;
+        _logs.add(success ? '番茄钟同步成功' : '番茄钟同步失败');
+      });
+    } catch (e) {
+      _logs.add('番茄钟同步异常: $e');
+      setState(() => _isSyncing = false);
+    }
+  }
+
   // 分批发送大数据，避免超过 MessageApi 限制
   Future<bool> _sendInChunks(
       String type, List<Map<String, dynamic>> items, int chunkSize) async {
@@ -869,6 +1025,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     await _syncTodos();
     await _syncCourses();
     await _syncCountdowns();
+    await _syncPomodoro();
     setState(() {
       _isSyncing = false;
       _logs.add('全部同步完成');

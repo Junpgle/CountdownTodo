@@ -636,7 +636,7 @@ class _ViewTab extends StatelessWidget {
 // ══════════════════════════════════════════════════════════
 // 周视图
 // ══════════════════════════════════════════════════════════
-class _WeekView extends StatelessWidget {
+class _WeekView extends StatefulWidget {
   final DateTime weekStart;
   final List<TimeLogItem> logs;
   final List<PomodoroRecord> pomodoros;
@@ -661,11 +661,47 @@ class _WeekView extends StatelessWidget {
       required this.onTimeLogTap,
       required this.username});
 
+  @override
+  State<_WeekView> createState() => _WeekViewState();
+}
+
+class _WeekViewState extends State<_WeekView>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _heatAnimCtrl;
+  late Animation<double> _heatAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _heatAnimCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 800));
+    _heatAnim =
+        CurvedAnimation(parent: _heatAnimCtrl, curve: Curves.easeOutCubic);
+    _heatAnimCtrl.forward();
+  }
+
+  @override
+  void didUpdateWidget(_WeekView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.weekStart != widget.weekStart ||
+        oldWidget.logs.length != widget.logs.length ||
+        oldWidget.pomodoros.length != widget.pomodoros.length) {
+      _heatAnimCtrl.reset();
+      _heatAnimCtrl.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _heatAnimCtrl.dispose();
+    super.dispose();
+  }
+
   int _rangeMin(int from, int to) {
-    final lm = logs
+    final lm = widget.logs
         .where((l) => l.endTime > from && l.startTime < to)
         .fold(0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
-    final pm = pomodoros
+    final pm = widget.pomodoros
         .where((p) =>
             p.startTime < to &&
             (p.endTime ?? p.startTime + p.effectiveDuration * 1000) > from)
@@ -675,7 +711,7 @@ class _WeekView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final days = _weekDays(weekStart);
+    final days = _weekDays(widget.weekStart);
     final todayMs = _dayStart(DateTime.now()).millisecondsSinceEpoch;
     final todayMin = _rangeMin(todayMs, todayMs + 86400000);
     final wStart0 = days.first.millisecondsSinceEpoch;
@@ -683,17 +719,21 @@ class _WeekView extends StatelessWidget {
 
     return LayoutBuilder(builder: (ctx, outer) {
       final isWide = outer.maxWidth >= 720;
-      return Column(children: [
-        _buildTopBar(ctx, todayMin),
-        Expanded(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      return AnimatedBuilder(
+        animation: _heatAnim,
+        builder: (ctx, child) => Column(children: [
+          _buildTopBar(ctx, todayMin),
           Expanded(
               child:
-                  _buildGrid(ctx, days, outer.maxWidth - (isWide ? 160.0 : 0))),
-          if (isWide) _buildTagSidebar(ctx, wStart0, wEnd0),
-        ])),
-        if (!isWide) _buildTagChips(ctx, wStart0, wEnd0),
-      ]);
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+                child: _buildGrid(
+                    ctx, days, outer.maxWidth - (isWide ? 160.0 : 0))),
+            if (isWide) _buildTagSidebar(ctx, wStart0, wEnd0),
+          ])),
+          if (!isWide) _buildTagChips(ctx, wStart0, wEnd0),
+        ]),
+      );
     });
   }
 
@@ -713,7 +753,7 @@ class _WeekView extends StatelessWidget {
             icon: Icons.label_outline,
             color: _TC.textSub(ctx).withOpacity(0.8),
             ctx: ctx,
-            onTap: onManageTags,
+            onTap: widget.onManageTags,
           ),
           const SizedBox(width: 6),
           _TopBarChip(
@@ -721,7 +761,7 @@ class _WeekView extends StatelessWidget {
             icon: Icons.edit_calendar_outlined,
             color: Theme.of(ctx).colorScheme.primary,
             ctx: ctx,
-            onTap: onAddLog,
+            onTap: widget.onAddLog,
             filled: true,
           ),
           const SizedBox(width: 6),
@@ -732,8 +772,8 @@ class _WeekView extends StatelessWidget {
                     color: const Color(0xFF22C55E),
                     ctx: ctx,
                     onTap: () async {
-                      await StorageService.resetSyncTime(username);
-                      await StorageService.syncData(username,
+                      await StorageService.resetSyncTime(widget.username);
+                      await StorageService.syncData(widget.username,
                           forceFullSync: true,
                           syncTodos: true,
                           syncCountdowns: true,
@@ -772,7 +812,7 @@ class _WeekView extends StatelessWidget {
                   DateFormat('yyyyMMdd').format(DateTime.now());
               final dm = dayMin(d);
               return GestureDetector(
-                  onTap: () => onDayTap(d),
+                  onTap: () => widget.onDayTap(d),
                   child: Container(
                       width: dW,
                       height: 52,
@@ -847,10 +887,10 @@ class _WeekView extends StatelessWidget {
               ...days.map((d) {
                 final ds = _dayStart(d).millisecondsSinceEpoch;
                 final de = ds + 86400000;
-                final dLogs = logs
+                final dLogs = widget.logs
                     .where((l) => l.endTime > ds && l.startTime < de)
                     .toList();
-                final dPoms = pomodoros.where((p) {
+                final dPoms = widget.pomodoros.where((p) {
                   final pe =
                       p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
                   return pe > ds && p.startTime < de;
@@ -864,10 +904,11 @@ class _WeekView extends StatelessWidget {
                           painter: _WeekColPainter(
                               dayLogs: dLogs,
                               dayPoms: dPoms,
-                              tags: tags,
+                              tags: widget.tags,
                               dayStartMs: ds,
                               isDark: isDark,
-                              hourH: hourH)),
+                              hourH: hourH,
+                              animationProgress: _heatAnim.value)),
                       ...dPoms.map((pom) {
                         final pe = pom.endTime ??
                             (pom.startTime + pom.effectiveDuration * 1000);
@@ -882,7 +923,7 @@ class _WeekView extends StatelessWidget {
                             right: 0,
                             height: h,
                             child: GestureDetector(
-                                onTap: () => onPomodoroTap(pom),
+                                onTap: () => widget.onPomodoroTap(pom),
                                 behavior: HitTestBehavior.opaque,
                                 child: const SizedBox.expand()));
                       }),
@@ -898,7 +939,7 @@ class _WeekView extends StatelessWidget {
                             right: 0,
                             height: h,
                             child: GestureDetector(
-                                onTap: () => onTimeLogTap(log),
+                                onTap: () => widget.onTimeLogTap(log),
                                 behavior: HitTestBehavior.opaque,
                                 child: const SizedBox.expand()));
                       }),
@@ -926,15 +967,15 @@ class _WeekView extends StatelessWidget {
         Expanded(
             child: ListView(
                 padding: const EdgeInsets.only(bottom: 8),
-                children: tags.map((t) {
-                  int tw = logs
+                children: widget.tags.map((t) {
+                  int tw = widget.logs
                       .where((l) =>
                           l.tagUuids.contains(t.uuid) &&
                           l.endTime > ws &&
                           l.startTime < we)
                       .fold(
                           0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
-                  tw += pomodoros
+                  tw += widget.pomodoros
                       .where((p) =>
                           p.tagUuids.contains(t.uuid) &&
                           p.startTime < we &&
@@ -944,7 +985,7 @@ class _WeekView extends StatelessWidget {
                       .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
                   final c = hexColor(t.color);
                   return GestureDetector(
-                      onTap: () => onTagTap(t),
+                      onTap: () => widget.onTagTap(t),
                       child: Container(
                           margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
                           padding: const EdgeInsets.symmetric(
@@ -987,14 +1028,14 @@ class _WeekView extends StatelessWidget {
       child: ListView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          children: tags.map((t) {
-            int tw = logs
+          children: widget.tags.map((t) {
+            int tw = widget.logs
                 .where((l) =>
                     l.tagUuids.contains(t.uuid) &&
                     l.endTime > ws &&
                     l.startTime < we)
                 .fold(0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
-            tw += pomodoros
+            tw += widget.pomodoros
                 .where((p) =>
                     p.tagUuids.contains(t.uuid) &&
                     p.startTime < we &&
@@ -1003,7 +1044,7 @@ class _WeekView extends StatelessWidget {
                 .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
             final c = hexColor(t.color);
             return GestureDetector(
-                onTap: () => onTagTap(t),
+                onTap: () => widget.onTagTap(t),
                 child: Container(
                     margin: const EdgeInsets.only(right: 8),
                     padding:
@@ -1040,6 +1081,7 @@ class _WeekColPainter extends CustomPainter {
   final int dayStartMs;
   final bool isDark;
   final double hourH;
+  final double animationProgress;
 
   const _WeekColPainter(
       {required this.dayLogs,
@@ -1047,7 +1089,8 @@ class _WeekColPainter extends CustomPainter {
       required this.tags,
       required this.dayStartMs,
       required this.isDark,
-      required this.hourH});
+      required this.hourH,
+      this.animationProgress = 1.0});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1070,7 +1113,9 @@ class _WeekColPainter extends CustomPainter {
           ..color = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE5E5E5)
           ..strokeWidth = 0.5);
 
-    // ★ 改动：block() 增加 title 参数，并绘制文字
+    final totalBlocks = dayPoms.length + dayLogs.length;
+    int blockIndex = 0;
+
     void block(int start, int end, Color c, bool isPom, String title) {
       final rs = max(start, dayStartMs);
       final re = min(end, de);
@@ -1078,32 +1123,41 @@ class _WeekColPainter extends CustomPainter {
       final bot = (re - dayStartMs) / 3600000 * hourH;
       if (bot <= top + 1) return;
 
-      // 左侧彩色竖条
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(Rect.fromLTRB(0, top + 0.5, 3, bot - 0.5),
-              const Radius.circular(2)),
-          Paint()..color = c.withOpacity(0.9));
+      final staggerDelay = totalBlocks > 0 ? blockIndex / totalBlocks : 0.0;
+      final blockProgress =
+          ((animationProgress - staggerDelay) / (1.0 - staggerDelay))
+              .clamp(0.0, 1.0);
+      if (blockProgress <= 0.0) {
+        blockIndex++;
+        return;
+      }
 
-      // 填色背景
+      final animatedBot = top + (bot - top) * blockProgress;
+
       canvas.drawRRect(
           RRect.fromRectAndRadius(
-              Rect.fromLTRB(3, top + 0.5, size.width - 1, bot - 0.5),
+              Rect.fromLTRB(0, top + 0.5, 3, animatedBot - 0.5),
+              const Radius.circular(2)),
+          Paint()..color = c.withOpacity(0.9 * blockProgress));
+
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTRB(3, top + 0.5, size.width - 1, animatedBot - 0.5),
               const Radius.circular(3)),
-          Paint()..color = c.withOpacity(isPom ? 0.22 : 0.35));
+          Paint()
+            ..color = c.withOpacity((isPom ? 0.22 : 0.35) * blockProgress));
 
-      // ★ 绘制任务名称
-      final blockH = bot - top;
-      final blockW = size.width - 6; // 左侧3px条 + 右侧1px边距
+      final blockH = animatedBot - top;
+      final blockW = size.width - 6;
 
-      if (blockH >= 10 && blockW >= 8) {
+      if (blockH >= 10 && blockW >= 8 && blockProgress > 0.5) {
         if (blockH >= 18) {
-          // 高度足够：横向单行文字
           final tp = TextPainter(
             text: TextSpan(
               text: title,
               style: TextStyle(
                 fontSize: (blockH * 0.28).clamp(7.0, 10.0),
-                color: c.withOpacity(0.95),
+                color: c.withOpacity(0.95 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1113,13 +1167,12 @@ class _WeekColPainter extends CustomPainter {
           )..layout(maxWidth: blockW - 4);
           tp.paint(canvas, Offset(5, top + (blockH - tp.height) / 2));
         } else {
-          // 高度不足但宽度够：竖向文字（旋转90°）
           final tp = TextPainter(
             text: TextSpan(
               text: title,
               style: TextStyle(
                 fontSize: 7.0,
-                color: c.withOpacity(0.85),
+                color: c.withOpacity(0.85 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1135,6 +1188,7 @@ class _WeekColPainter extends CustomPainter {
           canvas.restore();
         }
       }
+      blockIndex++;
     }
 
     // 画番茄钟（★ 传入 title）
@@ -1176,7 +1230,8 @@ class _WeekColPainter extends CustomPainter {
       o.isDark != isDark ||
       o.hourH != hourH ||
       o.dayLogs.length != dayLogs.length ||
-      o.dayPoms.length != dayPoms.length;
+      o.dayPoms.length != dayPoms.length ||
+      o.animationProgress != animationProgress;
 }
 
 // ══════════════════════════════════════════════════════════

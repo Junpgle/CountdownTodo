@@ -1,389 +1,435 @@
-import storage from '@system.storage'
-import interconnect from '@system.interconnect'
+var storage = require('@system.storage')
+var interconnect = require('@system.interconnect')
+var app = require('@system.app')
 
-const SYNC_KEY_PREFIX = 'sync_'
-const LAST_SYNC_TIME_KEY = 'last_sync_time'
+var SYNC_KEY_PREFIX = 'sync_'
+var connect = null
+var isConnected = false
+var batchBuffer = {}
+var pendingRequests = {}
+var isInitialized = false
+var diagMsg = ''
+var appVersion = '...'
+var appVersionCode = 0
+var onVersionReady = null
+
+function getConnect() {
+  if (!connect) {
+    try {
+      connect = interconnect.instance()
+    } catch (e) {
+      diagMsg = 'getConnect err:' + e.message
+    }
+  }
+  return connect
+}
 
 function padZero(num) {
   return num < 10 ? '0' + num : '' + num
 }
 
-export class SyncService {
-  static connect = null
-  static isConnected = false
-  static receivedData = {}
-
-  static batchBuffer = {}
-
-  static pendingSyncRequests = {}
-
-  static init() {
-    this.connect = interconnect.instance()
-
-    this.connect.onopen = (data) => {
-      this.isConnected = true
-    }
-
-    this.connect.onclose = (data) => {
-      this.isConnected = false
-    }
-
-    this.connect.onerror = (data) => {
-      this.isConnected = false
-    }
-
-    this.connect.onmessage = (data) => {
-      this.handleReceivedData(data)
+function flattenArray(arr) {
+  var result = []
+  var i, j
+  for (i = 0; i < arr.length; i++) {
+    if (Array.isArray(arr[i])) {
+      for (j = 0; j < arr[i].length; j++) {
+        result.push(arr[i][j])
+      }
+    } else {
+      result.push(arr[i])
     }
   }
+  return result
+}
 
-  static destroy() {
-    for (const type in this.batchBuffer) {
-      const buffer = this.batchBuffer[type]
-      if (buffer.timeout) {
-        clearTimeout(buffer.timeout)
-        buffer.timeout = null
-      }
-    }
-    this.batchBuffer = {}
-    for (const type in this.pendingSyncRequests) {
-      if (this.pendingSyncRequests[type].timeout) {
-        clearTimeout(this.pendingSyncRequests[type].timeout)
-      }
-      if (this.pendingSyncRequests[type].reject) {
-        this.pendingSyncRequests[type].reject(new Error('destroyed'))
-      }
-    }
-    this.pendingSyncRequests = {}
-    this.receivedData = {}
-    this.connect = null
-    this.isConnected = false
-  }
+function logDebug(msg) {
+  diagMsg = msg
+}
 
-  static handleReceivedData(data) {
-    try {
-      let parsedData
+function saveLocalData(type, data, callback) {
+  storage.set({
+    key: SYNC_KEY_PREFIX + type,
+    value: JSON.stringify(data),
+    success: function() { if (callback) callback(true) },
+    fail: function(err) { if (callback) callback(false) }
+  })
+}
 
-      if (typeof data === 'object' && data !== null && data.type) {
-        parsedData = data
-      } else if (typeof data === 'string') {
-        parsedData = JSON.parse(data)
-      } else if (typeof data === 'object' && data !== null && data.data !== undefined) {
-        var innerData = data.data
-        if (typeof innerData === 'string') {
-          parsedData = JSON.parse(innerData)
-        } else if (typeof innerData === 'object') {
-          parsedData = innerData
-        }
-      }
-
-      if (!parsedData || !parsedData.type) {
-        return
-      }
-
-      if (parsedData.data !== undefined) {
-        var batchNum = parsedData.batchNum || 1
-        var totalBatches = parsedData.totalBatches || 1
-        var batchData = parsedData.data
-
-        if (totalBatches === 1) {
-          this.replacePhoneData(parsedData.type, batchData)
-          return
-        }
-
-        if (!this.batchBuffer[parsedData.type]) {
-          this.batchBuffer[parsedData.type] = {
-            batches: [],
-            totalBatches: totalBatches,
-            timeout: null
-          }
-        }
-
-        var buffer = this.batchBuffer[parsedData.type]
-        buffer.batches[batchNum - 1] = batchData
-
-        var receivedCount = buffer.batches.filter(function(b) { return b !== undefined }).length
-
-        if (receivedCount >= buffer.totalBatches) {
-          var allData = buffer.batches.flat()
-          this.replacePhoneData(parsedData.type, allData)
-          delete this.batchBuffer[parsedData.type]
-        } else {
-          if (buffer.timeout) clearTimeout(buffer.timeout)
-          var type = parsedData.type
-          var self = this
-          buffer.timeout = setTimeout(function() {
-            var collectedData = buffer.batches.filter(function(b) { return b !== undefined }).flat()
-            self.replacePhoneData(type, collectedData)
-            delete self.batchBuffer[type]
-          }, 10000)
-        }
-      }
-    } catch (error) {}
-  }
-
-  static async replacePhoneData(type, phoneData) {
-    if (!Array.isArray(phoneData)) {
-      await this.saveLocalData(type, phoneData)
-      return
-    }
-
-    var validItems = phoneData.filter(function(item) {
-      return !(item.is_deleted === 1 || item.is_deleted === true)
-    })
-
-    var adaptedItems = validItems.map(function(item) {
-      return SyncService.adaptItem(type, item)
-    })
-
-    await this.saveLocalData(type, adaptedItems)
-
-    if (this.pendingSyncRequests[type]) {
-      var req = this.pendingSyncRequests[type]
-      if (req.timeout) clearTimeout(req.timeout)
-      if (req.resolve) req.resolve({ success: true, message: '已同步手机数据' })
-      delete this.pendingSyncRequests[type]
+function adaptItem(type, item) {
+  var adapted = {}
+  var key
+  for (key in item) {
+    if (item.hasOwnProperty(key)) {
+      adapted[key] = item[key]
     }
   }
-
-  static checkConnection() {
-    return new Promise(function(resolve) {
-      if (!SyncService.connect) {
-        SyncService.init()
-      }
-
-      SyncService.connect.getReadyState({
-        success: function(data) {
-          SyncService.isConnected = data.status === 1
-          resolve(SyncService.isConnected)
-        },
-        fail: function() {
-          SyncService.isConnected = false
-          resolve(false)
-        }
-      })
-    })
-  }
-
-  static diagnosis(timeout) {
-    return new Promise(function(resolve) {
-      SyncService.connect.diagnosis({
-        timeout: timeout || 10000,
-        success: function(data) {
-          resolve(data.status === 0)
-        },
-        fail: function() {
-          resolve(false)
-        }
-      })
-    })
-  }
-
-  static async syncData(type, data) {
-    try {
-      var connected = await this.checkConnection()
-      if (!connected) {
-        return { success: false, message: '未连接到手机App' }
-      }
-
-      var lastSyncTime = await this.getLastSyncTime(type)
-      var dataToSync = data.filter(function(item) {
-        return !lastSyncTime || (item.updatedAt && item.updatedAt > lastSyncTime)
-      })
-
-      if (dataToSync.length === 0) {
-        return { success: true, message: '没有新数据需要同步' }
-      }
-
-      var sendResult = await this.sendDataToPhone(type, dataToSync)
-      if (!sendResult) {
-        return { success: false, message: '发送数据到手机失败' }
-      }
-
-      await this.setLastSyncTime(type, Date.now())
-      return { success: true, message: '同步了' + dataToSync.length + '条数据' }
-    } catch (error) {
-      return { success: false, message: '同步异常' }
+  if (type === 'countdown') {
+    if (adapted.target_time && !adapted.targetDate) { adapted.targetDate = adapted.target_time }
+    if (!adapted.title && adapted.name) { adapted.title = adapted.name }
+  } else if (type === 'todo') {
+    if (adapted.content && !adapted.title) { adapted.title = adapted.content }
+    adapted.status = (adapted.is_completed === 1 || adapted.is_completed === true) ? 'done' : 'undone'
+    if (adapted.created_date && !adapted.startDate) { adapted.startDate = adapted.created_date }
+    if (adapted.due_date && !adapted.endDate) { adapted.endDate = adapted.due_date }
+    if (adapted.remark !== undefined && !adapted.description) { adapted.description = adapted.remark }
+  } else if (type === 'course') {
+    if (adapted.courseName && !adapted.name) { adapted.name = adapted.courseName }
+    if (adapted.roomName && !adapted.location) { adapted.location = adapted.roomName }
+    if (adapted.teacherName && !adapted.teacher) { adapted.teacher = adapted.teacherName }
+    if (typeof adapted.startTime === 'number') {
+      adapted.startTime = padZero(Math.floor(adapted.startTime / 100)) + ':' + padZero(adapted.startTime % 100)
     }
-  }
-
-  static async sendDataToPhone(type, data) {
-    return new Promise(function(resolve) {
-      SyncService.connect.send({
-        data: {
-          type: type,
-          data: data,
-          timestamp: Date.now()
-        },
-        success: function() {
-          resolve(true)
-        },
-        fail: function() {
-          resolve(false)
-        }
-      })
-    })
-  }
-
-  static adaptItem(type, item) {
-    var adapted = { ...item }
-
-    if (type === 'countdown') {
-      if (adapted.target_time && !adapted.targetDate) {
-        adapted.targetDate = adapted.target_time
-      }
-      if (!adapted.title && adapted.name) {
-        adapted.title = adapted.name
-      }
-    } else if (type === 'todo') {
-      if (adapted.content && !adapted.title) {
-        adapted.title = adapted.content
-      }
-      if (adapted.is_completed === 1 || adapted.is_completed === true) {
-        adapted.status = 'done'
-      } else {
-        adapted.status = 'undone'
-      }
-      if (adapted.created_date && !adapted.startDate) {
-        adapted.startDate = adapted.created_date
-      }
-      if (adapted.due_date && !adapted.endDate) {
-        adapted.endDate = adapted.due_date
-      }
-      if (adapted.remark !== undefined && !adapted.description) {
-        adapted.description = adapted.remark
-      }
-    } else if (type === 'course') {
-      if (adapted.courseName && !adapted.name) {
-        adapted.name = adapted.courseName
-      }
-      if (adapted.roomName && !adapted.location) {
-        adapted.location = adapted.roomName
-      }
-      if (adapted.teacherName && !adapted.teacher) {
-        adapted.teacher = adapted.teacherName
-      }
-      if (typeof adapted.startTime === 'number') {
-        var h = Math.floor(adapted.startTime / 100)
-        var m = adapted.startTime % 100
-        adapted.startTime = padZero(h) + ':' + padZero(m)
-      }
-      if (typeof adapted.endTime === 'number') {
-        var h2 = Math.floor(adapted.endTime / 100)
-        var m2 = adapted.endTime % 100
-        adapted.endTime = padZero(h2) + ':' + padZero(m2)
-      }
+    if (typeof adapted.endTime === 'number') {
+      adapted.endTime = padZero(Math.floor(adapted.endTime / 100)) + ':' + padZero(adapted.endTime % 100)
     }
-
-    return adapted
+  } else if (type === 'pomodoro') {
+    if (adapted.todo_title && !adapted.todoTitle) { adapted.todoTitle = adapted.todo_title }
+    if (adapted.tag_uuids && !adapted.tagUuids) { adapted.tagUuids = adapted.tag_uuids }
+    if (adapted.tag_names && !adapted.tagNames) { adapted.tagNames = adapted.tag_names }
+    if (adapted.planned_duration && !adapted.plannedDuration) { adapted.plannedDuration = adapted.planned_duration }
+    if (adapted.start_time && !adapted.startTime) { adapted.startTime = adapted.start_time }
+    if (adapted.end_time && !adapted.endTime) { adapted.endTime = adapted.end_time }
+    if (adapted.target_end_ms && !adapted.targetEndMs) { adapted.targetEndMs = adapted.target_end_ms }
+    if (adapted.session_uuid && !adapted.sessionUuid) { adapted.sessionUuid = adapted.session_uuid }
+    if (adapted.is_count_up !== undefined && !adapted.isCountUp) { adapted.isCountUp = adapted.is_count_up }
+    if (adapted.mode !== undefined && !adapted.mode) { adapted.mode = adapted.mode }
   }
+  return adapted
+}
 
-  static async getLastSyncTime(type) {
-    return new Promise(function(resolve) {
-      storage.get({
-        key: LAST_SYNC_TIME_KEY + '_' + type,
-        success: function(data) {
-          resolve(data ? parseInt(data) : 0)
-        },
-        fail: function() {
-          resolve(0)
-        }
-      })
-    })
-  }
-
-  static async setLastSyncTime(type, timestamp) {
-    return new Promise(function(resolve, reject) {
-      storage.set({
-        key: LAST_SYNC_TIME_KEY + '_' + type,
-        value: timestamp.toString(),
-        success: function() {
-          resolve()
-        },
-        fail: function(error) {
-          reject(error)
-        }
-      })
-    })
-  }
-
-  static async getLocalData(type) {
-    return new Promise(function(resolve) {
-      storage.get({
-        key: SYNC_KEY_PREFIX + type,
-        success: function(data) {
-          resolve(data ? JSON.parse(data) : [])
-        },
-        fail: function() {
-          resolve([])
-        }
-      })
-    })
-  }
-
-  static async saveLocalData(type, data) {
-    return new Promise(function(resolve, reject) {
-      storage.set({
-        key: SYNC_KEY_PREFIX + type,
-        value: JSON.stringify(data),
-        success: function() {
-          resolve()
-        },
-        fail: function(error) {
-          reject(error)
-        }
-      })
-    })
-  }
-
-  static async requestSyncFromPhone(type) {
-    var connected = await this.checkConnection()
-    if (!connected) {
-      return { success: false, message: '未连接到手机App' }
+function resolveRequest(type, result) {
+  if (pendingRequests[type]) {
+    if (pendingRequests[type].timeout) {
+      clearTimeout(pendingRequests[type].timeout)
     }
-
-    var self = this
-    return new Promise(function(resolve, reject) {
-      self.pendingSyncRequests[type] = {
-        resolve: resolve,
-        reject: reject,
-        timeout: null
-      }
-
-      self.pendingSyncRequests[type].timeout = setTimeout(function() {
-        if (self.pendingSyncRequests[type]) {
-          self.pendingSyncRequests[type].resolve({ success: false, message: '手机未响应' })
-          delete self.pendingSyncRequests[type]
-        }
-      }, 8000)
-
-      self.connect.send({
-        data: {
-          type: type,
-          action: 'request_sync',
-          timestamp: Date.now()
-        },
-        success: function() {},
-        fail: function(data, code) {
-          if (self.pendingSyncRequests[type]) {
-            if (self.pendingSyncRequests[type].timeout) {
-              clearTimeout(self.pendingSyncRequests[type].timeout)
-            }
-            self.pendingSyncRequests[type].resolve({ success: false, message: '发送失败' })
-            delete self.pendingSyncRequests[type]
-          }
-        }
-      })
-    })
-  }
-
-  static async syncAll() {
-    var results = {}
-    results.todo = await this.requestSyncFromPhone('todo')
-    results.course = await this.requestSyncFromPhone('course')
-    results.countdown = await this.requestSyncFromPhone('countdown')
-    return results
+    if (pendingRequests[type].callback) {
+      diagMsg = type + ':' + (result ? result.message : 'null')
+      pendingRequests[type].callback(result)
+    }
+    delete pendingRequests[type]
   }
 }
 
-export default SyncService
+function replacePhoneData(type, phoneData) {
+  if (!Array.isArray(phoneData)) {
+    saveLocalData(type, phoneData, null)
+    resolveRequest(type, { success: true, message: '已同步手机数据' })
+    return
+  }
+  var validItems = []
+  var i
+  for (i = 0; i < phoneData.length; i++) {
+    if (!(phoneData[i].is_deleted === 1 || phoneData[i].is_deleted === true)) {
+      validItems.push(adaptItem(type, phoneData[i]))
+    }
+  }
+  saveLocalData(type, validItems, null)
+  resolveRequest(type, { success: true, message: '已同步 (' + validItems.length + '条)' })
+}
+
+function handleReceivedData(data) {
+  try {
+    var parsedData = null
+    if (typeof data === 'object' && data !== null && data.type) {
+      parsedData = data
+    } else if (typeof data === 'string') {
+      parsedData = JSON.parse(data)
+    } else if (typeof data === 'object' && data !== null && data.data !== undefined) {
+      var innerData = data.data
+      if (typeof innerData === 'string') {
+        parsedData = JSON.parse(innerData)
+      } else if (typeof innerData === 'object') {
+        parsedData = innerData
+      }
+    }
+    if (!parsedData || !parsedData.type) { return }
+
+    var type = parsedData.type
+    var batchData = parsedData.data
+    var batchNum = parsedData.batchNum || 1
+    var totalBatches = parsedData.totalBatches || 1
+
+    if (totalBatches === 1) {
+      replacePhoneData(type, batchData)
+      return
+    }
+
+    if (!batchBuffer[type]) {
+      batchBuffer[type] = { batches: [], totalBatches: totalBatches, timeout: null }
+    }
+    var buffer = batchBuffer[type]
+    buffer.totalBatches = totalBatches
+    buffer.batches[batchNum - 1] = batchData
+
+    var receivedCount = 0
+    var k
+    for (k = 0; k < buffer.batches.length; k++) {
+      if (buffer.batches[k] !== undefined) { receivedCount++ }
+    }
+
+    if (receivedCount >= buffer.totalBatches) {
+      replacePhoneData(type, flattenArray(buffer.batches))
+      delete batchBuffer[type]
+    } else {
+      if (buffer.timeout) clearTimeout(buffer.timeout)
+      buffer.timeout = setTimeout(function() {
+        var collectedData = []
+        var a, b
+        for (a = 0; a < buffer.batches.length; a++) {
+          if (buffer.batches[a] !== undefined) {
+            if (Array.isArray(buffer.batches[a])) {
+              for (b = 0; b < buffer.batches[a].length; b++) { collectedData.push(buffer.batches[a][b]) }
+            } else {
+              collectedData.push(buffer.batches[a])
+            }
+          }
+        }
+        replacePhoneData(type, collectedData)
+        delete batchBuffer[type]
+      }, 10000)
+    }
+  } catch (error) {
+    logDebug('Handle error: ' + error.message)
+  }
+}
+
+function doSend(type, callback) {
+  var conn = getConnect()
+  if (!conn) {
+    callback(false)
+    return
+  }
+  if (typeof conn.send !== 'function') {
+    callback(false)
+    return
+  }
+  conn.send({
+    data: { type: type, action: 'request_sync', timestamp: Date.now() },
+    success: function() {
+      callback(true)
+    },
+    fail: function() {
+      callback(false)
+    }
+  })
+}
+
+function requestSyncFromPhone(type, onResult) {
+  var conn = getConnect()
+  if (!conn) {
+    if (onResult) onResult({ success: false, message: '未连接到手机App' })
+    return
+  }
+  if (typeof conn.send !== 'function') {
+    if (onResult) onResult({ success: false, message: '连接异常' })
+    return
+  }
+
+  var timeoutId = setTimeout(function() {
+    resolveRequest(type, { success: false, message: '手机未响应' })
+  }, 8000)
+
+  pendingRequests[type] = { callback: onResult, timeout: timeoutId }
+
+  doSend(type, function(sent) {
+    if (!sent) {
+      resolveRequest(type, { success: false, message: '发送失败' })
+    }
+  })
+}
+
+function init(opts) {
+  if (isInitialized && connect) {
+    return
+  }
+  if (opts && opts.onVersionReady) onVersionReady = opts.onVersionReady
+
+  try {
+    app.getInfo({
+      success: function(info) {
+        if (info) {
+          appVersion = info.versionName || appVersion
+          appVersionCode = info.versionCode || appVersionCode
+        }
+        if (onVersionReady) onVersionReady(appVersion)
+      },
+      fail: function() {
+        if (onVersionReady) onVersionReady(appVersion)
+      }
+    })
+  } catch (e) {}
+
+  try {
+    var instance = interconnect.instance()
+    if (instance) {
+      connect = instance
+      var hasSend = typeof connect.send === 'function'
+      var hasGRS = typeof connect.getReadyState === 'function'
+      diagMsg = 'init:send=' + hasSend + ' grs=' + hasGRS
+      connect.onopen = function(data) {
+        isConnected = true
+        setTimeout(sendVersionInfo, 500)
+      }
+      connect.onclose = function(data) {
+        isConnected = false
+      }
+      connect.onerror = function(data) {
+        isConnected = false
+      }
+      connect.onmessage = function(data) {
+        handleReceivedData(data)
+      }
+
+      if (hasGRS) {
+        connect.getReadyState({
+          success: function(data) {
+            var status = data ? data.status : -1
+            if (status === 1) {
+              isConnected = true
+              setTimeout(sendVersionInfo, 500)
+            }
+          },
+          fail: function() {}
+        })
+      } else {
+        isConnected = true
+        setTimeout(sendVersionInfo, 500)
+      }
+
+      isInitialized = true
+    }
+  } catch (e) {
+    diagMsg = 'init err:' + e.message
+  }
+}
+
+function destroy() {
+  var type, buffer
+  for (type in batchBuffer) {
+    buffer = batchBuffer[type]
+    if (buffer.timeout) { clearTimeout(buffer.timeout); buffer.timeout = null }
+  }
+  batchBuffer = {}
+  for (type in pendingRequests) {
+    if (pendingRequests[type].timeout) {
+      clearTimeout(pendingRequests[type].timeout)
+    }
+  }
+  pendingRequests = {}
+  connect = null
+  isConnected = false
+  isInitialized = false
+}
+
+function sendPomodoroAction(action, sessionUuid) {
+  var conn = getConnect()
+  if (!conn) return
+  if (typeof conn.send !== 'function') return
+  conn.send({
+    data: { type: 'pomodoro', action: action, sessionUuid: sessionUuid, timestamp: Date.now() },
+    success: function() {},
+    fail: function() {}
+  })
+}
+
+function sendVersionInfo() {
+  var conn = getConnect()
+  if (!conn) return
+  if (typeof conn.send !== 'function') return
+  conn.send({
+    data: { type: 'band_info', version: appVersion, version_code: appVersionCode, timestamp: Date.now() },
+    success: function() {},
+    fail: function() {}
+  })
+}
+
+function sendDebugLog(message) {
+  var conn = getConnect()
+  if (!conn) return
+  if (typeof conn.send !== 'function') return
+  conn.send({
+    data: { type: 'debug', message: message, timestamp: Date.now() },
+    success: function() {},
+    fail: function() {}
+  })
+}
+
+function getDiagMsg() {
+  return diagMsg
+}
+
+function getVersion() {
+  return appVersion
+}
+
+function syncTodo(onResult) {
+  requestSyncFromPhone('todo', onResult)
+}
+
+function syncCourse(onResult) {
+  requestSyncFromPhone('course', onResult)
+}
+
+function syncCountdown(onResult) {
+  requestSyncFromPhone('countdown', onResult)
+}
+
+function syncPomodoro(onResult) {
+  requestSyncFromPhone('pomodoro', onResult)
+}
+
+function syncAll(onResult) {
+  var results = {}
+  var types = ['todo', 'course', 'countdown', 'pomodoro']
+  var idx = 0
+  var done = false
+
+  var masterTimeout = setTimeout(function() {
+    if (!done && onResult) {
+      done = true
+      for (var i = idx; i < types.length; i++) {
+        results[types[i]] = { success: false, message: '超时' }
+      }
+      onResult(results)
+    }
+  }, 30000)
+
+  function runNext() {
+    if (done) return
+    if (idx >= types.length) {
+      done = true
+      clearTimeout(masterTimeout)
+      if (onResult) onResult(results)
+      return
+    }
+    var type = types[idx]
+    idx++
+    requestSyncFromPhone(type, function(r) {
+      if (done) return
+      results[type] = r
+      setTimeout(runNext, 300)
+    })
+  }
+
+  runNext()
+}
+
+module.exports = {
+  init: init,
+  destroy: destroy,
+  handleReceivedData: handleReceivedData,
+  adaptItem: adaptItem,
+  saveLocalData: saveLocalData,
+  requestSyncFromPhone: requestSyncFromPhone,
+  syncAll: syncAll,
+  sendVersionInfo: sendVersionInfo,
+  sendDebugLog: sendDebugLog,
+  sendPomodoroAction: sendPomodoroAction,
+  syncTodo: syncTodo,
+  syncCourse: syncCourse,
+  syncCountdown: syncCountdown,
+  syncPomodoro: syncPomodoro,
+  getDiagMsg: getDiagMsg,
+  getVersion: getVersion
+}

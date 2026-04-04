@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../services/llm_service.dart';
+import '../../../utils/page_transitions.dart';
 import '../llm_config_page.dart';
 
 class PreferenceSection extends StatelessWidget {
@@ -137,8 +138,8 @@ class PreferenceSection extends StatelessWidget {
                 onTap: () async {
                   final result = await Navigator.push<bool>(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const LLMConfigPage(),
+                    PageTransitions.slideHorizontal(
+                      const LLMConfigPage(),
                     ),
                   );
                   if (result == true) {

@@ -130,7 +130,6 @@ class UpdateService {
         return AppManifest.fromJson(jsonDecode(body));
       }
     } catch (e) {
-      debugPrint("获取更新配置失败: $e");
     }
     return null;
   }
@@ -189,7 +188,6 @@ class UpdateService {
         }
       }
     } catch (e) {
-      debugPrint("预清理旧文件失败: $e");
     }
 
     return true;

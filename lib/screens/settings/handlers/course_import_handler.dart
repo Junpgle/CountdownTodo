@@ -133,7 +133,6 @@ class CourseImportHandler {
         }
       }
     } catch (e) {
-      debugPrint("处理智能导入时崩溃: $e");
       statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
       if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
     }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../storage_service.dart';
 import '../login_screen.dart';
+import '../../utils/page_transitions.dart';
 
 class ServerChoicePage extends StatefulWidget {
   final String initialServerChoice;
@@ -223,7 +224,7 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          PageTransitions.fadeThrough(const LoginScreen()),
           (route) => false,
         );
       }

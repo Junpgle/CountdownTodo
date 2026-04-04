@@ -5,13 +5,15 @@ import '../storage_service.dart';
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
-  const HistoricalTodosScreen({Key? key, required this.username}) : super(key: key);
+  const HistoricalTodosScreen({Key? key, required this.username})
+      : super(key: key);
 
   @override
   State<HistoricalTodosScreen> createState() => _HistoricalTodosScreenState();
 }
 
-class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with SingleTickerProviderStateMixin {
+class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
+    with SingleTickerProviderStateMixin {
   List<TodoItem> _history = [];
   List<TodoItem> _deletedTodos = [];
   bool _isLoading = true;
@@ -42,7 +44,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
     } else {
       // 🚀 修复：createdAt 现在是 int 毫秒时间戳，需要先转换为 DateTime
       // 🚀 修正：优先使用 createdDate，兼容旧数据 fallback 到 createdAt
-      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
+      DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
+              t.createdDate ?? t.createdAt,
+              isUtc: true)
+          .toLocal();
       DateTime c = DateTime(cDate.year, cDate.month, cDate.day);
       return c.isBefore(today);
     }
@@ -54,7 +59,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
 
     setState(() {
       // 历史记录：已完成、是历史日期，并且【未被删除】
-      _history = allTodos.where((t) => _isHistorical(t) && !t.isDeleted).toList();
+      _history =
+          allTodos.where((t) => _isHistorical(t) && !t.isDeleted).toList();
       // 🚀 修复：使用 updatedAt 进行排序
       _history.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
@@ -110,7 +116,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
     }
     _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('待办已取消完成，并退回主页清单')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('待办已取消完成，并退回主页清单')));
     }
   }
 
@@ -120,14 +127,16 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
     int idx = allTodos.indexWhere((t) => t.id == item.id);
     if (idx != -1) {
       allTodos[idx].isDeleted = false; // 取消删除标记
-      allTodos[idx].markAsChanged();   // 升级版本号
-      await StorageService.saveTodos(widget.username, allTodos, sync: true); // 触发同步，让云端也恢复
+      allTodos[idx].markAsChanged(); // 升级版本号
+      await StorageService.saveTodos(widget.username, allTodos,
+          sync: true); // 触发同步，让云端也恢复
     }
 
     _loadData(); // 重新加载分类数据
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('待办已成功恢复')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('待办已成功恢复')));
     }
   }
 
@@ -140,27 +149,30 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
 
     _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已彻底删除')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已彻底删除')));
     }
   }
 
   // 🚀 一键清空回收站
   Future<void> _clearRecycleBin() async {
     bool confirm = await showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text("清空回收站"),
-          content: const Text("确定要彻底清空回收站吗？清空后将无法恢复。"),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
-            FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text("清空")
-            ),
-          ],
-        )
-    ) ?? false;
+            context: context,
+            builder: (ctx) => AlertDialog(
+                  title: const Text("清空回收站"),
+                  content: const Text("确定要彻底清空回收站吗？清空后将无法恢复。"),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text("取消")),
+                    FilledButton(
+                        style: FilledButton.styleFrom(
+                            backgroundColor: Colors.redAccent),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text("清空")),
+                  ],
+                )) ??
+        false;
 
     if (confirm) {
       final allTodos = await StorageService.getTodos(widget.username);
@@ -172,36 +184,57 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
 
   Widget _buildHistoryTab() {
     if (_history.isEmpty) {
-      return const Center(child: Text("暂无历史待办", style: TextStyle(color: Colors.grey)));
+      return const Center(
+          child: Text("暂无历史待办", style: TextStyle(color: Colors.grey)));
     }
-    return ListView.builder(
+    return AnimatedList(
+      key: ValueKey('history_${_history.length}'),
       padding: const EdgeInsets.all(16),
-      itemCount: _history.length,
-      itemBuilder: (context, index) {
+      initialItemCount: _history.length,
+      itemBuilder: (context, index, animation) {
         final todo = _history[index];
-        return Card(
-          elevation: 0,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: Checkbox(
-              value: todo.isDone,
-              onChanged: (val) => _uncheckItem(todo),
-            ),
-            title: Text(
-              todo.title,
-              style: TextStyle(
-                decoration: TextDecoration.lineThrough,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.3, 0.0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          )),
+          child: FadeTransition(
+            opacity: animation,
+            child: Card(
+              elevation: 0,
+              color: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withOpacity(0.5),
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: Checkbox(
+                  value: todo.isDone,
+                  onChanged: (val) => _uncheckItem(todo),
+                ),
+                title: Text(
+                  todo.title,
+                  style: TextStyle(
+                    decoration: TextDecoration.lineThrough,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.5),
+                  ),
+                ),
+                subtitle: Text(
+                  "完成于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: IconButton(
+                  icon:
+                      const Icon(Icons.delete_outline, color: Colors.redAccent),
+                  onPressed: () => _deleteItem(todo),
+                ),
               ),
-            ),
-            subtitle: Text(
-              "完成于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
-              style: const TextStyle(fontSize: 12),
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              onPressed: () => _deleteItem(todo),
             ),
           ),
         );
@@ -211,7 +244,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
 
   Widget _buildRecycleBinTab() {
     if (_deletedTodos.isEmpty) {
-      return const Center(child: Text("回收站为空", style: TextStyle(color: Colors.grey)));
+      return const Center(
+          child: Text("回收站为空", style: TextStyle(color: Colors.grey)));
     }
     return Column(
       children: [
@@ -220,45 +254,67 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("共 ${_deletedTodos.length} 条已删除待办", style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              Text("共 ${_deletedTodos.length} 条已删除待办",
+                  style: const TextStyle(color: Colors.grey, fontSize: 13)),
               TextButton.icon(
                   onPressed: _clearRecycleBin,
-                  icon: const Icon(Icons.delete_sweep, size: 18, color: Colors.redAccent),
-                  label: const Text("清空", style: TextStyle(color: Colors.redAccent))
-              )
+                  icon: const Icon(Icons.delete_sweep,
+                      size: 18, color: Colors.redAccent),
+                  label: const Text("清空",
+                      style: TextStyle(color: Colors.redAccent)))
             ],
           ),
         ),
         Expanded(
-          child: ListView.builder(
+          child: AnimatedList(
+            key: ValueKey('recycle_${_deletedTodos.length}'),
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _deletedTodos.length,
-            itemBuilder: (context, index) {
+            initialItemCount: _deletedTodos.length,
+            itemBuilder: (context, index, animation) {
               final todo = _deletedTodos[index];
-              return Card(
-                elevation: 0,
-                color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.3),
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  title: Text(todo.title, style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
-                  subtitle: Text(
-                    "删除于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: "恢复",
-                        icon: const Icon(Icons.restore, color: Colors.green),
-                        onPressed: () => _restoreDeletedItem(todo),
+              return SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.3, 0.0),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                )),
+                child: FadeTransition(
+                  opacity: animation,
+                  child: Card(
+                    elevation: 0,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .errorContainer
+                        .withOpacity(0.3),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      title: Text(todo.title,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface)),
+                      subtitle: Text(
+                        "删除于: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
+                        style: const TextStyle(fontSize: 12),
                       ),
-                      IconButton(
-                        tooltip: "彻底删除",
-                        icon: const Icon(Icons.close, color: Colors.redAccent),
-                        onPressed: () => _permanentlyDeleteItem(todo),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: "恢复",
+                            icon:
+                                const Icon(Icons.restore, color: Colors.green),
+                            onPressed: () => _restoreDeletedItem(todo),
+                          ),
+                          IconButton(
+                            tooltip: "彻底删除",
+                            icon: const Icon(Icons.close,
+                                color: Colors.redAccent),
+                            onPressed: () => _permanentlyDeleteItem(todo),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               );
@@ -285,12 +341,12 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen> with Sing
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : TabBarView(
-        controller: _tabController,
-        children: [
-          _buildHistoryTab(),
-          _buildRecycleBinTab(),
-        ],
-      ),
+              controller: _tabController,
+              children: [
+                _buildHistoryTab(),
+                _buildRecycleBinTab(),
+              ],
+            ),
     );
   }
 }

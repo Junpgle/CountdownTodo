@@ -101,7 +101,6 @@ class ReminderService : Service() {
     private fun rescheduleAll() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json  = prefs.getString(KEY_REMINDERS, "[]") ?: "[]"
-        Log.d(TAG, "rescheduleAll: $json")
 
         try {
             val arr = JSONArray(json)

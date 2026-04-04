@@ -247,6 +247,10 @@ export default {
   background-color: transparent;
 }
 
+.checkbox-inner.checkbox-checked {
+  background-color: #4caf50;
+}
+
 .item-content {
   flex: 1;
   flex-direction: column;

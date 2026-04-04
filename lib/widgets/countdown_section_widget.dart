@@ -4,6 +4,7 @@ import '../../models.dart';
 import '../../storage_service.dart';
 import '../screens/historical_countdowns_screen.dart';
 import '../widgets/home_sections.dart';
+import '../utils/page_transitions.dart';
 
 class CountdownSectionWidget extends StatefulWidget {
   final List<CountdownItem> countdowns;
@@ -23,7 +24,18 @@ class CountdownSectionWidget extends StatefulWidget {
   State<CountdownSectionWidget> createState() => _CountdownSectionWidgetState();
 }
 
-class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
+class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
+    with TickerProviderStateMixin {
+  final Map<String, AnimationController> _pulseControllers = {};
+
+  @override
+  void dispose() {
+    for (final controller in _pulseControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
   void _addCountdown() {
     TextEditingController titleCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
@@ -32,7 +44,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text("添加倒计时"),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -61,7 +74,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
                     lastDate: DateTime(2100),
                     initialDate: selectedDate,
                   );
-                  if (picked != null) setDialogState(() => selectedDate = picked);
+                  if (picked != null)
+                    setDialogState(() => selectedDate = picked);
                 },
               ),
             ],
@@ -79,7 +93,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
               ),
               onPressed: () async {
                 if (titleCtrl.text.isNotEmpty) {
-                  List<CountdownItem> updatedList = List.from(widget.countdowns);
+                  List<CountdownItem> updatedList =
+                      List.from(widget.countdowns);
                   updatedList.add(CountdownItem(
                       title: titleCtrl.text, targetDate: selectedDate));
                   await StorageService.saveCountdowns(
@@ -152,9 +167,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
               onPressed: () async {
                 await Navigator.push(
                     context,
-                    MaterialPageRoute(
-                        builder: (_) => HistoricalCountdownsScreen(
-                            username: widget.username)));
+                    PageTransitions.slideHorizontal(
+                        HistoricalCountdownsScreen(username: widget.username)));
                 widget.onDataChanged();
               },
             ),
@@ -167,10 +181,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
   }
 
   Widget _buildList() {
-    final List<CountdownItem> activeCountdowns = widget.countdowns.where((item) {
+    final List<CountdownItem> activeCountdowns =
+        widget.countdowns.where((item) {
       return item.targetDate.difference(DateTime.now()).inDays + 1 >= 0;
     }).toList()
-      ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
+          ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
     if (activeCountdowns.isEmpty) {
       return EmptyState(text: "暂无有效倒计时", isLight: widget.isLight);
@@ -188,134 +203,185 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget> {
 
           final bool isUrgent = diff <= 3;
 
+          if (isUrgent && !_pulseControllers.containsKey(item.id)) {
+            final controller = AnimationController(
+              duration: const Duration(milliseconds: 800),
+              vsync: this,
+            )..repeat(reverse: true);
+            _pulseControllers[item.id] = controller;
+          } else if (!isUrgent && _pulseControllers.containsKey(item.id)) {
+            _pulseControllers[item.id]?.dispose();
+            _pulseControllers.remove(item.id);
+          }
+
           // 核心修复：增加系统级别的深色模式检测
-          final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+          final bool isDarkTheme =
+              Theme.of(context).brightness == Brightness.dark;
           final bool useDarkUI = isDarkTheme || widget.isLight;
 
           final bgColor = useDarkUI
               ? (isUrgent
-              ? Colors.redAccent.withAlpha((0.25 * 255).round())
-              : (widget.isLight
-              ? Colors.white.withAlpha((0.1 * 255).round())
-              : Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha((0.5 * 255).round())))
+                  ? Colors.redAccent.withAlpha((0.25 * 255).round())
+                  : (widget.isLight
+                      ? Colors.white.withAlpha((0.1 * 255).round())
+                      : Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withAlpha((0.5 * 255).round())))
               : (isUrgent
-              ? Colors.red.shade50
-              : Theme.of(context).colorScheme.surface);
+                  ? Colors.red.shade50
+                  : Theme.of(context).colorScheme.surface);
 
           final borderColor = useDarkUI
-              ? (isUrgent ? Colors.redAccent.withAlpha((0.5 * 255).round()) : Colors.white.withAlpha((0.15 * 255).round()))
-              : (isUrgent ? Colors.redAccent.withAlpha((0.3 * 255).round()) : Colors.black.withAlpha((0.05 * 255).round()));
+              ? (isUrgent
+                  ? Colors.redAccent.withAlpha((0.5 * 255).round())
+                  : Colors.white.withAlpha((0.15 * 255).round()))
+              : (isUrgent
+                  ? Colors.redAccent.withAlpha((0.3 * 255).round())
+                  : Colors.black.withAlpha((0.05 * 255).round()));
 
-          final textColor = useDarkUI ? Colors.white : Theme.of(context).colorScheme.onSurface;
+          final textColor = useDarkUI
+              ? Colors.white
+              : Theme.of(context).colorScheme.onSurface;
 
-          final subTextColor = useDarkUI ? Colors.white70 : Theme.of(context).colorScheme.onSurfaceVariant;
+          final subTextColor = useDarkUI
+              ? Colors.white70
+              : Theme.of(context).colorScheme.onSurfaceVariant;
 
           final accentColor = useDarkUI
               ? (isUrgent ? Colors.redAccent.shade100 : Colors.white)
-              : (isUrgent ? Colors.redAccent : Theme.of(context).colorScheme.primary);
+              : (isUrgent
+                  ? Colors.redAccent
+                  : Theme.of(context).colorScheme.primary);
 
           final closeBgColor = useDarkUI
               ? Colors.white.withAlpha((0.15 * 255).round())
-              : Theme.of(context).colorScheme.onSurface.withAlpha((0.05 * 255).round());
+              : Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withAlpha((0.05 * 255).round());
 
-          return Container(
-            width: 130, // reduced from 150
-            margin: const EdgeInsets.only(right: 12, bottom: 10), // tightened margins
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(20), // slightly smaller radius
-              border: Border.all(color: borderColor),
-              // 在深色模式下不需要黑色阴影，否则会看起来很脏
-              boxShadow: useDarkUI ? [] : [
-                BoxShadow(
-                  color: Colors.black.withAlpha((0.04 * 255).round()),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                )
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: Padding(
-                padding: const EdgeInsets.all(12.0), // reduced padding
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 顶部：标题 + 删除按钮
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: textColor,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13, // smaller title
-                              height: 1.2,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        InkWell(
-                          onTap: () => _deleteCountdown(item),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: closeBgColor,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.close,
-                              size: 12, // slightly smaller icon
-                              color: subTextColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    // 中部：倒计时天数
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          "$diff",
-                          style: TextStyle(
-                            fontSize: 32, // reduced from 38
-                            height: 1.0,
-                            fontWeight: FontWeight.bold,
-                            color: accentColor,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6.0),
-                          child: Text(
-                            "天",
-                            style: TextStyle(
-                              fontSize: 12, // reduced from 14
-                              color: subTextColor,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // 底部：具体日期
-                    Text(
-                      "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
-                      style: TextStyle(
-                        fontSize: 10, // reduced from 11
-                        color: subTextColor,
-                        letterSpacing: 0.5,
+          return AnimatedBuilder(
+            animation:
+                _pulseControllers[item.id] ?? const AlwaysStoppedAnimation(0.0),
+            builder: (context, child) {
+              if (!isUrgent) return child!;
+              final pulse = _pulseControllers[item.id]?.value ?? 0.0;
+              final glowOpacity = 0.3 + (pulse * 0.4);
+              final glowSpread = 4.0 + (pulse * 8.0);
+              return Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.redAccent.withAlpha(
+                        (glowOpacity * 255).round(),
                       ),
+                      blurRadius: glowSpread,
+                      spreadRadius: glowSpread * 0.3,
                     ),
                   ],
+                ),
+                child: child,
+              );
+            },
+            child: Container(
+              width: 130,
+              margin: const EdgeInsets.only(right: 12, bottom: 10),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: borderColor),
+                boxShadow: useDarkUI
+                    ? []
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withAlpha((0.04 * 255).round()),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        )
+                      ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: textColor,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: () => _deleteCountdown(item),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: closeBgColor,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.close,
+                                size: 12,
+                                color: subTextColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            "$diff",
+                            style: TextStyle(
+                              fontSize: 32,
+                              height: 1.0,
+                              fontWeight: FontWeight.bold,
+                              color: accentColor,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6.0),
+                            child: Text(
+                              "天",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: subTextColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: subTextColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

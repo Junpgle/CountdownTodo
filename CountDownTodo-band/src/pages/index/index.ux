@@ -7,12 +7,16 @@
         <div class="status-indicator {{syncStatusClass}}"></div>
         <text class="status-text">{{syncStatusText}}</text>
       </div>
+      <text class="last-sync-time">{{lastSyncTimeText}}</text>
     </div>
 
     <!-- 标题区域 (固定不动) -->
     <div class="header">
       <div class="title-group">
-        <text class="title" static>CDT</text>
+        <div class="title-row">
+          <text class="title" static>CDT</text>
+          <text class="version-badge">{{bandVersion}}</text>
+        </div>
         <text class="date">{{currentDate}}</text>
       </div>
       <div class="sync-btn" onclick="syncAllData">
@@ -62,6 +66,18 @@
         <text class="arrow" static>›</text>
       </list-item>
 
+      <!-- 番茄钟 -->
+      <list-item type="module" class="module-card" onclick="routeToPomodoro">
+        <div class="module-icon-wrap pomodoro-bg">
+          <text class="module-icon" static>FOCUS</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title" static>番茄钟</text>
+          <text class="module-desc">{{pomodoroStatusText}}</text>
+        </div>
+        <text class="arrow" static>›</text>
+      </list-item>
+
       <!-- 设置 -->
       <list-item type="module" class="module-card" onclick="routeToSettings">
         <div class="module-icon-wrap settings-bg">
@@ -95,18 +111,31 @@ export default {
     isSyncing: false,
     todoPendingCount: 0,
     nearestCountdown: '暂无',
-    todayCourseText: '今日无课'
+    todayCourseText: '今日无课',
+    pomodoroStatusText: '暂无专注',
+    lastSyncTimeText: '',
+    bandVersion: ''
   },
 
   statusTimer: null,
 
   onInit() {
+    var self = this
+    this.bandVersion = 'v...'
+    SyncService.init({
+      onVersionReady: function(ver) {
+        self.bandVersion = 'v' + ver
+      }
+    })
     this.setCurrentDate()
     this.loadAllData()
+    this.loadLastSyncTime()
   },
 
   onShow() {
     this.loadAllData()
+    this.checkPendingAlert()
+    this.loadLastSyncTime()
   },
 
   onDestroy() {
@@ -132,6 +161,42 @@ export default {
     this.loadTodoStats()
     this.loadCountdownStats()
     this.loadCourseStats()
+    this.loadPomodoroStats()
+  },
+
+  checkPendingAlert() {
+    var self = this
+    storage.get({
+      key: 'sync_pending_alert',
+      success: function(data) {
+        if (data) {
+          try {
+            var alertData = JSON.parse(data)
+            if (alertData && alertData.timestamp) {
+              var now = Date.now()
+              var age = now - alertData.timestamp
+              if (age < 5 * 60 * 1000) {
+                router.push({
+                  uri: '/pages/alert',
+                  params: {
+                    title: alertData.title,
+                    content: alertData.content,
+                    todoType: alertData.todoType,
+                    notificationId: String(alertData.notificationId),
+                    timestamp: String(alertData.timestamp)
+                  }
+                })
+              } else {
+                storage.set({ key: 'sync_pending_alert', value: '' })
+              }
+            }
+          } catch (e) {
+            storage.set({ key: 'sync_pending_alert', value: '' })
+          }
+        }
+      },
+      fail: function() {}
+    })
   },
 
   loadTodoStats() {
@@ -216,83 +281,112 @@ export default {
     })
   },
 
-  async syncAllData() {
-    if (this.isSyncing) return
+  loadPomodoroStats() {
+    storage.get({
+      key: 'sync_pomodoro',
+      success: (data) => {
+        if (data) {
+          const items = JSON.parse(data)
+          if (items && items.length > 0) {
+            const item = items[0]
+            const phase = item.phase
+            if (phase === 'focusing' || phase === 1) {
+              const remaining = Math.max(0, Math.ceil((item.targetEndMs - Date.now()) / 1000))
+              const mins = Math.floor(remaining / 60)
+              this.pomodoroStatusText = `专注中 ${mins}分钟`
+            } else if (phase === 'breaking' || phase === 2) {
+              this.pomodoroStatusText = '休息中'
+            } else if (phase === 'remoteWatching' || phase === 4) {
+              this.pomodoroStatusText = '监控中'
+            } else {
+              this.pomodoroStatusText = '暂无专注'
+            }
+          } else {
+            this.pomodoroStatusText = '暂无专注'
+          }
+        } else {
+          this.pomodoroStatusText = '暂无专注'
+        }
+      },
+      fail: () => {}
+    })
+  },
+
+  syncAllData() {
+    if (this.isSyncing) {
+      prompt.showToast({ message: '已在同步中', duration: 1000 })
+      return
+    }
 
     this.isSyncing = true
     this.syncStatus = 'syncing'
     this.syncStatusText = '同步中...'
     this.syncStatusClass = 'status-syncing'
+    prompt.showToast({ message: '开始同步', duration: 1000 })
 
-    prompt.showToast({
-      message: '开始同步...',
-      duration: 300
-    })
+    var self = this
+    var timeoutId = setTimeout(function() {
+      if (self.isSyncing) {
+        self.isSyncing = false
+        self.syncStatus = 'fail'
+        self.syncStatusText = '同步超时'
+        self.syncStatusClass = 'status-fail'
+        prompt.showToast({ message: '超时:' + SyncService.getDiagMsg(), duration: 3000 })
+        self.resetSyncStatus()
+      }
+    }, 20000)
 
-    try {
-      const results = await SyncService.syncAll()
+    SyncService.syncAll(function(results) {
+      clearTimeout(timeoutId)
+      if (!self.isSyncing) return
 
-      let successCount = 0
-      let failCount = 0
-      let failMessages = []
-
-      for (const type in results) {
-        if (results[type].success) {
+      var successCount = 0
+      var failCount = 0
+      for (var type in results) {
+        if (results[type] && results[type].success) {
           successCount++
         } else {
           failCount++
-          failMessages.push(type + ':' + (results[type].message || '未知'))
         }
       }
 
+      var diag = SyncService.getDiagMsg()
+
       if (failCount === 0) {
-        this.syncStatus = 'success'
-        this.syncStatusText = '同步成功'
-        this.syncStatusClass = 'status-success'
-        prompt.showToast({
-          message: '同步成功',
-          duration: 300
-        })
+        self.syncStatus = 'success'
+        self.syncStatusText = '同步成功'
+        self.syncStatusClass = 'status-success'
+        prompt.showToast({ message: '成功 [' + diag + ']', duration: 2000 })
+        self.saveLastSyncTime()
       } else if (successCount > 0) {
-        this.syncStatus = 'fail'
-        this.syncStatusText = '部分失败'
-        this.syncStatusClass = 'status-fail'
-        prompt.showToast({
-          message: successCount + '成功 ' + failCount + '失败',
-          duration: 500
-        })
+        self.syncStatus = 'fail'
+        self.syncStatusText = '部分失败'
+        self.syncStatusClass = 'status-fail'
+        prompt.showToast({ message: successCount + '成功 ' + failCount + '失败', duration: 2000 })
+        self.saveLastSyncTime()
       } else {
-        this.syncStatus = 'fail'
-        this.syncStatusText = '同步失败'
-        this.syncStatusClass = 'status-fail'
-        prompt.showToast({
-          message: failMessages.join('; '),
-          duration: 1500
-        })
+        self.syncStatus = 'fail'
+        self.syncStatusText = '同步失败'
+        self.syncStatusClass = 'status-fail'
+        prompt.showToast({ message: '失败:' + diag, duration: 3000 })
       }
 
-      this.loadAllData()
+      self.isSyncing = false
+      self.loadAllData()
+      self.resetSyncStatus()
+    })
+  },
 
-    } catch (error) {
-      this.syncStatus = 'fail'
-      this.syncStatusText = '同步失败'
-      this.syncStatusClass = 'status-fail'
-      prompt.showToast({
-        message: '错误: ' + (error.message || '未知'),
-        duration: 1500
-      })
-    }
-
-    this.isSyncing = false
-
+  resetSyncStatus() {
+    var self = this
     if (this.statusTimer) {
       clearTimeout(this.statusTimer)
     }
-    this.statusTimer = setTimeout(() => {
-      this.syncStatus = 'idle'
-      this.syncStatusText = '待同步'
-      this.syncStatusClass = 'status-idle'
-      this.statusTimer = null
+    this.statusTimer = setTimeout(function() {
+      self.syncStatus = 'idle'
+      self.syncStatusText = '待同步'
+      self.syncStatusClass = 'status-idle'
+      self.statusTimer = null
     }, 3000)
   },
 
@@ -308,8 +402,52 @@ export default {
     router.push({ uri: '/pages/course' })
   },
 
+  routeToPomodoro() {
+    router.push({ uri: '/pages/pomodoro' })
+  },
+
   routeToSettings() {
     router.push({ uri: '/pages/settings' })
+  },
+
+  loadLastSyncTime() {
+    var self = this
+    storage.get({
+      key: 'last_sync_time',
+      success: function(data) {
+        if (data) {
+          try {
+            var ts = parseInt(data)
+            var now = Date.now()
+            var diff = now - ts
+            if (diff < 60000) {
+              self.lastSyncTimeText = '刚刚同步'
+            } else if (diff < 3600000) {
+              self.lastSyncTimeText = Math.floor(diff / 60000) + '分钟前'
+            } else if (diff < 86400000) {
+              self.lastSyncTimeText = Math.floor(diff / 3600000) + '小时前'
+            } else {
+              var d = new Date(ts)
+              self.lastSyncTimeText = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + self.padZero(d.getHours()) + ':' + self.padZero(d.getMinutes())
+            }
+          } catch (e) {
+            self.lastSyncTimeText = ''
+          }
+        } else {
+          self.lastSyncTimeText = ''
+        }
+      },
+      fail: function() {
+        self.lastSyncTimeText = ''
+      }
+    })
+  },
+
+  saveLastSyncTime() {
+    storage.set({
+      key: 'last_sync_time',
+      value: String(Date.now())
+    })
   }
 }
 </script>
@@ -364,6 +502,13 @@ export default {
   color: #ffffff;
 }
 
+.last-sync-time {
+  font-size: 16px;
+  color: #666666;
+  text-align: center;
+  margin-top: 4px;
+}
+
 .header {
   flex-direction: row;
   justify-content: space-between;
@@ -377,11 +522,22 @@ export default {
   flex-direction: column;
 }
 
+.title-row {
+  flex-direction: row;
+  align-items: center;
+}
+
 .title {
   font-size: 40px;
   font-weight: bold;
   color: #ffffff;
   letter-spacing: 2px;
+}
+
+.version-badge {
+  font-size: 18px;
+  color: #666666;
+  margin-left: 12px;
 }
 
 .date {
@@ -467,6 +623,7 @@ export default {
 .todo-bg { background-color: #4a90d9; }
 .countdown-bg { background-color: #e67e22; }
 .course-bg { background-color: #27ae60; }
+.pomodoro-bg { background-color: #e74c3c; }
 .settings-bg { background-color: #555555; }
 
 .module-info {

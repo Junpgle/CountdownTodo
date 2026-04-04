@@ -16,6 +16,7 @@ class _AboutScreenState extends State<AboutScreen> {
   String _buildNumber = '';
   List<dynamic> _releases = [];
   bool _isLoadingReleases = true;
+  bool _versionExpanded = false;
 
   @override
   void initState() {
@@ -286,67 +287,113 @@ class _AboutScreenState extends State<AboutScreen> {
                           ),
                         )
                       : Column(
-                          children: _releases.take(5).map<Widget>((release) {
-                            final tagName = release['tag_name'] ?? '';
-                            final body = release['body'] ?? '暂无更新说明';
-                            final publishedAt = release['published_at'] ?? '';
-                            String dateStr = '';
-                            if (publishedAt.isNotEmpty) {
-                              try {
-                                final date = DateTime.parse(publishedAt);
-                                dateStr =
-                                    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                              } catch (_) {}
-                            }
-
-                            return ExpansionTile(
-                              tilePadding: EdgeInsets.zero,
-                              title: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primaryContainer,
-                                      borderRadius: BorderRadius.circular(6),
+                          children: [
+                            InkWell(
+                              onTap: () => setState(
+                                  () => _versionExpanded = !_versionExpanded),
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      _versionExpanded
+                                          ? Icons.expand_less
+                                          : Icons.expand_more,
+                                      size: 20,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
                                     ),
-                                    child: Text(
-                                      tagName,
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _versionExpanded ? '收起' : '展开',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        fontWeight: FontWeight.bold,
                                         color: Theme.of(context)
                                             .colorScheme
-                                            .onPrimaryContainer,
+                                            .primary,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  if (dateStr.isNotEmpty)
-                                    Text(
-                                      dateStr,
-                                      style: const TextStyle(
-                                          fontSize: 12, color: Colors.grey),
-                                    ),
-                                ],
-                              ),
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                      left: 8, right: 8, bottom: 12),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      body,
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                  ),
+                                  ],
                                 ),
-                              ],
-                            );
-                          }).toList(),
+                              ),
+                            ),
+                            AnimatedCrossFade(
+                              firstChild: const SizedBox.shrink(),
+                              secondChild: Column(
+                                children:
+                                    _releases.take(5).map<Widget>((release) {
+                                  final tagName = release['tag_name'] ?? '';
+                                  final body = release['body'] ?? '暂无更新说明';
+                                  final publishedAt =
+                                      release['published_at'] ?? '';
+                                  String dateStr = '';
+                                  if (publishedAt.isNotEmpty) {
+                                    try {
+                                      final date = DateTime.parse(publishedAt);
+                                      dateStr =
+                                          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                                    } catch (_) {}
+                                  }
+
+                                  return ExpansionTile(
+                                    tilePadding: EdgeInsets.zero,
+                                    title: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primaryContainer,
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            tagName,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onPrimaryContainer,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        if (dateStr.isNotEmpty)
+                                          Text(
+                                            dateStr,
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey),
+                                          ),
+                                      ],
+                                    ),
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                            left: 8, right: 8, bottom: 12),
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            body,
+                                            style:
+                                                const TextStyle(fontSize: 13),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }).toList(),
+                              ),
+                              crossFadeState: _versionExpanded
+                                  ? CrossFadeState.showSecond
+                                  : CrossFadeState.showFirst,
+                              duration: const Duration(milliseconds: 300),
+                            ),
+                          ],
                         ),
             ],
           ),

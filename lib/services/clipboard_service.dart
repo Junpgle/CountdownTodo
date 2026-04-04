@@ -9,7 +9,7 @@ class ClipboardConfig {
   ClipboardConfig._();
 
   /// Polling interval for clipboard changes
-  static const Duration pollInterval = Duration(milliseconds: 500);
+  static const Duration pollInterval = Duration(seconds: 1);
 
   /// Maximum URL length to consider valid
   static const int maxUrlLength = 2048;

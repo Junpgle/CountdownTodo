@@ -7,6 +7,7 @@ import '../storage_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../screens/home_settings_screen.dart';
+import '../utils/page_transitions.dart';
 
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
@@ -22,7 +23,8 @@ class AddTodoScreen extends StatefulWidget {
   State<AddTodoScreen> createState() => _AddTodoScreenState();
 }
 
-class _AddTodoScreenState extends State<AddTodoScreen> {
+class _AddTodoScreenState extends State<AddTodoScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _titleCtrl = TextEditingController();
   final TextEditingController _remarkCtrl = TextEditingController();
   final TextEditingController _aiInputCtrl = TextEditingController();
@@ -41,12 +43,24 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
   int _currentParseIndex = 0;
   String? _llmRawResponse;
 
+  late AnimationController _dotsController;
+
+  @override
+  void initState() {
+    super.initState();
+    _dotsController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat();
+  }
+
   @override
   void dispose() {
     _titleCtrl.dispose();
     _remarkCtrl.dispose();
     _aiInputCtrl.dispose();
     _customDaysCtrl.dispose();
+    _dotsController.dispose();
     super.dispose();
   }
 
@@ -183,7 +197,7 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
       );
       if (goToSettings == true && mounted) {
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SettingsPage()),
+          PageTransitions.slideHorizontal(const SettingsPage()),
         );
       }
       return;
@@ -306,17 +320,38 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
           ),
           // 内容区域
           Expanded(
-            child: _selectedTabIndex == 0
-                ? _buildManualInputTab()
-                : _buildAIRecognitionTab(),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeInOut,
+              switchOutCurve: Curves.easeInOut,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.0, 0.08),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOut,
+                    )),
+                    child: child,
+                  ),
+                );
+              },
+              child: _selectedTabIndex == 0
+                  ? _buildManualInputTab(key: const ValueKey('manual'))
+                  : _buildAIRecognitionTab(key: const ValueKey('ai')),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildManualInputTab() {
+  Widget _buildManualInputTab({Key? key}) {
     return SingleChildScrollView(
+      key: key,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -632,8 +667,9 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
     );
   }
 
-  Widget _buildAIRecognitionTab() {
+  Widget _buildAIRecognitionTab({Key? key}) {
     return SingleChildScrollView(
+      key: key,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -660,26 +696,15 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
               Expanded(
                 child: FilledButton(
                   onPressed: _isParsing ? null : _doSmartParse,
-                  child: _isParsing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text("智能解析"),
+                  child: _isParsing ? _buildBouncingDots() : const Text("智能解析"),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
                   onPressed: _isParsing ? null : _doLLMParse,
-                  child: _isParsing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text("大模型识别"),
+                  child:
+                      _isParsing ? _buildBouncingDots() : const Text("大模型识别"),
                 ),
               ),
             ],
@@ -776,6 +801,39 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBouncingDots() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (index) {
+        return AnimatedBuilder(
+          animation: _dotsController,
+          builder: (context, child) {
+            final double value = _dotsController.value;
+            final double delay = index * 0.2;
+            final double animationValue = (value + delay) % 1.0;
+            final double scale =
+                0.5 + 0.5 * (1.0 - (animationValue - 0.5).abs() * 2.0);
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              child: Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      }),
     );
   }
 }

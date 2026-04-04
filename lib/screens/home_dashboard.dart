@@ -12,6 +12,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'package:path_provider/path_provider.dart';
+import '../utils/page_transitions.dart';
 
 // 引入服务和模型
 import '../models.dart';
@@ -33,6 +34,7 @@ import 'math_menu_screen.dart';
 import 'home_settings_screen.dart';
 import 'feature_guide_screen.dart';
 import 'todo_confirm_screen.dart';
+import 'add_todo_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
@@ -95,6 +97,14 @@ class _HomeDashboardState extends State<HomeDashboard>
   };
   Timer? _courseTimer;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
+  final GlobalKey _settingsButtonKey = GlobalKey();
+  final GlobalKey _pomodoroCardKey = GlobalKey();
+  final GlobalKey _mathCardKey = GlobalKey();
+  final GlobalKey _screenTimeCardKey = GlobalKey();
+  final GlobalKey _focusBannerKey = GlobalKey();
+  final GlobalKey _fabPomodoroKey = GlobalKey();
+  final GlobalKey _fabTodoKey = GlobalKey();
+  final GlobalKey _courseButtonKey = GlobalKey();
   // 每次自增触发首页专注记录卡片刷新
   int _pomodoroRefreshTrigger = 0;
 
@@ -202,11 +212,11 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   @override
   void dispose() {
-    _connStateSub?.cancel(); // 🚀 新增
+    _connStateSub?.cancel();
     _remotePomodoroSub?.cancel();
-    _localPomodoroSub?.cancel(); // 🚀 新增
+    _localPomodoroSub?.cancel();
     _remotePomodoroTicker?.cancel();
-    _localPomodoroTicker?.cancel(); // 🚀 新增
+    _localPomodoroTicker?.cancel();
     ExternalShareHandler.dispose();
     _courseTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -237,16 +247,14 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => TodoConfirmScreen(
-          llmResults: results,
-          imagePath: imagePath,
-          onConfirm: (confirmedResults) {
-            // 用户确认后，直接批量添加待办
-            _batchAddTodos(confirmedResults);
-          },
-        ),
-      ),
+      PageTransitions.slideHorizontal(TodoConfirmScreen(
+        llmResults: results,
+        imagePath: imagePath,
+        onConfirm: (confirmedResults) {
+          // 用户确认后，直接批量添加待办
+          _batchAddTodos(confirmedResults);
+        },
+      )),
     );
   }
 
@@ -773,12 +781,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         isLocal ? const Color(0xFF4F46E5) : const Color(0xFFFF6B6B);
 
     return GestureDetector(
+      key: _focusBannerKey,
       onTap: () async {
-        await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PomodoroScreen(username: widget.username),
-            ));
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: PomodoroScreen(username: widget.username),
+          sourceKey: _focusBannerKey,
+        );
         if (mounted) {
           setState(() => _pomodoroRefreshTrigger++);
           _loadAllData();
@@ -920,8 +929,6 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (t.isDone) return false;
       if (t.dueDate == null) return false;
       final todoType = _detectTodoType(t.title);
-      debugPrint(
-          "🔔 检查待办: title=${t.title}, todoType=$todoType, dueDate=${t.dueDate}");
       if (todoType == 'default') return false;
       DateTime localDueDate = t.dueDate!.toLocal();
       return _isSameDay(localDueDate, now);
@@ -1090,15 +1097,14 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     if (!mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PomodoroScreen(username: widget.username),
-      ),
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: PomodoroScreen(username: widget.username),
+      sourceKey: _pomodoroCardKey,
     );
     if (mounted) {
       setState(() => _pomodoroRefreshTrigger++);
-      _loadAllData(); // 番茄钟可能标记了待办完成，刷新首页待办列表
+      _loadAllData();
     }
   }
 
@@ -1729,11 +1735,14 @@ class _HomeDashboardState extends State<HomeDashboard>
                   isLight: isLight,
                   isSyncing: _isSyncing,
                   onSync: _showSyncOptionsDialog,
+                  settingsKey: _settingsButtonKey,
+                  courseKey: _courseButtonKey,
                   onSettings: () async {
-                    await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const SettingsPage()));
+                    await PageTransitions.pushFromRect(
+                      context: context,
+                      page: const SettingsPage(),
+                      sourceKey: _settingsButtonKey,
+                    );
                     _loadSectionPreferences();
                     _loadSemesterSettings();
                     _loadAllData();
@@ -1794,72 +1803,88 @@ class _HomeDashboardState extends State<HomeDashboard>
                           _navigateToTodoConfirm(results, imagePath);
                         },
                       );
-                      Widget screenTimeSection = Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SectionHeader(
-                              title: "屏幕时间 (今日汇总)",
-                              icon: Icons.timer_outlined,
-                              isLight: isLight),
-                          ScreenTimeCard(
-                            stats: _screenTimeStats,
-                            hasPermission: _hasUsagePermission,
-                            isLoading: _isLoadingScreenTime,
-                            lastSyncTime: _lastScreenTimeSync,
-                            onOpenSettings: () async {
-                              if (Platform.isAndroid || Platform.isIOS) {
-                                await ScreenTimeService.openSettings();
+                      Widget screenTimeSection = RepaintBoundary(
+                        child: KeyedSubtree(
+                          key: _screenTimeCardKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SectionHeader(
+                                  title: "屏幕时间 (今日汇总)",
+                                  icon: Icons.timer_outlined,
+                                  isLight: isLight),
+                              ScreenTimeCard(
+                                stats: _screenTimeStats,
+                                hasPermission: _hasUsagePermission,
+                                isLoading: _isLoadingScreenTime,
+                                lastSyncTime: _lastScreenTimeSync,
+                                onOpenSettings: () async {
+                                  if (Platform.isAndroid || Platform.isIOS) {
+                                    await ScreenTimeService.openSettings();
+                                  }
+                                  _initScreenTime();
+                                },
+                                onViewDetail: () {
+                                  PageTransitions.pushFromRect(
+                                    context: context,
+                                    page: ScreenTimeDetailScreen(
+                                        todayStats: _screenTimeStats),
+                                    sourceKey: _screenTimeCardKey,
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                      Widget mathSection = RepaintBoundary(
+                        child: KeyedSubtree(
+                          key: _mathCardKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SectionHeader(
+                                  title: "数学测验",
+                                  icon: Icons.functions,
+                                  isLight: isLight),
+                              MathStatsCard(
+                                  stats: _mathStats,
+                                  onTap: () async {
+                                    await PageTransitions.pushFromRect(
+                                      context: context,
+                                      page: MathMenuScreen(
+                                          username: widget.username),
+                                      sourceKey: _mathCardKey,
+                                    );
+                                    _loadAllData();
+                                  }),
+                            ],
+                          ),
+                        ),
+                      );
+                      Widget pomodoroSection = RepaintBoundary(
+                        child: KeyedSubtree(
+                          key: _pomodoroCardKey,
+                          child: PomodoroTodaySection(
+                            username: widget.username,
+                            isLight: isLight,
+                            refreshTrigger: _pomodoroRefreshTrigger,
+                            onTap: () async {
+                              await PageTransitions.pushFromRect(
+                                context: context,
+                                page: PomodoroScreen(
+                                  username: widget.username,
+                                  initialTab: 1,
+                                ),
+                                sourceKey: _pomodoroCardKey,
+                              );
+                              if (mounted) {
+                                setState(() => _pomodoroRefreshTrigger++);
+                                _loadAllData();
                               }
-                              _initScreenTime();
-                            },
-                            onViewDetail: () {
-                              Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => ScreenTimeDetailScreen(
-                                          todayStats: _screenTimeStats)));
                             },
                           ),
-                        ],
-                      );
-                      Widget mathSection = Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SectionHeader(
-                              title: "数学测验",
-                              icon: Icons.functions,
-                              isLight: isLight),
-                          MathStatsCard(
-                              stats: _mathStats,
-                              onTap: () async {
-                                await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) => MathMenuScreen(
-                                            username: widget.username)));
-                                _loadAllData();
-                              }),
-                        ],
-                      );
-                      Widget pomodoroSection = PomodoroTodaySection(
-                        username: widget.username,
-                        isLight: isLight,
-                        refreshTrigger: _pomodoroRefreshTrigger,
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PomodoroScreen(
-                                username: widget.username,
-                                initialTab: 1, // 直接打开统计看板
-                              ),
-                            ),
-                          );
-                          if (mounted) {
-                            setState(() => _pomodoroRefreshTrigger++);
-                            _loadAllData(); // 刷新待办（可能有完成状态变更）
-                          }
-                        },
+                        ),
                       );
 
                       Map<String, Widget> sectionsMap = {
@@ -1955,15 +1980,15 @@ class _HomeDashboardState extends State<HomeDashboard>
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           FloatingActionButton.small(
+            key: _fabPomodoroKey,
             heroTag: 'fab_pomodoro',
             onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => PomodoroScreen(username: widget.username),
-                ),
+              await PageTransitions.pushFromRect(
+                context: context,
+                page: PomodoroScreen(username: widget.username),
+                sourceKey: _fabPomodoroKey,
+                sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
               );
-              // 从番茄钟返回后刷新专注记录卡片和待办列表（可能有完成状态变更）
               if (mounted) {
                 setState(() => _pomodoroRefreshTrigger++);
                 _loadAllData();
@@ -1974,8 +1999,20 @@ class _HomeDashboardState extends State<HomeDashboard>
           ),
           const SizedBox(height: 8),
           FloatingActionButton.extended(
+            key: _fabTodoKey,
             heroTag: 'fab_todo',
-            onPressed: () => _todoSectionKey.currentState?.showAddTodoDialog(),
+            onPressed: () => PageTransitions.pushFromRect(
+              context: context,
+              page: AddTodoScreen(
+                onTodoAdded: (todo) {
+                  setState(() {
+                    _todos = List<TodoItem>.from(_todos)..add(todo);
+                  });
+                },
+              ),
+              sourceKey: _fabTodoKey,
+              sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+            ),
             icon: const Icon(Icons.add_task),
             label: const Text("记待办"),
           ),

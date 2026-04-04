@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../storage_service.dart';
 
 class NotificationService {
   static const MethodChannel _channel =
@@ -46,6 +47,7 @@ class NotificationService {
     required String timeStr,
     required String teacher,
   }) async {
+    if (!await StorageService.isCourseNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     if (Platform.isWindows) {
@@ -68,7 +70,6 @@ class NotificationService {
         'teacher': teacher,
       });
     } catch (e) {
-      debugPrint("更新课程通知失败: $e");
     }
   }
 
@@ -79,6 +80,7 @@ class NotificationService {
     required bool isOver,
     int score = 0,
   }) async {
+    if (!await StorageService.isQuizNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     if (isOver) {
@@ -96,11 +98,12 @@ class NotificationService {
         'score': score,
       });
     } catch (e) {
-      debugPrint("更新测验通知失败: $e");
+
     }
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
+    if (!await StorageService.isTodoSummaryNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     final DateTime now = DateTime.now();
@@ -156,7 +159,6 @@ class NotificationService {
 
   static String _detectTodoType(String title) {
     final lowerTitle = title.toLowerCase();
-    debugPrint("🔍 _detectTodoType 检测: title=$title, lowerTitle=$lowerTitle");
     if (lowerTitle.contains('快递') ||
         lowerTitle.contains('取件') ||
         lowerTitle.contains('顺丰') ||
@@ -166,7 +168,6 @@ class NotificationService {
         lowerTitle.contains('圆通') ||
         lowerTitle.contains('韵达') ||
         lowerTitle.contains('申通')) {
-      debugPrint("🔍 匹配到: delivery");
       return 'delivery';
     } else if (lowerTitle.contains('奶茶') ||
         lowerTitle.contains('咖啡') ||
@@ -178,7 +179,6 @@ class NotificationService {
         lowerTitle.contains('库迪') ||
         lowerTitle.contains('coco') ||
         lowerTitle.contains('一点点')) {
-      debugPrint("🔍 匹配到: cafe");
       return 'cafe';
     } else if (lowerTitle.contains('海底捞') ||
         lowerTitle.contains('太二') ||
@@ -187,17 +187,14 @@ class NotificationService {
         lowerTitle.contains('必胜客') ||
         lowerTitle.contains('堂食') ||
         lowerTitle.contains('餐饮')) {
-      debugPrint("🔍 匹配到: restaurant");
       return 'restaurant';
     } else if (lowerTitle.contains('取餐') ||
         lowerTitle.contains('外卖') ||
         lowerTitle.contains('肯德基') ||
         lowerTitle.contains('麦当劳') ||
         lowerTitle.contains('KFC')) {
-      debugPrint("🔍 匹配到: food");
       return 'food';
     }
-    debugPrint("🔍 匹配到: default");
     return 'default';
   }
 
@@ -206,14 +203,21 @@ class NotificationService {
     if (todo.dueDate == null) return;
     if (!_isSameDay(todo.dueDate!.toLocal(), DateTime.now())) return;
 
+    final todoType = _detectTodoType(todo.title);
+    final isSpecialTodo = todoType != 'default';
+
+    if (isSpecialTodo) {
+      if (!await StorageService.isSpecialTodoNotificationEnabled()) return;
+    } else {
+      if (!await StorageService.isTodoSummaryNotificationEnabled()) return;
+    }
+
     DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
             todo.createdDate ?? todo.createdAt,
             isUtc: true)
         .toLocal();
     String timeStr =
         "${DateFormat('HH:mm').format(startDate)} - ${DateFormat('HH:mm').format(todo.dueDate!.toLocal())}";
-    final todoType = _detectTodoType(todo.title);
-    final isSpecialTodo = todoType != 'default';
     final notifId = isSpecialTodo ? todo.id.hashCode : null;
 
     debugPrint(
@@ -255,6 +259,7 @@ class NotificationService {
     List<String> tagNames = const [],
     String alertKey = '',
   }) async {
+    if (!await StorageService.isPomodoroNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     final String countdownStr;
@@ -284,6 +289,7 @@ class NotificationService {
     String? todoTitle,
     bool isBreak = false,
   }) async {
+    if (!await StorageService.isPomodoroEndNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     if (Platform.isWindows) {
@@ -333,6 +339,7 @@ class NotificationService {
 
   static Future<void> scheduleReminders(
       List<Map<String, dynamic>> reminders) async {
+    if (!await StorageService.isReminderNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
     if (reminders.isEmpty) return;
     try {
@@ -388,6 +395,7 @@ class NotificationService {
     required int maxAttempts,
     required String status,
   }) async {
+    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     final title = '🔍 图片识别待办中...';
@@ -425,6 +433,7 @@ class NotificationService {
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
   }) async {
+    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     final title = '✅ 图片识别完成';
@@ -457,6 +466,7 @@ class NotificationService {
   static Future<void> showTodoRecognizeFailed({
     required String errorMsg,
   }) async {
+    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     final title = '❌ 图片识别失败';

@@ -11,7 +11,8 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 
 /// 从 WebSocket 收到的跨端状态（扩充了版本更新字段）
 class CrossDevicePomodoroState {
-  final String action;      // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT' | 'UPDATE_AVAILABLE'
+  final String
+      action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT' | 'UPDATE_AVAILABLE'
   final String? sessionUuid;
   final String? todoUuid;
   final String? todoTitle;
@@ -50,7 +51,8 @@ class CrossDevicePomodoroState {
   factory CrossDevicePomodoroState.fromJson(Map<String, dynamic> j) =>
       CrossDevicePomodoroState(
         action: j['action']?.toString().toUpperCase() ?? 'UNKNOWN',
-        sessionUuid: j['session_uuid']?.toString() ?? j['sessionUuid']?.toString(),
+        sessionUuid:
+            j['session_uuid']?.toString() ?? j['sessionUuid']?.toString(),
         todoUuid: j['todo_uuid']?.toString(),
         todoTitle: j['todo_title']?.toString(),
         duration: _parseInt(j['duration']),
@@ -81,19 +83,19 @@ class CrossDevicePomodoroState {
   }
 
   Map<String, dynamic> toJson() => {
-    'action': action,
-    if (todoUuid != null) 'todo_uuid': todoUuid,
-    if (sessionUuid != null) 'session_uuid': sessionUuid,
-    if (todoTitle != null) 'todo_title': todoTitle,
-    if (duration != null) 'duration': duration,
-    if (targetEndMs != null) 'target_end_ms': targetEndMs,
-    if (tags.isNotEmpty) 'tags': tags,
-    if (mode != null) 'mode': mode,
-    // 🚀 新增序列化
-    if (latestVersion != null) 'latest_version': latestVersion,
-    if (downloadUrl != null) 'download_url': downloadUrl,
-    if (releaseNotes != null) 'release_notes': releaseNotes,
-  };
+        'action': action,
+        if (todoUuid != null) 'todo_uuid': todoUuid,
+        if (sessionUuid != null) 'session_uuid': sessionUuid,
+        if (todoTitle != null) 'todo_title': todoTitle,
+        if (duration != null) 'duration': duration,
+        if (targetEndMs != null) 'target_end_ms': targetEndMs,
+        if (tags.isNotEmpty) 'tags': tags,
+        if (mode != null) 'mode': mode,
+        // 🚀 新增序列化
+        if (latestVersion != null) 'latest_version': latestVersion,
+        if (downloadUrl != null) 'download_url': downloadUrl,
+        if (releaseNotes != null) 'release_notes': releaseNotes,
+      };
 }
 
 enum SyncConnectionState { disconnected, connecting, connected, error }
@@ -127,13 +129,23 @@ class PomodoroSyncService {
   Stream<CrossDevicePomodoroState> get onStateChanged => _stateCtrl.stream;
   Stream<SyncConnectionState> get onConnectionChanged => _connStateCtrl.stream;
 
+  void dispose() {
+    _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    _wsSub?.cancel();
+    _channel?.sink.close(ws_status.normalClosure);
+    if (!_stateCtrl.isClosed) _stateCtrl.close();
+    if (!_connStateCtrl.isClosed) _connStateCtrl.close();
+  }
+
   SyncConnectionState _connState = SyncConnectionState.disconnected;
   SyncConnectionState get connectionState => _connState;
 
   // ── 公开 API ─────────────────────────────────────────────
 
   /// 🚀 传入版本号（建议使用 package_info_plus 获取后传入）
-  Future<void> ensureConnected(String userId, String deviceId, {String? appVersion}) async {
+  Future<void> ensureConnected(String userId, String deviceId,
+      {String? appVersion}) async {
     if (appVersion != null) _appVersion = appVersion; // 记录版本号
 
     if (_userId == userId &&
@@ -148,7 +160,8 @@ class PomodoroSyncService {
   }
 
   /// 🚀 强制重连时也可更新版本号
-  Future<void> forceReconnect(String userId, String deviceId, {String? appVersion}) async {
+  Future<void> forceReconnect(String userId, String deviceId,
+      {String? appVersion}) async {
     if (appVersion != null) _appVersion = appVersion;
     _userId = userId;
     _deviceId = deviceId;
@@ -176,7 +189,9 @@ class PomodoroSyncService {
     _heartbeatTimer?.cancel();
     await _wsSub?.cancel();
     _wsSub = null;
-    try { await _channel?.sink.close(ws_status.normalClosure); } catch (_) {}
+    try {
+      await _channel?.sink.close(ws_status.normalClosure);
+    } catch (_) {}
     _channel = null;
 
     _setConnState(SyncConnectionState.connecting);
@@ -189,9 +204,9 @@ class PomodoroSyncService {
       // 🚀 核心改造：在握手 URL 中直接汇报平台和版本
       final uri = Uri.parse(
         '$_wsUrl/?userId=${Uri.encodeComponent(_userId!)}'
-            '&deviceId=${Uri.encodeComponent(_deviceId!)}'
-            '&platform=${Uri.encodeComponent(platform)}' // 传给云端方便下发对应安装包
-            '&version=${Uri.encodeComponent(versionParam)}', // 传给云端用于统计和对比
+        '&deviceId=${Uri.encodeComponent(_deviceId!)}'
+        '&platform=${Uri.encodeComponent(platform)}' // 传给云端方便下发对应安装包
+        '&version=${Uri.encodeComponent(versionParam)}', // 传给云端用于统计和对比
       );
 
       _channel = WebSocketChannel.connect(uri);
@@ -234,7 +249,8 @@ class PomodoroSyncService {
       if (signal.action == 'UPDATE_AVAILABLE') {
         debugPrint('[PomodoroSync] 🎁 收到新版本推送: ${signal.latestVersion}');
       } else {
-        debugPrint('[PomodoroSync] 📨 ${signal.action} from ${signal.sourceDevice}');
+        debugPrint(
+            '[PomodoroSync] 📨 ${signal.action} from ${signal.sourceDevice}');
       }
 
       if (!_stateCtrl.isClosed) _stateCtrl.add(signal);
@@ -323,7 +339,10 @@ class PomodoroSyncService {
 
   void sendStopSignal() => _send({'action': 'STOP'});
 
-  void sendSwitchSignal({required String? todoUuid, required String? todoTitle, required String sessionUuid}) {
+  void sendSwitchSignal(
+      {required String? todoUuid,
+      required String? todoTitle,
+      required String sessionUuid}) {
     _send({
       'action': 'SWITCH',
       'session_uuid': sessionUuid,
@@ -349,7 +368,9 @@ class PomodoroSyncService {
     _heartbeatTimer?.cancel();
     await _wsSub?.cancel();
     _wsSub = null;
-    try { await _channel?.sink.close(ws_status.goingAway); } catch (_) {}
+    try {
+      await _channel?.sink.close(ws_status.goingAway);
+    } catch (_) {}
     _channel = null;
     _userId = null;
     _deviceId = null;

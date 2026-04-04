@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'models.dart';
 import 'services/api_service.dart';
+import 'services/band_sync_service.dart';
 
 class StorageService {
   static SharedPreferences? _prefs;
@@ -17,6 +18,9 @@ class StorageService {
     _prefs = await SharedPreferences.getInstance();
     return _prefs!;
   }
+
+  static String? _lastRecurrenceCheckDate;
+  static final Map<String, bool> _recurrenceCheckCache = {};
 
   // --- 常量定义 ---
   static const String KEY_USERS = "users_data";
@@ -47,6 +51,22 @@ class StorageService {
 
   static const String KEY_LLM_RETRY_COUNT = "llm_retry_count";
   static const String KEY_PENDING_TODO_CONFIRM = "pending_todo_confirm";
+
+  // Notification settings keys
+  static const String KEY_NOTIFY_LIVE_ENABLED = "notify_live_activity_enabled";
+  static const String KEY_NOTIFY_NORMAL_ENABLED = "notify_normal_enabled";
+  static const String KEY_NOTIFY_COURSE_ENABLED = "notify_course_enabled";
+  static const String KEY_NOTIFY_QUIZ_ENABLED = "notify_quiz_enabled";
+  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED =
+      "notify_todo_summary_enabled";
+  static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
+      "notify_special_todo_enabled";
+  static const String KEY_NOTIFY_POMODORO_ENABLED = "notify_pomodoro_enabled";
+  static const String KEY_NOTIFY_TODO_RECOGNIZE_ENABLED =
+      "notify_todo_recognize_enabled";
+  static const String KEY_NOTIFY_POMODORO_END_ENABLED =
+      "notify_pomodoro_end_enabled";
+  static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -359,6 +379,16 @@ class StorageService {
         dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
     if (sync) Future.microtask(() => syncData(username));
+    Future.microtask(() => _syncTodosToBand(items));
+  }
+
+  static Future<void> _syncTodosToBand(List<TodoItem> items) async {
+    if (!BandSyncService.isInitialized || !BandSyncService.isConnected) return;
+    try {
+      final activeTodos =
+          items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
+      await BandSyncService.syncTodos(activeTodos);
+    } catch (_) {}
   }
 
   static Future<List<TodoItem>> getTodos(String username) async {
@@ -374,32 +404,42 @@ class StorageService {
       }
     }
 
-    // 🚀 自动重置重复任务逻辑
-    DateTime now = DateTime.now();
+    final today = DateTime.now();
+    final todayKey = '${today.year}-${today.month}-${today.day}';
+    if (_lastRecurrenceCheckDate != todayKey) {
+      _lastRecurrenceCheckDate = todayKey;
+      _recurrenceCheckCache.clear();
+    }
+
+    final cacheKey = 'recurrence_$username';
+    if (_recurrenceCheckCache.containsKey(cacheKey)) {
+      return todos;
+    }
+
     bool needSave = false;
 
     for (var todo in todos) {
       if (todo.isDeleted) continue;
       if (todo.recurrence == RecurrenceType.none) continue;
       if (todo.recurrenceEndDate != null &&
-          now.isAfter(todo.recurrenceEndDate!)) continue;
+          today.isAfter(todo.recurrenceEndDate!)) continue;
 
       final DateTime baseLocal = _getRecurrenceBaseDate(todo);
       final DateTime baseDay =
           DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
-      final DateTime today = DateTime(now.year, now.month, now.day);
+      final DateTime todayDay = DateTime(today.year, today.month, today.day);
 
       if (todo.recurrence == RecurrenceType.daily) {
-        if (today.isAfter(baseDay)) {
+        if (todayDay.isAfter(baseDay)) {
           todo.isDone = false;
-          _rollRecurrenceDateToToday(todo, now);
+          _rollRecurrenceDateToToday(todo, today);
           todo.markAsChanged();
           needSave = true;
         }
       } else if (todo.recurrence == RecurrenceType.customDays &&
           todo.customIntervalDays != null &&
           todo.customIntervalDays! > 0) {
-        int diffDays = today.difference(baseDay).inDays;
+        int diffDays = todayDay.difference(baseDay).inDays;
         if (diffDays >= todo.customIntervalDays!) {
           todo.isDone = false;
           int periods = diffDays ~/ todo.customIntervalDays!;
@@ -413,6 +453,8 @@ class StorageService {
     if (needSave) {
       await saveTodos(username, todos, sync: true);
     }
+
+    _recurrenceCheckCache[cacheKey] = true;
 
     return todos;
   }
@@ -801,59 +843,79 @@ class StorageService {
         debugPrint("✅ 本机屏幕时间上传成功，已清理待上传缓存");
       }
 
-      // 6. 🛡️ 数据合并逻辑 (LWW - Last Write Wins)
+      // 6. 🛡️ 数据合并逻辑 (LWW - Last Write Wins) — O(1) HashMap lookup
 
       // 合并 Todos
       List<dynamic> serverTodos = response['server_todos'] ?? [];
+      final Map<String, int> todosIndexMap = {
+        for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
+      };
       for (var raw in serverTodos) {
         TodoItem sItem = TodoItem.fromJson(raw);
-        int index = allLocalTodos.indexWhere((l) => l.id == sItem.id);
-        if (index == -1) {
+        if (todosIndexMap.containsKey(sItem.id)) {
+          final idx = todosIndexMap[sItem.id]!;
+          if (sItem.isDeleted ||
+              sItem.version > allLocalTodos[idx].version ||
+              sItem.updatedAt > allLocalTodos[idx].updatedAt) {
+            allLocalTodos[idx] = sItem;
+            hasChanges = true;
+          }
+        } else {
           if (!sItem.isDeleted) {
+            todosIndexMap[sItem.id] = allLocalTodos.length;
             allLocalTodos.add(sItem);
             hasChanges = true;
           }
-        } else if (sItem.isDeleted ||
-            sItem.version > allLocalTodos[index].version ||
-            sItem.updatedAt > allLocalTodos[index].updatedAt) {
-          allLocalTodos[index] = sItem;
-          hasChanges = true;
         }
       }
 
       // 合并 Countdowns
       List<dynamic> serverCountdowns = response['server_countdowns'] ?? [];
+      final Map<String, int> countdownsIndexMap = {
+        for (var i = 0; i < allLocalCountdowns.length; i++)
+          allLocalCountdowns[i].id: i
+      };
       for (var raw in serverCountdowns) {
         CountdownItem sItem = CountdownItem.fromJson(raw);
-        int index = allLocalCountdowns.indexWhere((l) => l.id == sItem.id);
-        if (index == -1) {
+        if (countdownsIndexMap.containsKey(sItem.id)) {
+          final idx = countdownsIndexMap[sItem.id]!;
+          if (sItem.isDeleted ||
+              sItem.version > allLocalCountdowns[idx].version ||
+              sItem.updatedAt > allLocalCountdowns[idx].updatedAt) {
+            allLocalCountdowns[idx] = sItem;
+            hasChanges = true;
+          }
+        } else {
           if (!sItem.isDeleted) {
+            countdownsIndexMap[sItem.id] = allLocalCountdowns.length;
             allLocalCountdowns.add(sItem);
             hasChanges = true;
           }
-        } else if (sItem.isDeleted ||
-            sItem.version > allLocalCountdowns[index].version ||
-            sItem.updatedAt > allLocalCountdowns[index].updatedAt) {
-          allLocalCountdowns[index] = sItem;
-          hasChanges = true;
         }
       }
 
       // 合并 TimeLogs
       List<dynamic> serverTimeLogs = response['server_time_logs'] ?? [];
+      final Map<String, int> timeLogsIndexMap = {
+        for (var i = 0; i < allLocalTimeLogs.length; i++)
+          allLocalTimeLogs[i].id: i
+      };
       for (var raw in serverTimeLogs) {
         TimeLogItem sItem = TimeLogItem.fromJson(raw);
-        int index = allLocalTimeLogs.indexWhere((l) => l.id == sItem.id);
-        if (index == -1) {
+        if (timeLogsIndexMap.containsKey(sItem.id)) {
+          final idx = timeLogsIndexMap[sItem.id]!;
+          if (sItem.isDeleted ||
+              sItem.version > allLocalTimeLogs[idx].version ||
+              sItem.updatedAt > allLocalTimeLogs[idx].updatedAt) {
+            allLocalTimeLogs[idx] = sItem;
+            hasChanges = true;
+          }
+        } else {
           if (!sItem.isDeleted) {
+            timeLogsIndexMap[sItem.id] = allLocalTimeLogs.length;
             allLocalTimeLogs.add(sItem);
             hasChanges = true;
           }
-        } else if (sItem.isDeleted ||
-            sItem.version > allLocalTimeLogs[index].version ||
-            sItem.updatedAt > allLocalTimeLogs[index].updatedAt) {
-          allLocalTimeLogs[index] = sItem;
-          hasChanges = true;
         }
       }
 
@@ -1073,5 +1135,114 @@ class StorageService {
   static Future<void> clearPendingTodoConfirm() async {
     final prefs = await StorageService.prefs;
     await prefs.remove(KEY_PENDING_TODO_CONFIRM);
+  }
+
+  // ==========================================
+  // 🔔 通知管理设置
+  // ==========================================
+
+  static Future<bool> isLiveActivityNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_LIVE_ENABLED) ?? true;
+  }
+
+  static Future<void> setLiveActivityNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_LIVE_ENABLED, enabled);
+  }
+
+  static Future<bool> isNormalNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_NORMAL_ENABLED) ?? true;
+  }
+
+  static Future<void> setNormalNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_NORMAL_ENABLED, enabled);
+  }
+
+  static Future<bool> isCourseNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_COURSE_ENABLED) ?? true;
+  }
+
+  static Future<void> setCourseNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_COURSE_ENABLED, enabled);
+  }
+
+  static Future<bool> isQuizNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_QUIZ_ENABLED) ?? true;
+  }
+
+  static Future<void> setQuizNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_QUIZ_ENABLED, enabled);
+  }
+
+  static Future<bool> isTodoSummaryNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_TODO_SUMMARY_ENABLED) ?? true;
+  }
+
+  static Future<void> setTodoSummaryNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_TODO_SUMMARY_ENABLED, enabled);
+  }
+
+  static Future<bool> isSpecialTodoNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_SPECIAL_TODO_ENABLED) ?? true;
+  }
+
+  static Future<void> setSpecialTodoNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_SPECIAL_TODO_ENABLED, enabled);
+  }
+
+  static Future<bool> isPomodoroNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_POMODORO_ENABLED) ?? true;
+  }
+
+  static Future<void> setPomodoroNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_POMODORO_ENABLED, enabled);
+  }
+
+  static Future<bool> isTodoRecognizeNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_TODO_RECOGNIZE_ENABLED) ?? true;
+  }
+
+  static Future<void> setTodoRecognizeNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_TODO_RECOGNIZE_ENABLED, enabled);
+  }
+
+  static Future<bool> isPomodoroEndNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_POMODORO_END_ENABLED) ?? true;
+  }
+
+  static Future<void> setPomodoroEndNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_POMODORO_END_ENABLED, enabled);
+  }
+
+  static Future<bool> isReminderNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_REMINDER_ENABLED) ?? true;
+  }
+
+  static Future<void> setReminderNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_REMINDER_ENABLED, enabled);
+  }
+
+  static void dispose() {
+    _recurrenceCheckCache.clear();
+    _lastRecurrenceCheckDate = null;
   }
 }
