@@ -80,6 +80,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
   String? _wallpaperUrl;
+  bool _wallpaperShow = false;
   bool _isLoadingScreenTime = true;
   DateTime? _lastScreenTimeSync;
   String _currentGreeting = "";
@@ -139,7 +140,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _loadSemesterSettings();
     _generateGreeting();
     _loadAllData();
-    _fetchRandomWallpaper();
+    _initManifestWallpaper();
     WidgetService.init();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
@@ -1683,6 +1684,53 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
+  Future<void> _initManifestWallpaper() async {
+    await UpdateService.initWallpaper();
+    final manifestShow = UpdateService.wallpaperShowNotifier.value;
+    final manifestUrl = UpdateService.wallpaperUrlNotifier.value;
+
+    if (manifestShow && manifestUrl != null && manifestUrl.isNotEmpty) {
+      setState(() {
+        _wallpaperShow = true;
+        _wallpaperUrl = manifestUrl;
+      });
+    } else {
+      await _fetchRandomWallpaper();
+    }
+
+    // 启动时立即检查是否需要兜底刷新
+    if (await UpdateService.needsWallpaperRefresh()) {
+      UpdateService.updateWallpaperFromManifest();
+    }
+
+    UpdateService.wallpaperShowNotifier.addListener(() {
+      if (mounted) {
+        final show = UpdateService.wallpaperShowNotifier.value;
+        final url = UpdateService.wallpaperUrlNotifier.value;
+        if (show && url != null && url.isNotEmpty) {
+          setState(() {
+            _wallpaperShow = true;
+            _wallpaperUrl = url;
+          });
+        } else if (mounted) {
+          _fetchRandomWallpaper();
+        }
+      }
+    });
+    UpdateService.wallpaperUrlNotifier.addListener(() {
+      if (mounted) {
+        final show = UpdateService.wallpaperShowNotifier.value;
+        final url = UpdateService.wallpaperUrlNotifier.value;
+        if (show && url != null && url.isNotEmpty) {
+          setState(() {
+            _wallpaperShow = true;
+            _wallpaperUrl = url;
+          });
+        }
+      }
+    });
+  }
+
   Future<void> _fetchRandomWallpaper() async {
     const String repoApiUrl =
         "https://api.github.com/repos/Junpgle/math_quiz_app/contents/wallpaper";
@@ -1741,7 +1789,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   @override
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    bool showWallpaper = !isDarkMode && _wallpaperUrl != null;
+    bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
     bool isLight = showWallpaper;
 
     return Scaffold(

@@ -7,10 +7,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 import 'package:video_player_win/video_player_win_plugin.dart'; // video_player_win plugin
 
+import 'update_service.dart';
 import 'utils/page_transitions.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
 import 'screens/feature_guide_screen.dart';
+import 'screens/splash_screen.dart';
 import 'storage_service.dart';
 import 'services/api_service.dart';
 import 'services/float_window_service.dart';
@@ -19,6 +21,7 @@ import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
+import 'services/splash_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 
@@ -100,11 +103,22 @@ class _MyAppState extends State<MyApp> {
   String? _loggedInUser;
   bool _isChecking = true;
   bool _showFeatureGuide = false;
+  Map<String, dynamic>? _splashContent;
 
   @override
   void initState() {
     super.initState();
     registerCloseDialogCallback(_showCloseConfirmDialog);
+    _loadSplashThenInit();
+  }
+
+  Future<void> _loadSplashThenInit() async {
+    final splashContent = await SplashService.getCachedContent();
+    if (mounted) {
+      setState(() {
+        _splashContent = splashContent;
+      });
+    }
     _initializeApp();
   }
 
@@ -149,6 +163,9 @@ class _MyAppState extends State<MyApp> {
     // 0. 读取主题偏好
     await StorageService.initTheme();
 
+    // 0.5 初始化壁纸(从manifest获取)
+    UpdateService.initWallpaper();
+
     // Initialize server choice
     String serverChoice = await StorageService.getServerChoice();
     ApiService.setServerChoice(serverChoice);
@@ -159,10 +176,14 @@ class _MyAppState extends State<MyApp> {
     // 2. 检查升级引导
     final needGuide = await FeatureGuideScreen.shouldShow();
 
+    // 2.5 加载开屏内容
+    final splashContent = await SplashService.getCachedContent();
+
     if (mounted) {
       setState(() {
         _loggedInUser = user;
         _showFeatureGuide = needGuide;
+        _splashContent = splashContent;
         _isChecking = false;
       });
     }
@@ -172,6 +193,17 @@ class _MyAppState extends State<MyApp> {
 
     // 4. 初始化手环通信服务（全局）
     _initBandService();
+
+    // 5. 后台预取明天的开屏内容
+    _prefetchSplashContent();
+  }
+
+  Future<void> _prefetchSplashContent() async {
+    try {
+      await SplashService.prefetchTomorrowContent();
+    } catch (e) {
+      debugPrint('[Main] 开屏内容预取失败: $e');
+    }
   }
 
   StreamSubscription? _bandPomodoroSub;
@@ -381,22 +413,33 @@ class _MyAppState extends State<MyApp> {
           builder: (context, child) {
             return child ?? const SizedBox.shrink();
           },
-          home: _isChecking
-              ? Scaffold(
-                  backgroundColor: currentThemeMode == ThemeMode.dark
-                      ? Colors.grey[900]
-                      : Colors.blue,
-                  body: const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
+          home: _splashContent != null
+              ? SplashScreen(
+                  content: _splashContent!,
+                  onComplete: () {
+                    if (mounted) {
+                      setState(() {
+                        _splashContent = null;
+                      });
+                    }
+                  },
                 )
-              : _showFeatureGuide
-                  ? FeatureGuideScreen(loggedInUser: _loggedInUser)
-                  : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
-                      ? HomeDashboard(
-                          username: _loggedInUser!,
-                        )
-                      : const LoginScreen(),
+              : _isChecking
+                  ? Scaffold(
+                      backgroundColor: currentThemeMode == ThemeMode.dark
+                          ? Colors.grey[900]
+                          : Colors.blue,
+                      body: const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+                    )
+                  : _showFeatureGuide
+                      ? FeatureGuideScreen(loggedInUser: _loggedInUser)
+                      : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
+                          ? HomeDashboard(
+                              username: _loggedInUser!,
+                            )
+                          : const LoginScreen(),
         );
       },
     );
