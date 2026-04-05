@@ -33,6 +33,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
   String _streamingContent = '';
+  String _streamingReasoning = '';
   List<String> _suggestions = [];
   List<Map<String, dynamic>> _pendingTodos = [];
   Set<int> _selectedTodoIndices = {};
@@ -422,7 +423,6 @@ JSON格式（必须严格遵循）：
       String fullContent = '';
       String reasoningContent = '';
       String buffer = '';
-      bool reasoningDone = false;
       String lastError = '';
       int chunkCount = 0;
       await for (final chunk in streamedResponse.stream.transform(
@@ -459,24 +459,15 @@ JSON格式（必须严格遵循）：
                 final reasoning = delta['reasoning_content'] as String?;
                 final content = delta['content'] as String?;
                 if (reasoning != null && reasoning.isNotEmpty) {
-                  if (!reasoningDone) {
-                    fullContent += '=== 思考过程 ===\n\n';
-                    reasoningDone = true;
-                  }
                   reasoningContent += reasoning;
-                  fullContent += reasoning;
                   if (mounted) {
                     setState(() {
-                      _streamingContent = fullContent;
+                      _streamingReasoning = reasoningContent;
                     });
                     _scrollToBottom();
                   }
                 }
                 if (content != null && content.isNotEmpty) {
-                  if (reasoningDone) {
-                    fullContent += '\n\n=== 最终回答 ===\n\n';
-                    reasoningDone = false;
-                  }
                   fullContent += content;
                   if (mounted) {
                     setState(() {
@@ -503,7 +494,7 @@ JSON格式（必须严格遵循）：
 
       client.close();
 
-      if (fullContent.isEmpty) {
+      if (fullContent.isEmpty && reasoningContent.isEmpty) {
         throw Exception(
             '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''} (共$chunkCount个数据块)');
       }
@@ -515,11 +506,13 @@ JSON格式（必须严格遵循）：
       final assistantMsg = ChatMessage(
         role: ChatRole.assistant,
         content: cleanContent,
+        reasoningContent: reasoningContent,
       );
 
       setState(() {
         _messages.add(assistantMsg);
         _streamingContent = '';
+        _streamingReasoning = '';
         _isLoading = false;
         if (todoActions.isNotEmpty) {
           _pendingTodos = todoActions;
@@ -1779,6 +1772,12 @@ JSON格式（必须严格遵循）：
               crossAxisAlignment:
                   isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
+                if (!isUser && msg.reasoningContent.isNotEmpty)
+                  _buildCollapsibleReasoning(
+                    msg.reasoningContent,
+                    isDark,
+                    false,
+                  ),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -1864,6 +1863,18 @@ JSON格式（必须严格遵循）：
     );
   }
 
+  Widget _buildCollapsibleReasoning(
+    String reasoning,
+    bool isDark,
+    bool isStreaming,
+  ) {
+    return _CollapsibleReasoningWidget(
+      reasoning: reasoning,
+      isDark: isDark,
+      isStreaming: isStreaming,
+    );
+  }
+
   Widget _buildStreamingBubble(bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1887,57 +1898,70 @@ JSON格式（必须严格遵循）：
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest
-                        .withOpacity(isDark ? 0.3 : 0.7),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: _streamingContent.isNotEmpty
-                      ? MarkdownBody(
-                          data: _streamingContent,
-                          styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontSize: 15,
-                            ),
-                            strong: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            listBullet: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontSize: 15,
-                            ),
-                            code: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer,
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .onPrimaryContainer,
-                              fontSize: 14,
-                            ),
-                          ),
-                          selectable: true,
-                        )
-                      : Text(
-                          '思考中...',
-                          style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.5),
-                            fontSize: 15,
-                          ),
+                if (_streamingReasoning.isNotEmpty)
+                  _buildCollapsibleReasoning(_streamingReasoning, isDark, true),
+                if (_streamingContent.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withOpacity(isDark ? 0.3 : 0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: MarkdownBody(
+                      data: _streamingContent,
+                      styleSheet: MarkdownStyleSheet(
+                        p: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 15,
                         ),
-                ),
+                        strong: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        listBullet: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 15,
+                        ),
+                        code: TextStyle(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          backgroundColor:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          fontSize: 14,
+                        ),
+                      ),
+                      selectable: true,
+                    ),
+                  )
+                else if (_streamingReasoning.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withOpacity(isDark ? 0.3 : 0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '思考中...',
+                      style: TextStyle(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.5),
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -2057,6 +2081,126 @@ JSON格式（必须严格遵循）：
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CollapsibleReasoningWidget extends StatefulWidget {
+  final String reasoning;
+  final bool isDark;
+  final bool isStreaming;
+
+  const _CollapsibleReasoningWidget({
+    required this.reasoning,
+    required this.isDark,
+    required this.isStreaming,
+  });
+
+  @override
+  State<_CollapsibleReasoningWidget> createState() =>
+      _CollapsibleReasoningWidgetState();
+}
+
+class _CollapsibleReasoningWidgetState
+    extends State<_CollapsibleReasoningWidget> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        color: widget.isDark
+            ? Colors.grey[900]!.withOpacity(0.5)
+            : Colors.grey[100]!.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.psychology_outlined,
+                    size: 16,
+                    color:
+                        Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '思考过程',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withOpacity(0.7),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (widget.isStreaming)
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.5),
+                      ),
+                    ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 20,
+                    color:
+                        Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: MarkdownBody(
+                data: widget.reasoning,
+                styleSheet: MarkdownStyleSheet(
+                  p: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6),
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  code: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer
+                        .withOpacity(0.3),
+                    fontSize: 12,
+                  ),
+                ),
+                selectable: true,
+              ),
+            ),
+        ],
       ),
     );
   }
