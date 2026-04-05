@@ -38,6 +38,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   Set<int> _selectedTodoIndices = {};
   String _customPrompt = '';
   bool _promptEnabled = true;
+  bool _deepThinking = false;
   String _chatModel = '';
   String _chatApiKey = '';
   String _chatApiUrl = '';
@@ -51,6 +52,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     _initSessions();
     _loadPromptSettings();
     _loadChatConfig();
+    _loadDeepThinking();
   }
 
   @override
@@ -183,6 +185,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     }
   }
 
+  Future<void> _loadDeepThinking() async {
+    final enabled = await ChatStorageService.isDeepThinkingEnabled();
+    if (mounted) {
+      setState(() => _deepThinking = enabled);
+    }
+  }
+
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollCtrl.hasClients) {
@@ -238,11 +247,18 @@ JSON格式（必须严格遵循）：
 - customIntervalDays: 自定义循环间隔天数，仅当recurrence为"customDays"时有效（可选）
 - recurrenceEndDate: 循环结束日期，格式"YYYY-MM-DD"，有循环时建议指定（可选）
 
+【后续建议功能 - 重要规则】
+在每次回复的最后，请附带3-4个简短的后续问题建议，帮助用户继续对话
+格式必须严格如下，放在[SUGGEST_START]和[SUGGEST_END]标记之间：
+[SUGGEST_START]["建议1", "建议2", "建议3", "建议4"][SUGGEST_END]
+每个建议不超过15个字，要具体、实用、与待办相关
+
 注意：
 1. 如果有多个待办，todos数组可以包含多个对象
 2. JSON块必须放在[ACTION_START]和[ACTION_END]标记之间
 3. 除了JSON块外，仍然用正常文字回复用户
-4. 再次强调：用户没有明确要求添加待办时，不要返回JSON操作块''';
+4. 再次强调：用户没有明确要求添加待办时，不要返回JSON操作块
+5. 建议问题必须放在回复的最后，使用[SUGGEST_START]和[SUGGEST_END]标记''';
   }
 
   List<Map<String, dynamic>> _extractTodoActions(String content) {
@@ -274,7 +290,30 @@ JSON格式（必须严格遵循）：
           RegExp(r'\[ACTION_START\].*?\[ACTION_END\]', dotAll: true),
           '',
         )
+        .replaceAll(
+          RegExp(r'\[SUGGEST_START\].*?\[SUGGEST_END\]', dotAll: true),
+          '',
+        )
         .trim();
+  }
+
+  List<String> _extractSuggestionsFromResponse(String content) {
+    final List<String> suggestions = [];
+    final regex = RegExp(
+      r'\[SUGGEST_START\](.*?)\[SUGGEST_END\]',
+      dotAll: true,
+    );
+    for (final match in regex.allMatches(content)) {
+      try {
+        final jsonStr = match.group(1)!.trim();
+        final list = jsonDecode(jsonStr) as List;
+        for (final item in list) {
+          final s = item.toString().trim();
+          if (s.isNotEmpty) suggestions.add(s);
+        }
+      } catch (_) {}
+    }
+    return suggestions;
   }
 
   Future<void> _sendMessage() async {
@@ -362,6 +401,9 @@ JSON格式（必须严格遵循）：
         'max_tokens': 2000,
         'stream': true,
         'stream_options': {'include_usage': true},
+        'thinking': {
+          'type': _deepThinking ? 'enabled' : 'disabled',
+        },
       });
 
       final client = http.Client();
@@ -417,13 +459,23 @@ JSON格式（必须严格遵循）：
                 final reasoning = delta['reasoning_content'] as String?;
                 final content = delta['content'] as String?;
                 if (reasoning != null && reasoning.isNotEmpty) {
+                  if (!reasoningDone) {
+                    fullContent += '=== 思考过程 ===\n\n';
+                    reasoningDone = true;
+                  }
                   reasoningContent += reasoning;
+                  fullContent += reasoning;
+                  if (mounted) {
+                    setState(() {
+                      _streamingContent = fullContent;
+                    });
+                    _scrollToBottom();
+                  }
                 }
                 if (content != null && content.isNotEmpty) {
-                  if (!reasoningDone && reasoningContent.isNotEmpty) {
-                    fullContent +=
-                        '\n\n=== 思考过程 ===\n\n$reasoningContent\n\n=== 最终回答 ===\n\n';
-                    reasoningDone = true;
+                  if (reasoningDone) {
+                    fullContent += '\n\n=== 最终回答 ===\n\n';
+                    reasoningDone = false;
                   }
                   fullContent += content;
                   if (mounted) {
@@ -451,16 +503,13 @@ JSON格式（必须严格遵循）：
 
       client.close();
 
-      if (fullContent.isEmpty && reasoningContent.isEmpty) {
+      if (fullContent.isEmpty) {
         throw Exception(
             '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''} (共$chunkCount个数据块)');
       }
 
-      if (!reasoningDone && reasoningContent.isNotEmpty) {
-        fullContent += '\n\n=== 思考过程 ===\n\n$reasoningContent';
-      }
-
       final todoActions = _extractTodoActions(fullContent);
+      final inlineSuggestions = _extractSuggestionsFromResponse(fullContent);
       final cleanContent = _cleanActionContent(fullContent);
 
       final assistantMsg = ChatMessage(
@@ -479,10 +528,12 @@ JSON格式（必须严格遵循）：
           _pendingTodos = [];
           _selectedTodoIndices.clear();
         }
+        _suggestions = inlineSuggestions.isNotEmpty
+            ? inlineSuggestions
+            : _getDefaultSuggestions();
       });
       await ChatStorageService.addMessage(assistantMsg);
       _scrollToBottom();
-      _generateSuggestions(cleanContent);
       _generateSessionTitle();
     } catch (e) {
       setState(() {
@@ -1266,120 +1317,12 @@ JSON格式（必须严格遵循）：
     );
   }
 
-  Future<void> _generateSuggestions(String assistantResponse) async {
-    setState(() => _suggestions = []);
-
-    try {
-      String model = _chatModel;
-      String apiKey = _chatApiKey;
-      String apiUrl = _chatApiUrl;
-
-      if (model.isEmpty || apiKey.isEmpty) {
-        final globalConfig = await LLMService.getConfig();
-        if (globalConfig != null && globalConfig.isConfigured) {
-          model = globalConfig.model;
-          apiKey = globalConfig.apiKey;
-          apiUrl = globalConfig.apiUrl;
-        } else {
-          setState(() => _suggestions = []);
-          return;
-        }
-      }
-
-      if (apiUrl.isEmpty) {
-        apiUrl = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-      }
-
-      final now = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
-      final todoList = widget.todos.map((t) {
-        return '- ${t['title'] ?? ''}';
-      }).join('\n');
-
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      };
-
-      final body = jsonEncode({
-        'model': model,
-        'stream': true,
-        'messages': [
-          {
-            'role': 'system',
-            'content': '''你是一个智能待办助手。根据用户当前的待办清单和最近的对话内容，生成3-4个简短的后续问题或建议。
-
-要求：
-1. 只返回JSON数组，格式如：["建议1", "建议2", "建议3"]
-2. 每个建议不超过15个字
-3. 建议要具体、实用、与待办相关
-4. 不要包含任何额外文字，只返回JSON数组''',
-          },
-          {
-            'role': 'user',
-            'content': '''当前时间：$now
-当前待办：
-$todoList
-
-AI最近回复：
-${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistantResponse.length)}
-
-请生成4个后续建议问题。''',
-          },
-        ],
-        'temperature': 0.8,
-        'max_tokens': 200,
-      });
-
-      final response = await http
-          .post(
-            Uri.parse(apiUrl),
-            headers: headers,
-            body: body,
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final choices = data['choices'] as List?;
-        if (choices != null && choices.isNotEmpty) {
-          final content = choices[0]['message']['content'] as String;
-          final suggestions = _extractSuggestions(content);
-          if (mounted) {
-            setState(() => _suggestions = suggestions);
-          }
-          return;
-        }
-      }
-    } catch (_) {}
-
-    if (mounted) {
-      setState(() => _suggestions = _getDefaultSuggestions());
-    }
-  }
-
-  List<String> _extractSuggestions(String content) {
-    try {
-      final trimmed = content.trim();
-      int start = trimmed.indexOf('[');
-      int end = trimmed.lastIndexOf(']');
-      if (start != -1 && end != -1 && end > start) {
-        final jsonStr = trimmed.substring(start, end + 1);
-        final list = jsonDecode(jsonStr) as List;
-        return list
-            .map((e) => e.toString())
-            .where((e) => e.isNotEmpty)
-            .toList();
-      }
-    } catch (_) {}
-    return _getDefaultSuggestions();
-  }
-
   List<String> _getDefaultSuggestions() {
     return [
-      '帮我排一下先后顺序',
       '哪些待办最紧急？',
       '今天应该先做什么？',
       '如何高效完成这些待办？',
+      '帮我规划今天的时间安排，并创建待办',
     ];
   }
 
@@ -2065,6 +2008,43 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
             Row(
               children: [
                 _buildModelSelector(),
+                const SizedBox(width: 8),
+                FilterChip(
+                  label: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.psychology_outlined,
+                        size: 16,
+                        color: _deepThinking
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.6),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '深度思考',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _deepThinking
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                  selected: _deepThinking,
+                  onSelected: (val) async {
+                    setState(() => _deepThinking = val);
+                    await ChatStorageService.setDeepThinkingEnabled(val);
+                  },
+                  visualDensity: VisualDensity.compact,
+                ),
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.delete_sweep_outlined, size: 20),

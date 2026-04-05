@@ -49,6 +49,7 @@ class ChatStorageService {
   static const String _chatModelKey = 'chat_model';
   static const String _chatApiKeyKey = 'chat_api_key';
   static const String _chatApiUrlKey = 'chat_api_url';
+  static const String _deepThinkingKey = 'chat_deep_thinking';
   static const String _defaultPrompt = '''你是一个智能待办助手，帮助用户管理他们的待办事项。
 
 【当前时间】
@@ -279,5 +280,15 @@ class ChatStorageService {
     await prefs.remove(_chatModelKey);
     await prefs.remove(_chatApiKeyKey);
     await prefs.remove(_chatApiUrlKey);
+  }
+
+  static Future<bool> isDeepThinkingEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_deepThinkingKey) ?? false;
+  }
+
+  static Future<void> setDeepThinkingEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_deepThinkingKey, enabled);
   }
 }

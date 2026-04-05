@@ -36,6 +36,8 @@ import 'home_settings_screen.dart';
 import 'feature_guide_screen.dart';
 import 'todo_confirm_screen.dart';
 import 'add_todo_screen.dart';
+import 'course_screens.dart';
+import 'band_sync_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
@@ -161,6 +163,13 @@ class _HomeDashboardState extends State<HomeDashboard>
             break;
           case "openTodoConfirm":
             _checkPendingTodoConfirm();
+            break;
+          case "openShortcut":
+            final shortcutType = call.arguments as String?;
+            debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
+            if (shortcutType != null) {
+              _handleShortcut(shortcutType);
+            }
             break;
           // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
         }
@@ -344,6 +353,31 @@ class _HomeDashboardState extends State<HomeDashboard>
     setState(() {
       _pendingTodoConfirm = null;
     });
+  }
+
+  /// 处理 App Shortcut 导航
+  void _handleShortcut(String shortcutType) {
+    if (!mounted) return;
+    debugPrint("⚡ 处理 Shortcut: $shortcutType");
+    switch (shortcutType) {
+      case 'settings':
+        Navigator.of(context).push(
+          PageTransitions.slideHorizontal(const SettingsPage()),
+        );
+        break;
+      case 'schedule':
+        PageTransitions.pushFromRect(
+          context: context,
+          page: WeeklyCourseScreen(username: widget.username),
+          sourceKey: _courseButtonKey,
+        );
+        break;
+      case 'band':
+        Navigator.of(context).push(
+          PageTransitions.slideHorizontal(const BandSyncScreen()),
+        );
+        break;
+    }
   }
 
   /// 打开待确认待办页面

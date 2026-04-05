@@ -111,6 +111,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 处理从通知栏传来的待办确认动作
         handleTodoConfirmFromIntent(intent)
 
+        // 处理 App Shortcuts 导航
+        handleShortcutFromIntent(intent)
+
         // 注册 Shizuku 权限请求与生命周期监听器
         Shizuku.addRequestPermissionResultListener(this)
         Shizuku.addBinderReceivedListener(this)
@@ -143,6 +146,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         super.onNewIntent(intent)
         handlePomodoroActionFromIntent(intent)
         handleTodoConfirmFromIntent(intent)
+        handleShortcutFromIntent(intent)
     }
 
     private fun handleTodoConfirmFromIntent(intent: Intent?) {
@@ -160,6 +164,31 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             // methodChannel还未初始化，保存待处理状态
             pendingTodoConfirm = true
             Log.d(TAG, "📋 Saved pending todo confirm")
+        }
+    }
+
+    private var pendingShortcut: String? = null
+
+    private fun handleShortcutFromIntent(intent: Intent?) {
+        val action = intent?.action ?: return
+        if (!action.startsWith("com.math_quiz.ACTION_OPEN_")) return
+        
+        val shortcutType = when (action) {
+            "com.math_quiz.ACTION_OPEN_SETTINGS" -> "settings"
+            "com.math_quiz.ACTION_OPEN_SCHEDULE" -> "schedule"
+            "com.math_quiz.ACTION_OPEN_BAND" -> "band"
+            else -> return
+        }
+        Log.d(TAG, "⚡ handleShortcutFromIntent: $shortcutType")
+        // 清除 action，防止重复处理
+        intent.action = null
+
+        if (methodChannel != null) {
+            methodChannel?.invokeMethod("openShortcut", shortcutType)
+            Log.d(TAG, "⚡ Invoked openShortcut with type: $shortcutType")
+        } else {
+            pendingShortcut = shortcutType
+            Log.d(TAG, "⚡ Saved pending shortcut: $shortcutType")
         }
     }
 
@@ -269,6 +298,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.d(TAG, "📋 Processing pending todo confirm")
             methodChannel?.invokeMethod("openTodoConfirm", null)
             pendingTodoConfirm = false
+        }
+
+        // 处理待处理的 Shortcut 导航
+        pendingShortcut?.let { shortcutType ->
+            Log.d(TAG, "⚡ Processing pending shortcut: $shortcutType")
+            methodChannel?.invokeMethod("openShortcut", shortcutType)
+            pendingShortcut = null
         }
 
         methodChannel?.setMethodCallHandler { call, result ->

@@ -10,4 +10,15 @@
     <string name="checkout">Checkout</string>
     <string name="checking_out">Order placed</string>
 
+    <!-- App Shortcuts -->
+    <string name="shortcut_settings_short">设置</string>
+    <string name="shortcut_settings_long">应用设置</string>
+    <string name="shortcut_settings_disabled">设置不可用</string>
+    <string name="shortcut_schedule_short">课程表</string>
+    <string name="shortcut_schedule_long">查看课程表</string>
+    <string name="shortcut_schedule_disabled">课程表不可用</string>
+    <string name="shortcut_band_short">手环</string>
+    <string name="shortcut_band_long">手环设置</string>
+    <string name="shortcut_band_disabled">手环设置不可用</string>
+
 </resources>
