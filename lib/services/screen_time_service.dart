@@ -90,12 +90,13 @@ class ScreenTimeService {
           String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
           await StorageService.saveLocalScreenTime(
               {'date': today, 'apps': apps});
+          hasScreenTimeData = true;
         }
       }
 
       // 2. 将本机纯净数据推送到云端
       // 🚀 优先使用独立的 /api/screen_time 接口上传屏幕时间数据
-      if (Platform.isAndroid && hasScreenTimeData) {
+      if (hasScreenTimeData) {
         String deviceName = await StorageService.getDeviceFriendlyName();
         await StorageService.syncScreenTimeAlone(username, deviceName);
       }
