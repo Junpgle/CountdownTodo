@@ -181,9 +181,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
   }
 
   Widget _buildList() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final List<CountdownItem> activeCountdowns =
         widget.countdowns.where((item) {
-      return item.targetDate.difference(DateTime.now()).inDays + 1 >= 0;
+      return item.targetDate.difference(today).inDays >= 0;
     }).toList()
           ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
@@ -199,7 +201,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
         itemCount: activeCountdowns.length,
         itemBuilder: (context, index) {
           final item = activeCountdowns[index];
-          final diff = item.targetDate.difference(DateTime.now()).inDays + 1;
+          final diff = item.targetDate.difference(today).inDays;
 
           final bool isUrgent = diff <= 3;
 
