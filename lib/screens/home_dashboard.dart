@@ -184,10 +184,14 @@ class _HomeDashboardState extends State<HomeDashboard>
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) _initScreenTime();
       });
-      // 灵动岛由用户从设置中手动开启, 避免启动时 native 崩溃
+      // 灵动岛启动时自动显示 idle 状态
       Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) StorageService.syncAppMappings();
+        if (mounted) {
+          StorageService.syncAppMappings();
+          _initIslandOnStartup();
+        }
       });
+
       // 保活：检查精确闹钟权限（Android 12+），仅首次提示一次
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) _checkExactAlarmPermission();
@@ -1144,6 +1148,34 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (mounted) {
       setState(() => _pomodoroRefreshTrigger++);
       _loadAllData();
+    }
+  }
+
+  /// 启动时自动初始化灵动岛（如果用户已开启）
+  Future<void> _initIslandOnStartup() async {
+    if (!Platform.isWindows) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final style = prefs.getInt('float_window_style') ?? 0;
+      if (style != 1) return;
+
+      // 检查是否有正在进行的番茄钟，如果有，_checkAndNavigateToPomodoro 已处理
+      final saved = await PomodoroService.loadRunState();
+      if (saved != null &&
+          (saved.phase == PomodoroPhase.focusing ||
+              saved.phase == PomodoroPhase.breaking)) {
+        final remaining =
+            saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
+        if (saved.mode == TimerMode.countdown && remaining <= 0) return;
+        // 番茄钟场景已由 _checkAndNavigateToPomodoro 处理
+        return;
+      }
+
+      // 无番茄钟时，显示 idle 状态的灵动岛
+      debugPrint('[HomeDashboard] Initializing island on startup (idle state)');
+      await FloatWindowService.update(forceReset: true);
+    } catch (e) {
+      debugPrint('[HomeDashboard] Island startup init failed: $e');
     }
   }
 

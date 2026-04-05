@@ -67,6 +67,16 @@ android {
             )
         }
     }
+
+    // 按 CPU 架构拆分 APK 以减小体积
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86_64")
+            isUniversalApk = true  // 同时生成包含所有架构的通用 APK
+        }
+    }
 }
 
 kotlin {
