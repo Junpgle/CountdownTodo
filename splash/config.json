@@ -1,0 +1,18 @@
+{
+  "2026-04-05": {
+    "title": "清明",
+    "subtitle": "春和景明，慎终追远",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/splash/qingming.jpg",
+    "bg_color_top": "#E6E6E6",
+    "bg_color_bottom": "#B8B8B8",
+    "duration_ms": 2000
+  },
+  "2026-04-20": {
+    "title": "谷雨",
+    "subtitle": "雨生百谷，润物无声",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/guyu.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  }
+}
