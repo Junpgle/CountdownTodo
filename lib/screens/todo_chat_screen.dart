@@ -381,6 +381,8 @@ JSON格式（必须严格遵循）：
       String reasoningContent = '';
       String buffer = '';
       bool reasoningDone = false;
+      String lastError = '';
+      int chunkCount = 0;
       await for (final chunk in streamedResponse.stream.transform(
         utf8.decoder,
       )) {
@@ -391,43 +393,67 @@ JSON格式（必须严格遵循）：
           final line = buffer.substring(0, newlineIdx).replaceAll('\r', '');
           buffer = buffer.substring(newlineIdx + 1);
           final trimmed = line.trim();
-          if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
+          if (trimmed.isEmpty) continue;
+          if (!trimmed.startsWith('data:')) {
+            lastError = '非SSE行: $trimmed';
+            continue;
+          }
           final data = trimmed.substring(5).trim();
           if (data == '[DONE]') continue;
 
+          chunkCount++;
           try {
             final json = jsonDecode(data) as Map<String, dynamic>;
+
+            final error = json['error'] as Map<String, dynamic>?;
+            if (error != null) {
+              throw Exception('API错误: ${error['message']}');
+            }
+
             final choices = json['choices'] as List?;
             if (choices != null && choices.isNotEmpty) {
               final delta = choices[0]['delta'] as Map<String, dynamic>?;
-              final reasoning = delta?['reasoning_content'] as String?;
-              final content = delta?['content'] as String?;
-              if (reasoning != null && reasoning.isNotEmpty) {
-                reasoningContent += reasoning;
-              }
-              if (content != null && content.isNotEmpty) {
-                if (!reasoningDone && reasoningContent.isNotEmpty) {
-                  fullContent +=
-                      '\n\n=== 思考过程 ===\n\n$reasoningContent\n\n=== 最终回答 ===\n\n';
-                  reasoningDone = true;
+              if (delta != null) {
+                final reasoning = delta['reasoning_content'] as String?;
+                final content = delta['content'] as String?;
+                if (reasoning != null && reasoning.isNotEmpty) {
+                  reasoningContent += reasoning;
                 }
-                fullContent += content;
-                if (mounted) {
-                  setState(() {
-                    _streamingContent = fullContent;
-                  });
-                  _scrollToBottom();
+                if (content != null && content.isNotEmpty) {
+                  if (!reasoningDone && reasoningContent.isNotEmpty) {
+                    fullContent +=
+                        '\n\n=== 思考过程 ===\n\n$reasoningContent\n\n=== 最终回答 ===\n\n';
+                    reasoningDone = true;
+                  }
+                  fullContent += content;
+                  if (mounted) {
+                    setState(() {
+                      _streamingContent = fullContent;
+                    });
+                    _scrollToBottom();
+                  }
                 }
               }
             }
-          } catch (_) {}
+          } catch (e) {
+            print(
+                'SSE解析错误: $e, 数据: ${data.substring(0, data.length > 100 ? 100 : data.length)}');
+            lastError = '$e';
+          }
         }
+      }
+
+      print(
+          '流式接收完成: 收到 $chunkCount 个data块, 内容长度=${fullContent.length}, 推理长度=${reasoningContent.length}');
+      if (lastError.isNotEmpty) {
+        print('最后错误: $lastError');
       }
 
       client.close();
 
       if (fullContent.isEmpty && reasoningContent.isEmpty) {
-        throw Exception('未收到有效回复');
+        throw Exception(
+            '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''} (共$chunkCount个数据块)');
       }
 
       if (!reasoningDone && reasoningContent.isNotEmpty) {
@@ -743,11 +769,9 @@ JSON格式（必须严格遵循）：
           onPressed: () => Navigator.pop(context),
           tooltip: '返回',
         ),
-        title: Flexible(
-          child: Text(
-            _getCurrentSessionTitle(),
-            overflow: TextOverflow.ellipsis,
-          ),
+        title: Text(
+          _getCurrentSessionTitle(),
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
           IconButton(

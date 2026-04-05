@@ -356,10 +356,17 @@ class LLMService {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
-      throw Exception('返回数据格式异常');
+      print('完整响应: ${response.body}');
+      throw Exception(
+          '返回数据格式异常: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
     }
 
-    final message = choices[0]['message'] as Map<String, dynamic>;
+    final message = choices[0]['message'] as Map<String, dynamic>?;
+    if (message == null) {
+      print('完整响应: ${response.body}');
+      throw Exception(
+          '返回数据格式异常: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+    }
     final content = (message['content'] as String?) ?? '';
     final reasoning = (message['reasoning_content'] as String?) ?? '';
     final fullContent =
