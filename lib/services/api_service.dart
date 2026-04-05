@@ -27,6 +27,9 @@ class ApiService {
     _authToken = token;
   }
 
+  // 🚀 公开获取 token 的方法（供 WebSocket 等服务使用）
+  static String? getToken() => _authToken;
+
   // 初始化设置
   static void setServerChoice(String choice) {
     if (choice == 'aliyun') {
@@ -590,6 +593,40 @@ class ApiService {
       }
       return null;
     } catch (_) {
+      return null;
+    }
+  }
+
+  // ==========================================
+  // 🚀 9. 在线统计与设备版本分布
+  // ==========================================
+
+  /// 获取当前在线设备分布统计
+  static Future<Map<String, dynamic>?> fetchOnlineStats() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/online_stats'),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 获取所有设备历史版本分布统计（含离线设备）
+  static Future<Map<String, dynamic>?> fetchDeviceVersionStats() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/device_version_stats'),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
       return null;
     }
   }

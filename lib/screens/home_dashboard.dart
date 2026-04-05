@@ -18,6 +18,7 @@ import '../utils/page_transitions.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
+import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
@@ -425,9 +426,12 @@ class _HomeDashboardState extends State<HomeDashboard>
       appVersion = info.version;
     } catch (_) {}
 
+    // 🚀 获取 auth token 用于 WebSocket 鉴权
+    String? authToken = ApiService.getToken();
+
     await _syncService.ensureConnected(
         userIdInt.toString(), 'flutter_$_deviceId',
-        appVersion: appVersion);
+        authToken: authToken, appVersion: appVersion);
   }
 
   // FloatWindow channel is now handled by FloatWindowService

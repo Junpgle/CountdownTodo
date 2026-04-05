@@ -101,7 +101,7 @@ class CrossDevicePomodoroState {
 enum SyncConnectionState { disconnected, connecting, connected, error }
 
 class PomodoroSyncService {
-  static const String _wsUrl = 'ws://101.200.13.100:8081';
+  static const String _wsUrl = 'ws://101.200.13.100:8082';
   static const Duration _reconnectDelay = Duration(seconds: 5);
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
@@ -113,6 +113,7 @@ class PomodoroSyncService {
   // ── 连接参数 ──────────────────────────────────────────────
   String? _userId;
   String? _deviceId;
+  String? _authToken; // 🚀 新增：WebSocket 鉴权 Token
   String? _appVersion; // 🚀 新增：保存当前 App 版本号
 
   // ── 内部状态 ──────────────────────────────────────────────
@@ -145,8 +146,9 @@ class PomodoroSyncService {
 
   /// 🚀 传入版本号（建议使用 package_info_plus 获取后传入）
   Future<void> ensureConnected(String userId, String deviceId,
-      {String? appVersion}) async {
-    if (appVersion != null) _appVersion = appVersion; // 记录版本号
+      {String? authToken, String? appVersion}) async {
+    if (appVersion != null) _appVersion = appVersion;
+    if (authToken != null) _authToken = authToken;
 
     if (_userId == userId &&
         _deviceId == deviceId &&
@@ -161,8 +163,9 @@ class PomodoroSyncService {
 
   /// 🚀 强制重连时也可更新版本号
   Future<void> forceReconnect(String userId, String deviceId,
-      {String? appVersion}) async {
+      {String? authToken, String? appVersion}) async {
     if (appVersion != null) _appVersion = appVersion;
+    if (authToken != null) _authToken = authToken;
     _userId = userId;
     _deviceId = deviceId;
     await _doConnect();
@@ -201,12 +204,12 @@ class PomodoroSyncService {
       final platform = kIsWeb ? 'web' : Platform.operatingSystem;
       final versionParam = _appVersion ?? 'unknown';
 
-      // 🚀 核心改造：在握手 URL 中直接汇报平台和版本
+      // 🚀 核心改造：使用 token 鉴权（后端已合并 WebSocket 和 HTTP 到同一端口）
       final uri = Uri.parse(
-        '$_wsUrl/?userId=${Uri.encodeComponent(_userId!)}'
+        '$_wsUrl/?token=${Uri.encodeComponent(_authToken ?? '')}'
         '&deviceId=${Uri.encodeComponent(_deviceId!)}'
-        '&platform=${Uri.encodeComponent(platform)}' // 传给云端方便下发对应安装包
-        '&version=${Uri.encodeComponent(versionParam)}', // 传给云端用于统计和对比
+        '&platform=${Uri.encodeComponent(platform)}'
+        '&version=${Uri.encodeComponent(versionParam)}',
       );
 
       _channel = WebSocketChannel.connect(uri);

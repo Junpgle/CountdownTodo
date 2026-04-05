@@ -3,6 +3,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../../utils/page_transitions.dart';
+import 'settings/device_version_detail_page.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -154,6 +156,19 @@ class _AboutScreenState extends State<AboutScreen> {
                   subtitle: '在 GitHub 提交 Issues',
                   onTap: () => _launchURL(
                       'https://github.com/Junpgle/math_quiz_app/issues'),
+                ),
+                _LinkItem(
+                  icon: Icons.devices_other_outlined,
+                  title: '设备版本明细',
+                  subtitle: '查看在线设备与历史版本分布',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        const DeviceVersionDetailPage(),
+                      ),
+                    );
+                  },
                 ),
                 _LinkItem(
                   icon: Icons.email_outlined,

@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../models.dart';
 import '../../../storage_service.dart';
+import '../../../services/api_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
@@ -199,8 +200,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final _initStart = DateTime.now();
     debugPrint(
         '[PomodoroWorkbench] _init start: ${_initStart.toIso8601String()}');
-    Timer? _initWatchdog = Timer(const Duration(seconds: 6), () {
-    });
+    Timer? _initWatchdog = Timer(const Duration(seconds: 6), () {});
 
     try {
       _settings = await PomodoroService.getSettings();
@@ -209,8 +209,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       try {
         final info = await PackageInfo.fromPlatform();
         _appVersion = info.version;
-      } catch (e, st) {
-      }
+      } catch (e, st) {}
 
       //debugPrint('[PomodoroWorkbench] StorageService.getTodos() start');
       try {
@@ -219,7 +218,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           return <TodoItem>[];
         });
         _todos = (todosRaw).where((t) => !t.isDeleted && !t.isDone).toList();
-        } catch (e, st) {
+      } catch (e, st) {
         _todos = [];
       }
 
@@ -237,10 +236,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         try {
           try {
             await _recoverState(saved).timeout(const Duration(seconds: 5));
-          } on TimeoutException catch (_) {
-          }
-        } catch (e, st) {
-        }
+          } on TimeoutException catch (_) {}
+        } catch (e, st) {}
       } else {
         try {
           SharedPreferences? prefs;
@@ -285,17 +282,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               });
             }
           }
-        } catch (e, st) {
-        }
+        } catch (e, st) {}
       }
 
       try {
         try {
           await _connectCrossDevice().timeout(const Duration(seconds: 5));
-        } on TimeoutException catch (_) {
-          }
-      } catch (e, st) {
-      }
+        } on TimeoutException catch (_) {}
+      } catch (e, st) {}
 
       await Future.delayed(const Duration(milliseconds: 400));
 
@@ -311,10 +305,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               await _syncService
                   .forceReconnect(_userId, 'flutter_$_deviceId')
                   .timeout(const Duration(seconds: 5));
-            } on TimeoutException catch (_) {
-            }
-          } catch (e, st) {
-            }
+            } on TimeoutException catch (_) {}
+          } catch (e, st) {}
         }
       }
     } catch (e, st) {
@@ -333,8 +325,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _crossDeviceSub?.cancel();
     _crossDeviceSub =
         _syncService.onStateChanged.listen(_handleCrossDeviceSignal);
+
+    // 🚀 获取 auth token 用于 WebSocket 鉴权
+    String? authToken = ApiService.getToken();
+
     await _syncService.forceReconnect(_userId, 'flutter_$_deviceId',
-        appVersion: _appVersion);
+        authToken: authToken, appVersion: _appVersion);
 
     if (mounted) setState(() => _wsConnected = true);
   }
