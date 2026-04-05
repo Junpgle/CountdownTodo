@@ -109,3 +109,7 @@ home_sections.dart (基础组件)
 - `cached_network_image`：头像/壁纸加载
 - `intl`：时间格式化
 - `flutter/material.dart`：Material3 组件
+
+---
+
+*最后更新：2026-04-05*

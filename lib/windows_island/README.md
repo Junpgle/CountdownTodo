@@ -12,15 +12,15 @@
 |------|------|----------|
 | `island_entry.dart` | 独立窗口入口点 | `islandMain()` |
 | `island_manager.dart` | 窗口生命周期管理（单例） | `IslandManager` |
-| `island_ui.dart` | 灵动岛 UI 渲染（3205行） | `IslandUI` |
+| `island_ui.dart` | 灵动岛 UI 渲染 | `IslandUI` |
 | `island_state_stack.dart` | 栈式状态管理器 | `IslandStateStack`, `IslandState` |
+| `island_state_handler.dart` | 状态变更处理器 | 状态转换逻辑 |
 | `island_payload.dart` | 数据传输对象 | `IslandPayload` |
 | `island_channel.dart` | 主窗口 ↔ 子窗口 IPC 通信 | `IslandChannel` |
 | `island_config.dart` | 模块配置常量 | `IslandConfig` |
 | `island_win32.dart` | Win32 API 封装 | 窗口透明、置顶、穿透 |
 | `island_reminder.dart` | 提醒服务 | `IslandReminderService` |
 | `island_debug.dart` | 调试页面 | `IslandDebugPage` |
-| `island_state_handler.dart` | 状态变更处理器 | 状态转换逻辑 |
 
 ---
 
@@ -40,7 +40,7 @@
 
 独立窗口进程 (Island Flutter Engine)
   │
-  ├── island_main() 入口
+  ├── islandMain() 入口
   ├── IslandUI (UI 渲染)
   └── IslandStateStack (状态管理)
 ```
@@ -84,17 +84,20 @@ IslandManager().destroyIsland('island-1');  // 销毁窗口
 
 ```dart
 enum IslandState {
-  idle,           // 空闲（胶囊态）
-  focusing,       // 专注中
-  hoverWide,      // 悬停展开
-  stackedCard,    // 堆叠卡片
-  splitAlert,     // 分裂提醒
-  finishConfirm,  // 完成确认
-  abandonConfirm, // 放弃确认
-  reminderPopup,  // 弹窗提醒
-  quickControls,  // 快速控制面板
-  musicPlayer,    // 音乐播放器
-  // ...
+  idle,              // 空闲（时钟胶囊）
+  focusing,          // 专注中
+  hoverWide,         // 悬停展开
+  stackedCard,       // 堆叠卡片
+  splitAlert,        // 分裂提醒
+  finishConfirm,     // 完成确认
+  abandonConfirm,    // 放弃确认
+  finishFinal,       // 完成最终
+  reminderPopup,     // 弹窗提醒
+  reminderSplit,     // 双胶囊提醒
+  reminderCapsule,   // 单胶囊提醒
+  copiedLink,        // 复制链接
+  quickControls,     // 快速控制面板
+  musicPlayer,       // 音乐播放器
 }
 ```
 
@@ -113,6 +116,7 @@ clearToIdle()     // 清空回 idle
 static const protectedStates = {
   IslandState.finishConfirm,
   IslandState.abandonConfirm,
+  IslandState.finishFinal,
   IslandState.copiedLink,
   IslandState.reminderPopup,
 };
@@ -154,7 +158,7 @@ class IslandPayload {
 await IslandChannel.waitForReady(windowId, timeout: Duration(seconds: 2));
 ```
 
-### island_ui.dart (3205行)
+### island_ui.dart
 
 灵动岛 UI 核心，包含：
 
@@ -217,9 +221,14 @@ IslandUI (独立进程)
 
 ---
 
-## EXTENDING.md
+## 扩展指南
 
 模块扩展指南详见 [EXTENDING.md](./EXTENDING.md)，包含：
 - 添加新 UI 形态的步骤
 - 自定义 payload 字段
+- 状态栈操作规范
 - 调试技巧
+
+---
+
+*最后更新：2026-04-05*

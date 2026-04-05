@@ -113,6 +113,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _loadSplashThenInit() async {
+    await SplashService.fetchAndCacheTodayContent();
     final splashContent = await SplashService.getCachedContent();
     if (mounted) {
       setState(() {
@@ -176,14 +177,10 @@ class _MyAppState extends State<MyApp> {
     // 2. 检查升级引导
     final needGuide = await FeatureGuideScreen.shouldShow();
 
-    // 2.5 加载开屏内容
-    final splashContent = await SplashService.getCachedContent();
-
     if (mounted) {
       setState(() {
         _loggedInUser = user;
         _showFeatureGuide = needGuide;
-        _splashContent = splashContent;
         _isChecking = false;
       });
     }

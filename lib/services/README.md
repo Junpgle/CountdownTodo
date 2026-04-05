@@ -16,7 +16,6 @@
 | `pomodoro_service.dart` | 番茄钟核心：数据模型、状态管理、云端同步 | `PomodoroService`, `PomodoroTag`, `PomodoroRecord`, `PomodoroRunState` |
 | `notification_service.dart` | 本地通知：课程、待办、番茄钟、图片识别进度 | `NotificationService` |
 | `llm_service.dart` | 大模型智能解析：文本/图片 → 待办 JSON | `LLMService`, `LLMConfig` |
-| `storage_service.dart` | （位于 lib 根目录）本地持久化 & 增量同步 | 见 `lib/README.md` |
 
 ### 平台适配
 
@@ -39,19 +38,28 @@
 | `xidian_schedule_parser.dart` | 西安电子科技大学 (ICS 格式) | `XidianScheduleParser` |
 | `zfsoft_schedule_parser.dart` | 正方教务系统通用解析 | `ZfsoftScheduleParser` |
 
-### 其他服务
+### 同步 & 数据
 
 | 文件 | 职责 |
 |------|------|
-| `clipboard_service.dart` | 剪贴板读写 |
-| `external_share_handler.dart` | 接收外部分享内容 → LLM 解析 |
+| `pomodoro_sync_service.dart` | 番茄钟跨端 WebSocket 同步 |
+| `migration_service.dart` | 数据迁移 |
+| `chat_storage_service.dart` | 聊天消息本地存储 |
 | `island_data_provider.dart` | 灵动岛数据源 |
 | `island_slot_provider.dart` | 灵动岛插槽管理 |
-| `migration_service.dart` | 数据迁移 |
-| `pomodoro_sync_service.dart` | 番茄钟跨端 WebSocket 同步 |
+
+### 业务服务
+
+| 文件 | 职责 |
+|------|------|
 | `reminder_schedule_service.dart` | 定时提醒调度 |
 | `snooze_dialog.dart` | 稍后提醒弹窗 |
 | `todo_parser_service.dart` | 待办解析（LLM 调用封装） |
+| `external_share_handler.dart` | 接收外部分享内容 → LLM 解析 |
+| `clipboard_service.dart` | 剪贴板读写 |
+| `band_sync_service.dart` | 手环同步服务 |
+| `splash_service.dart` | 启动页服务 |
+| `animation_config_service.dart` | 动画配置服务 |
 
 ---
 
@@ -174,3 +182,7 @@ services/ 内部依赖
 - `shared_preferences`：本地缓存
 - `html`：HTML 解析（课表导入）
 - `sqflite_common_ffi`：桌面端 SQLite 读取
+
+---
+
+*最后更新：2026-04-05*

@@ -10,10 +10,23 @@
 
 | 文件 | 职责 | 关键导出 |
 |------|------|----------|
-| `main.dart` | 应用入口、路由注册、主题管理、插件初始化 | `MyApp`, `appNavigatorKey`, `showCloseDialog()` |
+| `main.dart` | 应用入口、路由注册、主题管理、插件初始化、灵动岛分流 | `MyApp`, `appNavigatorKey`, `showCloseDialog()` |
 | `models.dart` | 领域模型定义 | `Question`, `TodoItem`, `CountdownItem`, `TimeLogItem`, `RecurrenceType` |
-| `storage_service.dart` | 本地持久化 & 增量同步引擎 | `StorageService` (静态类) |
+| `storage_service.dart` | 本地持久化 & 增量同步引擎 & 用户系统 | `StorageService` (静态类) |
 | `update_service.dart` | 版本检查、下载、安装 | `UpdateService`, `AppManifest` |
+
+---
+
+## 子目录
+
+| 目录 | 文件数 | 职责 |
+|------|--------|------|
+| `screens/` | 27 页面文件 | 全屏页面组件（表现层） |
+| `services/` | 28 服务文件 | 业务逻辑 & 外部接口适配 |
+| `widgets/` | 6 组件文件 | 可复用 UI 组件 |
+| `windows_island/` | 12 文件 | Windows 桌面灵动岛模块 |
+| `models/` | 1 文件 | 扩展数据模型 |
+| `utils/` | 1 文件 | 工具函数 |
 
 ---
 
@@ -96,3 +109,7 @@ services/ (服务层)
 - `device_info_plus`：设备型号识别
 - `window_manager` / `desktop_multi_window`：桌面窗口管理
 - `flutter_local_notifications`：本地通知
+
+---
+
+*最后更新：2026-04-05*
