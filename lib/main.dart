@@ -13,6 +13,7 @@ import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
 import 'screens/feature_guide_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/default_splash_screen.dart';
 import 'storage_service.dart';
 import 'services/api_service.dart';
 import 'services/float_window_service.dart';
@@ -104,22 +105,28 @@ class _MyAppState extends State<MyApp> {
   bool _isChecking = true;
   bool _showFeatureGuide = false;
   Map<String, dynamic>? _splashContent;
+  bool _showDefaultSplash = true;
+  bool _showHolidaySplash = false;
 
   @override
   void initState() {
     super.initState();
     registerCloseDialogCallback(_showCloseConfirmDialog);
-    _loadSplashThenInit();
+    _startSplashSequence();
   }
 
-  Future<void> _loadSplashThenInit() async {
-    await SplashService.fetchAndCacheTodayContent();
+  Future<void> _startSplashSequence() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+
     final splashContent = await SplashService.getCachedContent();
-    if (mounted) {
-      setState(() {
-        _splashContent = splashContent;
-      });
-    }
+
+    setState(() {
+      _showDefaultSplash = false;
+      _splashContent = splashContent;
+      _showHolidaySplash = splashContent != null;
+    });
+
     _initializeApp();
   }
 
@@ -191,15 +198,33 @@ class _MyAppState extends State<MyApp> {
     // 4. 初始化手环通信服务（全局）
     _initBandService();
 
-    // 5. 后台预取明天的开屏内容
+    // 5. 后台预取今天的开屏内容（不阻塞启动）
     _prefetchSplashContent();
   }
 
   Future<void> _prefetchSplashContent() async {
     try {
+      await SplashService.fetchAndCacheTodayContent();
       await SplashService.prefetchTomorrowContent();
     } catch (e) {
       debugPrint('[Main] 开屏内容预取失败: $e');
+    }
+  }
+
+  void _onDefaultSplashComplete() {
+    if (mounted) {
+      setState(() {
+        _showDefaultSplash = false;
+      });
+    }
+  }
+
+  void _onHolidaySplashComplete() {
+    if (mounted) {
+      setState(() {
+        _showHolidaySplash = false;
+        _splashContent = null;
+      });
     }
   }
 
@@ -410,33 +435,30 @@ class _MyAppState extends State<MyApp> {
           builder: (context, child) {
             return child ?? const SizedBox.shrink();
           },
-          home: _splashContent != null
-              ? SplashScreen(
-                  content: _splashContent!,
-                  onComplete: () {
-                    if (mounted) {
-                      setState(() {
-                        _splashContent = null;
-                      });
-                    }
-                  },
-                )
-              : _isChecking
-                  ? Scaffold(
-                      backgroundColor: currentThemeMode == ThemeMode.dark
-                          ? Colors.grey[900]
-                          : Colors.blue,
-                      body: const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      ),
+          home: _showDefaultSplash
+              ? DefaultSplashScreen(onComplete: _onDefaultSplashComplete)
+              : _showHolidaySplash
+                  ? SplashScreen(
+                      content: _splashContent!,
+                      onComplete: _onHolidaySplashComplete,
                     )
-                  : _showFeatureGuide
-                      ? FeatureGuideScreen(loggedInUser: _loggedInUser)
-                      : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
-                          ? HomeDashboard(
-                              username: _loggedInUser!,
-                            )
-                          : const LoginScreen(),
+                  : _isChecking
+                      ? Scaffold(
+                          backgroundColor: currentThemeMode == ThemeMode.dark
+                              ? Colors.grey[900]
+                              : Colors.blue,
+                          body: const Center(
+                            child:
+                                CircularProgressIndicator(color: Colors.white),
+                          ),
+                        )
+                      : _showFeatureGuide
+                          ? FeatureGuideScreen(loggedInUser: _loggedInUser)
+                          : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
+                              ? HomeDashboard(
+                                  username: _loggedInUser!,
+                                )
+                              : const LoginScreen(),
         );
       },
     );
