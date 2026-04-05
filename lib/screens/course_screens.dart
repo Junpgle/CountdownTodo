@@ -36,6 +36,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   late Animation<double> _pulseAnimation;
 
   late PageController _pageController;
+  final Map<String, GlobalKey> _courseCardKeys = {};
+
+  GlobalKey _getCourseCardKey(String courseName, int weekday, int startTime) {
+    final keyStr = '${courseName}_${weekday}_${startTime}';
+    return _courseCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
 
   // 时间轴参数配置
   final double timeColumnWidth = 45.0; // 稍微拓宽左侧，适应更大的时间字体
@@ -685,11 +691,31 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           height: height - 2,
           child: GestureDetector(
             onTap: () {
-              Navigator.push(
+              final cardKey = _getCourseCardKey(
+                  course.courseName, course.weekday, course.startTime);
+              final renderBox =
+                  cardKey.currentContext?.findRenderObject() as RenderBox?;
+              if (renderBox != null) {
+                final rect =
+                    renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                Navigator.push(
                   context,
-                  PageTransitions.slideHorizontal(
-                    CourseDetailScreen(course: course),
-                  ));
+                  ContainerTransformRoute(
+                    page: CourseDetailScreen(course: course),
+                    sourceRect: rect,
+                    sourceColor:
+                        _getCourseColor(course.courseName).withOpacity(0.95),
+                    sourceBorderRadius:
+                        const BorderRadius.all(Radius.circular(4)),
+                  ),
+                );
+              } else {
+                Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      CourseDetailScreen(course: course),
+                    ));
+              }
             },
             child: Container(
               clipBehavior: Clip.hardEdge,
