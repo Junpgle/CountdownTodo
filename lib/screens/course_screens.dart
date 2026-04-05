@@ -17,7 +17,7 @@ class WeeklyCourseScreen extends StatefulWidget {
 }
 
 class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   int _currentWeek = 1;
   List<int> _availableWeeks = [];
   List<CourseItem> _weekCourses = [];
@@ -34,6 +34,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+
+  late AnimationController _courseExpandCtrl;
+  late Animation<double> _courseExpandAnim;
 
   late PageController _pageController;
   final Map<String, GlobalKey> _courseCardKeys = {};
@@ -58,6 +61,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+    _courseExpandCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _courseExpandAnim = CurvedAnimation(
+      parent: _courseExpandCtrl,
+      curve: Curves.easeOutCubic,
+    );
     _pageController = PageController(initialPage: 0);
     _loadData();
   }
@@ -65,6 +76,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   @override
   void dispose() {
     _pulseController.dispose();
+    _courseExpandCtrl.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -130,6 +142,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
 
     setState(() => _isLoading = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _courseExpandCtrl.forward();
+    });
   }
 
   void _updateWeekTodos() {
@@ -683,75 +698,96 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         double courseWidth = cellWidth - 2;
 
         Color bgColor = _getCourseColor(course.courseName);
+        final cardKey = _getCourseCardKey(
+            course.courseName, course.weekday, course.startTime);
+        final courseIndex = _weekCourses.indexOf(course);
 
         children.add(Positioned(
           top: top + 1,
           left: left + 1,
           width: courseWidth,
           height: height - 2,
-          child: GestureDetector(
-            onTap: () {
-              final cardKey = _getCourseCardKey(
-                  course.courseName, course.weekday, course.startTime);
-              final renderBox =
-                  cardKey.currentContext?.findRenderObject() as RenderBox?;
-              if (renderBox != null) {
-                final rect =
-                    renderBox.localToGlobal(Offset.zero) & renderBox.size;
-                Navigator.push(
-                  context,
-                  ContainerTransformRoute(
-                    page: CourseDetailScreen(course: course),
-                    sourceRect: rect,
-                    sourceColor:
-                        _getCourseColor(course.courseName).withOpacity(0.95),
-                    sourceBorderRadius:
-                        const BorderRadius.all(Radius.circular(4)),
-                  ),
-                );
-              } else {
-                Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      CourseDetailScreen(course: course),
-                    ));
-              }
+          child: AnimatedBuilder(
+            animation: _courseExpandAnim,
+            builder: (ctx, child) {
+              final delay = (courseIndex * 0.06).clamp(0.0, 0.5);
+              final t = ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                  .clamp(0.0, 1.0);
+              final scale = 0.7 + 0.3 * t;
+              final opacity = t;
+              return Transform.scale(
+                scale: scale,
+                child: Opacity(
+                  opacity: opacity,
+                  child: child,
+                ),
+              );
             },
-            child: Container(
-              clipBehavior: Clip.hardEdge,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                  color: bgColor.withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(4),
-                  boxShadow: const [
-                    BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 1,
-                        offset: Offset(0, 1))
-                  ]),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    course.courseName,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        height: 1.15),
-                    maxLines: height < 35 ? 1 : 4,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (height > 40) const Spacer(),
-                  if (height > 40)
+            child: GestureDetector(
+              onTap: () {
+                final renderBox =
+                    cardKey.currentContext?.findRenderObject() as RenderBox?;
+                if (renderBox != null) {
+                  final rect =
+                      renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                  Navigator.push(
+                    context,
+                    ContainerTransformRoute(
+                      page: CourseDetailScreen(course: course),
+                      sourceRect: rect,
+                      sourceColor: bgColor.withOpacity(0.95),
+                      sourceBorderRadius:
+                          const BorderRadius.all(Radius.circular(4)),
+                    ),
+                  );
+                } else {
+                  Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        CourseDetailScreen(course: course),
+                      ));
+                }
+              },
+              child: Container(
+                key: cardKey,
+                clipBehavior: Clip.hardEdge,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                    color: bgColor.withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 1,
+                          offset: Offset(0, 1))
+                    ]),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      course.roomName,
+                      course.courseName,
                       style: const TextStyle(
-                          color: Colors.white, fontSize: 10, height: 1.1),
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          height: 1.15),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                ],
+                    if (height > 30) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        course.roomName,
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 9,
+                            height: 1.1),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
