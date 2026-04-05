@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 import '../../services/llm_service.dart';
 
 class TextModelInfo {
@@ -46,10 +47,7 @@ class LLMConfigPage extends StatefulWidget {
 }
 
 class _LLMConfigPageState extends State<LLMConfigPage> {
-  final _apiUrlCtrl = TextEditingController();
-  final _apiKeyCtrl = TextEditingController();
-  final _customTextModelCtrl = TextEditingController();
-  final _customVisionModelCtrl = TextEditingController();
+  final _presetApiKeyCtrl = TextEditingController();
   final _textPromptCtrl = TextEditingController();
   final _visionPromptCtrl = TextEditingController();
   bool _obscureApiKey = true;
@@ -58,10 +56,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   bool _showAdvanced = false;
   String? _selectedTextModel;
   String? _selectedVisionModel;
-  bool _useCustomTextModel = false;
-  bool _useCustomVisionModel = false;
   bool _showAllTextModels = false;
   bool _showAllVisionModels = false;
+  List<CustomTextModel> _customTextModels = [];
+  List<CustomVisionModel> _customVisionModels = [];
+  final _uuid = const Uuid();
 
   static const List<TextModelInfo> textModels = [
     TextModelInfo(
@@ -229,9 +228,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   Future<void> _loadConfig() async {
     final config = await LLMService.getConfig();
+    _customTextModels = await LLMService.getCustomTextModels();
+    _customVisionModels = await LLMService.getCustomVisionModels();
+
     if (config != null) {
-      _apiUrlCtrl.text = config.apiUrl;
-      _apiKeyCtrl.text = config.apiKey;
+      _presetApiKeyCtrl.text = config.apiKey;
       _textPromptCtrl.text = config.textPrompt;
       _visionPromptCtrl.text = config.visionPrompt;
 
@@ -239,50 +240,96 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       final visionModelId = config.visionModel;
 
       final textModelExists = textModels.any((m) => m.id == textModelId);
+      final customTextMatch =
+          _customTextModels.where((m) => m.modelId == textModelId).firstOrNull;
+
       final visionModelExists = visionModels.any((m) => m.id == visionModelId);
+      final customVisionMatch = _customVisionModels
+          .where((m) => m.modelId == visionModelId)
+          .firstOrNull;
 
       if (textModelExists) {
         _selectedTextModel = textModelId;
-        _useCustomTextModel = false;
+      } else if (customTextMatch != null) {
+        _selectedTextModel = customTextMatch.id;
       } else {
-        _useCustomTextModel = true;
-        _customTextModelCtrl.text = textModelId;
+        _selectedTextModel = null;
       }
 
       if (visionModelExists) {
         _selectedVisionModel = visionModelId;
-        _useCustomVisionModel = false;
+      } else if (customVisionMatch != null) {
+        _selectedVisionModel = customVisionMatch.id;
       } else {
-        _useCustomVisionModel = true;
-        _customVisionModelCtrl.text = visionModelId;
+        _selectedVisionModel = null;
       }
     } else {
-      _apiUrlCtrl.text =
-          'https://open.bigmodel.cn/api/paas/v4/chat/completions';
       _selectedTextModel = 'glm-4.7-flash';
       _selectedVisionModel = 'glm-4.6v-flash';
       _textPromptCtrl.text = LLMConfig.defaultTextPrompt;
       _visionPromptCtrl.text = LLMConfig.defaultVisionPrompt;
     }
+    _updateApiKeyDisplay();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  void _updateApiKeyDisplay() {
+    final customText =
+        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    if (customText != null) {
+      _presetApiKeyCtrl.text = customText.apiKey;
+    }
+  }
+
+  String _getEffectiveApiKey() {
+    final customText =
+        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    return customText?.apiKey ?? _presetApiKeyCtrl.text.trim();
+  }
+
+  String? _getEffectiveApiUrl() {
+    final customText =
+        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    return customText?.apiUrl;
+  }
+
+  String _getEffectiveModelId() {
+    final customText =
+        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    return customText?.modelId ?? (_selectedTextModel ?? '');
+  }
+
+  String? _getEffectiveVisionModelId() {
+    final customVision = _customVisionModels
+        .where((m) => m.id == _selectedVisionModel)
+        .firstOrNull;
+    return customVision?.modelId ?? _selectedVisionModel;
   }
 
   Future<void> _testConnection() async {
     setState(() => _isTesting = true);
     try {
-      final config = LLMConfig(
-        apiKey: _apiKeyCtrl.text.trim(),
-        model: _useCustomTextModel
-            ? _customTextModelCtrl.text.trim()
-            : (_selectedTextModel ?? ''),
-        visionModel: _useCustomVisionModel
-            ? _customVisionModelCtrl.text.trim()
-            : (_selectedVisionModel ?? ''),
-        apiUrl: _apiUrlCtrl.text.trim(),
+      final textModel = _selectedTextModel ?? '';
+      final visionModel = _selectedVisionModel ?? '';
+
+      if (textModel.isEmpty) {
+        throw Exception('请选择文本模型');
+      }
+
+      final customText =
+          _customTextModels.where((m) => m.id == textModel).firstOrNull;
+      final customVision =
+          _customVisionModels.where((m) => m.id == visionModel).firstOrNull;
+
+      final testConfig = LLMConfig(
+        apiKey: _getEffectiveApiKey(),
+        model: _getEffectiveModelId(),
+        visionModel: _getEffectiveVisionModelId(),
+        apiUrl: _getEffectiveApiUrl(),
         textPrompt: _textPromptCtrl.text,
         visionPrompt: _visionPromptCtrl.text,
       );
-      await LLMService.saveConfig(config);
+      await LLMService.saveConfig(testConfig);
 
       final result = await LLMService.testConnection();
       if (mounted) {
@@ -310,10 +357,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   @override
   void dispose() {
-    _apiUrlCtrl.dispose();
-    _apiKeyCtrl.dispose();
-    _customTextModelCtrl.dispose();
-    _customVisionModelCtrl.dispose();
+    _presetApiKeyCtrl.dispose();
     _textPromptCtrl.dispose();
     _visionPromptCtrl.dispose();
     super.dispose();
@@ -571,6 +615,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   Widget _buildApiConfigSection() {
+    final selectedTextCustom =
+        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    final isUsingCustomText = selectedTextCustom != null;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -581,11 +629,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.api_outlined,
+                Icon(Icons.key,
                     size: 20, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'API 配置',
+                  'API Key',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -594,24 +642,18 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _apiUrlCtrl,
-              decoration: InputDecoration(
-                labelText: 'API 地址',
-                hintText:
-                    'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                prefixIcon: const Icon(Icons.link),
-                isDense: true,
-              ),
+            const SizedBox(height: 4),
+            Text(
+              isUsingCustomText
+                  ? '当前使用自定义模型 "${selectedTextCustom.name}" 的 API Key'
+                  : '用于智谱预设模型的 API Key',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _apiKeyCtrl,
+              controller: _presetApiKeyCtrl,
               obscureText: _obscureApiKey,
+              enabled: !isUsingCustomText,
               decoration: InputDecoration(
                 labelText: 'API Key',
                 hintText: '输入您的 API Key',
@@ -629,6 +671,56 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 ),
               ),
             ),
+            if (isUsingCustomText) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border:
+                      Border.all(color: Colors.green.withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 16, color: Colors.green[700]),
+                        const SizedBox(width: 6),
+                        Text(
+                          '使用自定义模型的 API 配置',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'API 地址: ${selectedTextCustom.apiUrl}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[700],
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'API Key: ${selectedTextCustom.apiKey.substring(0, selectedTextCustom.apiKey.length > 8 ? 8 : selectedTextCustom.apiKey.length)}****',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[700],
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -636,9 +728,13 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   Widget _buildTextModelSection() {
-    final selectedModel = _useCustomTextModel
-        ? null
-        : textModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    final allModels = <Map<String, dynamic>>[];
+    for (final m in _customTextModels) {
+      allModels.add({'type': 'custom', 'model': m});
+    }
+    for (final m in textModels) {
+      allModels.add({'type': 'preset', 'model': m});
+    }
 
     return Card(
       elevation: 2,
@@ -661,6 +757,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => _showAddCustomTextModelDialog(),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('添加自定义'),
+                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -669,51 +771,45 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
             const SizedBox(height: 12),
-            SwitchListTile(
-              title: const Text('使用自定义模型', style: TextStyle(fontSize: 14)),
-              value: _useCustomTextModel,
-              onChanged: (val) {
-                setState(() => _useCustomTextModel = val);
-              },
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-            ),
-            if (_useCustomTextModel) ...[
-              TextField(
-                controller: _customTextModelCtrl,
-                decoration: InputDecoration(
-                  labelText: '自定义模型名称',
-                  hintText: '输入模型ID，如 glm-4.7-flash',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  prefixIcon: const Icon(Icons.edit),
-                  isDense: true,
-                ),
+            if (_selectedTextModel != null) _buildSelectedTextModelTile(),
+            if (!_showAllTextModels)
+              TextButton.icon(
+                onPressed: () => setState(() => _showAllTextModels = true),
+                icon: const Icon(Icons.expand_more, size: 18),
+                label: const Text('展开更多模型'),
+              )
+            else ...[
+              ...allModels
+                  .where((item) =>
+                      (item['type'] == 'preset'
+                          ? (item['model'] as TextModelInfo).id
+                          : (item['model'] as CustomTextModel).id) !=
+                      _selectedTextModel)
+                  .map((item) => item['type'] == 'preset'
+                      ? _buildTextModelTile(item['model'] as TextModelInfo)
+                      : _buildCustomTextModelTile(
+                          item['model'] as CustomTextModel)),
+              TextButton.icon(
+                onPressed: () => setState(() => _showAllTextModels = false),
+                icon: const Icon(Icons.expand_less, size: 18),
+                label: const Text('收起'),
               ),
-            ] else ...[
-              if (selectedModel != null) _buildTextModelTile(selectedModel),
-              if (!_showAllTextModels)
-                TextButton.icon(
-                  onPressed: () => setState(() => _showAllTextModels = true),
-                  icon: const Icon(Icons.expand_more, size: 18),
-                  label: const Text('展开更多模型'),
-                )
-              else ...[
-                ...textModels
-                    .where((m) => m.id != _selectedTextModel)
-                    .map((model) => _buildTextModelTile(model)),
-                TextButton.icon(
-                  onPressed: () => setState(() => _showAllTextModels = false),
-                  icon: const Icon(Icons.expand_less, size: 18),
-                  label: const Text('收起'),
-                ),
-              ],
             ],
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSelectedTextModelTile() {
+    final preset =
+        textModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    final custom =
+        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+
+    if (preset != null) return _buildTextModelTile(preset);
+    if (custom != null) return _buildCustomTextModelTile(custom);
+    return const SizedBox.shrink();
   }
 
   Widget _buildTextModelTile(TextModelInfo model) {
@@ -723,6 +819,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         setState(() {
           _selectedTextModel = model.id;
           _showAllTextModels = false;
+          _updateApiKeyDisplay();
         });
       },
       borderRadius: BorderRadius.circular(8),
@@ -756,6 +853,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                     setState(() {
                       _selectedTextModel = val;
                       _showAllTextModels = false;
+                      _updateApiKeyDisplay();
                     });
                   },
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -811,10 +909,122 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     );
   }
 
+  Widget _buildCustomTextModelTile(CustomTextModel model) {
+    final isSelected = _selectedTextModel == model.id;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedTextModel = model.id;
+          _showAllTextModels = false;
+        });
+      },
+      onLongPress: () => _showEditCustomTextModelDialog(model),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? Colors.purple : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: isSelected ? Colors.purple.withValues(alpha: 0.1) : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Radio<String>(
+                  value: model.id,
+                  groupValue: _selectedTextModel,
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedTextModel = val;
+                      _showAllTextModels = false;
+                      _updateApiKeyDisplay();
+                    });
+                  },
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        model.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      Text(
+                        model.modelId,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.purple[100],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '自定义',
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.purple[800],
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  onPressed: () => _deleteCustomTextModel(model),
+                  tooltip: '删除',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 18),
+                  onPressed: () => _showEditCustomTextModelDialog(model),
+                  tooltip: '编辑',
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 48),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'API: ${model.apiUrl}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[600],
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildVisionModelSection() {
-    final selectedModel = _useCustomVisionModel
-        ? null
-        : visionModels.where((m) => m.id == _selectedVisionModel).firstOrNull;
+    final allModels = <Map<String, dynamic>>[];
+    for (final m in _customVisionModels) {
+      allModels.add({'type': 'custom', 'model': m});
+    }
+    for (final m in visionModels) {
+      allModels.add({'type': 'preset', 'model': m});
+    }
 
     return Card(
       elevation: 2,
@@ -837,6 +1047,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => _showAddCustomVisionModelDialog(),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('添加自定义'),
+                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -845,51 +1061,46 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
             const SizedBox(height: 12),
-            SwitchListTile(
-              title: const Text('使用自定义模型', style: TextStyle(fontSize: 14)),
-              value: _useCustomVisionModel,
-              onChanged: (val) {
-                setState(() => _useCustomVisionModel = val);
-              },
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-            ),
-            if (_useCustomVisionModel) ...[
-              TextField(
-                controller: _customVisionModelCtrl,
-                decoration: InputDecoration(
-                  labelText: '自定义模型名称',
-                  hintText: '输入模型ID，如 glm-4.6v-flash',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  prefixIcon: const Icon(Icons.edit),
-                  isDense: true,
-                ),
+            if (_selectedVisionModel != null) _buildSelectedVisionModelTile(),
+            if (!_showAllVisionModels)
+              TextButton.icon(
+                onPressed: () => setState(() => _showAllVisionModels = true),
+                icon: const Icon(Icons.expand_more, size: 18),
+                label: const Text('展开更多模型'),
+              )
+            else ...[
+              ...allModels
+                  .where((item) =>
+                      (item['type'] == 'preset'
+                          ? (item['model'] as VisionModelInfo).id
+                          : (item['model'] as CustomVisionModel).id) !=
+                      _selectedVisionModel)
+                  .map((item) => item['type'] == 'preset'
+                      ? _buildVisionModelTile(item['model'] as VisionModelInfo)
+                      : _buildCustomVisionModelTile(
+                          item['model'] as CustomVisionModel)),
+              TextButton.icon(
+                onPressed: () => setState(() => _showAllVisionModels = false),
+                icon: const Icon(Icons.expand_less, size: 18),
+                label: const Text('收起'),
               ),
-            ] else ...[
-              if (selectedModel != null) _buildVisionModelTile(selectedModel),
-              if (!_showAllVisionModels)
-                TextButton.icon(
-                  onPressed: () => setState(() => _showAllVisionModels = true),
-                  icon: const Icon(Icons.expand_more, size: 18),
-                  label: const Text('展开更多模型'),
-                )
-              else ...[
-                ...visionModels
-                    .where((m) => m.id != _selectedVisionModel)
-                    .map((model) => _buildVisionModelTile(model)),
-                TextButton.icon(
-                  onPressed: () => setState(() => _showAllVisionModels = false),
-                  icon: const Icon(Icons.expand_less, size: 18),
-                  label: const Text('收起'),
-                ),
-              ],
             ],
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSelectedVisionModelTile() {
+    final preset =
+        visionModels.where((m) => m.id == _selectedVisionModel).firstOrNull;
+    final custom = _customVisionModels
+        .where((m) => m.id == _selectedVisionModel)
+        .firstOrNull;
+
+    if (preset != null) return _buildVisionModelTile(preset);
+    if (custom != null) return _buildCustomVisionModelTile(custom);
+    return const SizedBox.shrink();
   }
 
   Widget _buildVisionModelTile(VisionModelInfo model) {
@@ -980,6 +1191,113 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                       if (model.maxOutput != null)
                         _buildChip('输出: ${model.maxOutput}'),
                     ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomVisionModelTile(CustomVisionModel model) {
+    final isSelected = _selectedVisionModel == model.id;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedVisionModel = model.id;
+          _showAllVisionModels = false;
+        });
+      },
+      onLongPress: () => _showEditCustomVisionModelDialog(model),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? Colors.purple : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: isSelected ? Colors.purple.withValues(alpha: 0.1) : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Radio<String>(
+                  value: model.id,
+                  groupValue: _selectedVisionModel,
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedVisionModel = val;
+                      _showAllVisionModels = false;
+                    });
+                  },
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        model.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      Text(
+                        model.modelId,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.purple[100],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '自定义',
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.purple[800],
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  onPressed: () => _deleteCustomVisionModel(model),
+                  tooltip: '删除',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 18),
+                  onPressed: () => _showEditCustomVisionModelDialog(model),
+                  tooltip: '编辑',
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 48),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'API: ${model.apiUrl}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[600],
+                      fontFamily: 'monospace',
+                    ),
                   ),
                 ],
               ),
@@ -1099,26 +1417,24 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       height: 48,
       child: FilledButton.icon(
         onPressed: () async {
-          final textModel = _useCustomTextModel
-              ? _customTextModelCtrl.text.trim()
-              : (_selectedTextModel ?? '');
-          final visionModel = _useCustomVisionModel
-              ? _customVisionModelCtrl.text.trim()
-              : (_selectedVisionModel ?? '');
+          final textModel = _selectedTextModel ?? '';
+          final visionModel = _selectedVisionModel ?? '';
 
-          if (_apiKeyCtrl.text.trim().isEmpty || textModel.isEmpty) {
+          if (textModel.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('请填写API Key和选择文本模型')),
+              const SnackBar(content: Text('请选择文本模型')),
             );
             return;
           }
+
+          final customText =
+              _customTextModels.where((m) => m.id == textModel).firstOrNull;
+
           final config = LLMConfig(
-            apiKey: _apiKeyCtrl.text.trim(),
-            model: textModel,
-            visionModel: visionModel.isEmpty ? null : visionModel,
-            apiUrl: _apiUrlCtrl.text.trim().isEmpty
-                ? null
-                : _apiUrlCtrl.text.trim(),
+            apiKey: _getEffectiveApiKey(),
+            model: _getEffectiveModelId(),
+            visionModel: _getEffectiveVisionModelId(),
+            apiUrl: _getEffectiveApiUrl(),
             textPrompt:
                 _textPromptCtrl.text.isEmpty ? null : _textPromptCtrl.text,
             visionPrompt:
@@ -1136,5 +1452,281 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         label: const Text('保存配置'),
       ),
     );
+  }
+
+  Future<void> _showAddCustomTextModelDialog(
+      {CustomTextModel? existing}) async {
+    final nameCtrl = TextEditingController(text: existing?.name ?? '');
+    final modelIdCtrl = TextEditingController(text: existing?.modelId ?? '');
+    final apiUrlCtrl = TextEditingController(text: existing?.apiUrl ?? '');
+    final apiKeyCtrl = TextEditingController(text: existing?.apiKey ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(existing == null ? '添加自定义文本模型' : '编辑自定义文本模型'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '模型名称',
+                    hintText: '如: 我的GPT模型',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入模型名称' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: modelIdCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '模型ID',
+                    hintText: '如: gpt-4o',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入模型ID' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: apiUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'API 地址',
+                    hintText: 'https://api.openai.com/v1/chat/completions',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入API地址' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: apiKeyCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'API Key',
+                    hintText: '输入您的 API Key',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入API Key' : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                final model = CustomTextModel(
+                  id: existing?.id ?? _uuid.v4(),
+                  name: nameCtrl.text.trim(),
+                  modelId: modelIdCtrl.text.trim(),
+                  apiUrl: apiUrlCtrl.text.trim(),
+                  apiKey: apiKeyCtrl.text.trim(),
+                );
+                await LLMService.saveCustomTextModel(model);
+                setState(() {
+                  if (existing != null) {
+                    final idx = _customTextModels
+                        .indexWhere((m) => m.id == existing.id);
+                    if (idx >= 0) _customTextModels[idx] = model;
+                  } else {
+                    _customTextModels.add(model);
+                  }
+                  _updateApiKeyDisplay();
+                });
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEditCustomTextModelDialog(CustomTextModel model) async {
+    await _showAddCustomTextModelDialog(existing: model);
+  }
+
+  Future<void> _deleteCustomTextModel(CustomTextModel model) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除确认'),
+        content: Text('确定要删除自定义文本模型 "${model.name}" 吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await LLMService.deleteCustomTextModel(model.id);
+      setState(() {
+        _customTextModels.removeWhere((m) => m.id == model.id);
+        if (_selectedTextModel == model.id) {
+          _selectedTextModel = null;
+        }
+        _updateApiKeyDisplay();
+      });
+    }
+  }
+
+  Future<void> _showAddCustomVisionModelDialog(
+      {CustomVisionModel? existing}) async {
+    final nameCtrl = TextEditingController(text: existing?.name ?? '');
+    final modelIdCtrl = TextEditingController(text: existing?.modelId ?? '');
+    final apiUrlCtrl = TextEditingController(text: existing?.apiUrl ?? '');
+    final apiKeyCtrl = TextEditingController(text: existing?.apiKey ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(existing == null ? '添加自定义视觉模型' : '编辑自定义视觉模型'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '模型名称',
+                    hintText: '如: 我的视觉模型',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入模型名称' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: modelIdCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '模型ID',
+                    hintText: '如: gpt-4o',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入模型ID' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: apiUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'API 地址',
+                    hintText: 'https://api.openai.com/v1/chat/completions',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入API地址' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: apiKeyCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'API Key',
+                    hintText: '输入您的 API Key',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入API Key' : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                final model = CustomVisionModel(
+                  id: existing?.id ?? _uuid.v4(),
+                  name: nameCtrl.text.trim(),
+                  modelId: modelIdCtrl.text.trim(),
+                  apiUrl: apiUrlCtrl.text.trim(),
+                  apiKey: apiKeyCtrl.text.trim(),
+                );
+                await LLMService.saveCustomVisionModel(model);
+                setState(() {
+                  if (existing != null) {
+                    final idx = _customVisionModels
+                        .indexWhere((m) => m.id == existing.id);
+                    if (idx >= 0) _customVisionModels[idx] = model;
+                  } else {
+                    _customVisionModels.add(model);
+                  }
+                });
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEditCustomVisionModelDialog(CustomVisionModel model) async {
+    await _showAddCustomVisionModelDialog(existing: model);
+  }
+
+  Future<void> _deleteCustomVisionModel(CustomVisionModel model) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除确认'),
+        content: Text('确定要删除自定义视觉模型 "${model.name}" 吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await LLMService.deleteCustomVisionModel(model.id);
+      setState(() {
+        _customVisionModels.removeWhere((m) => m.id == model.id);
+        if (_selectedVisionModel == model.id) {
+          _selectedVisionModel = null;
+        }
+      });
+    }
   }
 }

@@ -2132,7 +2132,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   ),
                   onPressed: () {
                     final todosForChat = widget.todos
-                        .where((t) => !t.isDeleted && !_isHistoricalTodo(t))
+                        .where((t) =>
+                            !t.isDeleted && !t.isDone && !_isHistoricalTodo(t))
                         .map((t) {
                       return {
                         'title': t.title,
@@ -2162,6 +2163,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                           onTodoInserted: (newTodo) {
                             final updatedList =
                                 List<TodoItem>.from(widget.todos)..add(newTodo);
+                            widget.onTodosChanged(updatedList);
+                          },
+                          onTodosBatchInserted: (newTodos) {
+                            final updatedList =
+                                List<TodoItem>.from(widget.todos)
+                                  ..addAll(newTodos);
                             widget.onTodosChanged(updatedList);
                           },
                         ),

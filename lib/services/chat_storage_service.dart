@@ -1,9 +1,49 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 
+class ChatSession {
+  final String id;
+  String title;
+  final DateTime createdAt;
+  DateTime updatedAt;
+
+  ChatSession({
+    String? id,
+    required this.title,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  })  : id = id ?? const Uuid().v4(),
+        createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'createdAt': createdAt.millisecondsSinceEpoch,
+        'updatedAt': updatedAt.millisecondsSinceEpoch,
+      };
+
+  factory ChatSession.fromJson(Map<String, dynamic> json) {
+    return ChatSession(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        json['createdAt'] as int,
+        isUtc: true,
+      ).toLocal(),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(
+        json['updatedAt'] as int,
+        isUtc: true,
+      ).toLocal(),
+    );
+  }
+}
+
 class ChatStorageService {
-  static const String _chatHistoryKey = 'chat_history';
+  static const String _sessionsKey = 'chat_sessions';
+  static const String _activeSessionKey = 'chat_active_session';
   static const String _customPromptKey = 'chat_custom_prompt';
   static const String _promptEnabledKey = 'chat_prompt_enabled';
   static const String _chatModelKey = 'chat_model';
@@ -33,9 +73,84 @@ class ChatStorageService {
 
   static String get defaultPrompt => _defaultPrompt;
 
-  static Future<List<ChatMessage>> loadHistory() async {
+  static String _historyKey(String sessionId) => 'chat_history_$sessionId';
+
+  static Future<List<ChatSession>> loadSessions() async {
     final prefs = await SharedPreferences.getInstance();
-    final historyStr = prefs.getString(_chatHistoryKey);
+    final sessionsStr = prefs.getString(_sessionsKey);
+    if (sessionsStr == null || sessionsStr.isEmpty) {
+      return [];
+    }
+    try {
+      final List<dynamic> jsonList = jsonDecode(sessionsStr);
+      return jsonList
+          .map((json) => ChatSession.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<void> saveSessions(List<ChatSession> sessions) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = sessions.map((s) => s.toJson()).toList();
+    await prefs.setString(_sessionsKey, jsonEncode(jsonList));
+  }
+
+  static Future<String?> getActiveSessionId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_activeSessionKey);
+  }
+
+  static Future<void> setActiveSessionId(String sessionId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_activeSessionKey, sessionId);
+  }
+
+  static Future<ChatSession> createSession({String? title}) async {
+    final sessions = await loadSessions();
+    final newSession = ChatSession(
+      title: title ?? '新对话',
+    );
+    sessions.insert(0, newSession);
+    await saveSessions(sessions);
+    await setActiveSessionId(newSession.id);
+    return newSession;
+  }
+
+  static Future<void> deleteSession(String sessionId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final sessions = await loadSessions();
+    sessions.removeWhere((s) => s.id == sessionId);
+    await saveSessions(sessions);
+    await prefs.remove(_historyKey(sessionId));
+    final activeId = await getActiveSessionId();
+    if (activeId == sessionId && sessions.isNotEmpty) {
+      await setActiveSessionId(sessions.first.id);
+    } else if (sessions.isEmpty) {
+      await prefs.remove(_activeSessionKey);
+    }
+  }
+
+  static Future<void> updateSessionTitle(
+    String sessionId,
+    String title,
+  ) async {
+    final sessions = await loadSessions();
+    final session = sessions.firstWhere(
+      (s) => s.id == sessionId,
+      orElse: () => throw Exception('Session not found'),
+    );
+    session.title = title;
+    session.updatedAt = DateTime.now();
+    await saveSessions(sessions);
+  }
+
+  static Future<List<ChatMessage>> loadHistory([String? sessionId]) async {
+    final prefs = await SharedPreferences.getInstance();
+    final sid = sessionId ?? await getActiveSessionId();
+    if (sid == null) return [];
+    final historyStr = prefs.getString(_historyKey(sid));
     if (historyStr == null || historyStr.isEmpty) {
       return [];
     }
@@ -49,21 +164,50 @@ class ChatStorageService {
     }
   }
 
-  static Future<void> saveHistory(List<ChatMessage> history) async {
+  static Future<void> saveHistory(
+    List<ChatMessage> history, [
+    String? sessionId,
+  ]) async {
     final prefs = await SharedPreferences.getInstance();
+    final sid = sessionId ?? await getActiveSessionId();
+    if (sid == null) return;
     final jsonList = history.map((msg) => msg.toJson()).toList();
-    await prefs.setString(_chatHistoryKey, jsonEncode(jsonList));
+    await prefs.setString(_historyKey(sid), jsonEncode(jsonList));
   }
 
   static Future<void> addMessage(ChatMessage message) async {
     final history = await loadHistory();
     history.add(message);
     await saveHistory(history);
+    if (history.length == 2 && message.role == ChatRole.assistant) {
+      final sessions = await loadSessions();
+      final activeId = await getActiveSessionId();
+      if (activeId != null) {
+        final session = sessions.firstWhere(
+          (s) => s.id == activeId,
+          orElse: () => throw Exception('Session not found'),
+        );
+        if (session.title == '新对话') {
+          final firstUserMsg = history.firstWhere(
+            (m) => m.role == ChatRole.user,
+            orElse: () => message,
+          );
+          session.title = firstUserMsg.content.length > 20
+              ? '${firstUserMsg.content.substring(0, 20)}...'
+              : firstUserMsg.content;
+          session.updatedAt = DateTime.now();
+          await saveSessions(sessions);
+        }
+      }
+    }
   }
 
   static Future<void> clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_chatHistoryKey);
+    final sid = await getActiveSessionId();
+    if (sid != null) {
+      await prefs.remove(_historyKey(sid));
+    }
   }
 
   static Future<String> getCustomPrompt() async {

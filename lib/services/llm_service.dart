@@ -161,8 +161,78 @@ class LLMConfig {
   bool get isConfigured => apiKey.isNotEmpty && model.isNotEmpty;
 }
 
+class CustomTextModel {
+  final String id;
+  final String name;
+  final String modelId;
+  final String apiUrl;
+  final String apiKey;
+
+  CustomTextModel({
+    required this.id,
+    required this.name,
+    required this.modelId,
+    required this.apiUrl,
+    required this.apiKey,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'model_id': modelId,
+        'api_url': apiUrl,
+        'api_key': apiKey,
+      };
+
+  factory CustomTextModel.fromJson(Map<String, dynamic> json) {
+    return CustomTextModel(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      modelId: json['model_id'] ?? '',
+      apiUrl: json['api_url'] ?? '',
+      apiKey: json['api_key'] ?? '',
+    );
+  }
+}
+
+class CustomVisionModel {
+  final String id;
+  final String name;
+  final String modelId;
+  final String apiUrl;
+  final String apiKey;
+
+  CustomVisionModel({
+    required this.id,
+    required this.name,
+    required this.modelId,
+    required this.apiUrl,
+    required this.apiKey,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'model_id': modelId,
+        'api_url': apiUrl,
+        'api_key': apiKey,
+      };
+
+  factory CustomVisionModel.fromJson(Map<String, dynamic> json) {
+    return CustomVisionModel(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      modelId: json['model_id'] ?? '',
+      apiUrl: json['api_url'] ?? '',
+      apiKey: json['api_key'] ?? '',
+    );
+  }
+}
+
 class LLMService {
   static const String _configKey = 'llm_config';
+  static const String _customTextModelsKey = 'custom_text_models';
+  static const String _customVisionModelsKey = 'custom_vision_models';
 
   static Future<LLMConfig?> getConfig() async {
     final prefs = await SharedPreferences.getInstance();
@@ -184,6 +254,66 @@ class LLMService {
   static Future<void> clearConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_configKey);
+  }
+
+  static Future<List<CustomTextModel>> getCustomTextModels() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_customTextModelsKey) ?? [];
+    return list
+        .map((e) =>
+            CustomTextModel.fromJson(jsonDecode(e) as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> saveCustomTextModel(CustomTextModel model) async {
+    final prefs = await SharedPreferences.getInstance();
+    final models = await getCustomTextModels();
+    final idx = models.indexWhere((m) => m.id == model.id);
+    if (idx >= 0) {
+      models[idx] = model;
+    } else {
+      models.add(model);
+    }
+    await prefs.setStringList(_customTextModelsKey,
+        models.map((e) => jsonEncode(e.toJson())).toList());
+  }
+
+  static Future<void> deleteCustomTextModel(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final models = await getCustomTextModels();
+    models.removeWhere((m) => m.id == id);
+    await prefs.setStringList(_customTextModelsKey,
+        models.map((e) => jsonEncode(e.toJson())).toList());
+  }
+
+  static Future<List<CustomVisionModel>> getCustomVisionModels() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_customVisionModelsKey) ?? [];
+    return list
+        .map((e) =>
+            CustomVisionModel.fromJson(jsonDecode(e) as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> saveCustomVisionModel(CustomVisionModel model) async {
+    final prefs = await SharedPreferences.getInstance();
+    final models = await getCustomVisionModels();
+    final idx = models.indexWhere((m) => m.id == model.id);
+    if (idx >= 0) {
+      models[idx] = model;
+    } else {
+      models.add(model);
+    }
+    await prefs.setStringList(_customVisionModelsKey,
+        models.map((e) => jsonEncode(e.toJson())).toList());
+  }
+
+  static Future<void> deleteCustomVisionModel(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final models = await getCustomVisionModels();
+    models.removeWhere((m) => m.id == id);
+    await prefs.setStringList(_customVisionModelsKey,
+        models.map((e) => jsonEncode(e.toJson())).toList());
   }
 
   static Future<String> testConnection() async {
@@ -229,9 +359,13 @@ class LLMService {
       throw Exception('返回数据格式异常');
     }
 
-    final content = choices[0]['message']['content'] as String;
-    print('测试响应: $content');
-    return content;
+    final message = choices[0]['message'] as Map<String, dynamic>;
+    final content = (message['content'] as String?) ?? '';
+    final reasoning = (message['reasoning_content'] as String?) ?? '';
+    final fullContent =
+        reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
+    print('测试响应: $fullContent');
+    return fullContent;
   }
 
   static Future<List<Map<String, dynamic>>> parseTodoWithLLM(
@@ -287,13 +421,17 @@ class LLMService {
       throw Exception('API返回数据格式异常');
     }
 
-    final content = choices[0]['message']['content'] as String;
+    final message = choices[0]['message'] as Map<String, dynamic>;
+    final content = (message['content'] as String?) ?? '';
+    final reasoning = (message['reasoning_content'] as String?) ?? '';
+    final fullContent =
+        reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
 
     print('========== LLM 文本响应 ==========');
-    print('原始返回:\n$content');
+    print('原始返回:\n$fullContent');
     print('==================================');
 
-    final results = _extractJsonList(content);
+    final results = _extractJsonList(fullContent);
 
     print('解析结果: $results');
     print('==================================');
@@ -402,13 +540,17 @@ class LLMService {
       throw Exception('API返回数据格式异常');
     }
 
-    final content = choices[0]['message']['content'] as String;
+    final message = choices[0]['message'] as Map<String, dynamic>;
+    final content = (message['content'] as String?) ?? '';
+    final reasoning = (message['reasoning_content'] as String?) ?? '';
+    final fullContent =
+        reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
 
     print('========== LLM 图片识别响应 ==========');
-    print('原始返回:\n$content');
+    print('原始返回:\n$fullContent');
     print('=====================================');
 
-    final results = _extractJsonList(content);
+    final results = _extractJsonList(fullContent);
 
     print('解析结果: $results');
     print('====================================');

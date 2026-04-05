@@ -13,12 +13,14 @@ class TodoChatScreen extends StatefulWidget {
   final String username;
   final List<Map<String, dynamic>> todos;
   final Function(TodoItem)? onTodoInserted;
+  final Function(List<TodoItem>)? onTodosBatchInserted;
 
   const TodoChatScreen({
     super.key,
     required this.username,
     required this.todos,
     this.onTodoInserted,
+    this.onTodosBatchInserted,
   });
 
   @override
@@ -33,16 +35,20 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _streamingContent = '';
   List<String> _suggestions = [];
   List<Map<String, dynamic>> _pendingTodos = [];
+  Set<int> _selectedTodoIndices = {};
   String _customPrompt = '';
   bool _promptEnabled = true;
   String _chatModel = '';
   String _chatApiKey = '';
   String _chatApiUrl = '';
+  String _globalModelName = '';
+  List<ChatSession> _sessions = [];
+  String? _activeSessionId;
 
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    _initSessions();
     _loadPromptSettings();
     _loadChatConfig();
   }
@@ -54,8 +60,97 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     super.dispose();
   }
 
+  Future<void> _initSessions() async {
+    var sessions = await ChatStorageService.loadSessions();
+    final activeId = await ChatStorageService.getActiveSessionId();
+
+    if (sessions.isEmpty) {
+      final newSession = await ChatStorageService.createSession();
+      sessions = [newSession];
+      if (mounted) {
+        setState(() {
+          _sessions = sessions;
+          _activeSessionId = newSession.id;
+        });
+        _loadHistory();
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _sessions = sessions;
+          _activeSessionId = activeId ?? sessions.first.id;
+        });
+        _loadHistory();
+      }
+    }
+  }
+
+  Future<void> _switchSession(String sessionId) async {
+    await ChatStorageService.setActiveSessionId(sessionId);
+    if (mounted) {
+      setState(() {
+        _activeSessionId = sessionId;
+        _messages = [];
+        _suggestions = [];
+        _pendingTodos = [];
+        _streamingContent = '';
+      });
+    }
+    _loadHistory();
+  }
+
+  Future<void> _newSession() async {
+    final newSession = await ChatStorageService.createSession();
+    if (mounted) {
+      setState(() {
+        _sessions.insert(0, newSession);
+        _activeSessionId = newSession.id;
+        _messages = [];
+        _suggestions = [];
+        _pendingTodos = [];
+        _streamingContent = '';
+      });
+    }
+  }
+
+  Future<void> _deleteSession(String sessionId) async {
+    if (_sessions.length <= 1) {
+      await ChatStorageService.deleteSession(sessionId);
+      final newSession = await ChatStorageService.createSession();
+      if (mounted) {
+        setState(() {
+          _sessions = [newSession];
+          _activeSessionId = newSession.id;
+          _messages = [];
+          _suggestions = [];
+          _pendingTodos = [];
+          _streamingContent = '';
+        });
+      }
+      return;
+    }
+
+    await ChatStorageService.deleteSession(sessionId);
+    final sessions = await ChatStorageService.loadSessions();
+    if (mounted) {
+      setState(() {
+        _sessions = sessions;
+        if (_activeSessionId == sessionId) {
+          _activeSessionId = sessions.first.id;
+          _messages = [];
+          _suggestions = [];
+          _pendingTodos = [];
+          _streamingContent = '';
+        }
+      });
+      if (_activeSessionId != sessionId) {
+        _loadHistory();
+      }
+    }
+  }
+
   Future<void> _loadHistory() async {
-    final history = await ChatStorageService.loadHistory();
+    final history = await ChatStorageService.loadHistory(_activeSessionId);
     if (mounted) {
       setState(() => _messages = history);
       _scrollToBottom();
@@ -75,6 +170,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Future<void> _loadChatConfig() async {
     final config = await ChatStorageService.getChatConfig();
+    final globalConfig = await LLMService.getConfig();
     if (mounted) {
       setState(() {
         if (config != null) {
@@ -82,6 +178,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           _chatApiKey = config['apiKey'] ?? '';
           _chatApiUrl = config['apiUrl'] ?? '';
         }
+        _globalModelName = globalConfig?.model ?? '';
       });
     }
   }
@@ -116,25 +213,36 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       prompt = ChatStorageService.defaultPrompt;
     }
 
+    prompt = prompt
+        .replaceAll('{now}', now)
+        .replaceAll('{todos}', todoList.isEmpty ? '暂无待办' : todoList);
+
     return '''$prompt
 
-【待办创建功能】
-当用户表达想要创建新待办的意图时（如"帮我添加"、"记一下"、"创建一个待办"等），你可以在回复末尾附加一个JSON操作块。
+【待办创建功能 - 重要规则】
+1. 只有当用户明确要求创建/添加/记录待办时（如"帮我添加"、"记一下"、"创建一个待办"、"添加到清单"等），才可以在回复末尾附加JSON操作块
+2. 如果用户只是在询问、讨论、排序、分析待办，绝对不要返回JSON操作块
+3. 如果用户说"帮我排一下顺序"、"哪个先做"、"分析一下"等，这只是咨询，不是创建请求
+4. 只有用户明确说"添加"、"创建"、"记下来"、"加入清单"时才返回JSON
 
-格式如下（必须严格遵循）：
-[ACTION_START]{"action":"create_todo","todos":[{"title":"待办标题","remark":"备注","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none"}]}[ACTION_END]
+JSON格式（必须严格遵循）：
+[ACTION_START]{"action":"create_todo","todos":[{"title":"待办标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","customIntervalDays":3,"recurrenceEndDate":"YYYY-MM-DD"}]}[ACTION_END]
 
 字段说明：
 - title: 待办标题（必填）
-- remark: 备注（可选）
+- remark: 备注/地点（可选）
+- startTime: 开始时间，格式"YYYY-MM-DD HH:mm"（可选，默认当前时间）
 - dueDate: 截止时间，格式"YYYY-MM-DD HH:mm"（可选）
 - isAllDay: 是否全天事件（可选，默认false）
 - recurrence: 循环类型，可选值：none/daily/weekly/monthly/yearly/weekdays/customDays（可选，默认none）
+- customIntervalDays: 自定义循环间隔天数，仅当recurrence为"customDays"时有效（可选）
+- recurrenceEndDate: 循环结束日期，格式"YYYY-MM-DD"，有循环时建议指定（可选）
 
 注意：
 1. 如果有多个待办，todos数组可以包含多个对象
 2. JSON块必须放在[ACTION_START]和[ACTION_END]标记之间
-3. 除了JSON块外，仍然用正常文字回复用户''';
+3. 除了JSON块外，仍然用正常文字回复用户
+4. 再次强调：用户没有明确要求添加待办时，不要返回JSON操作块''';
   }
 
   List<Map<String, dynamic>> _extractTodoActions(String content) {
@@ -253,6 +361,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         'temperature': 0.7,
         'max_tokens': 2000,
         'stream': true,
+        'stream_options': {'include_usage': true},
       });
 
       final client = http.Client();
@@ -269,11 +378,18 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       }
 
       String fullContent = '';
+      String reasoningContent = '';
+      String buffer = '';
+      bool reasoningDone = false;
       await for (final chunk in streamedResponse.stream.transform(
         utf8.decoder,
       )) {
-        final lines = chunk.split('\n');
-        for (final line in lines) {
+        buffer += chunk;
+        while (true) {
+          final newlineIdx = buffer.indexOf('\n');
+          if (newlineIdx == -1) break;
+          final line = buffer.substring(0, newlineIdx).replaceAll('\r', '');
+          buffer = buffer.substring(newlineIdx + 1);
           final trimmed = line.trim();
           if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
           final data = trimmed.substring(5).trim();
@@ -284,8 +400,17 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             final choices = json['choices'] as List?;
             if (choices != null && choices.isNotEmpty) {
               final delta = choices[0]['delta'] as Map<String, dynamic>?;
+              final reasoning = delta?['reasoning_content'] as String?;
               final content = delta?['content'] as String?;
+              if (reasoning != null && reasoning.isNotEmpty) {
+                reasoningContent += reasoning;
+              }
               if (content != null && content.isNotEmpty) {
+                if (!reasoningDone && reasoningContent.isNotEmpty) {
+                  fullContent +=
+                      '\n\n=== 思考过程 ===\n\n$reasoningContent\n\n=== 最终回答 ===\n\n';
+                  reasoningDone = true;
+                }
                 fullContent += content;
                 if (mounted) {
                   setState(() {
@@ -301,8 +426,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
       client.close();
 
-      if (fullContent.isEmpty) {
+      if (fullContent.isEmpty && reasoningContent.isEmpty) {
         throw Exception('未收到有效回复');
+      }
+
+      if (!reasoningDone && reasoningContent.isNotEmpty) {
+        fullContent += '\n\n=== 思考过程 ===\n\n$reasoningContent';
       }
 
       final todoActions = _extractTodoActions(fullContent);
@@ -319,13 +448,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _isLoading = false;
         if (todoActions.isNotEmpty) {
           _pendingTodos = todoActions;
+          _selectedTodoIndices = todoActions.asMap().keys.toSet();
         } else {
           _pendingTodos = [];
+          _selectedTodoIndices.clear();
         }
       });
       await ChatStorageService.addMessage(assistantMsg);
       _scrollToBottom();
       _generateSuggestions(cleanContent);
+      _generateSessionTitle();
     } catch (e) {
       setState(() {
         _streamingContent = '';
@@ -337,6 +469,96 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         );
       }
     }
+  }
+
+  Future<void> _generateSessionTitle() async {
+    if (_messages.isEmpty) return;
+    final session = _sessions.firstWhere(
+      (s) => s.id == _activeSessionId,
+      orElse: () => ChatSession(title: '新对话'),
+    );
+    if (session.title != '新对话') return;
+
+    try {
+      String model = _chatModel;
+      String apiKey = _chatApiKey;
+      String apiUrl = _chatApiUrl;
+
+      if (model.isEmpty || apiKey.isEmpty) {
+        final globalConfig = await LLMService.getConfig();
+        if (globalConfig != null && globalConfig.isConfigured) {
+          model = globalConfig.model;
+          apiKey = globalConfig.apiKey;
+          apiUrl = globalConfig.apiUrl;
+        } else {
+          return;
+        }
+      }
+
+      if (apiUrl.isEmpty) {
+        apiUrl = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+      }
+
+      final firstUserMsg = _messages.firstWhere(
+        (m) => m.role == ChatRole.user,
+        orElse: () => _messages.first,
+      );
+
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $apiKey',
+      };
+
+      final body = jsonEncode({
+        'model': model,
+        'messages': [
+          {
+            'role': 'system',
+            'content': '请根据用户的第一个问题生成一个简短的对话标题，不超过10个字，只返回标题文本，不要任何其他内容。',
+          },
+          {
+            'role': 'user',
+            'content': firstUserMsg.content,
+          },
+        ],
+        'temperature': 0.5,
+        'max_tokens': 30,
+      });
+
+      final response = await http
+          .post(
+            Uri.parse(apiUrl),
+            headers: headers,
+            body: body,
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final choices = data['choices'] as List?;
+        if (choices != null && choices.isNotEmpty) {
+          String title = choices[0]['message']['content'] as String;
+          title = title.trim().replaceAll('"', '').replaceAll("'", '');
+          if (title.length > 15) title = '${title.substring(0, 15)}...';
+          if (title.isEmpty) {
+            final content = firstUserMsg.content;
+            title =
+                content.substring(0, content.length > 15 ? 15 : content.length);
+          }
+
+          await ChatStorageService.updateSessionTitle(session.id, title);
+          if (mounted) {
+            setState(() {
+              final idx = _sessions.indexWhere((s) => s.id == session.id);
+              if (idx != -1) {
+                _sessions[idx].title = title;
+                _sessions[idx].updatedAt = DateTime.now();
+              }
+            });
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _clearHistory() async {
@@ -516,25 +738,34 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.smart_toy_outlined),
-            SizedBox(width: 8),
-            Text('AI待办助手'),
-          ],
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+          tooltip: '返回',
+        ),
+        title: Flexible(
+          child: Text(
+            _getCurrentSessionTitle(),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         actions: [
-          _buildModelSelector(),
+          IconButton(
+            icon: const Icon(Icons.add_comment_outlined),
+            onPressed: () {
+              _newSession();
+            },
+            tooltip: '新建对话',
+          ),
+          IconButton(
+            icon: const Icon(Icons.history_outlined),
+            onPressed: _showHistorySidebar,
+            tooltip: '历史对话',
+          ),
           IconButton(
             icon: const Icon(Icons.tune_outlined),
             onPressed: _showPromptSettings,
             tooltip: '提示词设置',
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_sweep_outlined),
-            onPressed: _clearHistory,
-            tooltip: '清空聊天记录',
           ),
         ],
       ),
@@ -642,8 +873,147 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
+  String _getCurrentSessionTitle() {
+    final session = _sessions.firstWhere(
+      (s) => s.id == _activeSessionId,
+      orElse: () => ChatSession(title: 'AI待办助手'),
+    );
+    return session.title;
+  }
+
+  void _showHistorySidebar() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭',
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (ctx, anim1, anim2) => const SizedBox.shrink(),
+      transitionBuilder: (ctx, anim1, anim2, child) {
+        return Stack(
+          children: [
+            ModalBarrier(
+              color: Colors.black.withOpacity(
+                0.3 * anim1.value,
+              ),
+              dismissible: true,
+            ),
+            SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(-1, 0),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: MediaQuery.of(context).size.width * 0.75,
+                  height: MediaQuery.of(context).size.height,
+                  margin: const EdgeInsets.only(top: kToolbarHeight + 20),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 16,
+                        offset: const Offset(4, 0),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: Row(
+                          children: [
+                            const Text(
+                              '历史对话',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 20),
+                              onPressed: () => Navigator.pop(ctx),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: _sessions.isEmpty
+                            ? const Center(child: Text('暂无历史对话'))
+                            : ListView.builder(
+                                itemCount: _sessions.length,
+                                itemBuilder: (context, index) {
+                                  final session = _sessions[index];
+                                  final isActive =
+                                      session.id == _activeSessionId;
+                                  return ListTile(
+                                    leading: Icon(
+                                      Icons.chat_bubble_outline,
+                                      color: isActive
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                          : null,
+                                    ),
+                                    title: Text(
+                                      session.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontWeight:
+                                            isActive ? FontWeight.bold : null,
+                                        color: isActive
+                                            ? Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                            : null,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      DateFormat('MM/dd HH:mm').format(
+                                        session.updatedAt,
+                                      ),
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.close, size: 18),
+                                      onPressed: () {
+                                        Navigator.pop(ctx);
+                                        _deleteSession(session.id);
+                                      },
+                                    ),
+                                    onTap: () {
+                                      Navigator.pop(ctx);
+                                      _switchSession(session.id);
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildModelSelector() {
-    String displayName = _chatModel.isNotEmpty ? _chatModel : '默认模型';
+    String label = _chatModel.isNotEmpty
+        ? _chatModel
+        : '全局: ${_globalModelName.isNotEmpty ? _globalModelName : '未配置'}';
 
     return PopupMenuButton<String>(
       icon: Row(
@@ -658,7 +1028,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           ),
           const SizedBox(width: 2),
           Text(
-            displayName,
+            label,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
@@ -908,6 +1278,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
       final body = jsonEncode({
         'model': model,
+        'stream': true,
         'messages': [
           {
             'role': 'system',
@@ -988,6 +1359,66 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
     ];
   }
 
+  String _formatTodoTimeRange(
+    String? startTime,
+    String? dueDate,
+    bool isAllDay,
+  ) {
+    DateTime? start;
+    DateTime? end;
+
+    if (startTime != null && startTime.isNotEmpty) {
+      start = DateTime.tryParse(startTime);
+    }
+    if (dueDate != null && dueDate.isNotEmpty) {
+      end = DateTime.tryParse(dueDate);
+    }
+
+    if (start == null && end == null) return '未设置时间';
+
+    String formatDateTime(DateTime dt, bool showDate, bool showTime) {
+      if (showDate && showTime) {
+        return DateFormat('MM/dd HH:mm').format(dt);
+      } else if (showDate) {
+        return DateFormat('MM/dd').format(dt);
+      } else {
+        return DateFormat('HH:mm').format(dt);
+      }
+    }
+
+    bool sameDay(DateTime a, DateTime b) {
+      return a.year == b.year && a.month == b.month && a.day == b.day;
+    }
+
+    if (isAllDay) {
+      if (start != null && end != null && sameDay(start, end)) {
+        return '全天 ${DateFormat('MM/dd').format(start)}';
+      } else if (start != null && end != null) {
+        return '全天 ${DateFormat('MM/dd').format(start)} ~ ${DateFormat('MM/dd').format(end)}';
+      } else if (start != null) {
+        return '全天 ${DateFormat('MM/dd').format(start)}';
+      } else if (end != null) {
+        return '全天 ${DateFormat('MM/dd').format(end)}';
+      }
+    }
+
+    if (start != null && end != null) {
+      if (sameDay(start, end)) {
+        return '${DateFormat('MM/dd').format(start)} ${DateFormat('HH:mm').format(start)} ~ ${DateFormat('HH:mm').format(end)}';
+      } else {
+        return '${DateFormat('MM/dd HH:mm').format(start)} ~ ${DateFormat('MM/dd HH:mm').format(end)}';
+      }
+    } else if (start != null) {
+      final showTime = start.hour != 0 || start.minute != 0;
+      return '开始: ${formatDateTime(start, true, showTime)}';
+    } else if (end != null) {
+      final showTime = end.hour != 0 || end.minute != 0;
+      return '截止: ${formatDateTime(end, true, showTime)}';
+    }
+
+    return '未设置时间';
+  }
+
   Widget _buildQuickQuestion(String text) {
     return ActionChip(
       label: Text(text),
@@ -1038,89 +1469,170 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
             ..._pendingTodos.asMap().entries.map((entry) {
               final idx = entry.key;
               final todo = entry.value;
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .surface
-                      .withOpacity(isDark ? 0.5 : 0.8),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.circle_outlined,
-                          size: 14,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
+              final isSelected = _selectedTodoIndices.contains(idx);
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedTodoIndices.remove(idx);
+                    } else {
+                      _selectedTodoIndices.add(idx);
+                    }
+                  });
+                },
+                child: Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Theme.of(context)
+                            .colorScheme
+                            .primaryContainer
+                            .withOpacity(0.5)
+                        : Theme.of(context)
+                            .colorScheme
+                            .surface
+                            .withOpacity(isDark ? 0.5 : 0.8),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.transparent,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            isSelected
+                                ? Icons.check_circle
+                                : Icons.circle_outlined,
+                            size: 18,
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withOpacity(0.3),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              todo['title'] ?? '未命名待办',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                decoration:
+                                    isSelected ? null : TextDecoration.none,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (todo['remark'] != null &&
+                          (todo['remark'] as String).isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 26),
                           child: Text(
-                            todo['title'] ?? '未命名待办',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                            todo['remark'] as String,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.5),
                             ),
                           ),
                         ),
                       ],
-                    ),
-                    if (todo['remark'] != null &&
-                        (todo['remark'] as String).isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 20),
-                        child: Text(
-                          todo['remark'] as String,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.5),
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (todo['dueDate'] != null &&
-                        (todo['dueDate'] as String).isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 20),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.schedule_outlined,
-                              size: 12,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withOpacity(0.4),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              todo['dueDate'] as String,
-                              style: TextStyle(
-                                fontSize: 12,
+                      if ((todo['startTime'] != null &&
+                              (todo['startTime'] as String).isNotEmpty) ||
+                          (todo['dueDate'] != null &&
+                              (todo['dueDate'] as String).isNotEmpty)) ...[
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 26),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.event_note_outlined,
+                                size: 12,
                                 color: Theme.of(context)
                                     .colorScheme
                                     .onSurface
                                     .withOpacity(0.4),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  _formatTodoTimeRange(
+                                    todo['startTime'] as String?,
+                                    todo['dueDate'] as String?,
+                                    todo['isAllDay'] as bool? ?? false,
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withOpacity(0.4),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               );
             }).toList(),
+            if (_pendingTodos.length > 1) ...[
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Row(
+                  children: [
+                    Text(
+                      '已选择 ${_selectedTodoIndices.length}/${_pendingTodos.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.5),
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          if (_selectedTodoIndices.length ==
+                              _pendingTodos.length) {
+                            _selectedTodoIndices.clear();
+                          } else {
+                            _selectedTodoIndices =
+                                _pendingTodos.asMap().keys.toSet();
+                          }
+                        });
+                      },
+                      child: Text(
+                        _selectedTodoIndices.length == _pendingTodos.length
+                            ? '取消全选'
+                            : '全选',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -1128,7 +1640,10 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        setState(() => _pendingTodos = []);
+                        setState(() {
+                          _pendingTodos = [];
+                          _selectedTodoIndices.clear();
+                        });
                       },
                       icon: const Icon(Icons.close, size: 18),
                       label: const Text('忽略'),
@@ -1140,9 +1655,15 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
                   const SizedBox(width: 8),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: _insertTodos,
+                      onPressed: _selectedTodoIndices.isNotEmpty
+                          ? _insertSelectedTodos
+                          : null,
                       icon: const Icon(Icons.check, size: 18),
-                      label: const Text('全部添加'),
+                      label: Text(
+                        _pendingTodos.length > 1
+                            ? '添加所选 (${_selectedTodoIndices.length})'
+                            : '添加',
+                      ),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
@@ -1157,18 +1678,49 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
     );
   }
 
-  void _insertTodos() {
-    if (_pendingTodos.isEmpty || widget.onTodoInserted == null) {
-      setState(() => _pendingTodos = []);
+  void _insertSelectedTodos() {
+    if (_pendingTodos.isEmpty ||
+        _selectedTodoIndices.isEmpty ||
+        (widget.onTodoInserted == null &&
+            widget.onTodosBatchInserted == null)) {
+      setState(() {
+        _pendingTodos = [];
+        _selectedTodoIndices.clear();
+      });
       return;
     }
 
-    for (final todoData in _pendingTodos) {
+    final List<TodoItem> newTodos = [];
+    for (final idx in _selectedTodoIndices) {
+      if (idx >= _pendingTodos.length) continue;
+      final todoData = _pendingTodos[idx];
+
+      DateTime? startTime;
+      if (todoData['startTime'] != null &&
+          (todoData['startTime'] as String).isNotEmpty) {
+        startTime = DateTime.tryParse(todoData['startTime'] as String);
+      }
+
       DateTime? dueDate;
       if (todoData['dueDate'] != null &&
           (todoData['dueDate'] as String).isNotEmpty) {
         dueDate = DateTime.tryParse(todoData['dueDate'] as String);
       }
+
+      DateTime? recurrenceEndDate;
+      if (todoData['recurrenceEndDate'] != null &&
+          (todoData['recurrenceEndDate'] as String).isNotEmpty) {
+        recurrenceEndDate = DateTime.tryParse(
+          todoData['recurrenceEndDate'] as String,
+        );
+      }
+
+      int? customIntervalDays;
+      if (todoData['customIntervalDays'] != null) {
+        customIntervalDays = todoData['customIntervalDays'] as int?;
+      }
+
+      final isAllDay = todoData['isAllDay'] as bool? ?? false;
 
       RecurrenceType recurrence = RecurrenceType.none;
       switch (todoData['recurrence']) {
@@ -1192,20 +1744,33 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
           break;
       }
 
-      final newTodo = TodoItem(
+      newTodos.add(TodoItem(
         title: todoData['title'] ?? '未命名待办',
         remark: (todoData['remark'] as String?)?.isEmpty ?? true
             ? null
             : todoData['remark'] as String?,
         dueDate: dueDate,
-        createdDate: DateTime.now().millisecondsSinceEpoch,
+        createdDate: startTime?.millisecondsSinceEpoch ??
+            DateTime.now().millisecondsSinceEpoch,
         recurrence: recurrence,
-      );
-      widget.onTodoInserted!(newTodo);
+        customIntervalDays: customIntervalDays,
+        recurrenceEndDate: recurrenceEndDate,
+      ));
     }
 
-    final count = _pendingTodos.length;
-    setState(() => _pendingTodos = []);
+    if (widget.onTodosBatchInserted != null && newTodos.isNotEmpty) {
+      widget.onTodosBatchInserted!(newTodos);
+    } else {
+      for (final todo in newTodos) {
+        widget.onTodoInserted!(todo);
+      }
+    }
+
+    final count = newTodos.length;
+    setState(() {
+      _pendingTodos = [];
+      _selectedTodoIndices.clear();
+    });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1428,44 +1993,63 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
         ],
       ),
       child: SafeArea(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _inputCtrl,
-                maxLines: 4,
-                minLines: 1,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: '输入你的问题...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _inputCtrl,
+                    maxLines: 4,
+                    minLines: 1,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      hintText: '输入你的问题...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  isDense: true,
                 ),
-                onSubmitted: (_) => _sendMessage(),
-              ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded),
+                  onPressed: _isLoading ? null : _sendMessage,
+                  style: IconButton.styleFrom(
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    shape: const CircleBorder(),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send_rounded),
-              onPressed: _isLoading ? null : _sendMessage,
-              style: IconButton.styleFrom(
-                backgroundColor: colorScheme.primary,
-                foregroundColor: colorScheme.onPrimary,
-                shape: const CircleBorder(),
-              ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                _buildModelSelector(),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+                  onPressed: _clearHistory,
+                  tooltip: '清空当前对话记录',
+                  constraints: const BoxConstraints(),
+                  padding: EdgeInsets.zero,
+                ),
+              ],
             ),
           ],
         ),
