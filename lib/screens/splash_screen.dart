@@ -116,7 +116,7 @@ class _SplashScreenState extends State<SplashScreen>
           top: 0,
           left: 0,
           right: 0,
-          height: size.height * 0.6,
+          height: size.height * 0.7,
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: ClipRect(
@@ -134,7 +134,7 @@ class _SplashScreenState extends State<SplashScreen>
           bottom: 0,
           left: 0,
           right: 0,
-          height: size.height * 0.4,
+          height: size.height * 0.3,
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: ClipRect(
