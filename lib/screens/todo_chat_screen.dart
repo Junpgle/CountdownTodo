@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
+import '../models.dart';
 import '../models/chat_message.dart';
 import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
@@ -11,11 +12,13 @@ import '../screens/settings/llm_config_page.dart';
 class TodoChatScreen extends StatefulWidget {
   final String username;
   final List<Map<String, dynamic>> todos;
+  final Function(TodoItem)? onTodoInserted;
 
   const TodoChatScreen({
     super.key,
     required this.username,
     required this.todos,
+    this.onTodoInserted,
   });
 
   @override
@@ -29,6 +32,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   bool _isLoading = false;
   String _streamingContent = '';
   List<String> _suggestions = [];
+  List<Map<String, dynamic>> _pendingTodos = [];
   String _customPrompt = '';
   bool _promptEnabled = true;
   String _chatModel = '';
@@ -112,9 +116,57 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       prompt = ChatStorageService.defaultPrompt;
     }
 
-    return prompt
-        .replaceAll('{now}', now)
-        .replaceAll('{todos}', todoList.isEmpty ? '暂无待办' : todoList);
+    return '''$prompt
+
+【待办创建功能】
+当用户表达想要创建新待办的意图时（如"帮我添加"、"记一下"、"创建一个待办"等），你可以在回复末尾附加一个JSON操作块。
+
+格式如下（必须严格遵循）：
+[ACTION_START]{"action":"create_todo","todos":[{"title":"待办标题","remark":"备注","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none"}]}[ACTION_END]
+
+字段说明：
+- title: 待办标题（必填）
+- remark: 备注（可选）
+- dueDate: 截止时间，格式"YYYY-MM-DD HH:mm"（可选）
+- isAllDay: 是否全天事件（可选，默认false）
+- recurrence: 循环类型，可选值：none/daily/weekly/monthly/yearly/weekdays/customDays（可选，默认none）
+
+注意：
+1. 如果有多个待办，todos数组可以包含多个对象
+2. JSON块必须放在[ACTION_START]和[ACTION_END]标记之间
+3. 除了JSON块外，仍然用正常文字回复用户''';
+  }
+
+  List<Map<String, dynamic>> _extractTodoActions(String content) {
+    final List<Map<String, dynamic>> actions = [];
+    final regex = RegExp(
+      r'\[ACTION_START\](.*?)\[ACTION_END\]',
+      dotAll: true,
+    );
+    for (final match in regex.allMatches(content)) {
+      try {
+        final jsonStr = match.group(1)!.trim();
+        final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+        if (data['action'] == 'create_todo') {
+          final todos = data['todos'] as List?;
+          if (todos != null) {
+            for (final todo in todos) {
+              actions.add(todo as Map<String, dynamic>);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return actions;
+  }
+
+  String _cleanActionContent(String content) {
+    return content
+        .replaceAll(
+          RegExp(r'\[ACTION_START\].*?\[ACTION_END\]', dotAll: true),
+          '',
+        )
+        .trim();
   }
 
   Future<void> _sendMessage() async {
@@ -253,19 +305,27 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         throw Exception('未收到有效回复');
       }
 
+      final todoActions = _extractTodoActions(fullContent);
+      final cleanContent = _cleanActionContent(fullContent);
+
       final assistantMsg = ChatMessage(
         role: ChatRole.assistant,
-        content: fullContent,
+        content: cleanContent,
       );
 
       setState(() {
         _messages.add(assistantMsg);
         _streamingContent = '';
         _isLoading = false;
+        if (todoActions.isNotEmpty) {
+          _pendingTodos = todoActions;
+        } else {
+          _pendingTodos = [];
+        }
       });
       await ChatStorageService.addMessage(assistantMsg);
       _scrollToBottom();
-      _generateSuggestions(assistantMsg.content);
+      _generateSuggestions(cleanContent);
     } catch (e) {
       setState(() {
         _streamingContent = '';
@@ -525,10 +585,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                       horizontal: 12,
                       vertical: 8,
                     ),
-                    itemCount: _messages.length + (_isLoading ? 1 : 0),
+                    itemCount: _messages.length +
+                        (_isLoading ? 1 : 0) +
+                        (_pendingTodos.isNotEmpty ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (_isLoading && index == _messages.length) {
                         return _buildStreamingBubble(isDark);
+                      }
+                      if (_pendingTodos.isNotEmpty &&
+                          index == _messages.length) {
+                        return _buildPendingTodosCard(isDark);
                       }
                       final msg = _messages[index];
                       return _buildMessageBubble(msg, isDark);
@@ -930,6 +996,225 @@ ${assistantResponse.substring(0, assistantResponse.length > 500 ? 500 : assistan
         _sendMessage();
       },
     );
+  }
+
+  Widget _buildPendingTodosCard(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color:
+              Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.add_task_outlined,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'AI建议添加以下待办',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ..._pendingTodos.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final todo = entry.value;
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .surface
+                      .withOpacity(isDark ? 0.5 : 0.8),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.circle_outlined,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            todo['title'] ?? '未命名待办',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (todo['remark'] != null &&
+                        (todo['remark'] as String).isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20),
+                        child: Text(
+                          todo['remark'] as String,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.5),
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (todo['dueDate'] != null &&
+                        (todo['dueDate'] as String).isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.schedule_outlined,
+                              size: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.4),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              todo['dueDate'] as String,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withOpacity(0.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }).toList(),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() => _pendingTodos = []);
+                      },
+                      icon: const Icon(Icons.close, size: 18),
+                      label: const Text('忽略'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _insertTodos,
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('全部添加'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _insertTodos() {
+    if (_pendingTodos.isEmpty || widget.onTodoInserted == null) {
+      setState(() => _pendingTodos = []);
+      return;
+    }
+
+    for (final todoData in _pendingTodos) {
+      DateTime? dueDate;
+      if (todoData['dueDate'] != null &&
+          (todoData['dueDate'] as String).isNotEmpty) {
+        dueDate = DateTime.tryParse(todoData['dueDate'] as String);
+      }
+
+      RecurrenceType recurrence = RecurrenceType.none;
+      switch (todoData['recurrence']) {
+        case 'daily':
+          recurrence = RecurrenceType.daily;
+          break;
+        case 'weekly':
+          recurrence = RecurrenceType.weekly;
+          break;
+        case 'monthly':
+          recurrence = RecurrenceType.monthly;
+          break;
+        case 'yearly':
+          recurrence = RecurrenceType.yearly;
+          break;
+        case 'weekdays':
+          recurrence = RecurrenceType.weekdays;
+          break;
+        case 'customDays':
+          recurrence = RecurrenceType.customDays;
+          break;
+      }
+
+      final newTodo = TodoItem(
+        title: todoData['title'] ?? '未命名待办',
+        remark: (todoData['remark'] as String?)?.isEmpty ?? true
+            ? null
+            : todoData['remark'] as String?,
+        dueDate: dueDate,
+        createdDate: DateTime.now().millisecondsSinceEpoch,
+        recurrence: recurrence,
+      );
+      widget.onTodoInserted!(newTodo);
+    }
+
+    final count = _pendingTodos.length;
+    setState(() => _pendingTodos = []);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加 $count 个待办'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {

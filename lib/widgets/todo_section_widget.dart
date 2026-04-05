@@ -2159,6 +2159,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         builder: (_) => TodoChatScreen(
                           username: widget.username,
                           todos: todosForChat,
+                          onTodoInserted: (newTodo) {
+                            final updatedList =
+                                List<TodoItem>.from(widget.todos)..add(newTodo);
+                            widget.onTodosChanged(updatedList);
+                          },
                         ),
                       ),
                     );
