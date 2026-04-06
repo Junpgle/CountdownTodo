@@ -1,9 +1,9 @@
 {
   "version_code": 1,
-  "version_name": "3.0.9",
+  "version_name": "3.1.0",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 3.0.9",
+    "title": "版本更新 3.1.0",
     "description":"【修复】开屏逻辑\n【更新】文档内容\n【优化】采取分包机制，大幅减小App包大小",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
@@ -37,6 +37,15 @@
   },
   "changelog_history": [
     {
+      "version_name": "3.1.0",
+      "date": "2026-04-06",
+      "items": [
+        "【新增】忘记密码重置功能",
+        "【新增】隐私协议",
+        "【新增】分包机制，安装包更小，更新更快",
+        "【修复】随机壁纸"
+      ]
+    },{
       "version_name": "3.0.9",
       "date": "2026-04-05",
       "items": [
