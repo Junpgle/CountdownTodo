@@ -1777,7 +1777,10 @@ class _HomeDashboardState extends State<HomeDashboard>
             .map((f) => f['download_url'].toString())
             .toList();
         if (urls.isNotEmpty && mounted)
-          setState(() => _wallpaperUrl = urls[Random().nextInt(urls.length)]);
+          setState(() {
+            _wallpaperShow = true;
+            _wallpaperUrl = urls[Random().nextInt(urls.length)];
+          });
       }
     } catch (e) {
       debugPrint("获取壁纸失败: $e");
