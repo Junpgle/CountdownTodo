@@ -46,8 +46,8 @@ class StorageService {
   static const String KEY_TIME_LOGS = "user_time_logs";
   static const String KEY_SERVER_CHOICE = "app_server_choice";
   static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
-  static const String KEY_PRIVACY_VERSION = "privacy_policy_version";
-  static const String PRIVACY_CURRENT_VERSION = "2";
+  static const String KEY_PRIVACY_DATE = "privacy_policy_date";
+  static const String PRIVACY_CURRENT_DATE = "2026-04-06";
 
   static const String KEY_LOCAL_SCREEN_TIME =
       "local_screen_time_pending_upload";
