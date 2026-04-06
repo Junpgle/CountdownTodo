@@ -1,6 +1,7 @@
 /**
  * Math Quiz App Backend - Cloudflare Worker
- * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题
+ * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题 + 密码重置
+ * [新增] 忘记密码 / 重置密码完整流程
  * [新增] 支持 S2S (Server to Server) 智能安全合并，动态映射双端不一致的 User ID
  */
 
@@ -151,6 +152,91 @@ export default {
         });
       }
 
+      // ==========================================
+      // 🔐 忘记密码：步骤1 - 请求发送验证码
+      // ==========================================
+      if (url.pathname === "/api/auth/forgot_password" && request.method === "POST") {
+        const { email } = await request.json();
+
+        if (!email) return errorResponse("请提供绑定的邮箱地址");
+        if (!env.RESEND_API_KEY) return errorResponse("服务端未配置邮件服务", 500);
+
+        // 1. 检查邮箱是否已注册
+        const user = await DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+        if (!user) return errorResponse("该邮箱尚未注册", 404);
+
+        // 2. 容错建表：确保 password_resets 表存在
+        await DB.prepare(`CREATE TABLE IF NOT EXISTS password_resets (email TEXT PRIMARY KEY, code TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`).run();
+
+        // 3. 防频繁发信检查 (60秒冷却)
+        const existingRequest = await DB.prepare("SELECT created_at FROM password_resets WHERE email = ?").bind(email).first();
+        if (existingRequest) {
+            const lastRequestTime = new Date(existingRequest.created_at + 'Z').getTime();
+            if (Date.now() - lastRequestTime < 60 * 1000) {
+                return errorResponse("获取验证码过于频繁，请 1 分钟后再试", 429);
+            }
+        }
+
+        // 4. 生成 6 位验证码并存入数据库
+        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+        await DB.prepare("INSERT OR REPLACE INTO password_resets (email, code) VALUES (?, ?)").bind(email, newCode).run();
+
+        // 5. 调用 Resend 发送邮件
+        const resendResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {"Authorization": `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json"},
+            body: JSON.stringify({
+                from: "Math Quiz <Math&Quiz@junpgle.me>",
+                to: email,
+                subject: "重置您的密码 - Math Quiz",
+                html: `<div style="font-family: sans-serif; padding: 20px;">
+                        <h2>重置密码请求</h2>
+                        <p>我们收到了您重置密码的请求。您的验证码是：</p>
+                        <p style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #E53E3E;">${newCode}</p>
+                        <p style="color: #666; font-size: 14px;">此验证码在 15 分钟内有效。如果您未请求重置密码，请忽略此邮件。</p>
+                       </div>`
+            })
+        });
+
+        if (!resendResponse.ok) return errorResponse("验证邮件发送失败，请稍后再试", 400);
+        return jsonResponse({success: true, message: "重置验证码已发送至您的邮箱"});
+      }
+
+      // ==========================================
+      // 🔐 忘记密码：步骤2 - 校验验证码并修改密码
+      // ==========================================
+      if (url.pathname === "/api/auth/reset_password" && request.method === "POST") {
+        const { email, code, new_password } = await request.json();
+
+        if (!email || !code || !new_password) return errorResponse("缺少必要字段：邮箱、验证码或新密码");
+
+        // 前置校验密码长度，节省 CPU 计算资源
+        if (new_password.length < 6) return errorResponse("密码长度不能少于 6 位");
+
+        // 1. 查找验证码记录
+        const resetRecord = await DB.prepare("SELECT * FROM password_resets WHERE email = ?").bind(email).first();
+        if (!resetRecord) return errorResponse("未找到该邮箱的重置请求，请重新获取验证码");
+
+        // 2. 校验验证码是否正确
+        if (resetRecord.code !== code.toString()) return errorResponse("验证码错误");
+
+        // 3. 校验验证码是否过期 (15分钟)
+        const createdTime = new Date(resetRecord.created_at + 'Z').getTime();
+        if (Date.now() - createdTime > 15 * 60 * 1000) {
+            await DB.prepare("DELETE FROM password_resets WHERE email = ?").bind(email).run(); // 清理过期记录
+            return errorResponse("验证码已过期，请重新获取");
+        }
+
+        // 4. 加密新密码并更新数据库
+        const hash = await hashPassword(new_password);
+        await DB.prepare("UPDATE users SET password_hash = ? WHERE email = ?").bind(hash, email).run();
+
+        // 5. 使用完毕后清理验证码记录
+        await DB.prepare("DELETE FROM password_resets WHERE email = ?").bind(email).run();
+
+        return jsonResponse({success: true, message: "密码重置成功，请使用新密码登录"});
+      }
+
       if (url.pathname === "/api/auth/change_password" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
         const { user_id, old_password, new_password } = await request.json();
@@ -223,7 +309,7 @@ export default {
         } catch (e) {
           return errorResponse("请求体 JSON 格式错误", 400);
         }
-        
+
         const { user_id, last_sync_time = 0, device_id, screen_time } = payload;
         const todos = payload.todos || payload.todos_changes || payload.todosChanges || [];
         const countdowns = payload.countdowns || payload.countdowns_changes || payload.countdownsChanges || [];
@@ -231,7 +317,7 @@ export default {
 
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
         if (!device_id) return errorResponse("缺少 device_id", 400);
-        
+
         console.log(`[SYNC] userId=${user_id} deviceId=${device_id} todos=${todos.length} countdowns=${countdowns.length} timeLogs=${timeLogs.length} screenTime=${screen_time ? 'present' : 'empty'}`);
 
         const now = Date.now();
@@ -518,20 +604,20 @@ export default {
       // --------------------------
       if (url.pathname === "/api/screen_time" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
-        
+
         let body;
         try {
           body = await request.json();
         } catch (e) {
           return errorResponse("请求体 JSON 格式错误", 400);
         }
-        
+
         const { user_id, device_name, record_date, apps } = body;
         if (!user_id) return errorResponse("缺少 user_id", 400);
         if (!device_name) return errorResponse("缺少 device_name", 400);
         if (!record_date) return errorResponse("缺少 record_date", 400);
         if (!apps || !Array.isArray(apps)) return errorResponse("缺少 apps 数组", 400);
-        
+
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
 
         const now = Date.now();
@@ -717,7 +803,7 @@ export default {
         await DB.prepare(`INSERT INTO pomodoro_settings (user_id, default_focus_duration, default_rest_duration, default_loop_count, timer_mode, updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET default_focus_duration = excluded.default_focus_duration, default_rest_duration  = excluded.default_rest_duration, default_loop_count = excluded.default_loop_count, timer_mode = excluded.timer_mode, updated_at = excluded.updated_at`).bind(authUserId, default_focus_duration ?? 1500, default_rest_duration ?? 300, default_loop_count ?? 4, timer_mode ?? 0, Date.now()).run();
         return jsonResponse({ success: true });
       }
- 
+
       if (url.pathname === "/api/pomodoro/settings" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const row = await DB.prepare("SELECT * FROM pomodoro_settings WHERE user_id = ?").bind(authUserId).first();

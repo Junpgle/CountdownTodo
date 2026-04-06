@@ -14,6 +14,7 @@ import 'screens/home_dashboard.dart';
 import 'screens/feature_guide_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
+import 'widgets/privacy_policy_dialog.dart';
 import 'storage_service.dart';
 import 'services/api_service.dart';
 import 'services/float_window_service.dart';
@@ -181,6 +182,10 @@ class _MyAppState extends State<MyApp> {
     // 1. 读取登录状态
     final user = await StorageService.getLoginSession();
 
+    // 1.5 检查隐私协议是否需要更新
+    final privacyNeedsUpdate = await StorageService.isPrivacyPolicyUpToDate();
+    final wasLoggedIn = user != null && user.isNotEmpty;
+
     // 2. 检查升级引导
     final needGuide = await FeatureGuideScreen.shouldShow();
 
@@ -192,14 +197,46 @@ class _MyAppState extends State<MyApp> {
       });
     }
 
-    // 3. 异步初始化耗时的底层插件
+    // 3. 如果已登录但隐私协议版本过期，弹窗要求重新同意
+    if (wasLoggedIn && !privacyNeedsUpdate) {
+      await _showPrivacyUpdateDialog();
+    }
+
+    // 4. 异步初始化耗时的底层插件
     _initHeavyPlugins();
 
-    // 4. 初始化手环通信服务（全局）
+    // 5. 初始化手环通信服务（全局）
     _initBandService();
 
-    // 5. 后台预取今天的开屏内容（不阻塞启动）
+    // 6. 后台预取今天的开屏内容（不阻塞启动）
     _prefetchSplashContent();
+  }
+
+  Future<void> _showPrivacyUpdateDialog() async {
+    if (!mounted) return;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PrivacyPolicyDialog(
+        isUpdate: true,
+        onAgree: () {
+          StorageService.setPrivacyPolicyAgreed(true);
+          Navigator.pop(dialogContext, true);
+        },
+        onDisagree: () {
+          Navigator.pop(dialogContext, false);
+        },
+      ),
+    );
+    if (result == false) {
+      // 用户不同意更新后的隐私协议，退出登录
+      await StorageService.clearLoginSession();
+      if (mounted) {
+        setState(() {
+          _loggedInUser = null;
+        });
+      }
+    }
   }
 
   Future<void> _prefetchSplashContent() async {

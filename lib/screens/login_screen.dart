@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../services/api_service.dart';
 import '../storage_service.dart';
+import '../widgets/privacy_policy_dialog.dart';
 import 'home_dashboard.dart';
 import '../utils/page_transitions.dart';
 
@@ -655,6 +657,14 @@ class _LoginScreenState extends State<LoginScreen>
   bool _awaitingVerification = false;
   String? _legacyLocalUser;
   String _serverChoice = 'cloudflare';
+  bool _privacyAgreed = false;
+  int _forgotPasswordStep = 0;
+  final _resetEmailCtrl = TextEditingController();
+  final _resetCodeCtrl = TextEditingController();
+  final _newPassCtrl = TextEditingController();
+  final _confirmPassCtrl = TextEditingController();
+  int _resetCodeCooldown = 0;
+  Timer? _cooldownTimer;
 
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fadeAnim;
@@ -683,12 +693,17 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   void dispose() {
+    _cooldownTimer?.cancel();
     _fadeCtrl.dispose();
     _slideCtrl.dispose();
     _userCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
     _codeCtrl.dispose();
+    _resetEmailCtrl.dispose();
+    _resetCodeCtrl.dispose();
+    _newPassCtrl.dispose();
+    _confirmPassCtrl.dispose();
     super.dispose();
   }
 
@@ -822,6 +837,10 @@ class _LoginScreenState extends State<LoginScreen>
       _snack('请输入邮箱和密码');
       return;
     }
+    if (!_privacyAgreed) {
+      _snack('请先阅读并同意隐私政策');
+      return;
+    }
 
     setState(() => _isLoading = true);
     final result = await ApiService.login(email, pass);
@@ -859,6 +878,10 @@ class _LoginScreenState extends State<LoginScreen>
         return;
       }
     }
+    if (!_privacyAgreed) {
+      _snack('请先阅读并同意隐私政策');
+      return;
+    }
 
     setState(() => _isLoading = true);
     final regResult = await ApiService.register(
@@ -888,6 +911,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _performAutoLoginAfterRegister(
       String email, String pass, String username) async {
+    await StorageService.setPrivacyPolicyAgreed(true);
     setState(() => _isLoading = true);
     final loginResult = await ApiService.login(email, pass);
     if (!mounted) return;
@@ -913,6 +937,9 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _finalizeLoginAndNavigate(String username) {
     if (!mounted) return;
+    if (_privacyAgreed) {
+      StorageService.setPrivacyPolicyAgreed(true);
+    }
     setState(() => _isLoading = false);
     Navigator.pushReplacement(
       context,
@@ -937,6 +964,101 @@ class _LoginScreenState extends State<LoginScreen>
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _showPrivacyDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => PrivacyPolicyDialog(
+        isUpdate: false,
+        onAgree: () {
+          Navigator.pop(dialogContext);
+          setState(() => _privacyAgreed = true);
+        },
+        onDisagree: () {
+          Navigator.pop(dialogContext);
+          setState(() => _privacyAgreed = false);
+        },
+      ),
+    );
+  }
+
+  void _openForgotPassword() {
+    _resetEmailCtrl.text = _emailCtrl.text.trim();
+    _resetCodeCtrl.clear();
+    _newPassCtrl.clear();
+    _confirmPassCtrl.clear();
+    setState(() => _forgotPasswordStep = 1);
+  }
+
+  void _handleSendResetCode() async {
+    if (_resetCodeCooldown > 0) return;
+    final email = _resetEmailCtrl.text.trim();
+    if (email.isEmpty) {
+      _snack('请输入邮箱地址');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _resetCodeCooldown = 60;
+    });
+    final result = await ApiService.forgotPassword(email);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (result['success'] == true) {
+      _snack(result['message']);
+      setState(() => _forgotPasswordStep = 2);
+      _cooldownTimer?.cancel();
+      _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (_resetCodeCooldown <= 0) {
+          timer.cancel();
+          return;
+        }
+        setState(() => _resetCodeCooldown--);
+      });
+    } else {
+      _snack(result['message']);
+      setState(() => _resetCodeCooldown = 0);
+    }
+  }
+
+  void _handleResetPassword() async {
+    final email = _resetEmailCtrl.text.trim();
+    final code = _resetCodeCtrl.text.trim();
+    final newPass = _newPassCtrl.text;
+    final confirmPass = _confirmPassCtrl.text;
+
+    if (code.isEmpty) {
+      _snack('请输入验证码');
+      return;
+    }
+    if (newPass.isEmpty || confirmPass.isEmpty) {
+      _snack('请输入新密码并确认');
+      return;
+    }
+    if (newPass.length < 6) {
+      _snack('密码长度不能少于 6 位');
+      return;
+    }
+    if (newPass != confirmPass) {
+      _snack('两次输入的密码不一致');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    final result = await ApiService.resetPassword(email, code, newPass);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (result['success'] == true) {
+      _snack(result['message']);
+      setState(() {
+        _forgotPasswordStep = 0;
+        _emailCtrl.text = email;
+      });
+    } else {
+      _snack(result['message']);
+    }
   }
 
   // ── Build ────────────────────────────────────
@@ -1003,8 +1125,10 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildFormContent() =>
-      _awaitingVerification ? _buildVerifyView() : _buildMainForm();
+  Widget _buildFormContent() {
+    if (_forgotPasswordStep > 0) return _buildForgotPasswordView();
+    return _awaitingVerification ? _buildVerifyView() : _buildMainForm();
+  }
 
   // ── Main form ────────────────────────────────
 
@@ -1054,7 +1178,72 @@ class _LoginScreenState extends State<LoginScreen>
           icon: Icons.lock_outline_rounded,
           obscure: true,
         ),
+        if (!_isRegisterMode)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _openForgotPassword,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                '忘记密码？',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: _T.primaryLt,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
         const SizedBox(height: 28),
+        Row(
+          children: [
+            Checkbox(
+              value: _privacyAgreed,
+              onChanged: (val) => setState(() => _privacyAgreed = val ?? false),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4)),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _showPrivacyDialog(context),
+                child: RichText(
+                  text: TextSpan(
+                    style: TextStyle(
+                        fontSize: 12.5, color: t.textSec, height: 1.4),
+                    children: [
+                      const TextSpan(text: '我已阅读并同意'),
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: TextButton(
+                          onPressed: () => _showPrivacyDialog(context),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Text(
+                            '《隐私政策》',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: _T.primaryLt,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         if (_isLoading)
           const _Spinner()
         else
@@ -1115,6 +1304,129 @@ class _LoginScreenState extends State<LoginScreen>
             onPressed: () => setState(() => _awaitingVerification = false),
             child: const Text(
               '← 返回修改邮箱',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: _T.primaryLt,
+                  fontWeight: FontWeight.w500),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Forgot password view ───────────────
+
+  Widget _buildForgotPasswordView() {
+    final t = _T(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: t.verifyIconBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: t.verifyIconBd, width: 1),
+          ),
+          child: const Icon(Icons.lock_reset_outlined,
+              color: _T.primaryLt, size: 26),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          '重置密码',
+          style: TextStyle(
+              fontSize: 26, fontWeight: FontWeight.w700, color: t.textPri),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _forgotPasswordStep == 1
+              ? '输入注册时使用的邮箱，\n我们将发送验证码到你的邮箱'
+              : '输入验证码并设置新密码',
+          style: TextStyle(fontSize: 14, color: t.textSec, height: 1.6),
+        ),
+        const SizedBox(height: 28),
+        if (_forgotPasswordStep == 1) ...[
+          _Field(
+            controller: _resetEmailCtrl,
+            label: '邮箱',
+            hint: '输入注册邮箱',
+            icon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 28),
+          if (_isLoading)
+            const _Spinner()
+          else if (_resetCodeCooldown > 0)
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: t.textHint.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Text(
+                    '$_resetCodeCooldown 秒后可重新发送',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: t.textHint,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            _PrimaryBtn(
+              label: '发送验证码',
+              onPressed: _handleSendResetCode,
+            ),
+        ] else ...[
+          _Field(
+            controller: _resetEmailCtrl,
+            label: '邮箱',
+            hint: '注册邮箱',
+            icon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+            enabled: false,
+          ),
+          const SizedBox(height: 16),
+          _OtpInput(controller: _resetCodeCtrl),
+          const SizedBox(height: 16),
+          _Field(
+            controller: _newPassCtrl,
+            label: '新密码',
+            hint: '设置新密码（至少6位）',
+            icon: Icons.lock_outline_rounded,
+            obscure: true,
+          ),
+          const SizedBox(height: 16),
+          _Field(
+            controller: _confirmPassCtrl,
+            label: '确认密码',
+            hint: '再次输入新密码',
+            icon: Icons.lock_outline_rounded,
+            obscure: true,
+          ),
+          const SizedBox(height: 28),
+          if (_isLoading)
+            const _Spinner()
+          else
+            _PrimaryBtn(
+              label: '重置密码',
+              onPressed: _handleResetPassword,
+              isAccent: true,
+            ),
+        ],
+        const SizedBox(height: 18),
+        Center(
+          child: TextButton(
+            onPressed: () => setState(() => _forgotPasswordStep = 0),
+            child: const Text(
+              '← 返回登录',
               style: TextStyle(
                   fontSize: 13,
                   color: _T.primaryLt,

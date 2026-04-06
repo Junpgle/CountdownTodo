@@ -45,6 +45,9 @@ class StorageService {
   static const String KEY_SEMESTER_END = "semester_end_date";
   static const String KEY_TIME_LOGS = "user_time_logs";
   static const String KEY_SERVER_CHOICE = "app_server_choice";
+  static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
+  static const String KEY_PRIVACY_VERSION = "privacy_policy_version";
+  static const String PRIVACY_CURRENT_VERSION = "2";
 
   static const String KEY_LOCAL_SCREEN_TIME =
       "local_screen_time_pending_upload";
@@ -1239,6 +1242,31 @@ class StorageService {
   static Future<void> setReminderNotificationEnabled(bool enabled) async {
     final prefs = await StorageService.prefs;
     await prefs.setBool(KEY_NOTIFY_REMINDER_ENABLED, enabled);
+  }
+
+  static Future<bool> isPrivacyPolicyAgreed() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_PRIVACY_AGREED) ?? false;
+  }
+
+  static Future<void> setPrivacyPolicyAgreed(bool agreed) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_PRIVACY_AGREED, agreed);
+    if (agreed) {
+      await prefs.setString(KEY_PRIVACY_VERSION, PRIVACY_CURRENT_VERSION);
+    }
+  }
+
+  static Future<bool> isPrivacyPolicyUpToDate() async {
+    final prefs = await StorageService.prefs;
+    final version = prefs.getString(KEY_PRIVACY_VERSION);
+    return version == PRIVACY_CURRENT_VERSION;
+  }
+
+  static Future<void> withdrawPrivacyAgreement() async {
+    final prefs = await StorageService.prefs;
+    await prefs.remove(KEY_PRIVACY_AGREED);
+    await prefs.remove(KEY_PRIVACY_VERSION);
   }
 
   static void dispose() {

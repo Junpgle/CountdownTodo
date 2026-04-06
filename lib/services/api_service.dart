@@ -122,6 +122,45 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> forgotPassword(String email) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/auth/forgot_password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+      final data = jsonDecode(response.body);
+      return {
+        'success': response.statusCode == 200 && data['success'] == true,
+        'message': data['message'] ?? data['error'] ?? '发送失败',
+      };
+    } catch (e) {
+      return {'success': false, 'message': "网络错误: $e"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> resetPassword(
+      String email, String code, String newPassword) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/auth/reset_password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'code': code,
+          'new_password': newPassword,
+        }),
+      );
+      final data = jsonDecode(response.body);
+      return {
+        'success': response.statusCode == 200 && data['success'] == true,
+        'message': data['message'] ?? data['error'] ?? '重置失败',
+      };
+    } catch (e) {
+      return {'success': false, 'message': "网络错误: $e"};
+    }
+  }
+
   static Future<Map<String, dynamic>> changePassword(
       int userId, String oldPassword, String newPassword) async {
     try {
