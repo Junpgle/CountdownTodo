@@ -84,5 +84,19 @@ getToken: (): string | null => localStorage.getItem('cdt_token'),
       method: 'POST',
       body: JSON.stringify(payload)
     });
+  },
+
+  async forgotPassword(email: string) {
+    return this.request('/api/auth/forgot_password', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+  },
+
+  async resetPassword(email: string, code: string, newPassword: string) {
+    return this.request('/api/auth/reset_password', {
+      method: 'POST',
+      body: JSON.stringify({ email, code, new_password: newPassword })
+    });
   }
 };

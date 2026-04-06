@@ -27,7 +27,7 @@
     }
   ],
   "wallpaper": {
-    "show": true,
+    "show": false,
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [

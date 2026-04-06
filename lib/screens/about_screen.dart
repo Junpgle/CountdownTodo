@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../utils/page_transitions.dart';
 import 'settings/device_version_detail_page.dart';
+import '../widgets/privacy_policy_dialog.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -181,6 +182,11 @@ class _AboutScreenState extends State<AboutScreen> {
 
             const SizedBox(height: 16),
 
+            // 隐私政策卡片
+            _buildPrivacyCard(context),
+
+            const SizedBox(height: 16),
+
             // 更新日志卡片
             _buildChangelogCard(context),
 
@@ -221,6 +227,38 @@ class _AboutScreenState extends State<AboutScreen> {
               child,
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrivacyCard(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            ListTile(
+              leading: Icon(Icons.privacy_tip_outlined,
+                  color: Theme.of(context).colorScheme.primary),
+              title: const Text('隐私政策'),
+              subtitle: const Text('查看我们如何收集、使用和保护您的个人信息'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                showDialog(
+                  context: context,
+                  barrierDismissible: true,
+                  builder: (dialogContext) => PrivacyPolicyDialog(
+                    isUpdate: false,
+                    onAgree: () => Navigator.pop(dialogContext),
+                    onDisagree: () => Navigator.pop(dialogContext),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
