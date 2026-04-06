@@ -44,7 +44,6 @@ import 'settings/dialogs/change_password_dialog.dart';
 import 'settings/dialogs/home_section_manager_dialog.dart';
 import 'settings/dialogs/migration_dialog.dart';
 import 'settings/dialogs/island_priority_dialog.dart';
-import '../widgets/privacy_policy_dialog.dart';
 
 // 引入逻辑处理器
 import 'settings/handlers/course_import_handler.dart';
@@ -874,55 +873,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // ─── 查看隐私政策 ──────────────────────────────────────
-  Future<void> _showPrivacyPolicy() async {
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) => PrivacyPolicyDialog(
-        isUpdate: false,
-        onAgree: () => Navigator.pop(dialogContext),
-        onDisagree: () => Navigator.pop(dialogContext),
-      ),
-    );
-  }
-
-  // ─── 撤回隐私政策同意确认 ──────────────────────────────────────
-  Future<void> _showWithdrawPrivacyConfirmation() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('撤回隐私政策同意'),
-        content: const Text(
-          '撤回同意后，您将无法使用数据同步等需要云端交互的功能。\n\n已收集的个人信息将在合理期限内删除或匿名化处理。\n\n是否确认撤回？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            child: const Text('确认撤回'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await StorageService.withdrawPrivacyAgreement();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('已撤回隐私政策同意，部分功能将受限'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-    }
-  }
-
   // ─── 动画设置区块 ──────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -1217,8 +1167,6 @@ class _SettingsPageState extends State<SettingsPage> {
             isCheckingUpdate: _isCheckingUpdate,
             onCheckUpdates: _checkUpdatesAndNotices,
             onLogout: () => _handleLogout(force: false),
-            onViewPrivacyPolicy: _showPrivacyPolicy,
-            onWithdrawPrivacyAgreement: _showWithdrawPrivacyConfirmation,
           ),
         ),
         _buildExpandableSection(
@@ -1536,8 +1484,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   isCheckingUpdate: _isCheckingUpdate,
                   onCheckUpdates: _checkUpdatesAndNotices,
                   onLogout: () => _handleLogout(force: false),
-                  onViewPrivacyPolicy: _showPrivacyPolicy,
-                  onWithdrawPrivacyAgreement: _showWithdrawPrivacyConfirmation,
                 ),
                 const SizedBox(height: 8),
                 Card(

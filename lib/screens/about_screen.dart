@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'dart:convert';
 import '../../utils/page_transitions.dart';
 import 'settings/device_version_detail_page.dart';
-import '../widgets/privacy_policy_dialog.dart';
+import 'login_screen.dart';
+import '../storage_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -21,11 +24,19 @@ class _AboutScreenState extends State<AboutScreen> {
   bool _isLoadingReleases = true;
   bool _versionExpanded = false;
 
+  String? _privacyPolicyContent;
+  String? _privacyPolicyDate;
+  bool _isLoadingPrivacy = true;
+
+  static const String PRIVACY_RAW_URL =
+      'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
+
   @override
   void initState() {
     super.initState();
     _loadVersion();
     _fetchReleases();
+    _fetchPrivacyPolicy();
   }
 
   Future<void> _loadVersion() async {
@@ -67,6 +78,32 @@ class _AboutScreenState extends State<AboutScreen> {
     }
   }
 
+  Future<void> _fetchPrivacyPolicy() async {
+    try {
+      final response = await http.get(Uri.parse(PRIVACY_RAW_URL));
+      if (response.statusCode == 200) {
+        final content = response.body;
+        String? date;
+        final dateMatch = RegExp(r'\*\*版本日期：(.+?)\*\*').firstMatch(content);
+        if (dateMatch != null) {
+          date = dateMatch.group(1)?.trim();
+        }
+        if (mounted) {
+          setState(() {
+            _privacyPolicyContent = content;
+            _privacyPolicyDate = date;
+            _isLoadingPrivacy = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoadingPrivacy = false);
+      }
+    } catch (e) {
+      debugPrint('获取隐私政策失败: $e');
+      if (mounted) setState(() => _isLoadingPrivacy = false);
+    }
+  }
+
   Future<void> _launchURL(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
@@ -77,6 +114,59 @@ class _AboutScreenState extends State<AboutScreen> {
           SnackBar(content: Text('无法打开链接: $url')),
         );
       }
+    }
+  }
+
+  Future<void> _showPrivacyPolicyPage() async {
+    await Navigator.push(
+      context,
+      PageTransitions.slideHorizontal(
+        PrivacyPolicyPage(
+          content: _privacyPolicyContent,
+          date: _privacyPolicyDate,
+          isLoading: _isLoadingPrivacy,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showWithdrawConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('撤回隐私同意'),
+        content: const Text(
+          '撤回同意后，将退出当前账号并清除本地所有数据。\n\n已收集的个人信息将在合理期限内删除或匿名化处理。\n\n是否确认撤回？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('确认撤回'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _withdrawAndLogout();
+    }
+  }
+
+  Future<void> _withdrawAndLogout() async {
+    await StorageService.withdrawPrivacyAgreement();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
     }
   }
 
@@ -91,7 +181,6 @@ class _AboutScreenState extends State<AboutScreen> {
         child: Column(
           children: [
             const SizedBox(height: 32),
-            // 应用图标和名称
             Container(
               width: 100,
               height: 100,
@@ -125,8 +214,6 @@ class _AboutScreenState extends State<AboutScreen> {
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 32),
-
-            // 软件介绍卡片
             _buildInfoCard(
               context,
               title: '软件介绍',
@@ -137,10 +224,9 @@ class _AboutScreenState extends State<AboutScreen> {
                 style: TextStyle(fontSize: 14),
               ),
             ),
-
             const SizedBox(height: 16),
-
-            // 功能链接卡片
+            _buildPrivacyCard(context),
+            const SizedBox(height: 16),
             _buildLinkCard(
               context,
               items: [
@@ -179,17 +265,8 @@ class _AboutScreenState extends State<AboutScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 16),
-
-            // 隐私政策卡片
-            _buildPrivacyCard(context),
-
-            const SizedBox(height: 16),
-
-            // 更新日志卡片
             _buildChangelogCard(context),
-
             const SizedBox(height: 32),
           ],
         ),
@@ -244,19 +321,19 @@ class _AboutScreenState extends State<AboutScreen> {
               leading: Icon(Icons.privacy_tip_outlined,
                   color: Theme.of(context).colorScheme.primary),
               title: const Text('隐私政策'),
-              subtitle: const Text('查看我们如何收集、使用和保护您的个人信息'),
+              subtitle: _privacyPolicyDate != null
+                  ? Text('版本日期：$_privacyPolicyDate')
+                  : const Text('查看我们如何收集、使用和保护您的个人信息'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                showDialog(
-                  context: context,
-                  barrierDismissible: true,
-                  builder: (dialogContext) => PrivacyPolicyDialog(
-                    isUpdate: false,
-                    onAgree: () => Navigator.pop(dialogContext),
-                    onDisagree: () => Navigator.pop(dialogContext),
-                  ),
-                );
-              },
+              onTap: _showPrivacyPolicyPage,
+            ),
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: const Icon(Icons.do_not_disturb_on_outlined,
+                  color: Colors.orange),
+              title: const Text('撤回隐私同意'),
+              subtitle: const Text('撤回后将退出账号并清除本地数据'),
+              onTap: _showWithdrawConfirmation,
             ),
           ],
         ),
@@ -468,4 +545,56 @@ class _LinkItem {
     required this.subtitle,
     required this.onTap,
   });
+}
+
+class PrivacyPolicyPage extends StatelessWidget {
+  final String? content;
+  final String? date;
+  final bool isLoading;
+
+  const PrivacyPolicyPage({
+    super.key,
+    this.content,
+    this.date,
+    this.isLoading = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('隐私政策'),
+        centerTitle: true,
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : content == null
+              ? const Center(child: Text('加载失败，请检查网络连接'))
+              : Markdown(
+                  data: content!,
+                  padding: const EdgeInsets.all(16),
+                  styleSheet: MarkdownStyleSheet(
+                    h1: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold),
+                    h2: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                    h3: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                    p: const TextStyle(fontSize: 14, height: 1.6),
+                    listBullet: const TextStyle(fontSize: 14),
+                    blockquote: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
+                    code:
+                        const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                    codeblockDecoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+    );
+  }
 }

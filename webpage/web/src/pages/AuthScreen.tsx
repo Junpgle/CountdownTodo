@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Mail, Lock, User as UserIcon, ShieldCheck, MessageSquare, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, Mail, Lock, User as UserIcon, ShieldCheck, MessageSquare, Loader2, KeyRound, Globe, AlertCircle } from 'lucide-react';
 import { ApiService } from '../services/api';
 
 export interface User {
@@ -15,6 +15,8 @@ interface AuthScreenProps {
   onLoginSuccess: (u: User) => void;
 }
 
+type ForgotMode = 'none' | 'email' | 'verify';
+
 export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
   const [isLogin, setIsLogin] = useState(true);
   const [awaitingVerification, setAwaitingVerification] = useState(false);
@@ -24,6 +26,27 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
   const [verificationCode, setVerificationCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const [forgotMode, setForgotMode] = useState<ForgotMode>('none');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown > 0]);
 
   const handleLogin = async () => {
     try {
@@ -90,6 +113,193 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
     setError('');
     setVerificationCode('');
   };
+
+  const openForgotPassword = useCallback(() => {
+    setResetEmail(email);
+    setResetCode('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setCooldown(0);
+    setForgotMode('email');
+    setError('');
+  }, [email]);
+
+  const handleSendResetCode = async () => {
+    if (cooldown > 0 || !resetEmail.trim()) return;
+    setError('');
+    setLoading(true);
+    try {
+      await ApiService.forgotPassword(resetEmail.trim());
+      setCooldown(60);
+      setForgotMode('verify');
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+      else setError('发送验证码失败，请重试');
+    }
+    setLoading(false);
+  };
+
+  const handleResetPassword = async () => {
+    setError('');
+    if (!resetCode.trim()) {
+      setError('请输入验证码');
+      return;
+    }
+    if (!newPassword || !confirmPassword) {
+      setError('请输入新密码并确认');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError('密码长度不能少于 6 位');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('两次输入的密码不一致');
+      return;
+    }
+    setLoading(true);
+    try {
+      await ApiService.resetPassword(resetEmail.trim(), resetCode.trim(), newPassword);
+      setForgotMode('none');
+      setIsLogin(true);
+      setEmail(resetEmail.trim());
+      setPassword('');
+      setError('');
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+      else setError('重置密码失败，请重试');
+    }
+    setLoading(false);
+  };
+
+  const backFromForgot = useCallback(() => {
+    setForgotMode('none');
+    setError('');
+  }, []);
+
+  if (forgotMode !== 'none') {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans text-slate-900">
+        <div className="w-full max-w-[440px] bg-white rounded-[2.5rem] p-10 shadow-2xl relative">
+          <button
+            type="button"
+            onClick={backFromForgot}
+            className="absolute top-8 left-8 p-2 text-slate-400 hover:text-slate-700 transition"
+          >
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+
+          <div className="mt-8 mb-8 text-center">
+            <div className="inline-flex p-4 rounded-3xl bg-indigo-50 text-indigo-600 mb-6">
+              <KeyRound className="w-10 h-10" />
+            </div>
+            <h2 className="text-3xl font-black tracking-tight mb-2 text-slate-900">
+              重置密码
+            </h2>
+            <p className="text-slate-500 font-medium px-4">
+              {forgotMode === 'email'
+                ? '输入注册时使用的邮箱，我们将发送验证码'
+                : '输入验证码并设置新密码'}
+            </p>
+          </div>
+
+          {error && (
+            <div className="mb-6 p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-r-xl text-sm font-bold animate-in fade-in slide-in-from-top-1">
+              {error}
+            </div>
+          )}
+
+          {forgotMode === 'email' ? (
+            <div className="space-y-4">
+              <div className="relative group">
+                <Mail className="absolute left-4 top-4 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <input
+                  type="email"
+                  required
+                  placeholder="注册邮箱"
+                  value={resetEmail}
+                  onChange={e => setResetEmail(e.target.value)}
+                  className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all text-slate-900"
+                />
+              </div>
+              <button
+                disabled={loading || cooldown > 0}
+                type="button"
+                onClick={handleSendResetCode}
+                className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl mt-4 hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-xl shadow-indigo-100 disabled:opacity-50 flex items-center justify-center gap-3 text-lg"
+              >
+                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : '发送验证码'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="relative group">
+                <Mail className="absolute left-4 top-4 w-5 h-5 text-slate-400" />
+                <input
+                  type="email"
+                  value={resetEmail}
+                  disabled
+                  className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl outline-none text-slate-500 cursor-not-allowed"
+                />
+              </div>
+              <div className="relative group">
+                <MessageSquare className="absolute left-4 top-4 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  placeholder="请输入验证码"
+                  value={resetCode}
+                  onChange={e => setResetCode(e.target.value)}
+                  className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none text-center text-2xl font-mono tracking-[0.5em] transition-all"
+                />
+              </div>
+              <div className="relative group">
+                <Lock className="absolute left-4 top-4 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <input
+                  type="password"
+                  required
+                  placeholder="新密码（至少6位）"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all text-slate-900"
+                />
+              </div>
+              <div className="relative group">
+                <Lock className="absolute left-4 top-4 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <input
+                  type="password"
+                  required
+                  placeholder="确认新密码"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all text-slate-900"
+                />
+              </div>
+              <button
+                disabled={loading}
+                type="button"
+                onClick={handleResetPassword}
+                className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl mt-4 hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-xl shadow-indigo-100 disabled:opacity-50 flex items-center justify-center gap-3 text-lg"
+              >
+                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : '重置密码'}
+              </button>
+            </div>
+          )}
+
+          <div className="mt-8 text-center">
+            <button
+              type="button"
+              onClick={backFromForgot}
+              className="text-indigo-600 font-bold hover:underline"
+            >
+              ← 返回登录
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans text-slate-900">
@@ -160,16 +370,29 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
                   className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all text-slate-900"
                 />
               </div>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-4 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                <input
-                  type="password"
-                  required
-                  placeholder="密码"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all text-slate-900"
-                />
+              <div>
+                <div className="relative group">
+                  <Lock className="absolute left-4 top-4 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                  <input
+                    type="password"
+                    required
+                    placeholder="密码"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all text-slate-900"
+                  />
+                </div>
+                {isLogin && (
+                  <div className="text-right mt-2">
+                    <button
+                      type="button"
+                      onClick={openForgotPassword}
+                      className="text-sm text-indigo-600 font-medium hover:underline"
+                    >
+                      忘记密码？
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -190,6 +413,29 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
               {isLogin ? '立即注册' : '去登录'}
             </button>
           </p>
+        </div>
+
+        <div className="mt-6 pt-5 border-t border-slate-100">
+          <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mb-3">
+            <Globe className="w-3.5 h-3.5" />
+            <span>服务器</span>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
+              <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+              <span className="text-xs font-medium text-indigo-700">Cloudflare（当前）</span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100 opacity-50 cursor-not-allowed">
+              <div className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
+              <span className="text-xs font-medium text-slate-400">阿里云 ECS（暂不支持Web）</span>
+            </div>
+          </div>
+          <div className="mt-3 flex items-start gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-relaxed text-amber-700">
+              不同服务器间数据不互通，请妥善保管账号信息
+            </p>
+          </div>
         </div>
       </div>
     </div>

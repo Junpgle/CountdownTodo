@@ -1,7 +1,7 @@
 {
-  "version_name": "2.1.0",
+  "version_name": "2.2.0",
   "update_info": {
-    "title": "版本更新 2.1.0",
-    "description": "【优化】番茄钟的同步逻辑"
+    "title": "版本更新 2.2.0",
+    "description": "【新增】忘记密码功能上线！登录界面点击“忘记密码”即可重置密码，找回账户更便捷",
   }
 }

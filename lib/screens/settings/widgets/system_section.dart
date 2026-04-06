@@ -9,8 +9,6 @@ class SystemSection extends StatelessWidget {
   final bool isCheckingUpdate;
   final VoidCallback onCheckUpdates;
   final VoidCallback onLogout;
-  final VoidCallback onViewPrivacyPolicy;
-  final VoidCallback onWithdrawPrivacyAgreement;
 
   const SystemSection({
     Key? key,
@@ -21,8 +19,6 @@ class SystemSection extends StatelessWidget {
     required this.isCheckingUpdate,
     required this.onCheckUpdates,
     required this.onLogout,
-    required this.onViewPrivacyPolicy,
-    required this.onWithdrawPrivacyAgreement,
   }) : super(key: key);
 
   @override
@@ -83,23 +79,6 @@ class SystemSection extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.chevron_right),
                 onTap: isCheckingUpdate ? null : onCheckUpdates,
-              ),
-              const Divider(height: 1, indent: 56),
-              ListTile(
-                leading:
-                    const Icon(Icons.privacy_tip_outlined, color: Colors.teal),
-                title: const Text('隐私政策'),
-                subtitle: const Text('查看完整隐私政策内容'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: onViewPrivacyPolicy,
-              ),
-              const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: const Icon(Icons.do_not_disturb_on_outlined,
-                    color: Colors.orange),
-                title: const Text('撤回隐私政策同意'),
-                subtitle: const Text('撤回后将无法使用需要同步的功能'),
-                onTap: onWithdrawPrivacyAgreement,
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
