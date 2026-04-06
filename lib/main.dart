@@ -109,6 +109,7 @@ class _MyAppState extends State<MyApp> {
   Map<String, dynamic>? _splashContent;
   bool _showDefaultSplash = true;
   bool _showHolidaySplash = false;
+  bool _showPrivacyUpdate = false;
 
   @override
   void initState() {
@@ -185,38 +186,53 @@ class _MyAppState extends State<MyApp> {
 
     // 1.5 检查隐私协议是否需要更新
     final privacyNeedsUpdate = await StorageService.isPrivacyPolicyUpToDate();
+    final wasAgreed = await StorageService.isPrivacyPolicyAgreed();
     final wasLoggedIn = user != null && user.isNotEmpty;
+    final storedDate = (await SharedPreferences.getInstance())
+        .getString(StorageService.KEY_PRIVACY_DATE);
+    debugPrint(
+        '[Privacy] wasLoggedIn=$wasLoggedIn, wasAgreed=$wasAgreed, needsUpdate=$privacyNeedsUpdate, storedDate=$storedDate, currentDate=${StorageService.PRIVACY_CURRENT_DATE}');
 
     // 2. 检查升级引导
     final needGuide = await FeatureGuideScreen.shouldShow();
+
+    // 3. 判断是否需要弹窗：已登录但未同意过，或版本已过期
+    final shouldShowPrivacyDialog =
+        wasLoggedIn && (!wasAgreed || !privacyNeedsUpdate);
 
     if (mounted) {
       setState(() {
         _loggedInUser = user;
         _showFeatureGuide = needGuide;
         _isChecking = false;
+        _showPrivacyUpdate = shouldShowPrivacyDialog;
       });
+
+      // 4. 如果需要弹窗，在界面渲染后弹出
+      if (_showPrivacyUpdate) {
+        debugPrint(
+            '[Privacy] Showing dialog via post frame callback (agreed=$wasAgreed, upToDate=$privacyNeedsUpdate)');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showPrivacyUpdateDialog();
+        });
+      }
     }
 
-    // 3. 如果已登录但隐私协议版本过期，弹窗要求重新同意
-    if (wasLoggedIn && !privacyNeedsUpdate) {
-      await _showPrivacyUpdateDialog();
-    }
-
-    // 4. 异步初始化耗时的底层插件
+    // 5. 异步初始化耗时的底层插件
     _initHeavyPlugins();
 
-    // 5. 初始化手环通信服务（全局）
+    // 6. 初始化手环通信服务（全局）
     _initBandService();
 
-    // 6. 后台预取今天的开屏内容（不阻塞启动）
+    // 7. 后台预取今天的开屏内容（不阻塞启动）
     _prefetchSplashContent();
   }
 
   Future<void> _showPrivacyUpdateDialog() async {
-    if (!mounted) return;
+    final navContext = appNavigatorKey.currentContext;
+    if (navContext == null) return;
     final result = await showDialog<bool>(
-      context: context,
+      context: navContext,
       barrierDismissible: false,
       builder: (dialogContext) => PrivacyPolicyDialog(
         isUpdate: true,
@@ -225,7 +241,15 @@ class _MyAppState extends State<MyApp> {
               date: StorageService.PRIVACY_CURRENT_DATE);
           Navigator.pop(dialogContext, true);
         },
-        onDisagree: () {
+        onDisagree: () async {
+          await StorageService.clearLoginSession();
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.clear();
+          if (mounted) {
+            setState(() {
+              _loggedInUser = null;
+            });
+          }
           Navigator.pop(dialogContext, false);
         },
       ),

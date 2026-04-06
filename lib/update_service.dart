@@ -83,13 +83,17 @@ class UpdateInfo {
   final String title;
   final String description;
   final String fullPackageUrl;
-  final String pcPackageUrl; // 新增
+  final String pcPackageUrl;
+  final Map<String, String> androidArchPackages;
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
       : title = json['title'] ?? '版本更新',
         description = json['description'] ?? '',
         fullPackageUrl = json['full_package_url'] ?? '',
-        pcPackageUrl = json['PC_package_url'] ?? ''; // 新增
+        pcPackageUrl = json['PC_package_url'] ?? '',
+        androidArchPackages = json['android_arch_packages'] != null
+            ? Map<String, String>.from(json['android_arch_packages'])
+            : {};
 }
 
 class Announcement {
@@ -316,6 +320,31 @@ class UpdateService {
   static String getUpdateFileName(String versionName) {
     if (Platform.isWindows) return "MathQuiz_v$versionName.exe";
     return "MathQuiz_v$versionName.apk";
+  }
+
+  // 🚀 获取当前设备架构
+  static Future<String> getDeviceArchitecture() async {
+    if (Platform.isWindows) return 'windows';
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    final supportedAbis = androidInfo.supportedAbis;
+    if (supportedAbis.contains('arm64-v8a')) return 'arm64-v8a';
+    if (supportedAbis.contains('armeabi-v7a')) return 'armeabi-v7a';
+    if (supportedAbis.contains('x86_64')) return 'x86_64';
+    return supportedAbis.isNotEmpty ? supportedAbis.first : 'arm64-v8a';
+  }
+
+  // 🚀 根据设备架构获取对应的下载链接
+  static String getDownloadUrlForArch(AppManifest manifest) {
+    if (Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty) {
+      return manifest.updateInfo.pcPackageUrl;
+    }
+    final archPackages = manifest.updateInfo.androidArchPackages;
+    if (archPackages.isNotEmpty) {
+      // 返回第一个可用的架构包（通常服务端会按优先级排列）
+      return archPackages.values.first;
+    }
+    return manifest.updateInfo.fullPackageUrl;
   }
 
   static Future<AppManifest?> checkManifest() async {
@@ -865,11 +894,7 @@ class UpdateService {
     String tempPath = "$savePath.download";
     File tempFile = File(tempPath);
 
-    // Windows 优先用 pcPackageUrl，Android 用 fullPackageUrl
-    final String downloadUrl =
-        Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty
-            ? manifest.updateInfo.pcPackageUrl
-            : manifest.updateInfo.fullPackageUrl;
+    final String downloadUrl = getDownloadUrlForArch(manifest);
 
     try {
       var client = HttpClient();

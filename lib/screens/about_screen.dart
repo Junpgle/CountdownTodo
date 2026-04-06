@@ -3,6 +3,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
 import 'dart:convert';
 import '../../utils/page_transitions.dart';
 import 'settings/device_version_detail_page.dart';
@@ -27,6 +29,9 @@ class _AboutScreenState extends State<AboutScreen> {
   String? _privacyPolicyContent;
   String? _privacyPolicyDate;
   bool _isLoadingPrivacy = true;
+  String _deviceArch = '加载中...';
+  String _deviceModel = '';
+  String _osVersion = '';
 
   static const String PRIVACY_RAW_URL =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
@@ -37,6 +42,36 @@ class _AboutScreenState extends State<AboutScreen> {
     _loadVersion();
     _fetchReleases();
     _fetchPrivacyPolicy();
+    _loadDeviceInfo();
+  }
+
+  Future<void> _loadDeviceInfo() async {
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        if (mounted) {
+          setState(() {
+            _deviceArch = androidInfo.supportedAbis.join(', ');
+            _deviceModel = '${androidInfo.manufacturer} ${androidInfo.model}';
+            _osVersion =
+                'Android ${androidInfo.version.release} (API ${androidInfo.version.sdkInt})';
+          });
+        }
+      } else if (Platform.isWindows) {
+        final windowsInfo = await deviceInfo.windowsInfo;
+        if (mounted) {
+          setState(() {
+            _deviceArch = 'Windows';
+            _deviceModel = windowsInfo.computerName;
+            _osVersion =
+                'Windows ${windowsInfo.majorVersion}.${windowsInfo.minorVersion}';
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('获取设备信息失败: $e');
+    }
   }
 
   Future<void> _loadVersion() async {
@@ -225,6 +260,8 @@ class _AboutScreenState extends State<AboutScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            _buildDeviceCard(context),
+            const SizedBox(height: 16),
             _buildPrivacyCard(context),
             const SizedBox(height: 16),
             _buildLinkCard(
@@ -338,6 +375,61 @@ class _AboutScreenState extends State<AboutScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDeviceCard(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.devices,
+                      size: 20, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text('设备信息',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildInfoRow('设备型号', _deviceModel),
+              const SizedBox(height: 8),
+              _buildInfoRow('操作系统', _osVersion),
+              const SizedBox(height: 8),
+              _buildInfoRow('CPU 架构', _deviceArch),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+      ],
     );
   }
 

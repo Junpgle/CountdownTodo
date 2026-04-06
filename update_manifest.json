@@ -6,7 +6,12 @@
     "title": "版本更新 3.0.9",
     "description":"【修复】开屏逻辑\n【更新】文档内容\n【优化】采取分包机制，大幅减小App包大小",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
-    "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe"
+    "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
+    "android_arch_packages": {
+      "arm64-v8a": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
+      "armeabi-v7a": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-armeabi-v7a-release.apk",
+      "x86_64": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-x86_64-release.apk"
+    }
   },
   "announcements": [
     {
