@@ -1249,24 +1249,36 @@ class StorageService {
     return prefs.getBool(KEY_PRIVACY_AGREED) ?? false;
   }
 
-  static Future<void> setPrivacyPolicyAgreed(bool agreed) async {
+  static Future<void> setPrivacyPolicyAgreed(bool agreed,
+      {String? date}) async {
     final prefs = await StorageService.prefs;
     await prefs.setBool(KEY_PRIVACY_AGREED, agreed);
     if (agreed) {
-      await prefs.setString(KEY_PRIVACY_VERSION, PRIVACY_CURRENT_VERSION);
+      await prefs.setString(KEY_PRIVACY_DATE, date ?? PRIVACY_CURRENT_DATE);
     }
   }
 
   static Future<bool> isPrivacyPolicyUpToDate() async {
     final prefs = await StorageService.prefs;
-    final version = prefs.getString(KEY_PRIVACY_VERSION);
-    return version == PRIVACY_CURRENT_VERSION;
+    final storedDate = prefs.getString(KEY_PRIVACY_DATE);
+    if (storedDate == null) return false;
+    return _compareDates(storedDate, PRIVACY_CURRENT_DATE) >= 0;
+  }
+
+  static int _compareDates(String a, String b) {
+    try {
+      final dateA = DateTime.parse(a);
+      final dateB = DateTime.parse(b);
+      return dateA.compareTo(dateB);
+    } catch (_) {
+      return a.compareTo(b);
+    }
   }
 
   static Future<void> withdrawPrivacyAgreement() async {
     final prefs = await StorageService.prefs;
     await prefs.remove(KEY_PRIVACY_AGREED);
-    await prefs.remove(KEY_PRIVACY_VERSION);
+    await prefs.remove(KEY_PRIVACY_DATE);
   }
 
   static void dispose() {

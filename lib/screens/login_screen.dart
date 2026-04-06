@@ -911,7 +911,8 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _performAutoLoginAfterRegister(
       String email, String pass, String username) async {
-    await StorageService.setPrivacyPolicyAgreed(true);
+    await StorageService.setPrivacyPolicyAgreed(true,
+        date: StorageService.PRIVACY_CURRENT_DATE);
     setState(() => _isLoading = true);
     final loginResult = await ApiService.login(email, pass);
     if (!mounted) return;
@@ -938,7 +939,8 @@ class _LoginScreenState extends State<LoginScreen>
   void _finalizeLoginAndNavigate(String username) {
     if (!mounted) return;
     if (_privacyAgreed) {
-      StorageService.setPrivacyPolicyAgreed(true);
+      StorageService.setPrivacyPolicyAgreed(true,
+          date: StorageService.PRIVACY_CURRENT_DATE);
     }
     setState(() => _isLoading = false);
     Navigator.pushReplacement(

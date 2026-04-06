@@ -6,6 +6,7 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 import 'package:video_player_win/video_player_win_plugin.dart'; // video_player_win plugin
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'update_service.dart';
 import 'utils/page_transitions.dart';
@@ -220,7 +221,8 @@ class _MyAppState extends State<MyApp> {
       builder: (dialogContext) => PrivacyPolicyDialog(
         isUpdate: true,
         onAgree: () {
-          StorageService.setPrivacyPolicyAgreed(true);
+          StorageService.setPrivacyPolicyAgreed(true,
+              date: StorageService.PRIVACY_CURRENT_DATE);
           Navigator.pop(dialogContext, true);
         },
         onDisagree: () {
@@ -229,8 +231,10 @@ class _MyAppState extends State<MyApp> {
       ),
     );
     if (result == false) {
-      // 用户不同意更新后的隐私协议，退出登录
+      // 用户不同意更新后的隐私协议，退出登录并清除数据
       await StorageService.clearLoginSession();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
       if (mounted) {
         setState(() {
           _loggedInUser = null;
