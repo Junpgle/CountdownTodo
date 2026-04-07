@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "3.1.0",
+  "version_name": "3.1.4",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 3.1.0",
-    "description":"【新增】忘记密码重置功能\n【新增】隐私协议\n【新增】分包机制，安装包更小，更新更快\n【修复】随机壁纸",
+    "title": "版本更新 3.1.4",
+    "description":"【优化】课程界面支持番茄钟和时间日志的显示\n【修复】新增待办但没完全新增的bug\n【修复】与手环通信前不能正常获取权限的bug\n【适配】屏幕时间界面适配新版动画\n【优化】课程周视图新增动画\n【优化】与大模型对话时，只发送本窗口最近十五条消息\n【优化】番茄钟跨端感知稳定性优化（服务器）\n【新增】局域网传输界面（功能开发中，暂时不可用）",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "android_arch_packages": {
@@ -37,6 +37,19 @@
   },
   "changelog_history": [
     {
+      "version_name": "3.1.4",
+      "date": "2026-04-07",
+      "items": [
+        "【优化】课程界面支持番茄钟和时间日志的显示",
+        "【修复】新增待办但没完全新增的bug",
+        "【修复】与手环通信前不能正常获取权限的bug",
+        "【适配】屏幕时间界面适配新版动画",
+        "【优化】课程周视图新增动画",
+        "【优化】与大模型对话时，只发送本窗口最近十五条消息",
+        "【优化】番茄钟跨端感知稳定性优化（服务器）",
+        "【新增】局域网传输界面（功能开发中，暂时不可用）"
+      ]
+    },{
       "version_name": "3.1.0",
       "date": "2026-04-06",
       "items": [
