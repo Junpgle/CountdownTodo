@@ -317,6 +317,70 @@ JSON格式（必须严格遵循）：
     return suggestions;
   }
 
+  static const int _maxContextMessages = 15;
+
+  List<Map<String, String>> _buildApiMessages() {
+    final List<Map<String, String>> apiMessages = [
+      {'role': 'system', 'content': _buildSystemPrompt()},
+    ];
+
+    if (_messages.length <= _maxContextMessages) {
+      for (final msg in _messages) {
+        apiMessages.add({
+          'role': msg.role == ChatRole.user ? 'user' : 'assistant',
+          'content': msg.content,
+        });
+      }
+      return apiMessages;
+    }
+
+    final firstUserMsg = _messages.firstWhere(
+      (m) => m.role == ChatRole.user,
+      orElse: () => _messages.first,
+    );
+    apiMessages.add({
+      'role': 'user',
+      'content': firstUserMsg.content,
+    });
+
+    final summaryMsg = _buildContextSummary();
+    if (summaryMsg.isNotEmpty) {
+      apiMessages.add({
+        'role': 'assistant',
+        'content': summaryMsg,
+      });
+    }
+
+    final recentCount = _maxContextMessages - 2;
+    final startIndex = _messages.length - recentCount;
+    final recentMessages = _messages.sublist(startIndex > 0 ? startIndex : 0);
+    for (final msg in recentMessages) {
+      if (msg.content == firstUserMsg.content) continue;
+      apiMessages.add({
+        'role': msg.role == ChatRole.user ? 'user' : 'assistant',
+        'content': msg.content,
+      });
+    }
+
+    return apiMessages;
+  }
+
+  String _buildContextSummary() {
+    final omittedCount = _messages.length - _maxContextMessages;
+    if (omittedCount <= 0) return '';
+
+    final userMsgCount = _messages
+        .take(_messages.length - _maxContextMessages)
+        .where((m) => m.role == ChatRole.user)
+        .length;
+    final assistantMsgCount = _messages
+        .take(_messages.length - _maxContextMessages)
+        .where((m) => m.role == ChatRole.assistant)
+        .length;
+
+    return '[已省略 $omittedCount 条历史消息（用户 $userMsgCount 条，助手 $assistantMsgCount 条）。对话已围绕待办事项展开，用户已了解基本功能，继续当前话题即可。]';
+  }
+
   Future<void> _sendMessage() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _isLoading) return;
@@ -384,16 +448,7 @@ JSON格式（必须严格遵循）：
         'Authorization': 'Bearer $apiKey',
       };
 
-      final List<Map<String, String>> apiMessages = [
-        {'role': 'system', 'content': _buildSystemPrompt()},
-      ];
-
-      for (final msg in _messages) {
-        apiMessages.add({
-          'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.content,
-        });
-      }
+      final List<Map<String, String>> apiMessages = _buildApiMessages();
 
       final body = jsonEncode({
         'model': model,
