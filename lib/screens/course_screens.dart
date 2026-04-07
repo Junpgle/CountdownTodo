@@ -855,10 +855,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           }
 
           final logCardKey = _getTimeLogCardKey(log.id);
-          final logIndex = _timeLogsPerDay.values
-              .expand((e) => e)
-              .toList()
-              .indexOf(log);
+          final logIndex =
+              _timeLogsPerDay.values.expand((e) => e).toList().indexOf(log);
 
           children.add(Positioned(
             top: top,
@@ -883,17 +881,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               },
               child: GestureDetector(
                 onTap: () {
-                  final renderBox =
-                      logCardKey.currentContext?.findRenderObject()
-                          as RenderBox?;
+                  final renderBox = logCardKey.currentContext
+                      ?.findRenderObject() as RenderBox?;
                   if (renderBox != null) {
                     final rect =
                         renderBox.localToGlobal(Offset.zero) & renderBox.size;
                     Navigator.push(
                       context,
                       ContainerTransformRoute(
-                        page: TimeLogDetailScreen(
-                            log: log, tags: _pomodoroTags),
+                        page:
+                            TimeLogDetailScreen(log: log, tags: _pomodoroTags),
                         sourceRect: rect,
                         sourceColor: logColor,
                         sourceBorderRadius:
@@ -909,55 +906,57 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 },
                 child: Container(
                   key: logCardKey,
-                clipBehavior: Clip.hardEdge,
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                decoration: BoxDecoration(
-                    color: logColor,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                        color: logColor.withOpacity(1.0), width: 0.5)),
-                child: height < 18
-                    ? const Icon(Icons.edit_calendar,
-                        size: 8, color: Colors.white)
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 1.0),
-                                child: const Icon(Icons.edit_calendar,
-                                    size: 8, color: Colors.white),
-                              ),
-                              const SizedBox(width: 2),
-                              Expanded(
-                                child: Text(
-                                  logTitle,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.0),
-                                  maxLines: height < 25 ? 1 : 2,
-                                  overflow: TextOverflow.ellipsis,
+                  clipBehavior: Clip.hardEdge,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: logColor,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                          color: logColor.withOpacity(1.0), width: 0.5)),
+                  child: height < 18
+                      ? const Icon(Icons.edit_calendar,
+                          size: 8, color: Colors.white)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.0),
+                                  child: const Icon(Icons.edit_calendar,
+                                      size: 8, color: Colors.white),
                                 ),
-                              ),
-                            ],
-                          ),
-                          if (height > 22)
-                            Text(
-                              '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}-${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontSize: 7,
-                                  height: 1.0),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: Text(
+                                    logTitle,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        height: 1.0),
+                                    maxLines: height < 25 ? 1 : 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
-                        ],
-                      ),
+                            if (height > 22)
+                              Text(
+                                '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}-${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
+                                style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 7,
+                                    height: 1.0),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
+                ),
               ),
             ),
           ));
@@ -999,88 +998,108 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           }
 
           final pomCardKey = _getPomodoroCardKey(record.uuid);
+          final pomIndex =
+              _pomodorosPerDay.values.expand((e) => e).toList().indexOf(record);
 
           children.add(Positioned(
             top: top,
             left: finalLeft,
             width: finalWidth,
             height: height,
-            child: GestureDetector(
-              onTap: () {
-                final renderBox =
-                    pomCardKey.currentContext?.findRenderObject() as RenderBox?;
-                if (renderBox != null) {
-                  final rect =
-                      renderBox.localToGlobal(Offset.zero) & renderBox.size;
-                  Navigator.push(
-                    context,
-                    ContainerTransformRoute(
-                      page: PomodoroDetailScreen(
-                          record: record, tags: _pomodoroTags),
-                      sourceRect: rect,
-                      sourceColor: pomColor,
-                      sourceBorderRadius:
-                          const BorderRadius.all(Radius.circular(4)),
-                    ),
-                  );
-                } else {
-                  Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(PomodoroDetailScreen(
-                          record: record, tags: _pomodoroTags)));
-                }
+            child: AnimatedBuilder(
+              animation: _courseExpandAnim,
+              builder: (ctx, child) {
+                final delay = (pomIndex * 0.06).clamp(0.0, 0.5);
+                final t = ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                    .clamp(0.0, 1.0);
+                final scale = 0.7 + 0.3 * t;
+                final opacity = t;
+                return Transform.scale(
+                  scale: scale,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: child,
+                  ),
+                );
               },
-              child: Container(
-                key: pomCardKey,
-                clipBehavior: Clip.hardEdge,
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                decoration: BoxDecoration(
-                    color: pomColor,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                        color: pomColor.withOpacity(1.0), width: 0.5)),
-                child: height < 18
-                    ? const Icon(Icons.local_fire_department,
-                        size: 8, color: Colors.white)
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 1.0),
-                                child: const Icon(Icons.local_fire_department,
-                                    size: 8, color: Colors.white),
-                              ),
-                              const SizedBox(width: 2),
-                              Expanded(
-                                child: Text(
-                                  pomTitle,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.0),
-                                  maxLines: height < 25 ? 1 : 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (height > 22)
-                            Text(
-                              '${record.effectiveDuration ~/ 60}min',
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.85),
-                                  fontSize: 7,
-                                  height: 1.0),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
+              child: GestureDetector(
+                onTap: () {
+                  final renderBox = pomCardKey.currentContext
+                      ?.findRenderObject() as RenderBox?;
+                  if (renderBox != null) {
+                    final rect =
+                        renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                    Navigator.push(
+                      context,
+                      ContainerTransformRoute(
+                        page: PomodoroDetailScreen(
+                            record: record, tags: _pomodoroTags),
+                        sourceRect: rect,
+                        sourceColor: pomColor,
+                        sourceBorderRadius:
+                            const BorderRadius.all(Radius.circular(4)),
                       ),
+                    );
+                  } else {
+                    Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(PomodoroDetailScreen(
+                            record: record, tags: _pomodoroTags)));
+                  }
+                },
+                child: Container(
+                  key: pomCardKey,
+                  clipBehavior: Clip.hardEdge,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: pomColor,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                          color: pomColor.withOpacity(1.0), width: 0.5)),
+                  child: height < 18
+                      ? const Icon(Icons.local_fire_department,
+                          size: 8, color: Colors.white)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.0),
+                                  child: const Icon(Icons.local_fire_department,
+                                      size: 8, color: Colors.white),
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: Text(
+                                    pomTitle,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        height: 1.0),
+                                    maxLines: height < 25 ? 1 : 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (height > 22)
+                              Text(
+                                '${record.effectiveDuration ~/ 60}min',
+                                style: TextStyle(
+                                    color: Colors.white.withOpacity(0.85),
+                                    fontSize: 7,
+                                    height: 1.0),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
+                ),
               ),
             ),
           ));
