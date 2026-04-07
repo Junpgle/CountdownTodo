@@ -12,7 +12,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 /// 从 WebSocket 收到的跨端状态（扩充了版本更新字段）
 class CrossDevicePomodoroState {
   final String
-      action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT' | 'UPDATE_AVAILABLE'
+      action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'|'UPDATE_AVAILABLE'|'FOCUS_DISCONNECTED'|'CLEAR_FOCUS'
   final String? sessionUuid;
   final String? todoUuid;
   final String? todoTitle;
@@ -122,6 +122,7 @@ class PomodoroSyncService {
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
   bool _connecting = false;
+  String? _focusSourceDevice;
 
   // ── 公开广播流 ─────────────────────────────────────────────
   final _stateCtrl = StreamController<CrossDevicePomodoroState>.broadcast();
@@ -129,6 +130,10 @@ class PomodoroSyncService {
 
   Stream<CrossDevicePomodoroState> get onStateChanged => _stateCtrl.stream;
   Stream<SyncConnectionState> get onConnectionChanged => _connStateCtrl.stream;
+
+  /// 当收到 SYNC_FOCUS 且 sourceDevice 为当前设备时触发回调
+  /// 调用方应检查本地是否有对应状态，若无则调用 [sendClearFocusSignal]
+  Function(CrossDevicePomodoroState state)? onStaleSyncFocus;
 
   void dispose() {
     _reconnectTimer?.cancel();
@@ -141,6 +146,9 @@ class PomodoroSyncService {
 
   SyncConnectionState _connState = SyncConnectionState.disconnected;
   SyncConnectionState get connectionState => _connState;
+
+  String? get focusSourceDevice => _focusSourceDevice;
+  bool get isFocusSource => _focusSourceDevice == _deviceId;
 
   // ── 公开 API ─────────────────────────────────────────────
 
@@ -158,6 +166,7 @@ class PomodoroSyncService {
     }
     _userId = userId;
     _deviceId = deviceId;
+    _focusSourceDevice = null;
     await _doConnect();
   }
 
@@ -168,6 +177,7 @@ class PomodoroSyncService {
     if (authToken != null) _authToken = authToken;
     _userId = userId;
     _deviceId = deviceId;
+    _focusSourceDevice = null;
     await _doConnect();
   }
 
@@ -248,12 +258,29 @@ class PomodoroSyncService {
       final data = jsonDecode(raw.toString()) as Map<String, dynamic>;
       final signal = CrossDevicePomodoroState.fromJson(data);
 
-      // 🚀 如果收到更新推送，打印一下
       if (signal.action == 'UPDATE_AVAILABLE') {
         debugPrint('[PomodoroSync] 🎁 收到新版本推送: ${signal.latestVersion}');
       } else {
         debugPrint(
             '[PomodoroSync] 📨 ${signal.action} from ${signal.sourceDevice}');
+      }
+
+      if (signal.action == 'START' || signal.action == 'RECONNECT_SYNC') {
+        _focusSourceDevice = signal.sourceDevice;
+      } else if (signal.action == 'STOP' ||
+          signal.action == 'INTERRUPT' ||
+          signal.action == 'FINISH' ||
+          signal.action == 'FOCUS_DISCONNECTED') {
+        _focusSourceDevice = null;
+      }
+
+      // 🍅 发起端重连后，服务端推送了历史状态回来
+      // 说明发起端本地可能已无状态，触发回调让调用方判断是否清除
+      if (signal.action == 'SYNC_FOCUS' &&
+          signal.sourceDevice == _deviceId &&
+          onStaleSyncFocus != null) {
+        debugPrint('[PomodoroSync] 🍅 检测到服务端残留状态回推，触发本地状态校验');
+        onStaleSyncFocus!(signal);
       }
 
       if (!_stateCtrl.isClosed) _stateCtrl.add(signal);
@@ -357,6 +384,10 @@ class PomodoroSyncService {
 
   void sendUpdateTagsSignal(List<String> tagNames) {
     _send({'action': 'UPDATE_TAGS', 'tags': tagNames});
+  }
+
+  void sendClearFocusSignal() {
+    _send({'action': 'CLEAR_FOCUS'});
   }
 
   void _send(Map<String, dynamic> payload) {

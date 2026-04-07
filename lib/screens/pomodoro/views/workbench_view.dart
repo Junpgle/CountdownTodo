@@ -326,6 +326,21 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _crossDeviceSub =
         _syncService.onStateChanged.listen(_handleCrossDeviceSignal);
 
+    // 🍅 发起端重连后，服务端回推了历史专注状态
+    // 若本地已无对应状态，则通知云端清除残留
+    _syncService.onStaleSyncFocus = (state) async {
+      debugPrint('[工作台] 收到服务端回推的残留状态，校验本地...');
+      final saved = await PomodoroService.loadRunState();
+      if (saved == null ||
+          (saved.phase != PomodoroPhase.focusing &&
+              saved.phase != PomodoroPhase.breaking)) {
+        debugPrint('[工作台] 本地无运行中的专注，发送 CLEAR_FOCUS 清除云端残留');
+        _syncService.sendClearFocusSignal();
+      } else {
+        debugPrint('[工作台] 本地仍有运行中的专注，保留云端状态');
+      }
+    };
+
     // 🚀 获取 auth token 用于 WebSocket 鉴权
     String? authToken = ApiService.getToken();
 
@@ -409,6 +424,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       case 'STOP':
       case 'INTERRUPT':
+      case 'FOCUS_DISCONNECTED':
         if (_phase != PomodoroPhase.remoteWatching) break;
         _stopRemoteTicker();
         setState(() {

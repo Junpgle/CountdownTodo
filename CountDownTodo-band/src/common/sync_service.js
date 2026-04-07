@@ -12,6 +12,7 @@ var diagMsg = ''
 var appVersion = '...'
 var appVersionCode = 0
 var onVersionReady = null
+var onSyncDataReceived = null
 
 function getConnect() {
   if (!connect) {
@@ -115,6 +116,7 @@ function replacePhoneData(type, phoneData) {
   if (!Array.isArray(phoneData)) {
     saveLocalData(type, phoneData, null)
     resolveRequest(type, { success: true, message: '已同步手机数据' })
+    if (onSyncDataReceived) onSyncDataReceived(type, phoneData)
     return
   }
   var validItems = []
@@ -126,6 +128,7 @@ function replacePhoneData(type, phoneData) {
   }
   saveLocalData(type, validItems, null)
   resolveRequest(type, { success: true, message: '已同步 (' + validItems.length + '条)' })
+  if (onSyncDataReceived) onSyncDataReceived(type, validItems)
 }
 
 function handleReceivedData(data) {
@@ -324,13 +327,18 @@ function destroy() {
 
 function sendPomodoroAction(action, sessionUuid) {
   var conn = getConnect()
-  if (!conn) return
-  if (typeof conn.send !== 'function') return
+  if (!conn) {
+    return false
+  }
+  if (typeof conn.send !== 'function') {
+    return false
+  }
   conn.send({
     data: { type: 'pomodoro', action: action, sessionUuid: sessionUuid, timestamp: Date.now() },
     success: function() {},
     fail: function() {}
   })
+  return true
 }
 
 function sendVersionInfo() {
@@ -431,5 +439,6 @@ module.exports = {
   syncCountdown: syncCountdown,
   syncPomodoro: syncPomodoro,
   getDiagMsg: getDiagMsg,
-  getVersion: getVersion
+  getVersion: getVersion,
+  setOnSyncDataReceived: function(cb) { onSyncDataReceived = cb }
 }

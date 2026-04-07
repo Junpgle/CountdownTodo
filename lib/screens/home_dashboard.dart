@@ -416,6 +416,21 @@ class _HomeDashboardState extends State<HomeDashboard>
     _remotePomodoroSub =
         _syncService.onStateChanged.listen(_handleRemotePomodoroSignal);
 
+    // 🍅 发起端重连后，服务端回推了历史专注状态
+    // 若本地已无对应状态（说明已被用户关闭/完成），则通知云端清除残留
+    _syncService.onStaleSyncFocus = (state) async {
+      debugPrint('[首页] 收到服务端回推的残留状态，校验本地...');
+      final saved = await PomodoroService.loadRunState();
+      if (saved == null ||
+          (saved.phase != PomodoroPhase.focusing &&
+              saved.phase != PomodoroPhase.breaking)) {
+        debugPrint('[首页] 本地无运行中的专注状态，发送 CLEAR_FOCUS 清除云端残留');
+        _syncService.sendClearFocusSignal();
+      } else {
+        debugPrint('[首页] 本地仍有运行中的专注，保留云端状态');
+      }
+    };
+
     // 监听网络重连，主动上报本地专注状态
     _connStateSub?.cancel();
     _connStateSub = _syncService.onConnectionChanged.listen((state) async {
@@ -537,13 +552,11 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       case 'STOP':
       case 'INTERRUPT':
+      case 'FOCUS_DISCONNECTED':
         _stopRemotePomodoroTicker();
         setState(() => _remotePomodoro = null);
 
         if (Platform.isWindows) {
-          // Setting endMs to 0 in update() handles hiding/TopBar transition.
-          // Explicitly mark as remote (isLocal: false) so the float clears
-          // a remote session instead of being ignored by a generic no-arg call.
           await FloatWindowService.update(endMs: 0, isLocal: false);
         }
         break;

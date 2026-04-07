@@ -1,4 +1,4 @@
-// 1. 先配置 Kotlin 和 Android 编译选项 (你原来的代码放在最上面)
+// 1. 先配置 Kotlin 和 Android 编译选项
 subprojects {
     plugins.withId("org.jetbrains.kotlin.android") {
         extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension> {

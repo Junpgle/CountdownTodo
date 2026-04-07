@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "1.0.2",
+  "version_name": "1.0.3",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 1.0.2",
-    "description": "【新增】番茄钟同步,可以手环控制手机",
+    "title": "版本更新 1.0.3",
+    "description": "【修复】修复了番茄钟同步功能的一个小问题，提升了稳定性和用户体验。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/com.math_quiz.junpgle.com.math_quiz_app.release.1.0.2.rpk"
   },
   "announcement": {
@@ -13,6 +13,13 @@
     "content": ""
   },
   "changelog_history": [
+    {
+      "version_name": "1.0.3",
+      "date": "2026-04-07",
+      "items": [
+        "【修复】修复了番茄钟同步功能的一个小问题，提升了稳定性和用户体验。"
+      ]
+    },
     {
       "version_name": "1.0.2",
       "date": "2026-04-04",

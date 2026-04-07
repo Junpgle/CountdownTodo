@@ -38,6 +38,7 @@ import 'settings/notification_settings_page.dart';
 import 'about_screen.dart';
 import 'animation_settings_page.dart';
 import 'band_sync_screen.dart';
+import 'settings/lan_sync_screen.dart';
 
 // 引入拆分的弹窗组件
 import 'settings/dialogs/change_password_dialog.dart';
@@ -1144,6 +1145,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     );
                   }
                 : null,
+            onOpenLanSync: () {
+              Navigator.push(
+                context,
+                PageTransitions.slideHorizontal(
+                  const LanSyncScreen(),
+                ),
+              );
+            },
           ),
         ),
         _buildExpandableSection(
@@ -1467,6 +1476,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   onCheckAndOpenLiveUpdates: _checkAndOpenLiveUpdates,
                   islandStatus: _islandStatus,
                   onCheckIslandSupport: _checkIslandSupport,
+                  onOpenLanSync: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        const LanSyncScreen(),
+                      ),
+                    );
+                  },
                 ),
                 SystemSection(
                   onOpenFeatureGuide: () {
