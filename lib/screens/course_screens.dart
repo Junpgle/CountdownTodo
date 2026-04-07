@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/course_service.dart';
+import '../services/pomodoro_service.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
-import 'time_log_screen.dart'; // 🚀 1. 引入时间日志页面
+import 'time_log_screen.dart';
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
@@ -30,7 +31,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   bool _isLoading = true;
   DateTime? _semesterMonday;
-  int _viewMode = 0; // 0: 混合查看, 1: 只看课表, 2: 只看待办
+
+  List<TimeLogItem> _allTimeLogs = [];
+  List<PomodoroRecord> _allPomodoroRecords = [];
+  List<PomodoroTag> _pomodoroTags = [];
+  Map<int, List<TimeLogItem>> _timeLogsPerDay = {};
+  Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
+  Set<String> _activeDataViews = {'courses', 'todos', 'timeLogs', 'pomodoros'};
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -40,10 +47,25 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   late PageController _pageController;
   final Map<String, GlobalKey> _courseCardKeys = {};
+  final Map<String, GlobalKey> _todoCardKeys = {};
+  final Map<String, GlobalKey> _timeLogCardKeys = {};
+  final Map<String, GlobalKey> _pomodoroCardKeys = {};
 
   GlobalKey _getCourseCardKey(String courseName, int weekday, int startTime) {
     final keyStr = '${courseName}_${weekday}_${startTime}';
     return _courseCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
+  GlobalKey _getTodoCardKey(String id) {
+    return _todoCardKeys.putIfAbsent(id, () => GlobalKey());
+  }
+
+  GlobalKey _getTimeLogCardKey(String id) {
+    return _timeLogCardKeys.putIfAbsent(id, () => GlobalKey());
+  }
+
+  GlobalKey _getPomodoroCardKey(String id) {
+    return _pomodoroCardKeys.putIfAbsent(id, () => GlobalKey());
   }
 
   // 时间轴参数配置
@@ -89,6 +111,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     // 🚀 核心：全局列表中剔除回收站里逻辑删除的待办！
     _allTodos = allTodosRaw.where((t) => !t.isDeleted).toList();
 
+    // 🚀 加载时间日志和番茄钟记录
+    final allLogsRaw = await StorageService.getTimeLogs(widget.username);
+    _allTimeLogs = allLogsRaw.where((l) => !l.isDeleted).toList();
+    _allPomodoroRecords = await PomodoroService.getRecords();
+    _pomodoroTags = await PomodoroService.getTags();
+
     if (weeks.isNotEmpty) {
       _availableWeeks = weeks;
 
@@ -122,6 +150,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
       _weekCourses = await CourseService.getCoursesByWeek(_currentWeek);
       _updateWeekTodos();
+      _updateWeekTimeLogsAndPomodoros();
     } else {
       // 兼容无课表情况
       DateTime? semStart = await StorageService.getSemesterStart();
@@ -139,6 +168,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _availableWeeks = List.generate(20, (index) => index + 1);
       _weekCourses = [];
       _updateWeekTodos();
+      _updateWeekTimeLogsAndPomodoros();
     }
 
     setState(() => _isLoading = false);
@@ -192,6 +222,40 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
   }
 
+  void _updateWeekTimeLogsAndPomodoros() {
+    _timeLogsPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
+    _pomodorosPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
+
+    if (_semesterMonday == null) return;
+
+    DateTime currentWeekMonday =
+        _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+
+    for (int i = 1; i <= 7; i++) {
+      DateTime dayStart = currentWeekMonday.add(Duration(days: i - 1));
+      DateTime dayStartMs =
+          DateTime(dayStart.year, dayStart.month, dayStart.day);
+      DateTime dayEndMs = dayStartMs.add(const Duration(days: 1));
+
+      int dayStartMsEpoch = dayStartMs.millisecondsSinceEpoch;
+      int dayEndMsEpoch = dayEndMs.millisecondsSinceEpoch;
+
+      for (var log in _allTimeLogs) {
+        if (log.endTime > dayStartMsEpoch && log.startTime < dayEndMsEpoch) {
+          _timeLogsPerDay[i]!.add(log);
+        }
+      }
+
+      for (var record in _allPomodoroRecords) {
+        int recordEnd = record.endTime ??
+            (record.startTime + record.effectiveDuration * 1000);
+        if (recordEnd > dayStartMsEpoch && record.startTime < dayEndMsEpoch) {
+          _pomodorosPerDay[i]!.add(record);
+        }
+      }
+    }
+  }
+
   void _changeWeek(int delta) {
     int newWeek = _currentWeek + delta;
     setState(() {
@@ -202,6 +266,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       setState(() {
         _weekCourses = courses;
         _updateWeekTodos();
+        _updateWeekTimeLogsAndPomodoros();
         _isLoading = false;
       });
     });
@@ -312,6 +377,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       setState(() {
         _weekCourses = courses;
         _updateWeekTodos();
+        _updateWeekTimeLogsAndPomodoros();
         _isLoading = false;
       });
     });
@@ -324,6 +390,27 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     int week = (daysDiff ~/ 7) + 1;
     if (week < 1) week = 1;
     _jumpToWeek(week);
+  }
+
+  PopupMenuItem<String> _buildCheckableMenuItem(String key, String label) {
+    return PopupMenuItem<String>(
+      value: key,
+      child: Row(
+        children: [
+          Icon(
+            _activeDataViews.contains(key)
+                ? Icons.check_box
+                : Icons.check_box_outline_blank,
+            size: 20,
+            color: _activeDataViews.contains(key)
+                ? Theme.of(context).colorScheme.primary
+                : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Text(label),
+        ],
+      ),
+    );
   }
 
   DateTime? _getMondayOfCurrentWeek() {
@@ -352,6 +439,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     ];
     int hash = courseName.hashCode;
     return colors[hash % colors.length];
+  }
+
+  Color _hexToColor(String hex) {
+    String clean = hex.replaceAll('#', '');
+    if (clean.length == 6) clean = 'FF$clean';
+    return Color(int.parse(clean, radix: 16));
   }
 
   void _showAllDayTodos(
@@ -419,11 +512,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   Widget _buildAllDayHeaderRow(DateTime? monday) {
-    if (monday == null || _viewMode == 1) return const SizedBox.shrink();
+    if (monday == null || !_activeDataViews.contains('todos'))
+      return const SizedBox.shrink();
 
     bool hasAnyAllDay =
         _allDayTodosPerDay.values.any((list) => list.isNotEmpty);
-    if (!hasAnyAllDay) return const SizedBox.shrink(); // 无待办直接消失，不占高度
+    if (!hasAnyAllDay) return const SizedBox.shrink();
 
     // 以下只在真正有全天待办时才渲染
     return Container(
@@ -580,7 +674,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       ));
     }
 
-    if (_viewMode != 1) {
+    if (_activeDataViews.contains('todos')) {
       Map<String, int> collisionMap = {};
 
       for (int weekday = 1; weekday <= 7; weekday++) {
@@ -611,37 +705,220 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             finalWidth -= 4.0 * stackIndex;
           }
 
+          Color todoColor = todo.isDone
+              ? Colors.green.withOpacity(0.5)
+              : Colors.amber.shade500.withOpacity(0.85);
+          final todoCardKey = _getTodoCardKey(todo.id);
+          final todoIndex = _intraDayTodosPerDay.values
+              .expand((e) => e)
+              .toList()
+              .indexOf(todo);
+
           children.add(Positioned(
             top: top,
             left: finalLeft,
             width: finalWidth,
             height: height,
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                        TodoDetailScreen(todo: todo)));
+            child: AnimatedBuilder(
+              animation: _courseExpandAnim,
+              builder: (ctx, child) {
+                final delay = (todoIndex * 0.06).clamp(0.0, 0.5);
+                final t = ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                    .clamp(0.0, 1.0);
+                final scale = 0.7 + 0.3 * t;
+                final opacity = t;
+                return Transform.scale(
+                  scale: scale,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: child,
+                  ),
+                );
               },
-              child: Container(
+              child: GestureDetector(
+                onTap: () {
+                  final renderBox = todoCardKey.currentContext
+                      ?.findRenderObject() as RenderBox?;
+                  if (renderBox != null) {
+                    final rect =
+                        renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                    Navigator.push(
+                      context,
+                      ContainerTransformRoute(
+                        page: TodoDetailScreen(todo: todo),
+                        sourceRect: rect,
+                        sourceColor: todoColor,
+                        sourceBorderRadius:
+                            const BorderRadius.all(Radius.circular(4)),
+                      ),
+                    );
+                  } else {
+                    Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                            TodoDetailScreen(todo: todo)));
+                  }
+                },
+                child: Container(
+                  key: todoCardKey,
+                  clipBehavior: Clip.hardEdge,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: todoColor,
+                      borderRadius: BorderRadius.circular(4),
+                      boxShadow: stackIndex > 0
+                          ? [
+                              const BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 2,
+                                  offset: Offset(-1, 1))
+                            ]
+                          : null),
+                  child: height < 20
+                      ? Icon(todo.isDone ? Icons.check_circle : Icons.task_alt,
+                          size: 10, color: Colors.white)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2.0),
+                                  child: Icon(
+                                      todo.isDone
+                                          ? Icons.check_circle
+                                          : Icons.task_alt,
+                                      size: 10,
+                                      color: Colors.white),
+                                ),
+                                const SizedBox(width: 2),
+                                Expanded(
+                                  child: Text(
+                                    todo.title,
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        decoration: todo.isDone
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        height: 1.0),
+                                    maxLines: height < 30 ? 1 : 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ),
+          ));
+        }
+      }
+    }
+
+    if (_activeDataViews.contains('timeLogs')) {
+      for (int weekday = 1; weekday <= 7; weekday++) {
+        for (var log in _timeLogsPerDay[weekday]!) {
+          DateTime start =
+              DateTime.fromMillisecondsSinceEpoch(log.startTime, isUtc: true)
+                  .toLocal();
+          DateTime end =
+              DateTime.fromMillisecondsSinceEpoch(log.endTime, isUtc: true)
+                  .toLocal();
+
+          double top = _timeToY(start.hour, start.minute, minuteHeight);
+          double bottom = _timeToY(end.hour, end.minute, minuteHeight);
+          double height = bottom - top;
+
+          if (height < 18.0) height = 18.0;
+
+          double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
+          double finalWidth = cellWidth - 2;
+          double finalLeft = leftOffset + 1;
+
+          Color logColor = const Color(0xFF3B82F6).withOpacity(0.7);
+          String logTitle = log.title.isNotEmpty ? log.title : '时间日志';
+          if (log.tagUuids.isNotEmpty) {
+            final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
+                (t) => log.tagUuids.contains(t?.uuid),
+                orElse: () => null);
+            if (tag != null) {
+              logColor = _hexToColor(tag.color).withOpacity(0.7);
+              if (logTitle == '时间日志') logTitle = tag.name;
+            }
+          }
+
+          final logCardKey = _getTimeLogCardKey(log.id);
+          final logIndex = _timeLogsPerDay.values
+              .expand((e) => e)
+              .toList()
+              .indexOf(log);
+
+          children.add(Positioned(
+            top: top,
+            left: finalLeft,
+            width: finalWidth,
+            height: height,
+            child: AnimatedBuilder(
+              animation: _courseExpandAnim,
+              builder: (ctx, child) {
+                final delay = (logIndex * 0.06).clamp(0.0, 0.5);
+                final t = ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                    .clamp(0.0, 1.0);
+                final scale = 0.7 + 0.3 * t;
+                final opacity = t;
+                return Transform.scale(
+                  scale: scale,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: child,
+                  ),
+                );
+              },
+              child: GestureDetector(
+                onTap: () {
+                  final renderBox =
+                      logCardKey.currentContext?.findRenderObject()
+                          as RenderBox?;
+                  if (renderBox != null) {
+                    final rect =
+                        renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                    Navigator.push(
+                      context,
+                      ContainerTransformRoute(
+                        page: TimeLogDetailScreen(
+                            log: log, tags: _pomodoroTags),
+                        sourceRect: rect,
+                        sourceColor: logColor,
+                        sourceBorderRadius:
+                            const BorderRadius.all(Radius.circular(4)),
+                      ),
+                    );
+                  } else {
+                    Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(TimeLogDetailScreen(
+                            log: log, tags: _pomodoroTags)));
+                  }
+                },
+                child: Container(
+                  key: logCardKey,
                 clipBehavior: Clip.hardEdge,
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
                 decoration: BoxDecoration(
-                    color: todo.isDone
-                        ? Colors.green.withOpacity(0.5)
-                        : Colors.amber.shade500.withOpacity(0.85),
+                    color: logColor,
                     borderRadius: BorderRadius.circular(4),
-                    boxShadow: stackIndex > 0
-                        ? [
-                            const BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 2,
-                                offset: Offset(-1, 1))
-                          ]
-                        : null),
-                child: height < 20
-                    ? Icon(todo.isDone ? Icons.check_circle : Icons.task_alt,
-                        size: 10, color: Colors.white)
+                    border: Border.all(
+                        color: logColor.withOpacity(1.0), width: 0.5)),
+                child: height < 18
+                    ? const Icon(Icons.edit_calendar,
+                        size: 8, color: Colors.white)
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
@@ -650,32 +927,35 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Padding(
-                                padding: const EdgeInsets.only(top: 2.0),
-                                child: Icon(
-                                    todo.isDone
-                                        ? Icons.check_circle
-                                        : Icons.task_alt,
-                                    size: 10,
-                                    color: Colors.white),
+                                padding: const EdgeInsets.only(top: 1.0),
+                                child: const Icon(Icons.edit_calendar,
+                                    size: 8, color: Colors.white),
                               ),
                               const SizedBox(width: 2),
                               Expanded(
                                 child: Text(
-                                  todo.title,
-                                  style: TextStyle(
+                                  logTitle,
+                                  style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 10, // 稍微缩小字体
+                                      fontSize: 9,
                                       fontWeight: FontWeight.bold,
-                                      decoration: todo.isDone
-                                          ? TextDecoration.lineThrough
-                                          : null,
                                       height: 1.0),
-                                  maxLines: height < 30 ? 1 : 2,
+                                  maxLines: height < 25 ? 1 : 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
                           ),
+                          if (height > 22)
+                            Text(
+                              '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}-${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 7,
+                                  height: 1.0),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                         ],
                       ),
               ),
@@ -685,7 +965,130 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       }
     }
 
-    if (_viewMode != 2) {
+    if (_activeDataViews.contains('pomodoros')) {
+      for (int weekday = 1; weekday <= 7; weekday++) {
+        for (var record in _pomodorosPerDay[weekday]!) {
+          DateTime start =
+              DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
+                  .toLocal();
+          int endMs = record.endTime ??
+              (record.startTime + record.effectiveDuration * 1000);
+          DateTime end =
+              DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+
+          double top = _timeToY(start.hour, start.minute, minuteHeight);
+          double bottom = _timeToY(end.hour, end.minute, minuteHeight);
+          double height = bottom - top;
+
+          if (height < 18.0) height = 18.0;
+
+          double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
+          double finalWidth = cellWidth - 2;
+          double finalLeft = leftOffset + 1;
+
+          Color pomColor = Colors.redAccent.withOpacity(0.6);
+          String pomTitle = '专注';
+          if (record.tagUuids.isNotEmpty) {
+            final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
+                (t) => record.tagUuids.contains(t?.uuid),
+                orElse: () => null);
+            if (tag != null) {
+              pomColor = _hexToColor(tag.color).withOpacity(0.6);
+              pomTitle = tag.name;
+            }
+          }
+
+          final pomCardKey = _getPomodoroCardKey(record.uuid);
+
+          children.add(Positioned(
+            top: top,
+            left: finalLeft,
+            width: finalWidth,
+            height: height,
+            child: GestureDetector(
+              onTap: () {
+                final renderBox =
+                    pomCardKey.currentContext?.findRenderObject() as RenderBox?;
+                if (renderBox != null) {
+                  final rect =
+                      renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                  Navigator.push(
+                    context,
+                    ContainerTransformRoute(
+                      page: PomodoroDetailScreen(
+                          record: record, tags: _pomodoroTags),
+                      sourceRect: rect,
+                      sourceColor: pomColor,
+                      sourceBorderRadius:
+                          const BorderRadius.all(Radius.circular(4)),
+                    ),
+                  );
+                } else {
+                  Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(PomodoroDetailScreen(
+                          record: record, tags: _pomodoroTags)));
+                }
+              },
+              child: Container(
+                key: pomCardKey,
+                clipBehavior: Clip.hardEdge,
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                decoration: BoxDecoration(
+                    color: pomColor,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                        color: pomColor.withOpacity(1.0), width: 0.5)),
+                child: height < 18
+                    ? const Icon(Icons.local_fire_department,
+                        size: 8, color: Colors.white)
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 1.0),
+                                child: const Icon(Icons.local_fire_department,
+                                    size: 8, color: Colors.white),
+                              ),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                child: Text(
+                                  pomTitle,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1.0),
+                                  maxLines: height < 25 ? 1 : 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (height > 22)
+                            Text(
+                              '${record.effectiveDuration ~/ 60}min',
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.85),
+                                  fontSize: 7,
+                                  height: 1.0),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+              ),
+            ),
+          ));
+        }
+      }
+    }
+
+    if (_activeDataViews.contains('courses')) {
       for (var course in _weekCourses) {
         int sh = course.startTime ~/ 100;
         int sm = course.startTime % 100;
@@ -875,39 +1278,28 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             ],
           ),
           const SizedBox(width: 4),
-          // 🚀 2. 新增：跳转至“时间日志”的快捷入口
           IconButton(
             icon: const Icon(Icons.edit_calendar, size: 20),
             tooltip: '记录时间日志',
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                   context,
                   PageTransitions.slideHorizontal(
                     TimeLogScreen(username: widget.username),
                   ));
+              _loadData();
             },
           ),
-          PopupMenuButton<int>(
-            initialValue: _viewMode,
-            onSelected: (val) {
-              setState(() {
-                _viewMode = val;
-              });
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 0, child: Text("混合查看")),
-              const PopupMenuItem(value: 1, child: Text("只看课表")),
-              const PopupMenuItem(value: 2, child: Text("只看待办")),
-            ],
-            child: Padding(
+          PopupMenuButton<String>(
+            icon: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                      _viewMode == 1
-                          ? "只看课表"
-                          : (_viewMode == 2 ? "只看待办" : "混合查看"),
+                  Icon(Icons.filter_list,
+                      size: 18, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 2),
+                  Text('视图',
                       style: TextStyle(
                           fontSize: 13,
                           color: Theme.of(context).colorScheme.primary,
@@ -917,6 +1309,23 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 ],
               ),
             ),
+            onSelected: (val) {
+              setState(() {
+                if (_activeDataViews.contains(val)) {
+                  if (_activeDataViews.length > 1) {
+                    _activeDataViews.remove(val);
+                  }
+                } else {
+                  _activeDataViews.add(val);
+                }
+              });
+            },
+            itemBuilder: (context) => [
+              _buildCheckableMenuItem('courses', '课表'),
+              _buildCheckableMenuItem('todos', '待办'),
+              _buildCheckableMenuItem('timeLogs', '时间日志'),
+              _buildCheckableMenuItem('pomodoros', '番茄钟'),
+            ],
           ),
           const SizedBox(width: 8),
         ],
@@ -962,7 +1371,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           );
                         },
                         child: SizedBox(
-                          key: ValueKey<int>(_viewMode),
+                          key: ValueKey<String>(_activeDataViews.toString()),
                           width: constraints.maxWidth,
                           height: constraints.maxHeight,
                           child: _buildGrid(cellWidth, minuteHeight),
@@ -1153,6 +1562,200 @@ class TodoDetailScreen extends StatelessWidget {
               '最近更新',
               DateFormat('yyyy-MM-dd HH:mm').format(
                   DateTime.fromMillisecondsSinceEpoch(todo.updatedAt,
+                          isUtc: true)
+                      .toLocal())),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey),
+          const SizedBox(width: 16),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 16)),
+          const Spacer(),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- 三级界面：时间日志详情 ---
+class TimeLogDetailScreen extends StatelessWidget {
+  final TimeLogItem log;
+  final List<PomodoroTag> tags;
+  const TimeLogDetailScreen({Key? key, required this.log, required this.tags})
+      : super(key: key);
+
+  Color _hexToColor(String hex) {
+    String clean = hex.replaceAll('#', '');
+    if (clean.length == 6) clean = 'FF$clean';
+    return Color(int.parse(clean, radix: 16));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    DateTime start =
+        DateTime.fromMillisecondsSinceEpoch(log.startTime, isUtc: true)
+            .toLocal();
+    DateTime end =
+        DateTime.fromMillisecondsSinceEpoch(log.endTime, isUtc: true).toLocal();
+    int durationMin = (log.endTime - log.startTime) ~/ 60000;
+
+    Color logColor = const Color(0xFF3B82F6);
+    String tagInfo = '无标签';
+    if (log.tagUuids.isNotEmpty) {
+      final tag = tags.cast<PomodoroTag?>().firstWhere(
+          (t) => log.tagUuids.contains(t?.uuid),
+          orElse: () => null);
+      if (tag != null) {
+        logColor = _hexToColor(tag.color);
+        tagInfo = tag.name;
+      }
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('时间日志详情')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Icon(Icons.edit_calendar, size: 80, color: logColor),
+          const SizedBox(height: 16),
+          Text(log.title.isNotEmpty ? log.title : '时间日志',
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 32),
+          _buildDetailRow(Icons.label, '标签', tagInfo),
+          const Divider(),
+          _buildDetailRow(Icons.access_time, '时长', '$durationMin 分钟'),
+          const Divider(),
+          _buildDetailRow(Icons.play_arrow, '开始时间',
+              DateFormat('yyyy-MM-dd HH:mm').format(start)),
+          const Divider(),
+          _buildDetailRow(
+              Icons.stop, '结束时间', DateFormat('yyyy-MM-dd HH:mm').format(end)),
+          if (log.remark != null && log.remark!.isNotEmpty) ...[
+            const Divider(),
+            _buildDetailRow(Icons.note, '备注', log.remark!),
+          ],
+          const Divider(),
+          _buildDetailRow(
+              Icons.update,
+              '最近更新',
+              DateFormat('yyyy-MM-dd HH:mm').format(
+                  DateTime.fromMillisecondsSinceEpoch(log.updatedAt,
+                          isUtc: true)
+                      .toLocal())),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey),
+          const SizedBox(width: 16),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 16)),
+          const Spacer(),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- 三级界面：番茄钟详情 ---
+class PomodoroDetailScreen extends StatelessWidget {
+  final PomodoroRecord record;
+  final List<PomodoroTag> tags;
+  const PomodoroDetailScreen(
+      {Key? key, required this.record, required this.tags})
+      : super(key: key);
+
+  Color _hexToColor(String hex) {
+    String clean = hex.replaceAll('#', '');
+    if (clean.length == 6) clean = 'FF$clean';
+    return Color(int.parse(clean, radix: 16));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    DateTime start =
+        DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
+            .toLocal();
+    int endMs =
+        record.endTime ?? (record.startTime + record.effectiveDuration * 1000);
+    DateTime end =
+        DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+    int durationMin = record.effectiveDuration ~/ 60;
+
+    Color pomColor = Colors.redAccent;
+    String tagInfo = '无标签';
+    if (record.tagUuids.isNotEmpty) {
+      final tag = tags.cast<PomodoroTag?>().firstWhere(
+          (t) => record.tagUuids.contains(t?.uuid),
+          orElse: () => null);
+      if (tag != null) {
+        pomColor = _hexToColor(tag.color);
+        tagInfo = tag.name;
+      }
+    }
+
+    String statusText = record.isCompleted ? '已完成' : '已中断';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('番茄钟详情')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Icon(Icons.local_fire_department, size: 80, color: pomColor),
+          const SizedBox(height: 16),
+          const Text('专注记录',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 32),
+          _buildDetailRow(Icons.label, '标签', tagInfo),
+          const Divider(),
+          _buildDetailRow(Icons.access_time, '时长', '$durationMin 分钟'),
+          const Divider(),
+          _buildDetailRow(Icons.play_arrow, '开始时间',
+              DateFormat('yyyy-MM-dd HH:mm').format(start)),
+          const Divider(),
+          _buildDetailRow(
+              Icons.stop, '结束时间', DateFormat('yyyy-MM-dd HH:mm').format(end)),
+          const Divider(),
+          _buildDetailRow(Icons.info_outline, '状态', statusText),
+          if (record.todoTitle != null && record.todoTitle!.isNotEmpty) ...[
+            const Divider(),
+            _buildDetailRow(Icons.task_alt, '关联待办', record.todoTitle!),
+          ],
+          const Divider(),
+          _buildDetailRow(
+              Icons.update,
+              '最近更新',
+              DateFormat('yyyy-MM-dd HH:mm').format(
+                  DateTime.fromMillisecondsSinceEpoch(record.updatedAt,
                           isUtc: true)
                       .toLocal())),
         ],

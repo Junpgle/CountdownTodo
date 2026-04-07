@@ -117,8 +117,26 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     // 申请权限
     fun requestPermission() {
-        val node = currentNode ?: return
+        val node = currentNode
+        if (node == null) {
+            Log.e(TAG, "权限申请失败: 没有已连接的设备")
+            invokeMethod("onError", mapOf(
+                "code" to 1006,
+                "message" to "没有已连接的设备，请先连接手环"
+            ))
+            return
+        }
 
+        if (authApi == null) {
+            Log.e(TAG, "权限申请失败: AuthApi 未初始化")
+            invokeMethod("onError", mapOf(
+                "code" to 1002,
+                "message" to "SDK 未初始化，请重新连接"
+            ))
+            return
+        }
+
+        Log.d(TAG, "开始申请权限: DEVICE_MANAGER, NOTIFY")
         authApi?.requestPermission(node.id, Permission.DEVICE_MANAGER, Permission.NOTIFY)
             ?.addOnSuccessListener { permissions ->
                 hasDeviceManagerPermission = true

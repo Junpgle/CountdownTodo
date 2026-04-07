@@ -2125,10 +2125,21 @@ class _HomeDashboardState extends State<HomeDashboard>
             onPressed: () => PageTransitions.pushFromRect(
               context: context,
               page: AddTodoScreen(
-                onTodoAdded: (todo) {
-                  setState(() {
-                    _todos = List<TodoItem>.from(_todos)..add(todo);
-                  });
+                onTodoAdded: (todo) async {
+                  final allTodos =
+                      await StorageService.getTodos(widget.username);
+                  allTodos.add(todo);
+                  await StorageService.saveTodos(widget.username, allTodos);
+                  await _saveTodosToSharedFile(allTodos);
+                  FloatWindowService.triggerReminderCheck();
+                  FloatWindowService.invalidateSlotCache();
+                  _syncTodoNotification();
+                  await WidgetService.updateTodoWidget(allTodos);
+                  if (mounted) {
+                    setState(() {
+                      _todos = List<TodoItem>.from(allTodos);
+                    });
+                  }
                 },
               ),
               sourceKey: _fabTodoKey,

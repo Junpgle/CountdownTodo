@@ -1,9 +1,40 @@
 import java.util.Properties
+import java.util.regex.Pattern
 
 plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Auto bump version on every build
+fun bumpPubspecVersion() {
+    val projectRoot = project.projectDir.parentFile.parentFile
+    val pubspecFile = File(projectRoot, "pubspec.yaml")
+    if (!pubspecFile.exists()) return
+
+    var content = pubspecFile.readText()
+    val pattern = Pattern.compile("^version:\\s*(\\d+)\\.(\\d+)\\.(\\d+)(\\+\\d+)?\\s*$", Pattern.MULTILINE)
+    val matcher = pattern.matcher(content)
+
+    if (matcher.find()) {
+        val major = matcher.group(1)!!.toInt()
+        val minor = matcher.group(2)!!.toInt()
+        val patch = matcher.group(3)!!.toInt()
+
+        val newPatch = patch + 1
+        val newVersionLine = "version: $major.$minor.$newPatch"
+        content = matcher.replaceFirst(newVersionLine)
+        pubspecFile.writeText(content)
+        println("[VERSION BUMPED] -> $major.$minor.$newPatch")
+    }
+}
+
+tasks.whenTaskAdded {
+    if (name == "assemble" || name == "assembleDebug" || name == "assembleRelease" ||
+        name == "bundleDebug" || name == "bundleRelease" || name == "bundle") {
+        doFirst { bumpPubspecVersion() }
+    }
 }
 
 // 1. 加载签名配置文件 (key.properties)
