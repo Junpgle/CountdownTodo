@@ -768,16 +768,15 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         final int dur = cat['duration'];
         final Color color = _catColor(name);
 
-        return InkWell(
-          onTap: () => Navigator.push(
-              context,
-              PageTransitions.slideHorizontal(CategoryDetailScreen(
-                categoryName: name,
-                stats: cat['items'],
-                isAllFilter: _currentFilter == DeviceFilter.all,
-                historyStats: _historyStats,
-                currentFilter: _currentFilter,
-              ))),
+        return _ExpandableCard(
+          pageBuilder: (_) => CategoryDetailScreen(
+            categoryName: name,
+            stats: cat['items'],
+            isAllFilter: _currentFilter == DeviceFilter.all,
+            historyStats: _historyStats,
+            currentFilter: _currentFilter,
+          ),
+          sourceColor: color.withOpacity(0.06),
           borderRadius: BorderRadius.circular(18),
           child: Container(
             decoration: BoxDecoration(
@@ -843,8 +842,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         final double ratio = appDur / maxAppDur;
         final cs = Theme.of(context).colorScheme;
 
-        return InkWell(
-          onTap: () => _navigateToAppDetail(app.key),
+        return _ExpandableCard(
+          pageBuilder: (_) => AppDetailScreen(
+            appName: app.key,
+            historyStats: _historyStats,
+            filter: _currentFilter,
+          ),
+          sourceColor: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
           child: Container(
             decoration: _cardDecoration(context),
@@ -919,8 +923,14 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           itemBuilder: (ctx, i) {
             final app = apps[i + skipCount];
             final devices = app.value['devices'] as Map<String, int>;
-            return InkWell(
-              onTap: () => _navigateToAppDetail(app.key),
+            return _ExpandableCard(
+              pageBuilder: (_) => AppDetailScreen(
+                appName: app.key,
+                historyStats: _historyStats,
+                filter: _currentFilter,
+              ),
+              sourceColor: cs.surface,
+              borderRadius: BorderRadius.zero,
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -965,16 +975,6 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     );
   }
 
-  void _navigateToAppDetail(String appName) {
-    Navigator.push(
-        context,
-        PageTransitions.slideHorizontal(AppDetailScreen(
-          appName: appName,
-          historyStats: _historyStats,
-          filter: _currentFilter,
-        )));
-  }
-
   // ─── 通用卡片装饰 ───
   BoxDecoration _cardDecoration(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -988,6 +988,50 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             blurRadius: 8,
             offset: const Offset(0, 2))
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// 可展开卡片（从点击位置展开到全屏的过渡动画）
+// ─────────────────────────────────────────────
+class _ExpandableCard extends StatefulWidget {
+  final Widget child;
+  final Widget Function(BuildContext) pageBuilder;
+  final Color? sourceColor;
+  final BorderRadius borderRadius;
+
+  const _ExpandableCard({
+    required this.child,
+    required this.pageBuilder,
+    this.sourceColor,
+    this.borderRadius = const BorderRadius.all(Radius.circular(22)),
+  });
+
+  @override
+  State<_ExpandableCard> createState() => _ExpandableCardState();
+}
+
+class _ExpandableCardState extends State<_ExpandableCard> {
+  final GlobalKey _key = GlobalKey();
+
+  void _handleTap() {
+    PageTransitions.pushFromRect(
+      context: context,
+      page: widget.pageBuilder(context),
+      sourceKey: _key,
+      sourceColor: widget.sourceColor,
+      sourceBorderRadius: widget.borderRadius,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: _key,
+      onTap: _handleTap,
+      behavior: HitTestBehavior.opaque,
+      child: widget.child,
     );
   }
 }
@@ -1102,15 +1146,14 @@ class CategoryDetailScreen extends StatelessWidget {
                             final app = apps[i];
                             final devices =
                                 app.value['devices'] as Map<String, int>;
-                            return InkWell(
-                              onTap: () => Navigator.push(
-                                  ctx,
-                                  PageTransitions.slideHorizontal(
-                                      AppDetailScreen(
-                                    appName: app.key,
-                                    historyStats: historyStats,
-                                    filter: currentFilter,
-                                  ))),
+                            return _ExpandableCard(
+                              pageBuilder: (_) => AppDetailScreen(
+                                appName: app.key,
+                                historyStats: historyStats,
+                                filter: currentFilter,
+                              ),
+                              sourceColor: cs.surface,
+                              borderRadius: BorderRadius.zero,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 16, vertical: 12),
