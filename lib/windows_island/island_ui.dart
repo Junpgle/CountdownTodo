@@ -445,7 +445,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           _cards.add({
             'type': 'focusing',
             'icon': '⏱️',
-            'title': '专注中',
+            'title': _isCountdown ? '倒计时' : '专注中',
             'subtitle': '',
             'color': IslandConfig.focusColor,
           });
@@ -1319,7 +1319,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     // 默认：专注详情
     final fd = _currentPayload?['focusData'] as Map?;
-    final title = fd?['title']?.toString() ?? '专注事项';
+    final title = fd?['title']?.toString() ?? (_isCountdown ? '倒计时' : '自由专注');
     final tags = (fd?['tags'] as List?)?.join(' ') ?? '';
     final isLocal = fd?['syncMode']?.toString() != 'remote';
 
@@ -2007,7 +2007,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   Widget _expandedFocusing() {
     final fd = _currentPayload?['focusData'] as Map?;
-    final title = fd?['title']?.toString() ?? '自由专注';
+    final title = fd?['title']?.toString() ?? (_isCountdown ? '倒计时' : '自由专注');
     return Container(
       width: 260,
       height: 120,

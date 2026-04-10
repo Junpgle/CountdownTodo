@@ -1128,7 +1128,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     ? '正在专注: "${_boundTodo!.title}"'
                     : '自由专注中'),
                 const SizedBox(height: 12),
-                Text('已累计专注: ${_formatSeconds(_remainingSeconds)}'),
+                Text(_settings.mode == TimerMode.countUp
+                    ? '已累计专注: ${_formatSeconds(_remainingSeconds)}'
+                    : '还需持续专注: ${_formatSeconds(_remainingSeconds)}'),
                 const SizedBox(height: 8),
                 // 使用外部已经有的 _pauseElapsedSecs，
                 // 但为了让弹窗自刷新，我们需要在弹窗建立时也跑一个微型 Timer
@@ -1862,7 +1864,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     String displayTitle = _boundTodo?.title ?? '';
     if (displayTitle.isEmpty && !isIdle) {
-      displayTitle = '自由专注';
+      displayTitle = mode == 1 ? '自由专注' : '倒计时';
     }
 
     if (isIdle) {
