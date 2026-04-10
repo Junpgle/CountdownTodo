@@ -134,34 +134,20 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   alignment: Alignment.center,
-                  child: Stack(
-                    // ← 改成 Stack
-                    children: [
-                      PomodoroWorkbench(
-                        key: _workbenchKey,
-                        username: widget.username,
-                        onPhaseChanged: (phase) {
-                          if (!_disposed && mounted && _currentPhase != phase) {
-                            setState(() => _currentPhase = phase);
-                          }
-                        },
-                        onReady: () {
-                          if (!_disposed && mounted && !_workbenchReady) {
-                            setState(() => _workbenchReady = true);
-                          }
-                        },
-                      ),
-                      if (Navigator.canPop(context)) // ← 返回按钮叠在左上角
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          child: IconButton(
-                            icon: const Icon(Icons.arrow_back),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                        ),
-                    ],
-                  ),
+                child: PomodoroWorkbench(
+                  key: _workbenchKey,
+                  username: widget.username,
+                  onPhaseChanged: (phase) {
+                    if (!_disposed && mounted && _currentPhase != phase) {
+                      setState(() => _currentPhase = phase);
+                    }
+                  },
+                  onReady: () {
+                    if (!_disposed && mounted && !_workbenchReady) {
+                      setState(() => _workbenchReady = true);
+                    }
+                  },
+                ),
                 ),
               ),
 

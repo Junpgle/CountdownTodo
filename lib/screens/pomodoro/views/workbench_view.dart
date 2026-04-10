@@ -2040,10 +2040,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       child: Row(
         children: [
           AnimatedOpacity(
-            opacity: (isFocusing || isRemoteWatching) ? 1.0 : 0.0,
+            opacity: (isFocusing || isRemoteWatching || isLandscape) ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 300),
             child: IgnorePointer(
-              ignoring: !(isFocusing || isRemoteWatching),
+              ignoring: !(isFocusing || isRemoteWatching || isLandscape),
               child: IconButton(
                   icon: const Icon(Icons.arrow_back),
                   onPressed: () => Navigator.pop(context)),
