@@ -16,7 +16,7 @@ class PomodoroStats extends StatefulWidget {
 }
 
 class PomodoroStatsState extends State<PomodoroStats> {
-  int _dimension = 1;
+  int _dimension = 0; // 默认显示“日”
   DateTime _selected = DateTime.now();
   List<PomodoroSession> _sessions = [];
   List<PomodoroTag> _tags = [];
@@ -110,6 +110,13 @@ class PomodoroStatsState extends State<PomodoroStats> {
       final d = DateTime(_selected.year, _selected.month, _selected.day);
       return DateTimeRange(start: d, end: d.add(const Duration(days: 1)));
     } else if (_dimension == 1) {
+      // 🚀 周视图：从周一开始
+      final base = DateTime(_selected.year, _selected.month, _selected.day);
+      int weekday = base.weekday; // 1 (Mon) - 7 (Sun)
+      final monday = base.subtract(Duration(days: weekday - 1));
+      final nextMonday = monday.add(const Duration(days: 7));
+      return DateTimeRange(start: monday, end: nextMonday);
+    } else if (_dimension == 2) {
       final start = DateTime(_selected.year, _selected.month, 1);
       final end = DateTime(_selected.year, _selected.month + 1, 1);
       return DateTimeRange(start: start, end: end);
@@ -122,7 +129,14 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
   String _rangeLabel() {
     if (_dimension == 0) return DateFormat('yyyy年MM月dd日').format(_selected);
-    if (_dimension == 1) return DateFormat('yyyy年MM月').format(_selected);
+    if (_dimension == 1) {
+      final range = _getRange();
+      final startStr = DateFormat('MM/dd').format(range.start);
+      final endStr = DateFormat('MM/dd').format(
+          range.end.subtract(const Duration(seconds: 1)));
+      return '$startStr - $endStr';
+    }
+    if (_dimension == 2) return DateFormat('yyyy年MM月').format(_selected);
     return '${_selected.year}年';
   }
 
@@ -385,7 +399,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     final widgets = <Widget>[];
     for (final key in sortedKeys) {
       final dayDate = DateTime.parse(key);
-      final dayLabel = _dimension == 1
+      final dayLabel = (_dimension == 1 || _dimension == 2)
           ? DateFormat('MM月dd日').format(dayDate)
           : DateFormat('yyyy年MM月dd日').format(dayDate);
       widgets.add(Padding(
@@ -606,6 +620,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
       if (_dimension == 0) {
         _selected = _selected.subtract(const Duration(days: 1));
       } else if (_dimension == 1) {
+        _selected = _selected.subtract(const Duration(days: 7));
+      } else if (_dimension == 2) {
         _selected = DateTime(_selected.year, _selected.month - 1, 1);
       } else {
         _selected = DateTime(_selected.year - 1, 1, 1);
@@ -619,6 +635,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
       if (_dimension == 0) {
         _selected = _selected.add(const Duration(days: 1));
       } else if (_dimension == 1) {
+        _selected = _selected.add(const Duration(days: 7));
+      } else if (_dimension == 2) {
         _selected = DateTime(_selected.year, _selected.month + 1, 1);
       } else {
         _selected = DateTime(_selected.year + 1, 1, 1);
@@ -726,10 +744,16 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         value: 1,
                         label: Padding(
                             padding: EdgeInsets.symmetric(
+                                horizontal: widget.isCompact ? 4 : 8),
+                            child: const Text('周'))),
+                    ButtonSegment(
+                        value: 2,
+                        label: Padding(
+                            padding: EdgeInsets.symmetric(
                                 horizontal: widget.isCompact ? 4 : 12),
                             child: const Text('月'))),
                     ButtonSegment(
-                        value: 2,
+                        value: 3,
                         label: Padding(
                             padding: EdgeInsets.symmetric(
                                 horizontal: widget.isCompact ? 4 : 12),

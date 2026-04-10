@@ -214,54 +214,6 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                                   isCompact: true),
                             ),
                           ),
-
-                          const SizedBox(height: 12),
-
-                          // quick actions / next items placeholder
-                          Text('待办与会话',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 8),
-                          // keep a compact list area so the right column isn't empty
-                          Container(
-                            height: 120,
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest
-                                  .withValues(alpha: 0.02),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                                child: Text('最近的待办 / 会话',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall)),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // some space for settings / controls
-                          FilledButton.tonalIcon(
-                            onPressed: () => _tabController.animateTo(0),
-                            icon: const Icon(Icons.play_arrow, size: 18),
-                            label: const Text('工作台',
-                                style: TextStyle(fontSize: 12)),
-                            style: FilledButton.styleFrom(
-                                visualDensity: VisualDensity.compact),
-                          ),
-                          const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: () => _tabController.animateTo(1),
-                            icon: const Icon(Icons.bar_chart_rounded, size: 18),
-                            label: const Text('统计详情',
-                                style: TextStyle(fontSize: 12)),
-                            style: OutlinedButton.styleFrom(
-                                visualDensity: VisualDensity.compact),
-                          ),
-                          const SizedBox(height: 24),
                         ],
                       ),
                     ),
