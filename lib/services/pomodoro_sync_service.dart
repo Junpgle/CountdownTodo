@@ -30,6 +30,12 @@ class CrossDevicePomodoroState {
 
   final Map<String, dynamic>? manifestData;
 
+  // 🚀 新增：暂停状态字段
+  final bool? isPaused;
+  final int? pausedAtMs;
+  final int? accumulatedMs;
+  final int? pauseStartMs;
+
   const CrossDevicePomodoroState({
     required this.action,
     this.todoUuid,
@@ -46,7 +52,14 @@ class CrossDevicePomodoroState {
     this.downloadUrl,
     this.releaseNotes,
     this.manifestData,
+    this.isPaused,
+    this.pausedAtMs,
+    this.accumulatedMs,
+    this.pauseStartMs,
+    this.serverElapsedMs,
   });
+
+  final int? serverElapsedMs;
 
   factory CrossDevicePomodoroState.fromJson(Map<String, dynamic> j) =>
       CrossDevicePomodoroState(
@@ -66,6 +79,12 @@ class CrossDevicePomodoroState {
         downloadUrl: j['download_url']?.toString(),
         releaseNotes: j['release_notes']?.toString(),
         manifestData: j['manifest'] as Map<String, dynamic>?,
+        // 🚀 新增暂停解析
+        isPaused: j['isPaused'] as bool?,
+        pausedAtMs: _parseInt(j['pausedAtMs']),
+        accumulatedMs: _parseInt(j['accumulatedMs']),
+        pauseStartMs: _parseInt(j['pauseStartMs']),
+        serverElapsedMs: _parseInt(j['server_elapsed_ms'] ?? j['serverElapsedMs']),
       );
 
   static int? _parseInt(dynamic v) {
@@ -95,6 +114,11 @@ class CrossDevicePomodoroState {
         if (latestVersion != null) 'latest_version': latestVersion,
         if (downloadUrl != null) 'download_url': downloadUrl,
         if (releaseNotes != null) 'release_notes': releaseNotes,
+        // 🚀 新增暂停序列化
+        if (isPaused != null) 'isPaused': isPaused,
+        if (pausedAtMs != null) 'pausedAtMs': pausedAtMs,
+        if (accumulatedMs != null) 'accumulatedMs': accumulatedMs,
+        if (pauseStartMs != null) 'pauseStartMs': pauseStartMs,
       };
 }
 
@@ -384,6 +408,44 @@ class PomodoroSyncService {
 
   void sendUpdateTagsSignal(List<String> tagNames) {
     _send({'action': 'UPDATE_TAGS', 'tags': tagNames});
+  }
+
+  void sendPauseSignal({
+    required String sessionUuid,
+    required int pausedAtMs,
+    required int accumulatedMs,
+    required int pauseStartMs,
+  }) {
+    _send({
+      'action': 'PAUSE',
+      'session_uuid': sessionUuid,
+      'pausedAtMs': pausedAtMs,
+      'accumulatedMs': accumulatedMs,
+      'pauseStartMs': pauseStartMs,
+    });
+  }
+
+  void sendResumeSignal({
+    required String sessionUuid,
+    int? pausedAtMs,
+    int? accumulatedMs,
+    int? pauseStartMs,
+    int? targetEndMs,
+    int? mode,
+    String? todoUuid,
+    String? todoTitle,
+  }) {
+    _send({
+      'action': 'RESUME',
+      'session_uuid': sessionUuid,
+      if (pausedAtMs != null) 'pausedAtMs': pausedAtMs,
+      if (accumulatedMs != null) 'accumulatedMs': accumulatedMs,
+      if (pauseStartMs != null) 'pauseStartMs': pauseStartMs,
+      if (targetEndMs != null) 'target_end_ms': targetEndMs,
+      if (mode != null) 'mode': mode,
+      if (todoUuid != null) 'todo_uuid': todoUuid,
+      if (todoTitle != null) 'todo_title': todoTitle,
+    });
   }
 
   void sendClearFocusSignal() {

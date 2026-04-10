@@ -59,6 +59,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   int _currentCycle = 1;
   int _sessionStartMs = 0;
 
+  // 🚀 暂停状态
+  bool _isPaused = false;
+  int _pausedAtMs = 0;
+  int _accumulatedMs = 0;
+  int _pauseStartMs = 0;
+  int _pauseElapsedSecs = 0;
+  Timer? _pauseTicker;
+
   // ── 任务绑定 ──
   TodoItem? _boundTodo;
   List<PomodoroTag> _allTags = [];
@@ -355,8 +363,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     final myDeviceId = 'flutter_$_deviceId';
     if (_deviceId.isEmpty ||
-        (signal.sourceDevice != null && signal.sourceDevice == myDeviceId))
+        (signal.sourceDevice != null && signal.sourceDevice == myDeviceId)) {
       return;
+    }
 
     switch (signal.action) {
       case 'UPDATE_AVAILABLE':
@@ -369,6 +378,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               hasUpdate: true);
         }
         break;
+
       case 'START':
       case 'SYNC':
       case 'SYNC_FOCUS':
@@ -381,17 +391,38 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
         final isCountUp = signal.mode == 1;
         final endMs = signal.targetEndMs ?? 0;
-
+        final isPaused = signal.isPaused == true;
+        final acc = signal.accumulatedMs ?? 0;
+        final timestamp =
+            signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
         int rem = 0;
-        if (isCountUp) {
-          final timestamp =
-              signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
-          rem = ((DateTime.now().millisecondsSinceEpoch - timestamp) / 1000)
-              .floor();
-          if (rem < 0) rem = 0; // 防止时间差导致的负数
+
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        int localTargetEnd = 0;
+        int localSessionStart = 0;
+
+        if (signal.serverElapsedMs != null) {
+          // 🚀 核心修复：彻底解决跨端时钟偏移。将服务端的“纯专注时长”转化为“本地结束/开始点”
+          if (isCountUp) {
+            localSessionStart = nowMs - signal.serverElapsedMs!;
+            rem = signal.serverElapsedMs! ~/ 1000;
+          } else {
+            final plannedSecs = signal.duration ?? (_settings.focusMinutes * 60);
+            rem = plannedSecs - (signal.serverElapsedMs! ~/ 1000);
+            if (rem < 0) rem = 0;
+            localTargetEnd = nowMs + (rem * 1000);
+          }
         } else {
-          rem = ((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
-          if (rem <= 0) break;
+          // 降级逻辑
+          if (isCountUp) {
+            final referenceMs = isPaused ? (signal.pausedAtMs ?? timestamp) : nowMs;
+            rem = ((referenceMs - timestamp - acc) / 1000).floor();
+            localSessionStart = nowMs - (rem * 1000);
+          } else {
+            final referenceMs = isPaused ? (signal.pausedAtMs ?? endMs) : nowMs;
+            rem = ((endMs - referenceMs) / 1000).ceil();
+            localTargetEnd = nowMs + (rem * 1000);
+          }
         }
 
         final todoTitle = signal.todoTitle;
@@ -405,21 +436,112 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
         setState(() {
           _phase = PomodoroPhase.remoteWatching;
-          _targetEndMs = endMs;
+          _targetEndMs = isCountUp ? 0 : localTargetEnd; // 仅倒计时需要此标记
+          _sessionStartMs = isCountUp ? localSessionStart : 0;
           _remainingSeconds = rem;
+          _isPaused = isPaused;
+          _pausedAtMs = signal.pausedAtMs ?? 0;
+          _accumulatedMs = acc;
+          _pauseStartMs = signal.pauseStartMs ?? _pausedAtMs;
           _boundTodo = remoteTodo;
           _remoteState = signal;
           _remoteTagNames = signal.tags;
         });
         widget.onPhaseChanged(_phase);
-        _startRemoteTicker(endMs, isCountUp);
-        _showLocalFloat(); // Update float window with correct style for remote sessions
+
+        if (isPaused) {
+          _startPauseTicker();
+        } else {
+          _startRemoteTicker(_targetEndMs, isCountUp);
+        }
+        _showLocalFloat();
         break;
 
       case 'SYNC_TAGS':
       case 'UPDATE_TAGS':
         if (_phase != PomodoroPhase.remoteWatching) break;
         if (mounted) setState(() => _remoteTagNames = signal.tags);
+        break;
+
+      case 'PAUSE':
+        if (_phase != PomodoroPhase.remoteWatching) break;
+        if (mounted) {
+          setState(() {
+            _isPaused = true;
+            _pausedAtMs =
+                signal.pausedAtMs ?? DateTime.now().millisecondsSinceEpoch;
+            _accumulatedMs = signal.accumulatedMs ?? 0;
+            _pauseStartMs = signal.pauseStartMs ?? _pausedAtMs;
+            _remoteState = signal;
+          });
+          _ticker?.cancel();
+          _remoteTicker?.cancel();
+          _startPauseTicker();
+          _pushPomodoroNotification();
+          _showLocalFloat();
+        }
+        break;
+
+      case 'RESUME':
+        if (_phase != PomodoroPhase.remoteWatching && _phase != PomodoroPhase.idle) break;
+        if (mounted) {
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          final isCountUp = signal.mode == 1;
+          int rem = 0;
+          
+          int localTargetEnd = 0;
+          int localSessionStart = 0;
+          
+          if (signal.serverElapsedMs != null) {
+            if (isCountUp) {
+              localSessionStart = nowMs - signal.serverElapsedMs!;
+              rem = signal.serverElapsedMs! ~/ 1000;
+            } else {
+              final plannedSecs = signal.duration ?? (_settings.focusMinutes * 60);
+              rem = plannedSecs - (signal.serverElapsedMs! ~/ 1000);
+              if (rem < 0) rem = 0;
+              localTargetEnd = nowMs + (rem * 1000);
+            }
+          } else {
+            // 降级使用本地校准逻辑
+            final timestamp = signal.timestamp ?? nowMs;
+            final endMs = signal.targetEndMs ?? 0;
+            final acc = signal.accumulatedMs ?? 0;
+            if (isCountUp) {
+              rem = ((nowMs - timestamp - acc) / 1000).floor();
+              localSessionStart = nowMs - (rem * 1000);
+            } else {
+              rem = ((endMs - nowMs) / 1000).ceil();
+              localTargetEnd = nowMs + (rem * 1000);
+            }
+          }
+
+          setState(() {
+            _remoteState = signal;
+            _isPaused = false;
+            _phase = PomodoroPhase.remoteWatching;
+            _pausedAtMs = 0;
+            _pauseStartMs = 0;
+            _pauseElapsedSecs = 0;
+            _accumulatedMs = signal.accumulatedMs ?? _accumulatedMs;
+            _remainingSeconds = rem;
+            _targetEndMs = isCountUp ? 0 : localTargetEnd;
+            _sessionStartMs = isCountUp ? localSessionStart : 0;
+
+            if (signal.todoTitle != null && signal.todoTitle!.isNotEmpty) {
+              _boundTodo = TodoItem(
+                  id: signal.todoUuid ?? '',
+                  title: signal.todoTitle!,
+                  isDone: false,
+                  createdAt: 0);
+            }
+          });
+          _pauseTicker?.cancel();
+          _startRemoteTicker(isCountUp ? 0 : _targetEndMs, isCountUp);
+          _pushPomodoroNotification();
+          _showLocalFloat();
+          widget.onPhaseChanged(_phase);
+        }
         break;
 
       case 'STOP':
@@ -442,7 +564,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       case 'SWITCH':
         if (_phase != PomodoroPhase.remoteWatching) break;
         if (signal.todoTitle != null && signal.todoTitle!.isNotEmpty) {
-          final isCountUp = _remoteState?.mode == 1; // 🚀 识别是否为正计时
+          final isCountUp = _remoteState?.mode == 1;
           final newTimestamp =
               signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -455,12 +577,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             );
             _currentSessionUuid = signal.sessionUuid ?? _currentSessionUuid;
             if (isCountUp) {
-              // 🚀 关键：同步侧也归零，且校准到这次 SWITCH 的起点
-              _remainingSeconds =
-                  ((DateTime.now().millisecondsSinceEpoch - newTimestamp) /
-                          1000)
-                      .floor();
-              if (_remainingSeconds < 0) _remainingSeconds = 0;
+              int elapsed = ((DateTime.now().millisecondsSinceEpoch - newTimestamp) / 1000).floor();
+              _remainingSeconds = elapsed < 0 ? 0 : elapsed;
             }
 
             _remoteState = CrossDevicePomodoroState(
@@ -476,7 +594,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               tags: _remoteState?.tags ?? [],
             );
           });
-          // 🚀 重新校准计时器起点 (仅针对正计时)
           if (isCountUp) {
             _startRemoteTicker(_targetEndMs, true);
           }
@@ -496,14 +613,19 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _remoteTicker?.cancel();
         return;
       }
+      if (_isPaused) return;
 
       if (isCountUp) {
-        setState(() => _remainingSeconds++);
+        final elapsed =
+            ((DateTime.now().millisecondsSinceEpoch - _sessionStartMs) / 1000)
+                .floor();
+        setState(() => _remainingSeconds = elapsed);
       } else {
         final rem =
             ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000)
                 .ceil();
-        if (rem <= 0) {
+        // 增加 2 秒容错缓冲，防止由于两端时钟微小偏差导致远端提前退出
+        if (rem < -2) {
           _remoteTicker?.cancel();
           setState(() {
             _phase = PomodoroPhase.idle;
@@ -516,7 +638,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           });
           widget.onPhaseChanged(_phase);
         } else {
-          setState(() => _remainingSeconds = rem);
+          // 即使内部允许负值缓冲，UI 上也要显示为 0
+          setState(() => _remainingSeconds = rem < 0 ? 0 : rem);
         }
       }
     });
@@ -548,58 +671,84 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Future<void> _recoverState(PomodoroRunState saved) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final bool isCountUp = saved.mode == TimerMode.countUp;
-    final remaining = isCountUp
-        ? ((now - saved.sessionStartMs) / 1000).floor()
-        : ((saved.targetEndMs - now) / 1000).ceil();
+    final int savedAccumulated = saved.accumulatedMs;
+    int remaining;
+    if (isCountUp) {
+      if (saved.isPaused == true) {
+        remaining =
+            (((saved.pausedAtMs - saved.sessionStartMs) - savedAccumulated) /
+                    1000)
+                .floor();
+      } else {
+        remaining =
+            (((now - saved.sessionStartMs) - savedAccumulated) / 1000).floor();
+      }
+    } else {
+      if (saved.isPaused == true) {
+        remaining = ((saved.targetEndMs - saved.pausedAtMs) / 1000).ceil();
+      } else {
+        remaining = ((saved.targetEndMs - now) / 1000).ceil();
+      }
+    }
+    _pauseStartMs = saved.pauseStartMs;
 
     if (saved.phase == PomodoroPhase.focusing ||
         saved.phase == PomodoroPhase.breaking) {
-      if (!isCountUp && remaining <= 0) {
+      if (!isCountUp && remaining <= 0 && saved.isPaused != true) {
         if (saved.phase == PomodoroPhase.focusing) {
           await _handleFocusEndFromBackground(saved);
         } else {
           await _handleBreakEndFromBackground(saved);
         }
-      } else {
-        TodoItem? boundTodo;
-        if (saved.todoUuid != null) {
-          boundTodo = _todos.cast<TodoItem?>().firstWhere(
-                (t) => t?.id == saved.todoUuid,
-                orElse: () => null,
-              );
-          if (boundTodo == null &&
-              saved.todoTitle != null &&
-              saved.todoTitle!.isNotEmpty) {
-            boundTodo = TodoItem(
-                id: saved.todoUuid!,
-                title: saved.todoTitle!,
-                isDone: false,
-                createdAt: 0);
-          }
+        return;
+      }
+      TodoItem? boundTodo;
+      if (saved.todoUuid != null) {
+        boundTodo = _todos.cast<TodoItem?>().firstWhere(
+              (t) => t?.id == saved.todoUuid,
+              orElse: () => null,
+            );
+        if (boundTodo == null &&
+            saved.todoTitle != null &&
+            saved.todoTitle!.isNotEmpty) {
+          boundTodo = TodoItem(
+              id: saved.todoUuid!,
+              title: saved.todoTitle!,
+              isDone: false,
+              createdAt: 0);
         }
-        if (mounted) {
-          setState(() {
-            _phase = saved.phase;
-            _currentSessionUuid = saved.sessionUuid ?? const Uuid().v4();
-            _targetEndMs = saved.targetEndMs;
-            _remainingSeconds = remaining;
-            _currentCycle = saved.currentCycle;
-            _settings.focusMinutes = saved.focusSeconds ~/ 60;
-            _settings.breakMinutes = saved.breakSeconds ~/ 60;
-            _settings.cycles = saved.totalCycles;
-            _settings.mode = saved.mode;
-            _boundTodo = boundTodo;
-            _selectedTagUuids = saved.tagUuids;
-            _sessionStartMs = saved.sessionStartMs;
-          });
-          widget.onPhaseChanged(_phase);
-          _pushPomodoroNotification(overrideRemaining: remaining);
-          _showLocalFloat();
+      }
+      if (mounted) {
+        setState(() {
+          _phase = saved.phase;
+          _currentSessionUuid = saved.sessionUuid ?? const Uuid().v4();
+          _targetEndMs = saved.targetEndMs;
+          _remainingSeconds = remaining;
+          _currentCycle = saved.currentCycle;
+          _settings.focusMinutes = saved.focusSeconds ~/ 60;
+          _settings.breakMinutes = saved.breakSeconds ~/ 60;
+          _settings.cycles = saved.totalCycles;
+          _settings.mode = saved.mode;
+          _boundTodo = boundTodo;
+          _selectedTagUuids = saved.tagUuids;
+          _sessionStartMs = saved.sessionStartMs;
+          _isPaused = saved.isPaused ?? false;
+          _pausedAtMs = saved.pausedAtMs ?? 0;
+          _accumulatedMs = saved.accumulatedMs ?? 0;
+          _pauseStartMs = saved.pauseStartMs;
+        });
+        widget.onPhaseChanged(_phase);
+        _pushPomodoroNotification(overrideRemaining: remaining);
+        _showLocalFloat();
+        if (saved.isPaused == true) {
+          _ticker?.cancel();
+          _startPauseTicker();
+        } else {
           _startTicker();
-          if (!isCountUp) {
-            _scheduleReminders(saved.targetEndMs, saved.phase, saved.todoTitle,
-                saved.currentCycle, saved.totalCycles);
-          }
+        }
+        if (!isCountUp) {
+          _scheduleReminders(saved.targetEndMs, saved.phase, saved.todoTitle,
+              saved.currentCycle, saved.totalCycles);
         }
       }
     }
@@ -629,10 +778,25 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_phase == PomodoroPhase.focusing || _phase == PomodoroPhase.breaking) {
       final now = DateTime.now().millisecondsSinceEpoch;
       final bool isCountUp = _settings.mode == TimerMode.countUp;
-      final remaining = isCountUp
-          ? ((now - _sessionStartMs) / 1000).floor()
-          : ((_targetEndMs - now) / 1000).ceil();
-      if (!isCountUp && remaining <= 0) {
+
+      int remaining;
+      if (isCountUp) {
+        if (_isPaused) {
+          remaining =
+              ((_pausedAtMs - _sessionStartMs - _accumulatedMs) / 1000).floor();
+        } else {
+          remaining =
+              (((now - _sessionStartMs) - _accumulatedMs) / 1000).floor();
+        }
+      } else {
+        if (_isPaused) {
+          remaining = ((_targetEndMs - _pausedAtMs) / 1000).ceil();
+        } else {
+          remaining = ((_targetEndMs - now) / 1000).ceil();
+        }
+      }
+
+      if (!isCountUp && remaining <= 0 && !_isPaused) {
         _ticker?.cancel();
         if (_phase == PomodoroPhase.focusing) {
           await _onFocusEnd();
@@ -641,6 +805,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         }
       } else {
         setState(() => _remainingSeconds = remaining);
+        if (!_isPaused && _ticker?.isActive != true) {
+          _startTicker();
+        }
       }
     }
   }
@@ -741,20 +908,39 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _startTicker() {
+    debugPrint(
+        '[Ticker] _startTicker called, _isPaused: $_isPaused, _phase: $_phase');
     _ticker?.cancel();
     _notifyTickCount = 0;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
+      debugPrint('[Ticker] Tick fired, _isPaused: $_isPaused, _phase: $_phase');
       if (!mounted) return;
       if (_phase != PomodoroPhase.focusing && _phase != PomodoroPhase.breaking)
         return;
+      if (_isPaused) {
+        debugPrint('[Ticker] Skipping tick because _isPaused is true');
+        return;
+      }
 
       final now = DateTime.now().millisecondsSinceEpoch;
       final bool isCountUp = _phase == PomodoroPhase.focusing &&
           _settings.mode == TimerMode.countUp;
 
+      debugPrint(
+          '[Ticker] About to compute elapsed, _sessionStartMs: $_sessionStartMs, _accumulatedMs: $_accumulatedMs, now: $now');
       if (isCountUp) {
-        final elapsed = ((now - _sessionStartMs) / 1000).floor();
-        setState(() => _remainingSeconds = elapsed);
+        final elapsed =
+            (((now - _sessionStartMs) - _accumulatedMs) / 1000).floor();
+        debugPrint(
+            '[Ticker] countUp elapsed: $elapsed, _remainingSeconds before setState: $_remainingSeconds');
+        if (_isPaused) {
+          debugPrint('[Ticker] CRITICAL: Ticker tried to update while _isPaused=true. Skipping.');
+        } else {
+          setState(() {
+            _remainingSeconds = elapsed;
+            debugPrint('[Ticker] Set _remainingSeconds to $elapsed');
+          });
+        }
         _notifyTickCount++;
         if (_notifyTickCount >= 60) {
           _notifyTickCount = 0;
@@ -781,6 +967,205 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         }
       }
     });
+  }
+
+  void _startPauseTicker() {
+    _pauseTicker?.cancel();
+    _pauseTicker = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      setState(() {
+        _pauseElapsedSecs =
+            (DateTime.now().millisecondsSinceEpoch - _pauseStartMs) ~/ 1000;
+      });
+    });
+  }
+
+  void _pauseFocus() {
+    debugPrint(
+        '[Pause] _pauseFocus called, current _isPaused: $_isPaused, phase: $_phase');
+    if (_phase != PomodoroPhase.focusing || _isPaused) {
+      debugPrint('[Pause] Early return, condition failed');
+      return;
+    }
+    debugPrint('[Pause] About to cancel ticker');
+    _ticker?.cancel();
+    debugPrint(
+        '[Pause] Ticker cancelled, setting _pausedAtMs and _pauseStartMs');
+    _pausedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _pauseStartMs = DateTime.now().millisecondsSinceEpoch;
+
+    if (_settings.mode == TimerMode.countUp) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final elapsed = ((now - _sessionStartMs) - _accumulatedMs);
+      debugPrint('[Pause] countUp mode: elapsed=$elapsed');
+      _targetEndMs = _sessionStartMs + elapsed;
+    }
+
+    debugPrint('[Pause] About to setState, _isPaused will be set to true');
+    setState(() {
+      _isPaused = true;
+    });
+    _startPauseTicker();
+    debugPrint('[Pause] LOCKED. _pausedAtMs: $_pausedAtMs, _accumulatedMs: $_accumulatedMs');
+    debugPrint('[Pause] After setState, calling notifications');
+    _pushPomodoroNotification();
+    _showLocalFloat();
+    PomodoroService.saveRunState(PomodoroRunState(
+      phase: _phase,
+      sessionUuid: _currentSessionUuid,
+      targetEndMs: _targetEndMs,
+      currentCycle: _currentCycle,
+      totalCycles: _settings.cycles,
+      focusSeconds:
+          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
+      breakSeconds: _settings.breakMinutes * 60,
+      todoUuid: _boundTodo?.id,
+      todoTitle: _boundTodo?.title,
+      tagUuids: _selectedTagUuids,
+      sessionStartMs: _sessionStartMs,
+      plannedFocusSeconds:
+          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
+      mode: _settings.mode,
+      isPaused: true,
+      pausedAtMs: _pausedAtMs,
+      accumulatedMs: _accumulatedMs,
+      pauseStartMs: _pauseStartMs,
+    ));
+    _syncService.sendPauseSignal(
+      sessionUuid: _currentSessionUuid,
+      pausedAtMs: _pausedAtMs,
+      accumulatedMs: _accumulatedMs,
+      pauseStartMs: _pauseStartMs,
+    );
+  }
+
+  Future<void> _resumeFocus() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    debugPrint('[Resume] _resumeFocus called');
+    if (_pausedAtMs > 0) {
+      final pauseDuration = now - _pausedAtMs;
+      _accumulatedMs += pauseDuration;
+      debugPrint('[Resume] UPDATED. pauseDuration: $pauseDuration, new _accumulatedMs: $_accumulatedMs');
+
+      // 如果是倒计时模式, 需要推后结束时间
+      if (_settings.mode != TimerMode.countUp) {
+        _targetEndMs += pauseDuration;
+        // 重新调度通知
+        _scheduleReminders(
+          _targetEndMs,
+          _phase,
+          _boundTodo?.title,
+          _currentCycle,
+          _settings.cycles,
+        );
+      }
+    }
+
+    debugPrint('[Resume] Settings _isPaused=false and starting ticker');
+    setState(() {
+      _isPaused = false;
+      _pausedAtMs = 0;
+      _pauseStartMs = 0;
+      _pauseElapsedSecs = 0;
+    });
+    _pauseTicker?.cancel();
+    _startTicker();
+    _pushPomodoroNotification();
+    _showLocalFloat();
+    _syncService.sendResumeSignal(
+      sessionUuid: _currentSessionUuid,
+      pausedAtMs: 0,
+      accumulatedMs: _accumulatedMs,
+      pauseStartMs: 0,
+      targetEndMs: _targetEndMs,
+      mode: _settings.mode == TimerMode.countUp ? 1 : 0,
+      todoUuid: _boundTodo?.id,
+      todoTitle: _boundTodo?.title,
+    );
+    await PomodoroService.saveRunState(PomodoroRunState(
+      phase: _phase,
+      sessionUuid: _currentSessionUuid,
+      targetEndMs: _targetEndMs,
+      currentCycle: _currentCycle,
+      totalCycles: _settings.cycles,
+      focusSeconds:
+          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
+      breakSeconds: _settings.breakMinutes * 60,
+      todoUuid: _boundTodo?.id,
+      todoTitle: _boundTodo?.title,
+      tagUuids: _selectedTagUuids,
+      sessionStartMs: _sessionStartMs,
+      plannedFocusSeconds:
+          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
+      mode: _settings.mode,
+      isPaused: false,
+      pausedAtMs: 0,
+      accumulatedMs: _accumulatedMs,
+    ));
+  }
+
+  void _showPauseDialog() {
+    debugPrint(
+        '[PauseDialog] _showPauseDialog called, calling _pauseFocus first');
+    debugPrint('[PauseDialog] Before _pauseFocus, _isPaused = $_isPaused');
+    _pauseFocus();
+    debugPrint('[PauseDialog] After _pauseFocus, _isPaused = $_isPaused');
+    debugPrint('[PauseDialog] showing dialog');
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // 在对话框内部也启动一个定时器或者收听外部状态
+          // 最简单的办法是使用 Timer.periodic 更新对话框内部状态
+          return AlertDialog(
+            title: const Text('⏸️ 已暂停'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_boundTodo != null
+                    ? '正在专注: "${_boundTodo!.title}"'
+                    : '自由专注中'),
+                const SizedBox(height: 12),
+                Text('已累计专注: ${_formatSeconds(_remainingSeconds)}'),
+                const SizedBox(height: 8),
+                // 使用外部已经有的 _pauseElapsedSecs，
+                // 但为了让弹窗自刷新，我们需要在弹窗建立时也跑一个微型 Timer
+                _PauseTimerText(pauseStartMs: _pauseStartMs),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _resumeFocus();
+                },
+                child: const Text('继续'),
+              ),
+              FilledButton(
+                style:
+                    FilledButton.styleFrom(backgroundColor: Colors.red.shade400),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _abandonFocus();
+                },
+                child: const Text('结束专注'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatSeconds(int totalSeconds) {
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    final s = totalSeconds % 60;
+    if (h > 0) return '$h小时${m > 0 ? "${m}分" : ""}';
+    if (m > 0) return '$m分${s > 0 ? "${s}秒" : ""}';
+    return '${s}秒';
   }
 
   Future<void> _startFocus() async {
@@ -812,6 +1197,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final durationMs = isCountUp ? 0 : _settings.focusMinutes * 60 * 1000;
     final end = isCountUp ? now : now + durationMs;
     _currentSessionUuid = const Uuid().v4();
+    _isPaused = false;
+    _pausedAtMs = 0;
+    _accumulatedMs = 0;
 
     setState(() {
       _phase = PomodoroPhase.focusing;
@@ -845,6 +1233,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       sessionStartMs: now,
       plannedFocusSeconds: isCountUp ? 0 : _settings.focusMinutes * 60,
       mode: _settings.mode,
+      isPaused: false,
+      pausedAtMs: 0,
+      accumulatedMs: 0,
     ));
 
     _persistIdleBoundTodo(null);
@@ -936,6 +1327,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       sessionStartMs: now,
       plannedFocusSeconds: isCountUpNow ? 0 : _settings.focusMinutes * 60,
       mode: _settings.mode,
+      isPaused: _isPaused,
+      pausedAtMs: _pausedAtMs,
+      accumulatedMs: _accumulatedMs,
     ));
 
     _syncService.sendSwitchSignal(
@@ -955,6 +1349,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _isHandlingEnd = true;
     try {
       _ticker?.cancel();
+      _isPaused = false;
+      _pausedAtMs = 0;
+      _accumulatedMs = 0;
       NotificationService.cancelNotification();
       NotificationService.cancelReminder(40001);
       NotificationService.cancelReminder(40002);
@@ -1458,7 +1855,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       final isCountUp = isFocusing && _settings.mode == TimerMode.countUp;
       final isRemoteCountUp = isRemoteWatching && _remoteState?.mode == 1;
       effectiveEndMs = (isCountUp)
-          ? _sessionStartMs
+          ? _sessionStartMs + _accumulatedMs
           : (isRemoteCountUp ? (_remoteState?.timestamp ?? 0) : _targetEndMs);
       mode = (isCountUp || isRemoteCountUp) ? 1 : 0;
     }
@@ -1479,6 +1876,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         tags: tagNames,
         isLocal: _phase != PomodoroPhase.remoteWatching,
         mode: mode,
+        isPaused: _isPaused,
+        accumulatedMs: _accumulatedMs,
+        pauseStartMs: _pauseStartMs,
       );
     }
   }
@@ -1766,14 +2166,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final isCountUp = _settings.mode == TimerMode.countUp;
     final isRemoteCountUp = _remoteState?.duration == 0;
     return ImmersiveTimer(
-      phase: _phase, remainingSeconds: _remainingSeconds,
+      phase: _phase,
+      remainingSeconds: _remainingSeconds,
       focusMinutes: _settings.focusMinutes,
-      breakMinutes: _settings.breakMinutes, currentCycle: _currentCycle,
+      breakMinutes: _settings.breakMinutes,
+      currentCycle: _currentCycle,
       totalCycles: _settings.cycles,
-      isCountUp: isCountUp, isRemoteCountUp: isRemoteCountUp,
+      isCountUp: isCountUp,
+      isRemoteCountUp: isRemoteCountUp,
       remoteState: _remoteState,
-      // explicit compactness control from parent
       isCompact: widget.isCompact,
+      isPaused: _isPaused,
+      pauseSeconds: _pauseElapsedSecs,
     );
   }
 
@@ -1841,6 +2245,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   Widget _buildActions(
       bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
+    final bool isPaused = _isPaused && _phase == PomodoroPhase.focusing;
+    debugPrint(
+        '[BuildActions] _isPaused: $_isPaused, _phase: $_phase, isPaused: $isPaused, isFocusing: $isFocusing');
     return WorkbenchActions(
       isIdle: isIdle,
       isFocusing: isFocusing,
@@ -1851,6 +2258,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       onStartFocus: _startFocus,
       onFinishEarly: _finishEarly,
       onAbandonFocus: _abandonFocus,
+      onPauseFocus: isPaused ? null : _pauseFocus,
+      onShowPauseDialog: isPaused ? _resumeFocus : _showPauseDialog,
       onSkipBreak: () async {
         _ticker?.cancel();
         NotificationService.cancelNotification();
@@ -1863,6 +2272,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _remainingSeconds = _settings.mode == TimerMode.countUp
               ? 0
               : _settings.focusMinutes * 60;
+          _isPaused = false;
+          _pausedAtMs = 0;
+          _accumulatedMs = 0;
         });
         widget.onPhaseChanged(_phase);
       },
@@ -1889,5 +2301,50 @@ class _SimpleTag extends StatelessWidget {
               color: color.withValues(alpha: 0.9),
               fontWeight: FontWeight.w500)),
     );
+  }
+}
+class _PauseTimerText extends StatefulWidget {
+  final int pauseStartMs;
+  const _PauseTimerText({required this.pauseStartMs});
+
+  @override
+  State<_PauseTimerText> createState() => _PauseTimerTextState();
+}
+
+class _PauseTimerTextState extends State<_PauseTimerText> {
+  Timer? _timer;
+  int _seconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _update();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) => _update());
+  }
+
+  void _update() {
+    if (!mounted) return;
+    setState(() {
+      _seconds = (DateTime.now().millisecondsSinceEpoch - widget.pauseStartMs) ~/
+          1000;
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _format(int s) {
+    if (s < 0) s = 0;
+    final mm = (s ~/ 60).toString().padLeft(2, '0');
+    final ss = (s % 60).toString().padLeft(2, '0');
+    return '$mm:$ss';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text('暂停时长: ${_format(_seconds)}');
   }
 }

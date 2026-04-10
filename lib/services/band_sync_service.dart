@@ -36,6 +36,7 @@ class BandSyncService {
   static Function(Map<String, dynamic>)? _onMessageReceived;
   static Function(Map<String, dynamic>)? _onError;
   static Function(List<String>)? _onPermissionGranted;
+  static Function(bool)? _onPermissionChecked;
 
   // 同步数据提供者（由外部设置，默认从本地存储读取）
   static Future<List<Map<String, dynamic>>> Function(String type)?
@@ -52,12 +53,14 @@ class BandSyncService {
     Function(Map<String, dynamic>)? onMessageReceived,
     Function(Map<String, dynamic>)? onError,
     Function(List<String>)? onPermissionGranted,
+    Function(bool)? onPermissionChecked,
   }) async {
     _onDeviceConnected = onDeviceConnected;
     _onDeviceDisconnected = onDeviceDisconnected;
     _onMessageReceived = onMessageReceived;
     _onError = onError;
     _onPermissionGranted = onPermissionGranted;
+    _onPermissionChecked = onPermissionChecked;
 
     _channel.setMethodCallHandler(_handleMethodCall);
 
@@ -168,6 +171,13 @@ class BandSyncService {
         final permissions = List<String>.from(args['permissions'] as List);
         _addLog('权限已授予: ${permissions.join(", ")}');
         _onPermissionGranted?.call(permissions);
+        break;
+
+      case 'onPermissionChecked':
+        final args = Map<String, dynamic>.from(call.arguments as Map);
+        final granted = args['granted'] as bool? ?? false;
+        _addLog('权限检查结果: granted=$granted');
+        _onPermissionChecked?.call(granted);
         break;
     }
   }
@@ -352,10 +362,16 @@ class BandSyncService {
   /// 申请设备管理权限
   static Future<void> requestPermission() async {
     try {
-      await _channel.invokeMethod('requestPermission');
-      _addLog('已发起权限申请');
-    } catch (e) {
-      _addLog('申请权限失败: $e');
+      _addLog('发起权限申请请求...');
+      final result = await _channel.invokeMethod('requestPermission');
+      _addLog('invokeMethod 返回: $result');
+      // 等待权限处理完成后重新获取状态
+      await Future.delayed(const Duration(seconds: 3));
+      final status = await getConnectionStatus();
+      _addLog('权限申请后状态: hasPermission=${status['hasPermission']}');
+    } catch (e, stack) {
+      _addLog('申请权限异常: $e');
+      debugPrint('requestPermission error: $stack');
     }
   }
 

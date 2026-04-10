@@ -103,15 +103,27 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     private fun checkAndRequestPermission() {
         val node = currentNode ?: return
 
+        Log.d(TAG, "checkAndRequestPermission: 检查权限状态...")
+        
         authApi?.checkPermission(node.id, Permission.DEVICE_MANAGER)?.addOnSuccessListener { granted ->
             hasDeviceManagerPermission = granted
             Log.d(TAG, "DEVICE_MANAGER 权限状态: $granted")
+            
+            // 通知 Flutter 当前权限状态
+            invokeMethod("onPermissionChecked", mapOf(
+                "granted" to granted,
+                "permissions" to if (granted) listOf("DEVICE_MANAGER", "NOTIFY") else emptyList<String>()
+            ))
+            
             if (!granted) {
                 Log.d(TAG, "未授权，自动申请...")
                 requestPermission()
+            } else {
+                // 已授权，注册消息监听
+                doRegisterListener()
             }
         }?.addOnFailureListener { e ->
-            Log.e(TAG, "检查权限失败", e)
+            Log.e(TAG, "检查权限失败: ${e.message}", e)
         }
     }
 
@@ -137,21 +149,65 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         }
 
         Log.d(TAG, "开始申请权限: DEVICE_MANAGER, NOTIFY")
-        authApi?.requestPermission(node.id, Permission.DEVICE_MANAGER, Permission.NOTIFY)
-            ?.addOnSuccessListener { permissions ->
-                hasDeviceManagerPermission = true
-                Log.d(TAG, "权限申请成功: ${permissions.map { it.name }}")
-                invokeMethod("onPermissionGranted", mapOf(
-                    "permissions" to permissions.map { it.name }
-                ))
-            }
-            ?.addOnFailureListener { e ->
-                Log.e(TAG, "权限申请失败", e)
-                invokeMethod("onError", mapOf(
-                    "code" to 1000,
-                    "message" to "权限申请失败: ${e.message}"
-                ))
-            }
+        Log.d(TAG, "调用 authApi.requestPermission for node: ${node.id}")
+        Log.d(TAG, "当前 hasDeviceManagerPermission: $hasDeviceManagerPermission")
+        
+        // 在主线程调用 requestPermission（需要 UI 上下文）
+        mainHandler.post {
+            Log.d(TAG, "在主线程执行权限申请...")
+            authApi?.requestPermission(node.id, Permission.DEVICE_MANAGER, Permission.NOTIFY)
+                ?.addOnSuccessListener { permissions ->
+                    hasDeviceManagerPermission = true
+                    Log.d(TAG, "权限申请成功: ${permissions.map { it.name }}")
+                    invokeMethod("onPermissionGranted", mapOf(
+                        "permissions" to permissions.map { it.name }
+                    ))
+                    doRegisterListener()
+                }
+                ?.addOnFailureListener { e ->
+                    Log.e(TAG, "权限申请失败: ${e.message}", e)
+                    val errorMsg = e.message ?: ""
+                    
+                    // app not installed 错误 - 尝试先启动小程序
+                    if (errorMsg.contains("app not installed", ignoreCase = true)) {
+                        Log.d(TAG, "小程序未安装或未启动，尝试启动...")
+                        invokeMethod("onError", mapOf(
+                            "code" to 1009,
+                            "message" to "手环小程序未运行，请先在手环上打开小程序后再试"
+                        ))
+                        return@addOnFailureListener
+                    }
+                    
+                    if (errorMsg.contains("connection", ignoreCase = true) || 
+                        errorMsg.contains("timeout", ignoreCase = true) ||
+                        errorMsg.contains("Cronet")) {
+                        Log.d(TAG, "网络超时，检查当前权限状态...")
+                        checkCurrentPermissionAndNotify()
+                        return@addOnFailureListener
+                    }
+                    when {
+                        errorMsg.contains("permission", ignoreCase = true) -> {
+                            invokeMethod("onError", mapOf(
+                                "code" to 1004,
+                                "message" to "权限被拒绝，请在小米穿戴App中手动授权DEVICE_MANAGER权限"
+                            ))
+                        }
+                        errorMsg.contains("service", ignoreCase = true) -> {
+                            invokeMethod("onError", mapOf(
+                                "code" to 1005,
+                                "message" to "小米穿戴服务未运行，请确保小米穿戴App在后台运行"
+                            ))
+                        }
+                        else -> {
+                            invokeMethod("onError", mapOf(
+                                "code" to 1003,
+                                "message" to "权限申请失败: $errorMsg"
+                            ))
+                        }
+                    }
+                }
+            Log.d(TAG, "requestPermission 调用已发出")
+        }
     }
 
     // 发送消息到手环
@@ -367,6 +423,31 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             "name" to (currentNode?.name ?: ""),
             "hasPermission" to hasDeviceManagerPermission
         )
+    }
+
+    // 检查当前权限状态并通知 Flutter
+    private fun checkCurrentPermissionAndNotify() {
+        val node = currentNode ?: return
+        authApi?.checkPermission(node.id, Permission.DEVICE_MANAGER)?.addOnSuccessListener { granted ->
+            hasDeviceManagerPermission = granted
+            Log.d(TAG, "当前权限状态: $granted")
+            if (granted) {
+                invokeMethod("onPermissionGranted", mapOf(
+                    "permissions" to listOf("DEVICE_MANAGER", "NOTIFY")
+                ))
+                doRegisterListener()
+            } else {
+                invokeMethod("onError", mapOf(
+                    "code" to 1007,
+                    "message" to "网络超时，如已手动授权请忽略，否则请到小米运动健康App中授权"
+                ))
+            }
+        }?.addOnFailureListener {
+            invokeMethod("onError", mapOf(
+                "code" to 1008,
+                "message" to "网络超时，无法检查权限状态"
+            ))
+        }
     }
 
     // 释放资源

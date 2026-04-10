@@ -123,6 +123,9 @@ class IslandDataProvider {
     List<Map<String, String>>? reminderQueue,
     bool includeReminders = false,
     bool transparentSupported = false,
+    bool isPaused = false,
+    int accumulatedMs = 0,
+    int pauseStartMs = 0,
   }) async {
     // Check if update is actually needed
     final currentState = endMs > 0 ? 'focusing' : 'idle';
@@ -231,6 +234,9 @@ class IslandDataProvider {
       'detail_note': detailSource.detailNote,
       if (detailSource.specialType.isNotEmpty)
         'specialType': detailSource.specialType,
+      'isPaused': isPaused,
+      'accumulatedMs': accumulatedMs,
+      'pauseStartMs': pauseStartMs,
     };
 
     // Convert to IslandPayload and build structured format
@@ -269,24 +275,47 @@ class IslandDataProvider {
       int secs;
       if (p.mode == 1) {
         // Count-up
-        secs = (now - p.endMs) ~/ 1000;
+        if (p.isPaused) {
+          // p.endMs contains the frozen 'start time anchor'
+          secs = (p.pauseStartMs - p.endMs) ~/ 1000;
+        } else {
+          secs = (now - p.endMs) ~/ 1000;
+        }
       } else {
         // Count-down
-        secs = (p.endMs - now) ~/ 1000;
+        if (p.isPaused) {
+          secs = (p.endMs - p.pauseStartMs) ~/ 1000;
+        } else {
+          secs = (p.endMs - now) ~/ 1000;
+        }
       }
+
       if (secs < 0) secs = 0;
       final mm = (secs ~/ 60).toString().padLeft(2, '0');
       final ss = (secs % 60).toString().padLeft(2, '0');
       timeLabel = '$mm:$ss';
     }
 
+    String pauseLabel = '';
+    if (p.isPaused && p.pauseStartMs > 0) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final pSecs = (now - p.pauseStartMs) ~/ 1000;
+      final pmm = (pSecs ~/ 60).toString().padLeft(2, '0');
+      final pss = (pSecs % 60).toString().padLeft(2, '0');
+      pauseLabel = '$pmm:$pss';
+    }
+
     return {
       'title': p.title,
       'timeLabel': timeLabel,
+      'pauseLabel': pauseLabel,
       'isCountdown': p.mode != 1,
       'tags': p.tags,
       'syncMode': p.isLocal ? 'local' : 'remote',
       'endMs': p.endMs,
+      'isPaused': p.isPaused,
+      'accumulatedMs': p.accumulatedMs,
+      'pauseStartMs': p.pauseStartMs,
     };
   }
 

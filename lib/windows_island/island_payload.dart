@@ -23,6 +23,10 @@ class IslandPayload {
   final String detailLocation;
   final String detailTime;
   final String detailNote;
+  // 🚀 新增：暂停状态
+  final bool isPaused;
+  final int accumulatedMs;
+  final int pauseStartMs;
 
   IslandPayload({
     required this.endMs,
@@ -43,6 +47,9 @@ class IslandPayload {
     required this.detailLocation,
     required this.detailTime,
     required this.detailNote,
+    this.isPaused = false,
+    this.accumulatedMs = 0,
+    this.pauseStartMs = 0,
   });
 
   factory IslandPayload.fromMap(Map? m) {
@@ -69,6 +76,9 @@ class IslandPayload {
       detailLocation: _toStr(m['detail_location']),
       detailTime: _toStr(m['detail_time']),
       detailNote: _toStr(m['detail_note']),
+      isPaused: _toBool(m['isPaused'], false),
+      accumulatedMs: _toInt(m['accumulatedMs'], 0),
+      pauseStartMs: _toInt(m['pauseStartMs'], 0),
     );
   }
 
@@ -93,6 +103,9 @@ class IslandPayload {
       detailLocation: '',
       detailTime: '',
       detailNote: '',
+      isPaused: false,
+      accumulatedMs: 0,
+      pauseStartMs: 0,
     );
   }
 
@@ -116,6 +129,9 @@ class IslandPayload {
       'detail_location': detailLocation,
       'detail_time': detailTime,
       'detail_note': detailNote,
+      'isPaused': isPaused,
+      'accumulatedMs': accumulatedMs,
+      'pauseStartMs': pauseStartMs,
     };
   }
 

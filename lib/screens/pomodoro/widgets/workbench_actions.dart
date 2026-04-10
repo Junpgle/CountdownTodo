@@ -12,6 +12,8 @@ class WorkbenchActions extends StatefulWidget {
   final VoidCallback onStartFocus;
   final VoidCallback onFinishEarly;
   final VoidCallback onAbandonFocus;
+  final VoidCallback? onPauseFocus;
+  final VoidCallback? onShowPauseDialog;
   final VoidCallback onSkipBreak;
 
   final bool isCompact;
@@ -28,6 +30,8 @@ class WorkbenchActions extends StatefulWidget {
     required this.onStartFocus,
     required this.onFinishEarly,
     required this.onAbandonFocus,
+    this.onPauseFocus,
+    this.onShowPauseDialog,
     required this.onSkipBreak,
     this.isCompact = false,
     this.showModeToggle = true,
@@ -223,6 +227,8 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
     }
 
     if (widget.isFocusing) {
+      final isLandscape =
+          MediaQuery.of(context).orientation == Orientation.landscape;
       return Column(
         key: const ValueKey('focus_btns'),
         mainAxisSize: MainAxisSize.min,
@@ -266,6 +272,27 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: widget.onShowPauseDialog,
+              icon: Icon(
+                  widget.onPauseFocus == null
+                      ? Icons.play_circle_outline
+                      : Icons.pause_circle_outline,
+                  size: widget.isCompact ? 18 : 20),
+              label: Text(widget.onPauseFocus == null ? '继续' : '暂停',
+                  style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
+              style: OutlinedButton.styleFrom(
+                padding:
+                    EdgeInsets.symmetric(vertical: widget.isCompact ? 10 : 12),
+                foregroundColor: Colors.orange.shade700,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
           ),
         ],
       );

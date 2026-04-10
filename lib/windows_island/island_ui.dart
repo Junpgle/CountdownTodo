@@ -51,6 +51,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── 时间显示
   final ValueNotifier<String> _timeNotifier = ValueNotifier<String>('');
+  final ValueNotifier<String> _pauseTimeNotifier = ValueNotifier<String>('');
   Timer? _countdownTimer;
   int _remainingSecs = 0;
   bool _isCountdown = true;
@@ -466,16 +467,35 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (fd == null) return;
 
     _isCountdown = fd['isCountdown'] ?? true;
-    final tl = fd['timeLabel']?.toString() ?? '';
-    final endMs = fd['endMs'] ?? 0;
+    final endMs = (fd['endMs'] as num?)?.toInt() ?? 0;
+    final isPaused = fd['isPaused'] as bool? ?? false;
+    final pauseStartMs = (fd['pauseStartMs'] as num?)?.toInt() ?? 0;
+    final isCountUp = !_isCountdown;
 
-    if (tl.isNotEmpty) {
-      _parseTimeLabel(tl);
-    } else if (endMs > 0) {
-      _remainingSecs =
-          (((endMs - DateTime.now().millisecondsSinceEpoch) / 1000).round())
-              .clamp(0, 999999);
+    if (endMs > 0) {
+      if (isPaused) {
+        if (isCountUp) {
+          _remainingSecs = ((pauseStartMs - endMs) / 1000).round();
+        } else {
+          _remainingSecs = ((endMs - pauseStartMs) / 1000).round();
+        }
+        // 同步更新暂停显示
+        final pSecs =
+            (DateTime.now().millisecondsSinceEpoch - pauseStartMs) ~/ 1000;
+        final pmm = (pSecs ~/ 60).toString().padLeft(2, '0');
+        final pss = (pSecs % 60).toString().padLeft(2, '0');
+        _pauseTimeNotifier.value = '$pmm:$pss';
+      } else {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (isCountUp) {
+          _remainingSecs = ((now - endMs) / 1000).round();
+        } else {
+          _remainingSecs = ((endMs - now) / 1000).round();
+        }
+      }
+      _remainingSecs = _remainingSecs.clamp(0, 999999);
     }
+    _updateDisplayTime();
   }
 
   // ── 自动消失 ─────────────────────────────────────────────────────────────
@@ -505,19 +525,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── 时间处理 ─────────────────────────────────────────────────────────────
 
-  void _parseTimeLabel(String label) {
-    if (label.isEmpty) return;
-    final parts = label.split(':');
-    try {
-      if (parts.length == 2) {
-        _remainingSecs = int.parse(parts[0]) * 60 + int.parse(parts[1]);
-      } else if (parts.length == 3) {
-        _remainingSecs = int.parse(parts[0]) * 3600 +
-            int.parse(parts[1]) * 60 +
-            int.parse(parts[2]);
-      }
-    } catch (_) {}
-  }
 
   void _ensureTimerRunning() {
     _countdownTimer?.cancel();
@@ -530,6 +537,21 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
+      final fd = _currentPayload?['focusData'] as Map?;
+      final bool isPaused = fd?['isPaused'] ?? false;
+
+      if (isPaused) {
+        // 增加暂停计时
+        final pStart = fd?['pauseStartMs'] ?? 0;
+        if (pStart > 0) {
+          final pSecs = (DateTime.now().millisecondsSinceEpoch - pStart) ~/ 1000;
+          final pmm = (pSecs ~/ 60).toString().padLeft(2, '0');
+          final pss = (pSecs % 60).toString().padLeft(2, '0');
+          _pauseTimeNotifier.value = '$pmm:$pss';
+        }
+        return;
+      }
+
       if (_isCountdown) {
         if (_remainingSecs > 0) _remainingSecs--;
       } else {
@@ -907,17 +929,35 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: _isPulsing
-                        ? _colorAnimation.value?.withOpacity(0.7) ??
-                            Colors.white70
-                        : Colors.white70,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (fd?['isPaused'] == true) ...[
+                      const Text(
+                        '⏸️ ',
+                        style: TextStyle(fontSize: 10),
+                      ),
+                    ],
+                    Flexible(
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: _pauseTimeNotifier,
+                        builder: (context, pauseTime, _) {
+                          return Text(
+                            fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
+                            style: TextStyle(
+                              color: _isPulsing
+                                  ? _colorAnimation.value?.withOpacity(0.7) ??
+                                      Colors.white70
+                                  : Colors.white70,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
                 ValueListenableBuilder<String>(
                   valueListenable: _timeNotifier,
@@ -1112,17 +1152,22 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: _isPulsing
-                          ? _colorAnimation.value?.withOpacity(0.7) ??
-                              Colors.white70
-                          : Colors.white70,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  ValueListenableBuilder<String>(
+                    valueListenable: _pauseTimeNotifier,
+                    builder: (context, pauseTime, _) {
+                      return Text(
+                        fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
+                        style: TextStyle(
+                          color: _isPulsing
+                              ? _colorAnimation.value?.withOpacity(0.7) ??
+                                  Colors.white70
+                              : Colors.white70,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      );
+                    },
                   ),
                   ValueListenableBuilder<String>(
                     valueListenable: _timeNotifier,
@@ -1294,17 +1339,24 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ValueListenableBuilder<String>(
-              valueListenable: _timeNotifier,
-              builder: (_, t, __) => Text(
-                '$t | $title',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
+              valueListenable: _pauseTimeNotifier,
+              builder: (context, pauseTime, _) {
+                return ValueListenableBuilder<String>(
+                  valueListenable: _timeNotifier,
+                  builder: (_, t, __) => Text(
+                    fd?['isPaused'] == true
+                        ? '暂停中 $pauseTime | $t'
+                        : '$t | $title',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                );
+              },
             ),
             if (tags.isNotEmpty)
               Text(

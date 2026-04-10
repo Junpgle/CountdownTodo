@@ -270,6 +270,11 @@ class PomodoroRunState {
   int sessionStartMs;
   int plannedFocusSeconds;
   TimerMode mode;
+  // 🚀 暂停状态持久化
+  bool isPaused;
+  int pausedAtMs;
+  int accumulatedMs;
+  int pauseStartMs;
 
   PomodoroRunState({
     this.phase = PomodoroPhase.idle,
@@ -285,6 +290,10 @@ class PomodoroRunState {
     this.sessionStartMs = 0,
     this.plannedFocusSeconds = 25 * 60,
     this.mode = TimerMode.countdown,
+    this.isPaused = false,
+    this.pausedAtMs = 0,
+    this.accumulatedMs = 0,
+    this.pauseStartMs = 0,
   })  : sessionUuid = sessionUuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [];
 
@@ -303,6 +312,10 @@ class PomodoroRunState {
         'plannedFocusSeconds': plannedFocusSeconds,
         'mode': mode.index,
         'isCountUp': mode == TimerMode.countUp,
+        'isPaused': isPaused,
+        'pausedAtMs': pausedAtMs,
+        'accumulatedMs': accumulatedMs,
+        'pauseStartMs': pauseStartMs,
       };
 
   factory PomodoroRunState.fromJson(Map<String, dynamic> j) {
@@ -327,6 +340,10 @@ class PomodoroRunState {
           j['actualFocusedSeconds'] as int? ??
           focusSecs,
       mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
+      isPaused: j['isPaused'] as bool? ?? false,
+      pausedAtMs: j['pausedAtMs'] as int? ?? 0,
+      accumulatedMs: j['accumulatedMs'] as int? ?? 0,
+      pauseStartMs: j['pauseStartMs'] as int? ?? 0,
     );
   }
 }

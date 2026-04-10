@@ -13,6 +13,8 @@ class ImmersiveTimer extends StatefulWidget {
   final bool isRemoteCountUp;
   final CrossDevicePomodoroState? remoteState;
   final bool isCompact;
+  final bool isPaused;
+  final int pauseSeconds;
 
   const ImmersiveTimer({
     super.key,
@@ -26,6 +28,8 @@ class ImmersiveTimer extends StatefulWidget {
     this.isRemoteCountUp = false,
     this.remoteState,
     this.isCompact = false,
+    this.isPaused = false,
+    this.pauseSeconds = 0,
   });
 
   @override
@@ -120,7 +124,11 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
         : isFinished
             ? '🎉 完成！'
             : isFocusing
-                ? (effectiveIsCountUp ? '📈 正在正计时' : '🍅 保持专注')
+                ? (widget.isPaused
+                    ? (widget.pauseSeconds > 0
+                        ? '⏸️ 暂停中 ${widget.pauseSeconds ~/ 60}:${(widget.pauseSeconds % 60).toString().padLeft(2, '0')}'
+                        : '⏸️ 已暂停')
+                    : (effectiveIsCountUp ? '📈 正在正计时' : '🍅 保持专注'))
                 : isRemote
                     ? '👀 $displayIdentifier ${widget.isRemoteCountUp ? '正计时' : '专注'}中'
                     : '准备开始';

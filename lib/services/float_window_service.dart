@@ -52,6 +52,8 @@ class FloatWindowService {
   static List<String> _lastTags = const [];
   static bool _lastIsLocal = true;
   static int _lastMode = 0;
+  static int _lastAccumulatedMs = 0;
+  static int _lastPauseStartMs = 0;
 
   // Island creation throttling
   static int _lastIslandCreateAttemptMs = 0;
@@ -367,6 +369,8 @@ class FloatWindowService {
     _lastTags = const [];
     _lastIsLocal = true;
     _lastMode = 0;
+    _lastAccumulatedMs = 0;
+    _lastPauseStartMs = 0;
     _dataProvider.resetTrackingState();
   }
 
@@ -385,6 +389,9 @@ class FloatWindowService {
     String? topBarRight,
     List<Map<String, String>>? reminderQueue,
     bool includeReminders = false,
+    bool isPaused = false,
+    int? accumulatedMs,
+    int? pauseStartMs,
   }) async {
     if (!Platform.isWindows) return;
 
@@ -402,11 +409,15 @@ class FloatWindowService {
         _lastTags = tags ?? _lastTags;
         _lastIsLocal = isLocal ?? _lastIsLocal;
         _lastMode = mode ?? _lastMode;
+        _lastAccumulatedMs = accumulatedMs ?? _lastAccumulatedMs;
+        _lastPauseStartMs = pauseStartMs ?? _lastPauseStartMs;
       }
     } else {
       if (_lastEndMs == 0) {
         _lastTitle = '';
         _lastTags = const [];
+        _lastAccumulatedMs = 0;
+        _lastPauseStartMs = 0;
       }
     }
 
@@ -441,6 +452,9 @@ class FloatWindowService {
       reminderQueue: reminderQueue,
       includeReminders: includeReminders,
       transparentSupported: transparentSupported,
+      isPaused: isPaused,
+      accumulatedMs: _lastAccumulatedMs,
+      pauseStartMs: _lastPauseStartMs,
     );
 
     // If null, no update needed
