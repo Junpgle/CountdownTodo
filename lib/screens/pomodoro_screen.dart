@@ -155,9 +155,9 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               // Only show the right column when the timer is idle/finished to avoid distraction
               if (showLandscapeStats)
                 Container(
-                  width: 300, // Reduced width for more focus on workbench
+                  width: 420, // Increased width for better visibility on wide screens
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Theme.of(context)
                         .colorScheme
