@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "3.1.13",
+  "version_name": "3.2.14",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 3.1.13",
-    "description":"【新增】局域网传输\n【修复】手环通信问题\n【新增】番茄钟暂停/校时功能\n【修复】服务器番茄钟同步逻辑\n【修复】番茄钟左上角两个返回按钮\n【优化】课程视图新增今日待办侧栏",
+    "title": "版本更新 3.2.14",
+    "description":"【优化】进一步拓宽侧栏宽度,视觉上更舒适\n【优化】首页屏幕时间宽度\n【优化】番茄钟统计视图新增柱状图，数据排布更直观\n【优化】首页课程板块今日无课时展示每日课程\n【修复】未指定绑定任务开启番茄钟时，绑定任务丢失的问题\n【优化】课程视图全天待办显示顺序\n【新增】Windows托盘图标\n【新增】网页导入课表,合工大、厦大可用\n【优化】网页导入课表预设跳转链接\n【优化】课程视图筛选时不会自动收齐\n【优化】定时闹钟提醒支持选择提前通知的时间\n【新增】适配课表界面新增自动嗅探方式\n【优化】设置课程相关显示顺序",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "android_arch_packages": {
@@ -37,6 +37,24 @@
   },
   "changelog_history": [
     {
+      "version_name": "3.2.14",
+      "date": "2026-04-11",
+      "items": [
+        "【优化】进一步拓宽侧栏宽度,视觉上更舒适",
+        "【优化】首页屏幕时间宽度",
+        "【优化】番茄钟统计视图新增柱状图，数据排布更直观",
+        "【优化】首页课程板块今日无课时展示每日课程",
+        "【修复】未指定绑定任务开启番茄钟时，绑定任务丢失的问题",
+        "【优化】课程视图全天待办显示顺序",
+        "【新增】Windows托盘图标",
+        "【新增】网页导入课表,合工大、厦大可用",
+        "【优化】网页导入课表预设跳转链接",
+        "【优化】课程视图筛选时不会自动收齐",
+        "【优化】定时闹钟提醒支持选择提前通知的时间",
+        "【新增】适配课表界面新增自动嗅探方式",
+        "【优化】设置课程相关显示顺序"
+      ]
+    },{
       "version_name": "3.1.13",
       "date": "2026-04-10",
       "items": [
