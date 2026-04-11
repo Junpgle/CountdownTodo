@@ -90,6 +90,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _noCourseBehavior = 'keep';
   String _serverChoice = 'aliyun';
   int _llmRetryCount = 3;
+  String _wallpaperProvider = 'bing';
 
   // 学期进度状态
   bool _semesterEnabled = false;
@@ -301,6 +302,7 @@ class _SettingsPageState extends State<SettingsPage> {
     String theme = await StorageService.getThemeMode();
     String serverUrlChoice = await StorageService.getServerChoice();
     int llmRetryCount = await StorageService.getLLMRetryCount();
+    String wallpaperProvider = await StorageService.getWallpaperProvider();
 
     bool sEnabled = await StorageService.getSemesterEnabled();
     DateTime? sStart = await StorageService.getSemesterStart();
@@ -343,6 +345,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _screenRadiusEnabled = screenRadiusEnabled;
       _predictiveBackEnabled = predictiveBackEnabled;
       _animationDuration = animationDuration;
+      _wallpaperProvider = wallpaperProvider;
     });
     if (Platform.isWindows) {
       final taiPath = await TaiService.getSavedDbPath() ??
@@ -1418,6 +1421,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (val != null) {
                       setState(() => _llmRetryCount = val);
                       StorageService.setLLMRetryCount(val);
+                    }
+                  },
+                  wallpaperProvider: _wallpaperProvider,
+                  onWallpaperProviderChanged: (val) {
+                    if (val != null) {
+                      setState(() => _wallpaperProvider = val);
+                      StorageService.saveWallpaperProvider(val);
                     }
                   },
                 ),

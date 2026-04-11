@@ -54,6 +54,11 @@ class StorageService {
 
   static const String KEY_LLM_RETRY_COUNT = "llm_retry_count";
   static const String KEY_PENDING_TODO_CONFIRM = "pending_todo_confirm";
+  static const String KEY_WALLPAPER_PROVIDER = "app_wallpaper_provider";
+  static const String KEY_WALLPAPER_IMAGE_FORMAT = "app_wallpaper_image_format";
+  static const String KEY_WALLPAPER_INDEX = "app_wallpaper_index";
+  static const String KEY_WALLPAPER_MKT = "app_wallpaper_mkt";
+  static const String KEY_WALLPAPER_RESOLUTION = "app_wallpaper_resolution";
 
   // Notification settings keys
   static const String KEY_NOTIFY_LIVE_ENABLED = "notify_live_activity_enabled";
@@ -1295,5 +1300,55 @@ class StorageService {
   static void dispose() {
     _recurrenceCheckCache.clear();
     _lastRecurrenceCheckDate = null;
+  }
+
+  static Future<String> getWallpaperProvider() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getString(KEY_WALLPAPER_PROVIDER) ?? 'bing';
+  }
+
+  static Future<void> saveWallpaperProvider(String provider) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_WALLPAPER_PROVIDER, provider);
+  }
+
+  static Future<String> getWallpaperImageFormat() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getString(KEY_WALLPAPER_IMAGE_FORMAT) ?? 'jpg';
+  }
+
+  static Future<void> saveWallpaperImageFormat(String format) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_WALLPAPER_IMAGE_FORMAT, format);
+  }
+
+  static Future<int> getWallpaperIndex() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getInt(KEY_WALLPAPER_INDEX) ?? 0;
+  }
+
+  static Future<void> saveWallpaperIndex(int index) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setInt(KEY_WALLPAPER_INDEX, index);
+  }
+
+  static Future<String> getWallpaperMkt() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getString(KEY_WALLPAPER_MKT) ?? 'zh-CN';
+  }
+
+  static Future<void> saveWallpaperMkt(String mkt) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_WALLPAPER_MKT, mkt);
+  }
+
+  static Future<String> getWallpaperResolution() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getString(KEY_WALLPAPER_RESOLUTION) ?? 'UHD';
+  }
+
+  static Future<void> saveWallpaperResolution(String resolution) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_WALLPAPER_RESOLUTION, resolution);
   }
 }

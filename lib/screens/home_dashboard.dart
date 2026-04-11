@@ -1501,6 +1501,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         FloatWindowService.invalidateSlotCache();
       }
     }
+    _initManifestWallpaper();
   }
 
   void _syncTodoNotification() {
@@ -1729,6 +1730,30 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
+  Future<void> _fetchBingWallpaper() async {
+    const String bingApiUrl =
+        "https://bing.biturl.top/?resolution=UHD&format=json&index=0&mkt=zh-CN";
+    try {
+      final response = await http.get(Uri.parse(bingApiUrl));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final String? url = data['url'];
+        if (url != null && url.isNotEmpty && mounted) {
+          setState(() {
+            _wallpaperShow = true;
+            _wallpaperUrl = url;
+          });
+        }
+      } else {
+        // 失败兜底
+        _fetchRandomWallpaper();
+      }
+    } catch (e) {
+      debugPrint("获取Bing壁纸失败: $e");
+      _fetchRandomWallpaper();
+    }
+  }
+
   Future<void> _initManifestWallpaper() async {
     await UpdateService.initWallpaper();
     final manifestShow = UpdateService.wallpaperShowNotifier.value;
@@ -1740,7 +1765,12 @@ class _HomeDashboardState extends State<HomeDashboard>
         _wallpaperUrl = manifestUrl;
       });
     } else {
-      await _fetchRandomWallpaper();
+      final provider = await StorageService.getWallpaperProvider();
+      if (provider == 'bing') {
+        await _fetchBingWallpaper();
+      } else {
+        await _fetchRandomWallpaper();
+      }
     }
 
     // 启动时立即检查是否需要兜底刷新
@@ -1758,7 +1788,13 @@ class _HomeDashboardState extends State<HomeDashboard>
             _wallpaperUrl = url;
           });
         } else if (mounted) {
-          _fetchRandomWallpaper();
+          StorageService.getWallpaperProvider().then((provider) {
+            if (provider == 'bing') {
+              _fetchBingWallpaper();
+            } else {
+              _fetchRandomWallpaper();
+            }
+          });
         }
       }
     });
