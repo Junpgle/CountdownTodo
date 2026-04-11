@@ -203,16 +203,21 @@ class CourseService {
 
       DateTime now = DateTime.now();
       String todayStr = DateFormat('yyyy-MM-dd').format(now);
+      int currentHHMM = now.hour * 100 + now.minute;
 
       // 筛选今天的课程
       List<CourseItem> todayCourses = courses.where((c) => c.date == todayStr).toList();
 
+      // 如果今天有课，且“还没全部上完”，则展示今天的课程
       if (todayCourses.isNotEmpty) {
         todayCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
-        return {'title': '今日课程', 'courses': todayCourses};
+        bool allFinished = todayCourses.every((c) => c.endTime <= currentHHMM);
+        if (!allFinished) {
+          return {'title': '今日课程', 'courses': todayCourses};
+        }
       }
 
-      // 今天的课没排，找明天的
+      // 如果今天的课没排，或者“今天的课都上完了”，找明天的
       DateTime tomorrow = now.add(const Duration(days: 1));
       String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
       List<CourseItem> tomorrowCourses = courses.where((c) => c.date == tomorrowStr).toList();
@@ -222,10 +227,10 @@ class CourseService {
         return {'title': '明日课程', 'courses': tomorrowCourses};
       }
 
-      return {'title': '近期无课', 'courses': <CourseItem>[]};
+      return {'title': '最近无课', 'courses': <CourseItem>[]};
     } catch (e) {
       print("获取主页课程时发生崩溃: $e");
-      return {'title': '近期无课', 'courses': <CourseItem>[]};
+      return {'title': '最近无课', 'courses': <CourseItem>[]};
     }
   }
 
