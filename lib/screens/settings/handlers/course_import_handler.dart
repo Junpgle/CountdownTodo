@@ -200,7 +200,7 @@ class CourseImportHandler {
                 ListTile(
                   leading: const Icon(Icons.input_rounded, color: Colors.grey),
                   title: const Text('手动输入'),
-                  onTap: () => Navigator.pop(context, 'https://www.google.com'),
+                  onTap: () => Navigator.pop(context, 'https://www.bing.com'),
                 ),
                 const SizedBox(height: 20),
               ],
