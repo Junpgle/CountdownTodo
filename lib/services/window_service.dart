@@ -7,9 +7,15 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:win32/win32.dart';
+import 'package:tray_manager/tray_manager.dart';
+import 'package:launch_at_startup/launch_at_startup.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../windows_island/island_manager.dart';
+import '../screens/home_settings_screen.dart';
+import '../utils/page_transitions.dart';
+import '../main.dart';
 
-class WindowService with WindowListener {
+class WindowService with WindowListener, TrayListener {
   static const _keyX = 'main_window_x';
   static const _keyY = 'main_window_y';
   static const _keyW = 'main_window_w';
@@ -40,8 +46,70 @@ class WindowService with WindowListener {
 
       // Register listener for move/resize to persist bounds with debounce
       windowManager.addListener(_instance);
+
+      if (Platform.isWindows) {
+        await _initTray();
+        await _initLaunchAtStartup();
+      }
     } catch (e) {
-      // ignore
+      debugPrint('[WindowService] init error: $e');
+    }
+  }
+
+  static Future<void> _initTray() async {
+    try {
+      trayManager.addListener(_instance);
+      await trayManager.setIcon(
+        Platform.isWindows
+            ? 'assets/icon/app_icon.ico'
+            : 'assets/icon/app_icon.png',
+      );
+      await trayManager.setToolTip('CountDownTodo');
+      await _updateTrayMenu();
+    } catch (e) {
+      debugPrint('[WindowService] initTray error: $e');
+    }
+  }
+
+  static Future<void> _updateTrayMenu() async {
+    try {
+      bool isLaunchAtStartup = await launchAtStartup.isEnabled();
+      Menu menu = Menu(
+        items: [
+          MenuItem(
+            key: 'open_settings',
+            label: '打开设置',
+          ),
+          MenuItem(
+            key: 'auto_launch',
+            label: isLaunchAtStartup ? '开机自启动: 已开启' : '开机自启动: 已关闭',
+          ),
+          MenuItem.separator(),
+          MenuItem(
+            key: 'show_window',
+            label: '显示程序',
+          ),
+          MenuItem(
+            key: 'exit_app',
+            label: '退出程序',
+          ),
+        ],
+      );
+      await trayManager.setContextMenu(menu);
+    } catch (e) {
+      debugPrint('[WindowService] updateTrayMenu error: $e');
+    }
+  }
+
+  static Future<void> _initLaunchAtStartup() async {
+    try {
+      PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      launchAtStartup.setup(
+        appName: packageInfo.appName,
+        appPath: Platform.resolvedExecutable,
+      );
+    } catch (e) {
+      debugPrint('[WindowService] initLaunchAtStartup error: $e');
     }
   }
 
@@ -70,7 +138,55 @@ class WindowService with WindowListener {
     _scheduleSave();
   }
 
-  // Unused listeners
+  // TrayListener overrides
+  @override
+  void onTrayIconMouseDown() {
+    windowManager.show();
+    windowManager.focus();
+  }
+
+  @override
+  void onTrayIconRightMouseDown() async {
+    await _updateTrayMenu();
+    await trayManager.popUpContextMenu();
+  }
+
+  @override
+  void onTrayIconRightMouseUp() async {
+    await _updateTrayMenu();
+    await trayManager.popUpContextMenu();
+  }
+
+  @override
+  void onTrayMenuItemClick(MenuItem menuItem) async {
+    switch (menuItem.key) {
+      case 'show_window':
+        await windowManager.show();
+        await windowManager.focus();
+        break;
+      case 'open_settings':
+        await windowManager.show();
+        await windowManager.focus();
+        appNavigatorKey.currentState?.push(
+          PageTransitions.slideHorizontal(const SettingsPage()),
+        );
+        break;
+      case 'auto_launch':
+        bool isEnabled = await launchAtStartup.isEnabled();
+        if (isEnabled) {
+          await launchAtStartup.disable();
+        } else {
+          await launchAtStartup.enable();
+        }
+        _updateTrayMenu();
+        break;
+      case 'exit_app':
+        TerminateProcess(GetCurrentProcess(), 0);
+        break;
+    }
+  }
+
+  // WindowListener overrides for closure
   @override
   void onWindowClose() async {
     debugPrint('[WindowService] onWindowClose called');
@@ -85,8 +201,8 @@ class WindowService with WindowListener {
       // 强制终止进程
       TerminateProcess(GetCurrentProcess(), 0);
     } else {
-      debugPrint('[WindowService] User chose to minimize');
-      await windowManager.minimize();
+      debugPrint('[WindowService] User chose to hide to tray');
+      await windowManager.hide();
     }
   }
 

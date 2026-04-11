@@ -1,7 +1,7 @@
 name: CountDownTodo
 description: A new Flutter project.
 publish_to: 'none'
-version: 3.1.13
+version: 3.2.6
 environment:
   sdk: '>=3.1.0 <4.0.0'
 
@@ -15,7 +15,7 @@ dependencies:
   shared_preferences: ^2.2.0
   intl: ^0.20.2
   http: ^1.2.0
-  package_info_plus: ^9.0.0
+  package_info_plus: ^9.0.1
   url_launcher: ^6.2.4
   flutter_downloader: ^1.12.0
   path_provider: ^2.1.2
@@ -41,6 +41,8 @@ dependencies:
   encrypt: ^5.0.3
   crypto: ^3.0.3
   pointycastle: ^3.9.1
+  launch_at_startup: any
+  tray_manager: ^0.5.2
 
 
 dev_dependencies:
@@ -53,3 +55,5 @@ flutter:
   assets:
     - assets/guide_media/
     - assets/splash/
+    - assets/icon/
+    - assets/icon/app_icon.ico
