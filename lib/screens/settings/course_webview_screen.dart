@@ -31,6 +31,20 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
     Theme.of(context).platform == TargetPlatform.iOS ||
     Theme.of(context).platform == TargetPlatform.windows;
 
+  late TextEditingController _urlController;
+
+  @override
+  void initState() {
+    super.initState();
+    _urlController = TextEditingController(text: widget.initialUrl);
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -73,6 +87,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
           onPageFinished: (String url) {
             setState(() {
               _isLoading = false;
+              _urlController.text = url; // 🚀 同步更新地址栏
             });
             _updateTitle();
           },
@@ -97,11 +112,6 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
     });
   }
 
-  @override
-  void initState() {
-    super.initState();
-    // Move initialization to didChangeDependencies to access Theme.of(context)
-  }
 
   Future<void> _updateTitle() async {
     final title = await _controller?.getTitle();
@@ -225,6 +235,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           child: TextField(
+            controller: _urlController, // 🚀 绑定 Controller
             onSubmitted: (value) {
               String url = value.trim();
               if (url.isNotEmpty) {

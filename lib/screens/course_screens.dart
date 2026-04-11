@@ -383,17 +383,28 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _jumpToWeek(week);
   }
 
-  PopupMenuItem<String> _buildCheckableMenuItem(String key, String label) {
-    return PopupMenuItem<String>(
-      value: key,
+  Widget _buildCheckableMenuItem(String key, String label) {
+    bool isSelected = _activeDataViews.contains(key);
+    return MenuItemButton(
+      closeOnActivate: false,
+      onPressed: () {
+        setState(() {
+          if (isSelected) {
+            if (_activeDataViews.length > 1) {
+              _activeDataViews.remove(key);
+            }
+          } else {
+            _activeDataViews.add(key);
+          }
+        });
+      },
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _activeDataViews.contains(key)
-                ? Icons.check_box
-                : Icons.check_box_outline_blank,
+            isSelected ? Icons.check_box : Icons.check_box_outline_blank,
             size: 20,
-            color: _activeDataViews.contains(key)
+            color: isSelected
                 ? Theme.of(context).colorScheme.primary
                 : Colors.grey,
           ),
@@ -1477,37 +1488,40 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               _loadData();
             },
           ),
-          PopupMenuButton<String>(
-            icon: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.filter_list,
-                      size: 18, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 2),
-                  Text('视图',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold)),
-                  Icon(Icons.arrow_drop_down,
-                      size: 20, color: Theme.of(context).colorScheme.primary),
-                ],
-              ),
-            ),
-            onSelected: (val) {
-              setState(() {
-                if (_activeDataViews.contains(val)) {
-                  if (_activeDataViews.length > 1) {
-                    _activeDataViews.remove(val);
+          MenuAnchor(
+            builder: (context, controller, child) {
+              return InkWell(
+                onTap: () {
+                  if (controller.isOpen) {
+                    controller.close();
+                  } else {
+                    controller.open();
                   }
-                } else {
-                  _activeDataViews.add(val);
-                }
-              });
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.filter_list,
+                          size: 18,
+                          color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 2),
+                      Text('视图',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold)),
+                      Icon(Icons.arrow_drop_down,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.primary),
+                    ],
+                  ),
+                ),
+              );
             },
-            itemBuilder: (context) => [
+            menuChildren: [
               _buildCheckableMenuItem('courses', '课表'),
               _buildCheckableMenuItem('todos', '待办'),
               _buildCheckableMenuItem('timeLogs', '时间日志'),

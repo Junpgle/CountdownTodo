@@ -159,9 +159,62 @@ class CourseImportHandler {
   }
 
   Future<void> importFromWebView() async {
+    // 🚀 1. 弹出高校选择器，预设地址
+    final Map<String, String> schoolUrls = {
+      '合肥工业大学': 'https://one.hfut.edu.cn/',
+      '厦门大学': 'https://ids.xmu.edu.cn/',
+      '河南财经政法大学': 'https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html',
+    };
+
+    final String? selectedUrl = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 12),
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                  child: Row(
+                    children: [
+                      Icon(Icons.public, color: Colors.blueAccent),
+                      SizedBox(width: 12),
+                      Text('选择教务入口', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                ...schoolUrls.entries.map((e) => ListTile(
+                  leading: const Icon(Icons.language_rounded, color: Colors.blueAccent),
+                  title: Text(e.key),
+                  subtitle: Text(e.value, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () => Navigator.pop(context, e.value),
+                )).toList(),
+                ListTile(
+                  leading: const Icon(Icons.input_rounded, color: Colors.grey),
+                  title: const Text('手动输入'),
+                  onTap: () => Navigator.pop(context, 'https://www.google.com'),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedUrl == null) return;
+
     final String? htmlContent = await Navigator.push<String>(
       context,
-      PageTransitions.slideHorizontal(const CourseWebViewScreen()),
+      PageTransitions.slideHorizontal(CourseWebViewScreen(initialUrl: selectedUrl)),
     );
 
     if (htmlContent == null || htmlContent.isEmpty) return;
