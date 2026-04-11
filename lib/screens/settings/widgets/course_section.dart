@@ -59,7 +59,6 @@ class CourseSection extends StatelessWidget {
                 onTap: onSmartImport,
               ),
               const Divider(height: 1, indent: 56),
-              /* 暂时隐藏在线导入入口
               if (onWebViewImport != null) ...[
                 ListTile(
                   leading:
@@ -83,7 +82,6 @@ class CourseSection extends StatelessWidget {
                 ),
                 const Divider(height: 1, indent: 56),
               ],
-              */
               ListTile(
                 leading: const Icon(Icons.cloud_download_outlined,
                     color: Colors.green),
