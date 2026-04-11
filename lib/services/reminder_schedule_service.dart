@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models.dart';
 import '../services/course_service.dart';
+import '../storage_service.dart';
 import 'notification_service.dart';
 
 /// 保活提醒调度服务
@@ -157,6 +158,7 @@ class ReminderScheduleService {
     }
 
     // ── 课程提醒 ──────────────────────────────────────────────────
+    final courseAdvanceMinutes = await StorageService.getCourseReminderMinutes();
     for (int i = 0; i < courses.length && i < 999; i++) {
       final c = courses[i];
       // 课程 date 是 yyyy-MM-dd，startTime 是 800/1000 等整数
@@ -170,7 +172,7 @@ class ReminderScheduleService {
         final minute = c.startTime % 100;
         final courseStart = DateTime(year, month, day, hour, minute);
         final triggerAt =
-            courseStart.subtract(Duration(minutes: _courseAdvanceMinutes));
+            courseStart.subtract(Duration(minutes: courseAdvanceMinutes));
         if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,

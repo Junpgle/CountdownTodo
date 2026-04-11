@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../storage_service.dart';
+import '../../services/course_service.dart';
+import '../../services/reminder_schedule_service.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
@@ -22,6 +24,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   bool _pomodoroEndEnabled = true;
   bool _reminderEnabled = true;
+
+  int _courseReminderMinutes = 15;
 
   @override
   void initState() {
@@ -47,6 +51,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         await StorageService.isPomodoroEndNotificationEnabled();
     final reminderEnabled =
         await StorageService.isReminderNotificationEnabled();
+    final reminderMinutes = await StorageService.getCourseReminderMinutes();
 
     setState(() {
       _liveActivityEnabled = liveEnabled;
@@ -59,6 +64,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       _todoRecognizeEnabled = todoRecognizeEnabled;
       _pomodoroEndEnabled = pomodoroEndEnabled;
       _reminderEnabled = reminderEnabled;
+      _courseReminderMinutes = reminderMinutes;
     });
   }
 
@@ -116,6 +122,17 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       Function(bool) setStateCallback, Function(bool) storageCallback) async {
     await storageCallback(value);
     setState(() => setStateCallback(value));
+    if (key == 'reminder') {
+      _triggerReschedule();
+    }
+  }
+
+  Future<void> _triggerReschedule() async {
+    final username = await StorageService.getLoginSession();
+    if (username == null) return;
+    final todos = await StorageService.getTodos(username);
+    final courses = await CourseService.getAllCourses();
+    await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
   }
 
   @override
@@ -251,6 +268,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   StorageService.setReminderNotificationEnabled,
                 ),
               ),
+              if (_reminderEnabled) ...[
+                const Divider(height: 1, indent: 56),
+                _buildCourseReminderTile(),
+              ],
             ],
           ),
           const SizedBox(height: 24),
@@ -368,6 +389,74 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       value: value,
       activeThumbColor: Colors.blue,
       onChanged: onChanged,
+    );
+  }
+
+  Widget _buildCourseReminderTile() {
+    return ListTile(
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      leading: const SizedBox(width: 20, height: 20), // Placeholder for indent
+      title: const Text('课程提醒时间', style: TextStyle(fontSize: 14)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '提前 $_courseReminderMinutes 分钟',
+            style: TextStyle(fontSize: 13, color: Colors.blue[700]),
+          ),
+          const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+        ],
+      ),
+      onTap: _showReminderTimePicker,
+    );
+  }
+
+  void _showReminderTimePicker() {
+    final options = [0, 5, 10, 15, 20, 30, 45, 60];
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '选择课程提醒时间',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: options.length,
+                  itemBuilder: (context, index) {
+                    final mins = options[index];
+                    return ListTile(
+                      title: Text(mins == 0 ? '准时提醒' : '提前 $mins 分钟'),
+                      trailing: _courseReminderMinutes == mins
+                          ? const Icon(Icons.check, color: Colors.blue)
+                          : null,
+                      onTap: () async {
+                        await StorageService.setCourseReminderMinutes(mins);
+                        setState(() {
+                          _courseReminderMinutes = mins;
+                        });
+                        _triggerReschedule();
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

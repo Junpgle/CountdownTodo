@@ -70,6 +70,7 @@ class StorageService {
   static const String KEY_NOTIFY_POMODORO_END_ENABLED =
       "notify_pomodoro_end_enabled";
   static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
+  static const String KEY_COURSE_REMINDER_MINUTES = "course_reminder_minutes";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -1242,6 +1243,16 @@ class StorageService {
   static Future<void> setReminderNotificationEnabled(bool enabled) async {
     final prefs = await StorageService.prefs;
     await prefs.setBool(KEY_NOTIFY_REMINDER_ENABLED, enabled);
+  }
+
+  static Future<int> getCourseReminderMinutes() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getInt(KEY_COURSE_REMINDER_MINUTES) ?? 15;
+  }
+
+  static Future<void> setCourseReminderMinutes(int minutes) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setInt(KEY_COURSE_REMINDER_MINUTES, minutes);
   }
 
   static Future<bool> isPrivacyPolicyAgreed() async {
