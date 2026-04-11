@@ -3,7 +3,7 @@
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-blue)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.1+-blue)](https://dart.dev)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20%7C%20Web-green)]()
-[![Version](https://img.shields.io/badge/Version-3.0.8-orange)]()
+[![Version](https://img.shields.io/badge/Version-3.2.14-orange)]()
 
 CountDownTodo 是一款跨平台的生产力与时间管理套件，集成待办事项、倒计时、番茄钟、数学测验、课程表、屏幕时间统计等功能，支持 Android / Windows / Web 多端数据同步。
 
