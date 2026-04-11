@@ -243,8 +243,59 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 新增置顶方法：移动端快捷适配
+                  _buildSectionHeader(Icons.flash_on_rounded, '方案一：自动嗅探 (推荐)'),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          colorScheme.primary.withOpacity(0.1),
+                          colorScheme.primary.withOpacity(0.05)
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border:
+                          Border.all(color: colorScheme.primary.withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '可以先使用 App 内“网页登录”尝试导入。',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.lightbulb_outline_rounded,
+                                size: 18, color: Colors.orange[700]),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                '失败后，请将手机“文件管理/Download”目录下的 course_debug.html 发送给开发者。',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.black87,
+                                    height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
                   // 步骤标题
-                  _buildSectionHeader(Icons.ads_click, '导出流程'),
+                  _buildSectionHeader(Icons.computer_rounded, '方案二：手动导出 (电脑端)'),
                   const SizedBox(height: 16),
 
                   // 步骤时间轴
@@ -252,7 +303,8 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                       isFirst: true),
                   _buildStepTile(2, '右键另存为', '点击页面空白处，选择“另存为”。'),
                   _buildStepTile(3, '选择格式', '保存类型选“网页，单个文件 (*.mhtml)”。'),
-                  _buildStepTile(4, '发送文件', '通过下方联系方式将文件发给开发者。', isLast: true),
+                  _buildStepTile(4, '发送文件', '通过下方联系方式将文件发给开发者。',
+                      isLast: true),
 
                   const SizedBox(height: 32),
 
