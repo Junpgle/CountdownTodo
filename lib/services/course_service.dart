@@ -83,14 +83,14 @@ class CourseService {
   // ================= 导入与解析逻辑 =================
 
   // 1. 从字符串导入课表 (合工大)
-  static Future<bool> importScheduleFromJson(String jsonString) async {
+  static Future<bool> importScheduleFromJson(String jsonString, {DateTime? semesterStart}) async {
     // 调用提取的 parser 进行校验
     if (!HfutScheduleParser.isValid(jsonString)) {
       return false;
     }
 
     try {
-      List<CourseItem> parsedCourses = HfutScheduleParser.parse(jsonString);
+      List<CourseItem> parsedCourses = HfutScheduleParser.parse(jsonString, semesterStart: semesterStart);
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式

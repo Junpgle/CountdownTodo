@@ -24,6 +24,52 @@ class CourseImportHandler {
   });
 
   Future<void> smartImportCourse() async {
+    // 1. 先弹出学校选择器
+    final String? selectedSchool = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true, // 允许弹窗超过半屏
+      builder: (context) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                    child: Row(
+                      children: [
+                        Icon(Icons.school_outlined, color: Colors.blueAccent),
+                        SizedBox(width: 12),
+                        Text('请选择所属高校/系统', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  _buildSchoolTile(context, 'hf', '合肥工业大学', '支持 聚在工大JSON/教务网页HTML 格式', Icons.engineering_rounded, Colors.orange),
+                  _buildSchoolTile(context, 'xm', '厦门大学', '支持 MHTML/HTML 导出文件', Icons.account_balance_rounded, Colors.blue),
+                  _buildSchoolTile(context, 'xd', '西安电子科技大学', '支持 .ics 日历文件', Icons.wifi_protected_setup_rounded, Colors.indigo),
+                  _buildSchoolTile(context, 'zf', '通用正方教务系统', '支持大多数学校的教务导出', Icons.grid_view_rounded, Colors.teal),
+                  _buildSchoolTile(context, 'hl', '河南财经政法大学', '支持教务html/mhtml格式', Icons.gavel_rounded, Colors.green),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedSchool == null) return;
+
+    // 2. 根据学校执行不同的导入方式
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.any,
     );
@@ -32,115 +78,84 @@ class CourseImportHandler {
 
     String filePath = result.files.single.path!;
     File file = File(filePath);
+    String ext = filePath.split('.').last.toLowerCase();
 
-    ValueNotifier<String> statusNotifier = ValueNotifier("获取课表文件中...");
+    ValueNotifier<String> statusNotifier = ValueNotifier("处理中...");
     BuildContext? dialogContext;
-
     _showProgressDialog(statusNotifier, (ctx) => dialogContext = ctx);
 
     try {
-      await Future.delayed(const Duration(milliseconds: 400));
-      statusNotifier.value = "正在智能识别文件类型...";
-
       String content;
-      String ext = filePath.split('.').last.toLowerCase();
-
       try {
         content = await file.readAsString();
       } catch (e) {
-        List<int> bytes = await file.readAsBytes();
-        content = utf8.decode(bytes, allowMalformed: true);
+        content = utf8.decode(await file.readAsBytes(), allowMalformed: true);
       }
-
-      await Future.delayed(const Duration(milliseconds: 400));
 
       bool success = false;
       String sourceName = "";
 
-      if (ext == 'ics' || content.contains('BEGIN:VCALENDAR')) {
-        sourceName = "西安电子科技大学";
-        statusNotifier.value = "识别到: $sourceName\n正在导入...";
-
-        if (semesterStart == null) {
-          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
-          await Future.delayed(const Duration(seconds: 2));
+      switch (selectedSchool) {
+        case 'hf':
+          sourceName = "合肥工业大学";
+          success = await CourseService.importScheduleFromJson(content, semesterStart: semesterStart);
+          break;
+        case 'xd':
+          sourceName = "西安电子科技大学";
+          if (semesterStart == null) throw Exception("请先设置开学日期");
+          success = await CourseService.importXidianScheduleFromIcs(content, semesterStart!);
+          break;
+        case 'zf':
+          sourceName = "正方教务系统";
           if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
-          return;
-        }
-        success = await CourseService.importXidianScheduleFromIcs(content, semesterStart!);
-      } else if (content.contains('timetable_con') || content.contains('id="table1"')) {
-        sourceName = "正方教务系统";
-        if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
-
-        Map<int, Map<String, int>>? userAdjustedTimes = await showDialog<Map<int, Map<String, int>>>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const ZfTimeConfigDialog(),
-        );
-
-        if (userAdjustedTimes == null) return;
-
-        _showLoadingDialog("正在按照校准的时间导入课表...");
-
-        if (semesterStart == null) {
-          _closeLoadingDialog();
-          showMessage('⚠️ 请先设置开学日期');
-          return;
-        }
-
-        success = await CourseService.importZfSoftScheduleFromHtml(
-          content,
-          semesterStart!,
-          customTimes: userAdjustedTimes,
-        );
-      } else if (['mhtml', 'html', 'htm'].contains(ext) ||
-          content.contains('quoted-printable') ||
-          content.toLowerCase().contains('<html')) {
-        sourceName = "厦门大学";
-        statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
-
-        if (semesterStart == null) {
-          statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
-          await Future.delayed(const Duration(seconds: 2));
-          if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
-          return;
-        }
-        success = await CourseService.importXmuScheduleFromHtml(content, semesterStart!);
-      } else if (['json', 'txt'].contains(ext) || content.trim().startsWith('[') || content.trim().startsWith('{')) {
-        sourceName = "聚在工大";
-        statusNotifier.value = "识别到: $sourceName\n正在导入...";
-        success = await CourseService.importScheduleFromJson(content);
-      } else {
-        statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
-        await Future.delayed(const Duration(seconds: 2));
-        if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
-        return;
+          Map<int, Map<String, int>>? userAdjustedTimes = await showDialog<Map<int, Map<String, int>>>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const ZfTimeConfigDialog(),
+          );
+          if (userAdjustedTimes == null) return;
+          _showLoadingDialog("正在按照校准的时间导入...");
+          if (semesterStart == null) { _closeLoadingDialog(); throw Exception("请先设置开学日期"); }
+          success = await CourseService.importZfSoftScheduleFromHtml(content, semesterStart!, customTimes: userAdjustedTimes);
+          break;
+        case 'xm':
+        case 'hl':
+          sourceName = selectedSchool == 'xm' ? "厦门大学" : "河南财经政法大学";
+          if (semesterStart == null) throw Exception("请先设置开学日期");
+          success = await CourseService.importXmuScheduleFromHtml(content, semesterStart!);
+          break;
+        default:
+          throw Exception("未知的导入方式");
       }
-
-      if (sourceName == "正方教务系统") _closeLoadingDialog();
 
       if (success) {
-        statusNotifier.value = "✅ $sourceName 导入成功！\n请返回主页查看课表";
+        statusNotifier.value = "✅ $sourceName 导入成功！";
         onRescheduleReminders();
-        if (sourceName != "正方教务系统") {
-          await Future.delayed(const Duration(milliseconds: 1200));
-          if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
-        } else {
-          showMessage('✅ $sourceName 导入成功！');
-        }
+        await Future.delayed(const Duration(milliseconds: 1000));
+        if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
       } else {
-        statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
-        if (sourceName != "正方教务系统") {
-          await Future.delayed(const Duration(seconds: 2));
-          if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
-        } else {
-          showMessage('❌ 导入失败');
-        }
+        statusNotifier.value = "❌ 导入失败\n文件格式不匹配或解析错误";
+        await Future.delayed(const Duration(seconds: 2));
+        if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
       }
     } catch (e) {
-      statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
+      statusNotifier.value = "❌ 发生错误\n${e.toString().replaceFirst('Exception: ', '')}";
+      await Future.delayed(const Duration(seconds: 2));
       if (dialogContext != null && dialogContext!.mounted) Navigator.pop(dialogContext!);
     }
+  }
+
+  Widget _buildSchoolTile(BuildContext context, String id, String name, String sub, IconData icon, Color color) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+        child: Icon(icon, color: color),
+      ),
+      title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: Text(sub, style: const TextStyle(fontSize: 12)),
+      onTap: () => Navigator.pop(context, id),
+    );
   }
 
   Future<void> importFromWebView() async {
@@ -179,11 +194,11 @@ class CourseImportHandler {
       if (jsonCandidate != null && HfutScheduleParser.isValid(jsonCandidate)) {
         sourceName = "合肥工业大学";
         statusNotifier.value = "识别到: $sourceName (API数据)\n正在读取...";
-        success = await CourseService.importScheduleFromJson(jsonCandidate);
+        success = await CourseService.importScheduleFromJson(jsonCandidate, semesterStart: semesterStart);
       } else if (HfutScheduleParser.isValid(htmlContent)) {
         sourceName = "合肥工业大学";
         statusNotifier.value = "识别到: $sourceName (教务系统)\n正在智能解析...";
-        success = await CourseService.importScheduleFromJson(htmlContent);
+        success = await CourseService.importScheduleFromJson(htmlContent, semesterStart: semesterStart);
       } else if (htmlContent.contains('timetable_con') ||
           htmlContent.contains('id="table1"') ||
           htmlContent.contains('kbgrid_table')) {

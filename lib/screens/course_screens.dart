@@ -115,56 +115,45 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _allPomodoroRecords = await PomodoroService.getRecords();
     _pomodoroTags = await PomodoroService.getTags();
 
-    if (weeks.isNotEmpty) {
-      _availableWeeks = weeks;
-
+    // 🚀 核心改进：优先从设置中读取开学日期，不要通过课程反推（课程周次索引在不同解析器间可能有 0/1 差异）
+    DateTime? semStart = await StorageService.getSemesterStart();
+    if (semStart != null) {
+      _semesterMonday = semStart.subtract(Duration(days: semStart.weekday - 1));
+    } else {
+      // 没有任何设置时，尝试回退：
       final allCourses = await CourseService.getAllCourses();
       if (allCourses.isNotEmpty) {
         allCourses.sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
         final firstCourse = allCourses.first;
         if (firstCourse.date.isNotEmpty) {
-          DateTime firstCourseDate =
-              DateFormat('yyyy-MM-dd').parse(firstCourse.date);
-          DateTime firstMonday =
-              firstCourseDate.subtract(Duration(days: firstCourse.weekday - 1));
-          _semesterMonday = firstMonday
-              .subtract(Duration(days: (firstCourse.weekIndex - 1) * 7));
-        } else {
-          _semesterMonday = DateTime.now()
-              .subtract(Duration(days: DateTime.now().weekday - 1));
-        }
-
-        DateTime now = DateTime.now();
-        int daysDiff = now.difference(_semesterMonday!).inDays;
-        int currentRealWeek = (daysDiff ~/ 7) + 1;
-        if (_availableWeeks.contains(currentRealWeek)) {
-          _currentWeek = currentRealWeek;
-        } else {
-          _currentWeek = _availableWeeks.first;
+          DateTime firstCourseDate = DateFormat('yyyy-MM-dd').parse(firstCourse.date);
+          _semesterMonday = firstCourseDate.subtract(Duration(days: firstCourse.weekday - 1))
+              .subtract(Duration(days: (firstCourse.weekIndex > 0 ? firstCourse.weekIndex : 0) * 7));
         }
       }
+    }
 
-      _weekCourses = await CourseService.getCoursesByWeek(_currentWeek);
-      _updateWeekTodos();
-      _updateWeekTimeLogsAndPomodoros();
-    } else {
-      DateTime? semStart = await StorageService.getSemesterStart();
+    if (_semesterMonday == null) {
       DateTime now = DateTime.now();
-      if (semStart != null) {
-        _semesterMonday =
-            semStart.subtract(Duration(days: semStart.weekday - 1));
-        int daysDiff = now.difference(_semesterMonday!).inDays;
-        _currentWeek = (daysDiff ~/ 7) + 1;
-        if (_currentWeek < 1) _currentWeek = 1;
-      } else {
-        _semesterMonday = now.subtract(Duration(days: now.weekday - 1));
-        _currentWeek = 1;
-      }
+      _semesterMonday = now.subtract(Duration(days: now.weekday - 1));
+    }
+
+    // 计算当前周
+    DateTime now = DateTime.now();
+    int daysOffset = now.difference(_semesterMonday!).inDays;
+    _currentWeek = (daysOffset ~/ 7) + 1;
+    if (_currentWeek < 1) _currentWeek = 1;
+
+    if (weeks.isNotEmpty) {
+      _availableWeeks = weeks;
+      _weekCourses = await CourseService.getCoursesByWeek(_currentWeek);
+    } else {
       _availableWeeks = List.generate(20, (index) => index + 1);
       _weekCourses = [];
-      _updateWeekTodos();
-      _updateWeekTimeLogsAndPomodoros();
     }
+
+    _updateWeekTodos();
+    _updateWeekTimeLogsAndPomodoros();
 
     setState(() => _isLoading = false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
