@@ -1,5 +1,5 @@
 import 'package:intl/intl.dart';
-import 'course_service.dart';
+import '../../models.dart';
 
 class XidianScheduleParser {
   /// 传入 ICS 字符串和 本学期第一周的周一日期

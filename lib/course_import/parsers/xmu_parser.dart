@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
 import 'package:intl/intl.dart';
-import 'course_service.dart';
+import '../../models.dart';
 
 class XmuScheduleParser {
   /// 传入 MHTML/HTML 字符串和 本学期第一周的周一日期

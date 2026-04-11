@@ -6,68 +6,14 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 
 // 引入不同高校的解析器
-import 'hfut_schedule_parser.dart';
-import 'xmu_schedule_parser.dart';
-import 'xidian_schedule_parser.dart'; // 🚀 1. 新增西电解析器引入
-import 'zfsoft_schedule_parser.dart'; // 🚀 新增：引入正方教务系统解析器
+import '../course_import/parsers/hfut_parser.dart';
+import '../course_import/parsers/xmu_parser.dart';
+import '../course_import/parsers/xidian_parser.dart'; 
+import '../course_import/parsers/zfsoft_parser.dart'; 
 
-class CourseItem {
-  final String courseName;
-  final String teacherName;
-  final String date; // yyyy-MM-dd
-  final int weekday;
-  final int startTime;
-  final int endTime;
-  final int weekIndex;
-  final String roomName;
-  final String? lessonType;
+import '../models.dart';
 
-  CourseItem({
-    required this.courseName,
-    required this.teacherName,
-    required this.date,
-    required this.weekday,
-    required this.startTime,
-    required this.endTime,
-    required this.weekIndex,
-    required this.roomName,
-    this.lessonType,
-  });
-
-  // 格式化时间，如 800 -> 08:00
-  String get formattedStartTime => '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
-  String get formattedEndTime => '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
-
-  // 用于统一序列化存储
-  Map<String, dynamic> toJson() {
-    return {
-      'courseName': courseName,
-      'teacherName': teacherName,
-      'date': date,
-      'weekday': weekday,
-      'startTime': startTime,
-      'endTime': endTime,
-      'weekIndex': weekIndex,
-      'roomName': roomName,
-      'lessonType': lessonType,
-    };
-  }
-
-  // 用于从统一存储中反序列化
-  factory CourseItem.fromJson(Map<String, dynamic> json) {
-    return CourseItem(
-      courseName: json['courseName'] ?? '未知课程',
-      teacherName: json['teacherName'] ?? '未知教师',
-      date: json['date'] ?? '',
-      weekday: json['weekday'] ?? 1,
-      startTime: json['startTime'] ?? 0,
-      endTime: json['endTime'] ?? 0,
-      weekIndex: json['weekIndex'] ?? 1,
-      roomName: json['roomName'] ?? '未知地点',
-      lessonType: json['lessonType'],
-    );
-  }
-}
+// CourseItem moved to models.dart
 
 class CourseService {
   static const String _keyCourseData = 'course_schedule_json';

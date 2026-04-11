@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
 import 'package:intl/intl.dart';
-import 'course_service.dart';
+import '../../models.dart';
 
 class ZfSoftScheduleParser {
   /// 传入 正方系统导出的 MHTML/HTML 字符串以及学期开始日期

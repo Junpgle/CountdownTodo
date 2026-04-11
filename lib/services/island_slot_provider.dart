@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../storage_service.dart';
+import '../models.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 

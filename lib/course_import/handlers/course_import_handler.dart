@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../../../services/course_service.dart';
-import '../../../services/hfut_schedule_parser.dart';
-import '../dialogs/zf_time_config_dialog.dart';
-import '../course_webview_screen.dart';
-import '../../../utils/page_transitions.dart';
+import '../../services/course_service.dart';
+import '../parsers/hfut_parser.dart';
+import '../widgets/zf_time_config_dialog.dart';
+import '../widgets/course_webview_screen.dart';
+import '../../utils/page_transitions.dart';
 
 class CourseImportHandler {
   final BuildContext context;
@@ -78,7 +78,6 @@ class CourseImportHandler {
 
     String filePath = result.files.single.path!;
     File file = File(filePath);
-    String ext = filePath.split('.').last.toLowerCase();
 
     ValueNotifier<String> statusNotifier = ValueNotifier("处理中...");
     BuildContext? dialogContext;

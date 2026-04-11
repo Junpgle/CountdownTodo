@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
@@ -47,7 +48,11 @@ class StorageService {
   static const String KEY_SERVER_CHOICE = "app_server_choice";
   static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
   static const String KEY_PRIVACY_DATE = "privacy_policy_date";
-  static const String PRIVACY_CURRENT_DATE = "2026-04-06";
+  static const String KEY_PRIVACY_CACHED_VERSION = "privacy_policy_cached_version";
+  static const String KEY_PRIVACY_CACHE_TIME = "privacy_policy_cache_time";
+  static const String PRIVACY_RAW_URL =
+      'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
+  static const Duration PRIVACY_CACHE_DURATION = Duration(hours: 1);
 
   static const String KEY_LOCAL_SCREEN_TIME =
       "local_screen_time_pending_upload";
@@ -1270,7 +1275,8 @@ class StorageService {
     final prefs = await StorageService.prefs;
     await prefs.setBool(KEY_PRIVACY_AGREED, agreed);
     if (agreed) {
-      await prefs.setString(KEY_PRIVACY_DATE, date ?? PRIVACY_CURRENT_DATE);
+      final versionDate = date ?? await _getPrivacyPolicyCurrentVersion();
+      await prefs.setString(KEY_PRIVACY_DATE, versionDate);
     }
   }
 
@@ -1278,7 +1284,84 @@ class StorageService {
     final prefs = await StorageService.prefs;
     final storedDate = prefs.getString(KEY_PRIVACY_DATE);
     if (storedDate == null) return false;
-    return _compareDates(storedDate, PRIVACY_CURRENT_DATE) >= 0;
+    final currentVersion = await _getPrivacyPolicyCurrentVersion();
+    return _compareDates(storedDate, currentVersion) >= 0;
+  }
+
+  /// 从 GitHub 获取隐私政策的版本日期，包含缓存机制
+  static Future<String> _getPrivacyPolicyCurrentVersion() async {
+    final prefs = await StorageService.prefs;
+    
+    // 检查缓存是否有效
+    final cachedVersion = prefs.getString(KEY_PRIVACY_CACHED_VERSION);
+    final cacheTime = prefs.getInt(KEY_PRIVACY_CACHE_TIME) ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    
+    if (cachedVersion != null && 
+        now - cacheTime < PRIVACY_CACHE_DURATION.inMilliseconds) {
+      debugPrint('[Privacy] Using cached version: $cachedVersion');
+      return cachedVersion;
+    }
+    
+    // 从网络获取
+    try {
+      debugPrint('[Privacy] Fetching version from GitHub...');
+      final response = await http.get(Uri.parse(PRIVACY_RAW_URL))
+          .timeout(const Duration(seconds: 10));
+      
+      if (response.statusCode == 200) {
+        final version = _extractPrivacyVersionDate(response.body);
+        if (version.isNotEmpty) {
+          // 缓存结果
+          await prefs.setString(KEY_PRIVACY_CACHED_VERSION, version);
+          await prefs.setInt(KEY_PRIVACY_CACHE_TIME, now);
+          debugPrint('[Privacy] Updated version: $version');
+          return version;
+        }
+      }
+    } catch (e) {
+      debugPrint('[Privacy] Failed to fetch version: $e');
+    }
+    
+    // 如果网络请求失败但有缓存，返回缓存的版本
+    if (cachedVersion != null) {
+      debugPrint('[Privacy] Network error, using cached version: $cachedVersion');
+      return cachedVersion;
+    }
+    
+    // 默认返回当前日期
+    final defaultDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    debugPrint('[Privacy] Using default date: $defaultDate');
+    return defaultDate;
+  }
+
+  /// 从隐私政策 Markdown 内容中提取版本日期
+  /// 格式例子: **版本日期：2026年4月11日** 或 **版本日期：2026-04-11**
+  static String _extractPrivacyVersionDate(String content) {
+    try {
+      // 匹配 "版本日期：YYYY年M月D日" 格式
+      final pattern1 = RegExp(r'版本日期[：:]?\s*(\d{4})年(\d{1,2})月(\d{1,2})日');
+      final match1 = pattern1.firstMatch(content);
+      if (match1 != null) {
+        final year = match1.group(1)!;
+        final month = match1.group(2)!.padLeft(2, '0');
+        final day = match1.group(3)!.padLeft(2, '0');
+        return '$year-$month-$day';
+      }
+      
+      // 匹配 "版本日期：YYYY-MM-DD" 格式
+      final pattern2 = RegExp(r'版本日期[：:]?\s*(\d{4}-\d{2}-\d{2})');
+      final match2 = pattern2.firstMatch(content);
+      if (match2 != null) {
+        return match2.group(1)!;
+      }
+      
+      debugPrint('[Privacy] Could not extract version date from content');
+      return '';
+    } catch (e) {
+      debugPrint('[Privacy] Error extracting version date: $e');
+      return '';
+    }
   }
 
   static int _compareDates(String a, String b) {

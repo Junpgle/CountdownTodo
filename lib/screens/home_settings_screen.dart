@@ -19,6 +19,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../utils/page_transitions.dart';
 import 'feature_guide_screen.dart';
+import '../models.dart';
 import '../services/course_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
@@ -27,9 +28,12 @@ import '../windows_island/island_manager.dart';
 
 // 引入拆分的设置组件
 import 'settings/widgets/account_section.dart';
-import 'settings/widgets/course_section.dart';
+import '../course_import/widgets/course_section.dart';
 import 'settings/widgets/semester_section.dart';
 import 'settings/server_choice_page.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'settings/wallpaper_settings_page.dart';
 import 'settings/widgets/preference_section.dart';
 import 'settings/widgets/permission_section.dart';
 import 'settings/widgets/advanced_section.dart';
@@ -47,7 +51,7 @@ import 'settings/dialogs/migration_dialog.dart';
 import 'settings/dialogs/island_priority_dialog.dart';
 
 // 引入逻辑处理器
-import 'settings/handlers/course_import_handler.dart';
+import '../course_import/handlers/course_import_handler.dart';
 import 'settings/handlers/permission_handler.dart';
 import 'settings/handlers/storage_management_handler.dart';
 import '../services/animation_config_service.dart';
@@ -90,11 +94,6 @@ class _SettingsPageState extends State<SettingsPage> {
   String _noCourseBehavior = 'keep';
   String _serverChoice = 'aliyun';
   int _llmRetryCount = 3;
-  String _wallpaperProvider = 'bing';
-  String _wallpaperImageFormat = 'jpg';
-  int _wallpaperIndex = 0;
-  String _wallpaperMkt = 'zh-CN';
-  String _wallpaperResolution = '1920';
 
   // 学期进度状态
   bool _semesterEnabled = false;
@@ -306,7 +305,6 @@ class _SettingsPageState extends State<SettingsPage> {
     String theme = await StorageService.getThemeMode();
     String serverUrlChoice = await StorageService.getServerChoice();
     int llmRetryCount = await StorageService.getLLMRetryCount();
-    String wallpaperProvider = await StorageService.getWallpaperProvider();
 
     bool sEnabled = await StorageService.getSemesterEnabled();
     DateTime? sStart = await StorageService.getSemesterStart();
@@ -349,11 +347,6 @@ class _SettingsPageState extends State<SettingsPage> {
       _screenRadiusEnabled = screenRadiusEnabled;
       _predictiveBackEnabled = predictiveBackEnabled;
       _animationDuration = animationDuration;
-      _wallpaperProvider = wallpaperProvider;
-      _wallpaperImageFormat = await StorageService.getWallpaperImageFormat();
-      _wallpaperIndex = await StorageService.getWallpaperIndex();
-      _wallpaperMkt = await StorageService.getWallpaperMkt();
-      _wallpaperResolution = await StorageService.getWallpaperResolution();
     });
     if (Platform.isWindows) {
       final taiPath = await TaiService.getSavedDbPath() ??
@@ -1429,41 +1422,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (val != null) {
                       setState(() => _llmRetryCount = val);
                       StorageService.setLLMRetryCount(val);
-                    }
-                  },
-                  wallpaperProvider: _wallpaperProvider,
-                  onWallpaperProviderChanged: (val) {
-                    if (val != null) {
-                      setState(() => _wallpaperProvider = val);
-                      StorageService.saveWallpaperProvider(val);
-                    }
-                  },
-                  wallpaperImageFormat: _wallpaperImageFormat,
-                  wallpaperIndex: _wallpaperIndex,
-                  wallpaperMkt: _wallpaperMkt,
-                  wallpaperResolution: _wallpaperResolution,
-                  onWallpaperImageFormatChanged: (val) {
-                    if (val != null) {
-                      setState(() => _wallpaperImageFormat = val);
-                      StorageService.saveWallpaperImageFormat(val);
-                    }
-                  },
-                  onWallpaperIndexChanged: (val) {
-                    if (val != null) {
-                      setState(() => _wallpaperIndex = val);
-                      StorageService.saveWallpaperIndex(val);
-                    }
-                  },
-                  onWallpaperMktChanged: (val) {
-                    if (val != null) {
-                      setState(() => _wallpaperMkt = val);
-                      StorageService.saveWallpaperMkt(val);
-                    }
-                  },
-                  onWallpaperResolutionChanged: (val) {
-                    if (val != null) {
-                      setState(() => _wallpaperResolution = val);
-                      StorageService.saveWallpaperResolution(val);
                     }
                   },
                 ),

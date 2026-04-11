@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../llm_config_page.dart';
+import '../wallpaper_settings_page.dart';
 
 class PreferenceSection extends StatelessWidget {
   final VoidCallback onManageHomeSections;
@@ -20,16 +21,6 @@ class PreferenceSection extends StatelessWidget {
   final VoidCallback? onIslandPriorityPressed;
   final int llmRetryCount;
   final ValueChanged<int?>? onLLMRetryCountChanged;
-  final String wallpaperProvider;
-  final ValueChanged<String?>? onWallpaperProviderChanged;
-  final String wallpaperImageFormat;
-  final int wallpaperIndex;
-  final String wallpaperMkt;
-  final String wallpaperResolution;
-  final ValueChanged<String?>? onWallpaperImageFormatChanged;
-  final ValueChanged<int?>? onWallpaperIndexChanged;
-  final ValueChanged<String?>? onWallpaperMktChanged;
-  final ValueChanged<String?>? onWallpaperResolutionChanged;
 
   const PreferenceSection({
     Key? key,
@@ -48,16 +39,6 @@ class PreferenceSection extends StatelessWidget {
     this.onIslandPriorityPressed,
     this.llmRetryCount = 3,
     this.onLLMRetryCountChanged,
-    this.wallpaperProvider = 'bing',
-    this.onWallpaperProviderChanged,
-    this.wallpaperImageFormat = 'jpg',
-    this.wallpaperIndex = 0,
-    this.wallpaperMkt = 'zh-CN',
-    this.wallpaperResolution = '1920',
-    this.onWallpaperImageFormatChanged,
-    this.onWallpaperIndexChanged,
-    this.onWallpaperMktChanged,
-    this.onWallpaperResolutionChanged,
   }) : super(key: key);
 
   @override
@@ -190,96 +171,17 @@ class PreferenceSection extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.wallpaper_outlined,
                     color: Colors.deepPurple),
-                title: const Text('首页壁纸来源'),
-                subtitle: const Text('GitHub: 随机仓库壁纸 | Bing: 必应每日一图'),
-                trailing: DropdownButton<String>(
-                  value: wallpaperProvider,
-                  underline: const SizedBox(),
-                  items: const [
-                    DropdownMenuItem(value: 'github', child: Text('GitHub 随机')),
-                    DropdownMenuItem(value: 'bing', child: Text('Bing 每日一图')),
-                  ],
-                  onChanged: onWallpaperProviderChanged,
-                ),
+                title: const Text('首页壁纸设置'),
+                subtitle: const Text('来源切换、必应选项配置 (地区/分辨率/格式)'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const WallpaperSettingsPage()),
+                  );
+                },
               ),
-              if (wallpaperProvider == 'bing') ...[
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.image_outlined,
-                      color: Colors.deepPurple, size: 20),
-                  title: const Text('图片格式', style: TextStyle(fontSize: 14)),
-                  trailing: DropdownButton<String>(
-                    value: wallpaperImageFormat,
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 'jpg', child: Text('JPG')),
-                      DropdownMenuItem(value: 'webp', child: Text('WebP')),
-                    ],
-                    onChanged: onWallpaperImageFormatChanged,
-                  ),
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.history,
-                      color: Colors.deepPurple, size: 20),
-                  title: const Text('壁纸索引', style: TextStyle(fontSize: 14)),
-                  subtitle: const Text('0为今日，1为昨日...', style: TextStyle(fontSize: 11)),
-                  trailing: DropdownButton<int>(
-                    value: wallpaperIndex,
-                    underline: const SizedBox(),
-                    items: List.generate(
-                        8,
-                        (i) => DropdownMenuItem(
-                            value: i, child: Text(i == 0 ? '今日' : '$i 天前'))),
-                    onChanged: onWallpaperIndexChanged,
-                  ),
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.language_outlined,
-                      color: Colors.deepPurple, size: 20),
-                  title: const Text('地区/语言', style: TextStyle(fontSize: 14)),
-                  trailing: DropdownButton<String>(
-                    value: wallpaperMkt,
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 'zh-CN', child: Text('中国 (简体)')),
-                      DropdownMenuItem(value: 'en-US', child: Text('美国 (英语)')),
-                      DropdownMenuItem(value: 'ja-JP', child: Text('日本 (日语)')),
-                      DropdownMenuItem(value: 'en-AU', child: Text('澳大利亚')),
-                      DropdownMenuItem(value: 'en-GB', child: Text('英国')),
-                      DropdownMenuItem(value: 'de-DE', child: Text('德国')),
-                      DropdownMenuItem(value: 'en-NZ', child: Text('新西兰')),
-                      DropdownMenuItem(value: 'en-CA', child: Text('加拿大')),
-                      DropdownMenuItem(value: 'en-IN', child: Text('印度')),
-                      DropdownMenuItem(value: 'fr-FR', child: Text('法国')),
-                      DropdownMenuItem(value: 'fr-CA', child: Text('加拿大 (法语)')),
-                      DropdownMenuItem(value: 'it-IT', child: Text('意大利')),
-                      DropdownMenuItem(value: 'es-ES', child: Text('西班牙')),
-                      DropdownMenuItem(value: 'pt-BR', child: Text('巴西')),
-                      DropdownMenuItem(value: 'en-ROW', child: Text('全球其他地区')),
-                    ],
-                    onChanged: onWallpaperMktChanged,
-                  ),
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.monitor_outlined,
-                      color: Colors.deepPurple, size: 20),
-                  title: const Text('分辨率', style: TextStyle(fontSize: 14)),
-                  trailing: DropdownButton<String>(
-                    value: wallpaperResolution,
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: '1366', child: Text('1366x768')),
-                      DropdownMenuItem(value: '1920', child: Text('1080P')),
-                      DropdownMenuItem(value: '3840', child: Text('4K (3840)')),
-                      DropdownMenuItem(value: 'UHD', child: Text('超高清 (UHD)')),
-                    ],
-                    onChanged: onWallpaperResolutionChanged,
-                  ),
-                ),
-              ],
               if (Platform.isWindows) ...[
                 const Divider(height: 1, indent: 56),
                 ListTile(

@@ -192,7 +192,7 @@ class _MyAppState extends State<MyApp> {
     final storedDate = (await SharedPreferences.getInstance())
         .getString(StorageService.KEY_PRIVACY_DATE);
     debugPrint(
-        '[Privacy] wasLoggedIn=$wasLoggedIn, wasAgreed=$wasAgreed, needsUpdate=$privacyNeedsUpdate, storedDate=$storedDate, currentDate=${StorageService.PRIVACY_CURRENT_DATE}');
+        '[Privacy] wasLoggedIn=$wasLoggedIn, wasAgreed=$wasAgreed, needsUpdate=$privacyNeedsUpdate, storedDate=$storedDate');
 
     // 2. 检查升级引导
     final needGuide = await FeatureGuideScreen.shouldShow();
@@ -238,8 +238,7 @@ class _MyAppState extends State<MyApp> {
       builder: (dialogContext) => PrivacyPolicyDialog(
         isUpdate: true,
         onAgree: () {
-          StorageService.setPrivacyPolicyAgreed(true,
-              date: StorageService.PRIVACY_CURRENT_DATE);
+          StorageService.setPrivacyPolicyAgreed(true);
           Navigator.pop(dialogContext, true);
         },
         onDisagree: () async {
