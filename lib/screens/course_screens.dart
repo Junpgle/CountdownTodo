@@ -214,6 +214,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         }
       }
     }
+
+    // 排序：未完成优先
+    for (int i = 1; i <= 7; i++) {
+      _allDayTodosPerDay[i]!.sort((a, b) {
+        if (a.isDone == b.isDone) return 0;
+        return a.isDone ? 1 : -1;
+      });
+      _intraDayTodosPerDay[i]!.sort((a, b) {
+        if (a.isDone == b.isDone) return 0;
+        return a.isDone ? 1 : -1;
+      });
+    }
   }
 
   void _updateWeekTimeLogsAndPomodoros() {
@@ -1288,6 +1300,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
       return start.isBefore(todayEnd) && end.isAfter(todayStart);
     }).toList();
+
+    // 排序：未完成优先
+    todayAllDay.sort((a, b) {
+      if (a.isDone == b.isDone) return 0;
+      return a.isDone ? 1 : -1;
+    });
 
     return Container(
       width: double.infinity,
