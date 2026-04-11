@@ -42,23 +42,25 @@ class CourseSection extends StatelessWidget {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Column(
             children: [
+              // 1. 首页板块相关
               ListTile(
-                leading:
-                    const Icon(Icons.cloud_upload_outlined, color: Colors.blue),
-                title: const Text('上传课表到云端'),
-                subtitle: const Text('用于与电脑或其他设备同步'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: onUploadCourses,
-              ),
-              ListTile(
-                leading: const Icon(Icons.file_upload_outlined,
-                    color: Colors.indigo),
-                title: const Text('智能导入本地课表'),
-                subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电/HUEL)'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: onSmartImport,
+                leading: const Icon(Icons.layers_clear_outlined,
+                    color: Colors.blueGrey),
+                title: const Text('无课时板块行为'),
+                trailing: DropdownButton<String>(
+                  value: noCourseBehavior,
+                  underline: const SizedBox(),
+                  items: const [
+                    DropdownMenuItem(value: 'keep', child: Text('保持位置')),
+                    DropdownMenuItem(value: 'bottom', child: Text('排到最后')),
+                    DropdownMenuItem(value: 'hide', child: Text('自动隐藏')),
+                  ],
+                  onChanged: onNoCourseBehaviorChanged,
+                ),
               ),
               const Divider(height: 1, indent: 56),
+
+              // 2. 导入
               if (onWebViewImport != null) ...[
                 ListTile(
                   leading:
@@ -83,6 +85,15 @@ class CourseSection extends StatelessWidget {
                 const Divider(height: 1, indent: 56),
               ],
               ListTile(
+                leading: const Icon(Icons.file_upload_outlined,
+                    color: Colors.indigo),
+                title: const Text('智能导入本地课表'),
+                subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电/HUEL)'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onSmartImport,
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
                 leading: const Icon(Icons.cloud_download_outlined,
                     color: Colors.green),
                 title: const Text('从云端获取课表'),
@@ -91,22 +102,19 @@ class CourseSection extends StatelessWidget {
                 onTap: onFetchFromCloud,
               ),
               const Divider(height: 1, indent: 56),
+
+              // 3. 上传
               ListTile(
-                leading: const Icon(Icons.layers_clear_outlined,
-                    color: Colors.blueGrey),
-                title: const Text('无课时板块行为'),
-                trailing: DropdownButton<String>(
-                  value: noCourseBehavior,
-                  underline: const SizedBox(),
-                  items: const [
-                    DropdownMenuItem(value: 'keep', child: Text('保持位置')),
-                    DropdownMenuItem(value: 'bottom', child: Text('排到最后')),
-                    DropdownMenuItem(value: 'hide', child: Text('自动隐藏')),
-                  ],
-                  onChanged: onNoCourseBehaviorChanged,
-                ),
+                leading:
+                    const Icon(Icons.cloud_upload_outlined, color: Colors.blue),
+                title: const Text('上传课表到云端'),
+                subtitle: const Text('用于与电脑或其他设备同步'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onUploadCourses,
               ),
               const Divider(height: 1, indent: 56),
+
+              // 4. 适配申请
               ListTile(
                 leading: const Icon(Icons.auto_awesome, color: Colors.orange),
                 title: const Text('我要请求开发者适配！'),
