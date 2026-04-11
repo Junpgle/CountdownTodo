@@ -382,7 +382,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1200),
+                constraints: const BoxConstraints(maxWidth: 1400),
                 child: _buildMainContent(),
               ),
             ),
