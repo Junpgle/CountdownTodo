@@ -14,5 +14,93 @@
     "bg_color_top": "#87CEEB",
     "bg_color_bottom": "#F0FFF0",
     "duration_ms": 2000
+  },
+  "2026-04-22": {
+    "title": "世界地球日",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/diqiu.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-04-23": {
+    "title": "世界读书日",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/dushu.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-05-01": {
+    "title": "五一劳动节",
+    "subtitle": "放五天",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/laodong.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-05-04": {
+    "title": "五四青年节",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/qingnian.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-05-05": {
+    "title": "立夏",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/lixia.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-05-08": {
+    "title": "微笑日",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/weixiao.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-05-10": {
+    "title": "母亲节",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/muqin.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-05-12": {
+    "title": "护士节/防灾减灾",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/0512.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-05-18": {
+    "title": "博物馆日",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/0518.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-05-21": {
+    "title": "小满",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/0521.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
+  },
+  "2026-06-01": {
+    "title": "儿童节",
+    "subtitle": "",
+    "image_url": "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master//splash/0601.jpg",
+    "bg_color_top": "#87CEEB",
+    "bg_color_bottom": "#F0FFF0",
+    "duration_ms": 2000
   }
 }
