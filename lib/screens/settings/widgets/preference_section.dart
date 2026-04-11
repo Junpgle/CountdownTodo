@@ -53,7 +53,7 @@ class PreferenceSection extends StatelessWidget {
     this.wallpaperImageFormat = 'jpg',
     this.wallpaperIndex = 0,
     this.wallpaperMkt = 'zh-CN',
-    this.wallpaperResolution = 'UHD',
+    this.wallpaperResolution = '1920',
     this.onWallpaperImageFormatChanged,
     this.onWallpaperIndexChanged,
     this.onWallpaperMktChanged,

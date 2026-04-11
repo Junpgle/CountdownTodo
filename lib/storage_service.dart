@@ -1344,7 +1344,7 @@ class StorageService {
 
   static Future<String> getWallpaperResolution() async {
     final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_WALLPAPER_RESOLUTION) ?? 'UHD';
+    return prefs.getString(KEY_WALLPAPER_RESOLUTION) ?? '1920';
   }
 
   static Future<void> saveWallpaperResolution(String resolution) async {

@@ -94,7 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _wallpaperImageFormat = 'jpg';
   int _wallpaperIndex = 0;
   String _wallpaperMkt = 'zh-CN';
-  String _wallpaperResolution = 'UHD';
+  String _wallpaperResolution = '1920';
 
   // 学期进度状态
   bool _semesterEnabled = false;
