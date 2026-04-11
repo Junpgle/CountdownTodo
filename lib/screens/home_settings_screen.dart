@@ -91,6 +91,10 @@ class _SettingsPageState extends State<SettingsPage> {
   String _serverChoice = 'aliyun';
   int _llmRetryCount = 3;
   String _wallpaperProvider = 'bing';
+  String _wallpaperImageFormat = 'jpg';
+  int _wallpaperIndex = 0;
+  String _wallpaperMkt = 'zh-CN';
+  String _wallpaperResolution = 'UHD';
 
   // 学期进度状态
   bool _semesterEnabled = false;
@@ -346,6 +350,10 @@ class _SettingsPageState extends State<SettingsPage> {
       _predictiveBackEnabled = predictiveBackEnabled;
       _animationDuration = animationDuration;
       _wallpaperProvider = wallpaperProvider;
+      _wallpaperImageFormat = await StorageService.getWallpaperImageFormat();
+      _wallpaperIndex = await StorageService.getWallpaperIndex();
+      _wallpaperMkt = await StorageService.getWallpaperMkt();
+      _wallpaperResolution = await StorageService.getWallpaperResolution();
     });
     if (Platform.isWindows) {
       final taiPath = await TaiService.getSavedDbPath() ??
@@ -1428,6 +1436,34 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (val != null) {
                       setState(() => _wallpaperProvider = val);
                       StorageService.saveWallpaperProvider(val);
+                    }
+                  },
+                  wallpaperImageFormat: _wallpaperImageFormat,
+                  wallpaperIndex: _wallpaperIndex,
+                  wallpaperMkt: _wallpaperMkt,
+                  wallpaperResolution: _wallpaperResolution,
+                  onWallpaperImageFormatChanged: (val) {
+                    if (val != null) {
+                      setState(() => _wallpaperImageFormat = val);
+                      StorageService.saveWallpaperImageFormat(val);
+                    }
+                  },
+                  onWallpaperIndexChanged: (val) {
+                    if (val != null) {
+                      setState(() => _wallpaperIndex = val);
+                      StorageService.saveWallpaperIndex(val);
+                    }
+                  },
+                  onWallpaperMktChanged: (val) {
+                    if (val != null) {
+                      setState(() => _wallpaperMkt = val);
+                      StorageService.saveWallpaperMkt(val);
+                    }
+                  },
+                  onWallpaperResolutionChanged: (val) {
+                    if (val != null) {
+                      setState(() => _wallpaperResolution = val);
+                      StorageService.saveWallpaperResolution(val);
                     }
                   },
                 ),

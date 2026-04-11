@@ -80,6 +80,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
   String? _wallpaperUrl;
+  String? _wallpaperCopyright;
   bool _wallpaperShow = false;
   bool _isLoadingScreenTime = true;
   DateTime? _lastScreenTimeSync;
@@ -1731,17 +1732,24 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _fetchBingWallpaper() async {
-    const String bingApiUrl =
-        "https://bing.biturl.top/?resolution=UHD&format=json&index=0&mkt=zh-CN";
+    final format = await StorageService.getWallpaperImageFormat();
+    final index = await StorageService.getWallpaperIndex();
+    final mkt = await StorageService.getWallpaperMkt();
+    final resolution = await StorageService.getWallpaperResolution();
+
+    final String bingApiUrl =
+        "https://bing.biturl.top/?resolution=$resolution&format=json&index=$index&mkt=$mkt&image_format=$format";
     try {
       final response = await http.get(Uri.parse(bingApiUrl));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final String? url = data['url'];
+        final String? copyright = data['copyright'];
         if (url != null && url.isNotEmpty && mounted) {
           setState(() {
             _wallpaperShow = true;
             _wallpaperUrl = url;
+            _wallpaperCopyright = copyright;
           });
         }
       } else {
@@ -2109,33 +2117,60 @@ class _HomeDashboardState extends State<HomeDashboard>
                           alignment: Alignment.topCenter,
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 1400),
-                            child: isTablet
-                                ? Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                          flex: 10,
-                                          child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: leftWidgets)),
-                                      if (rightWidgets.isNotEmpty)
-                                        const SizedBox(width: 40),
-                                      if (rightWidgets.isNotEmpty)
-                                        Expanded(
-                                            flex: 11,
-                                            child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: rightWidgets)),
-                                    ],
-                                  )
-                                : Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [...leftWidgets, ...rightWidgets],
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                isTablet
+                                    ? Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                              flex: 10,
+                                              child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: leftWidgets)),
+                                          if (rightWidgets.isNotEmpty)
+                                            const SizedBox(width: 40),
+                                          if (rightWidgets.isNotEmpty)
+                                            Expanded(
+                                                flex: 11,
+                                                child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment.start,
+                                                    children: rightWidgets)),
+                                        ],
+                                      )
+                                    : Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          ...leftWidgets,
+                                          ...rightWidgets,
+                                        ],
+                                      ),
+                                if (_wallpaperCopyright != null &&
+                                    _wallpaperCopyright!.isNotEmpty)
+                                  Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(
+                                          top: 16.0, bottom: 32.0),
+                                      child: Text(
+                                        _wallpaperCopyright!,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isLight
+                                              ? Colors.white.withOpacity(0.7)
+                                              : Colors.grey[600],
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
                                   ),
+                              ],
+                            ),
                           ),
                         ),
                       );
