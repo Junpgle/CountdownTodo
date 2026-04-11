@@ -2072,21 +2072,23 @@ class _HomeDashboardState extends State<HomeDashboard>
                         child: Align(
                           alignment: Alignment.topCenter,
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1200),
+                            constraints: const BoxConstraints(maxWidth: 1400),
                             child: isTablet
                                 ? Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
                                       Expanded(
+                                          flex: 10,
                                           child: Column(
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: leftWidgets)),
                                       if (rightWidgets.isNotEmpty)
-                                        const SizedBox(width: 32),
+                                        const SizedBox(width: 40),
                                       if (rightWidgets.isNotEmpty)
                                         Expanded(
+                                            flex: 11,
                                             child: Column(
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.start,

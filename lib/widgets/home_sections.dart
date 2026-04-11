@@ -340,31 +340,30 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
       return Container(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 12,
-                offset: const Offset(0, 4))
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2))
           ],
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: widget.onViewDetail,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1000),
                 child: Padding(
                   padding: EdgeInsets.symmetric(
-                      horizontal: isTablet ? 32 : 20,
-                      vertical: isTablet ? 32 : 24),
+                      horizontal: isTablet ? 28 : 16,
+                      vertical: isTablet ? 24 : 16),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -373,32 +372,27 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                   style: TextStyle(
                                       color:
                                           Theme.of(context).colorScheme.outline,
-                                      fontSize: isTablet ? 16 : 14,
+                                      fontSize: isTablet ? 15 : 13,
                                       fontWeight: FontWeight.w600)),
                               if (widget.lastSyncTime != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                      "更新: ${DateFormat('HH:mm').format(widget.lastSyncTime!)}",
-                                      style: TextStyle(
-                                          fontSize: isTablet ? 12 : 11,
-                                          color: Colors.blueGrey)),
-                                ),
+                                Text(
+                                    "更新: ${DateFormat('HH:mm').format(widget.lastSyncTime!)}",
+                                    style: TextStyle(
+                                        fontSize: isTablet ? 11 : 10,
+                                        color: Colors.blueGrey.withOpacity(0.7))),
                             ],
                           ),
                           Text(_formatSeconds(totalTime),
                               style: TextStyle(
-                                  fontSize: isTablet ? 34 : 26,
+                                  fontSize: isTablet ? 28 : 22,
                                   fontWeight: FontWeight.bold,
                                   color:
                                       Theme.of(context).colorScheme.primary)),
                         ],
                       ),
-                      SizedBox(height: isTablet ? 24 : 16),
-                      Divider(
-                          color:
-                              Theme.of(context).dividerColor.withOpacity(0.5)),
-                      SizedBox(height: isTablet ? 24 : 16),
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
@@ -406,7 +400,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                               children: [
                                 SizedBox(
                                   width: double.infinity,
-                                  height: isTablet ? 240 : 140,
+                                  height: isTablet ? 160 : 100,
                                   child: AnimatedBuilder(
                                     animation: _pieAnim,
                                     builder: (context, child) {
@@ -420,11 +414,11 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                     },
                                   ),
                                 ),
-                                SizedBox(height: isTablet ? 20 : 12),
+                                const SizedBox(height: 8),
                                 Text("设备分布",
                                     style: TextStyle(
-                                        fontSize: isTablet ? 15 : 13,
-                                        fontWeight: FontWeight.bold,
+                                        fontSize: isTablet ? 13 : 11,
+                                        fontWeight: FontWeight.w600,
                                         color: Theme.of(context)
                                             .colorScheme
                                             .onSurface)),
@@ -436,7 +430,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                               children: [
                                 SizedBox(
                                   width: double.infinity,
-                                  height: isTablet ? 240 : 140,
+                                  height: isTablet ? 160 : 100,
                                   child: AnimatedBuilder(
                                     animation: _pieAnim,
                                     builder: (context, child) {
@@ -451,11 +445,11 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                     },
                                   ),
                                 ),
-                                SizedBox(height: isTablet ? 20 : 12),
+                                const SizedBox(height: 8),
                                 Text("Top 应用",
                                     style: TextStyle(
-                                        fontSize: isTablet ? 15 : 13,
-                                        fontWeight: FontWeight.bold,
+                                        fontSize: isTablet ? 13 : 11,
+                                        fontWeight: FontWeight.w600,
                                         color: Theme.of(context)
                                             .colorScheme
                                             .onSurface)),
@@ -463,34 +457,6 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                             ),
                           ),
                         ],
-                      ),
-                      SizedBox(height: isTablet ? 32 : 20),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.touch_app,
-                                size: isTablet ? 18 : 16,
-                                color: Theme.of(context).colorScheme.primary),
-                            const SizedBox(width: 6),
-                            Text("点击查看详细列表",
-                                style: TextStyle(
-                                    fontSize: isTablet ? 14 : 12,
-                                    fontWeight: FontWeight.w600,
-                                    color:
-                                        Theme.of(context).colorScheme.primary)),
-                          ],
-                        ),
                       ),
                     ],
                   ),
@@ -690,17 +656,17 @@ class MathStatsCard extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1000),
                 child: Padding(
-                  padding: EdgeInsets.all(isTablet ? 32 : 24),
+                  padding: EdgeInsets.all(isTablet ? 24 : 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
                             color: todayCount > 0
-                                ? Colors.green.withOpacity(0.15)
-                                : Colors.orangeAccent.withOpacity(0.15),
+                                ? Colors.green.withOpacity(0.12)
+                                : Colors.orangeAccent.withOpacity(0.12),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -710,9 +676,9 @@ class MathStatsCard extends StatelessWidget {
                               color: todayCount > 0
                                   ? Colors.green
                                   : Colors.orangeAccent,
-                              size: isTablet ? 32 : 26),
+                              size: isTablet ? 26 : 22),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         Expanded(
                             child: TweenAnimationBuilder<int>(
                           duration: const Duration(milliseconds: 800),
@@ -724,17 +690,17 @@ class MathStatsCard extends StatelessWidget {
                                     ? "今日已完成 $value 次测验"
                                     : "今日还未完成测验",
                                 style: TextStyle(
-                                    fontSize: isTablet ? 20 : 16,
+                                    fontSize: isTablet ? 16 : 14,
                                     fontWeight: FontWeight.bold));
                           },
                         )),
                         Icon(Icons.arrow_forward_ios,
-                            size: isTablet ? 18 : 14, color: Colors.grey)
+                            size: isTablet ? 14 : 12, color: Colors.grey)
                       ]),
                       Divider(
-                          height: isTablet ? 40 : 32,
+                          height: isTablet ? 32 : 24,
                           color:
-                              Theme.of(context).dividerColor.withOpacity(0.5)),
+                              Theme.of(context).dividerColor.withOpacity(0.4)),
                       Row(children: [
                         Expanded(
                             child: Column(
@@ -744,8 +710,8 @@ class MathStatsCard extends StatelessWidget {
                                   style: TextStyle(
                                       color:
                                           Theme.of(context).colorScheme.outline,
-                                      fontSize: isTablet ? 14 : 13)),
-                              const SizedBox(height: 8),
+                                      fontSize: isTablet ? 13 : 12)),
+                              const SizedBox(height: 4),
                               TweenAnimationBuilder<int>(
                                 duration: const Duration(milliseconds: 800),
                                 curve: Curves.easeOutCubic,
@@ -754,7 +720,7 @@ class MathStatsCard extends StatelessWidget {
                                   return Text(
                                       bestTimeVal > 0 ? "${value}秒" : "--",
                                       style: TextStyle(
-                                          fontSize: isTablet ? 32 : 26,
+                                          fontSize: isTablet ? 26 : 20,
                                           fontWeight: FontWeight.w900,
                                           color: Theme.of(context)
                                               .colorScheme
@@ -770,8 +736,8 @@ class MathStatsCard extends StatelessWidget {
                                   style: TextStyle(
                                       color:
                                           Theme.of(context).colorScheme.outline,
-                                      fontSize: isTablet ? 14 : 13)),
-                              const SizedBox(height: 8),
+                                      fontSize: isTablet ? 13 : 12)),
+                              const SizedBox(height: 4),
                               TweenAnimationBuilder<int>(
                                 duration: const Duration(milliseconds: 800),
                                 curve: Curves.easeOutCubic,
@@ -779,16 +745,16 @@ class MathStatsCard extends StatelessWidget {
                                 builder: (context, value, child) {
                                   return Text("${value}.0%",
                                       style: TextStyle(
-                                          fontSize: isTablet ? 32 : 26,
+                                          fontSize: isTablet ? 26 : 20,
                                           fontWeight: FontWeight.w900));
                                 },
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: LinearProgressIndicator(
                                   value: accuracy,
-                                  minHeight: 6,
+                                  minHeight: 4,
                                   backgroundColor: Theme.of(context)
                                       .colorScheme
                                       .primary
