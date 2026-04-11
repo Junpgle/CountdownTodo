@@ -1282,10 +1282,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     BandSyncService.syncPomodoro(pomodoroData);
   }
 
-  Future<void> _switchTask(TodoItem newTodo) async {
+  Future<void> _switchTask(TodoItem? newTodo) async {
     if (_phase != PomodoroPhase.focusing) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final actualSeconds = ((now - _sessionStartMs) / 1000).round();
+
+    final oldTodo = _boundTodo;
 
     setState(() {
       _boundTodo = newTodo;
@@ -1298,8 +1300,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       final isCountUp = _settings.mode == TimerMode.countUp;
       PomodoroService.addRecord(PomodoroRecord(
         uuid: _currentSessionUuid,
-        todoUuid: null, // 这里之前绑定的是旧任务
-        todoTitle: null,
+        todoUuid: oldTodo?.id,
+        todoTitle: oldTodo?.title,
         tagUuids: List.from(_selectedTagUuids),
         startTime: now - actualSeconds * 1000,
         endTime: now,
@@ -1315,32 +1317,17 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (isCountUpNow) {
       setState(() => _remainingSeconds = 0); // 🚀 本端也显式清零
     }
-    PomodoroService.saveRunState(PomodoroRunState(
-      phase: PomodoroPhase.focusing,
-      sessionUuid: _currentSessionUuid,
-      targetEndMs: _targetEndMs,
-      currentCycle: _currentCycle,
-      totalCycles: _settings.cycles,
-      focusSeconds: isCountUpNow ? 0 : _settings.focusMinutes * 60,
-      breakSeconds: _settings.breakMinutes * 60,
-      todoUuid: newTodo.id,
-      todoTitle: newTodo.title,
-      tagUuids: _selectedTagUuids,
-      sessionStartMs: now,
-      plannedFocusSeconds: isCountUpNow ? 0 : _settings.focusMinutes * 60,
-      mode: _settings.mode,
-      isPaused: _isPaused,
-      pausedAtMs: _pausedAtMs,
-      accumulatedMs: _accumulatedMs,
-    ));
+    await _saveCurrentRunState();
 
     _syncService.sendSwitchSignal(
-        todoUuid: newTodo.id,
-        todoTitle: newTodo.title,
+        todoUuid: newTodo?.id,
+        todoTitle: newTodo?.title,
         sessionUuid: _currentSessionUuid);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('已切换至: ${newTodo.title}'),
+          content: Text(newTodo != null 
+              ? '已切换至: ${newTodo.title}' 
+              : '已切换为自由专注'),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating));
     }
@@ -1548,20 +1535,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     NotificationService.cancelReminder(40001);
     _scheduleReminders(end, PomodoroPhase.breaking, _boundTodo?.title,
         _currentCycle, _settings.cycles);
-    PomodoroService.saveRunState(PomodoroRunState(
-      phase: PomodoroPhase.breaking,
-      sessionUuid: _currentSessionUuid,
-      targetEndMs: end,
-      currentCycle: _currentCycle,
-      totalCycles: _settings.cycles,
-      focusSeconds: _settings.focusMinutes * 60,
-      breakSeconds: _settings.breakMinutes * 60,
-      todoUuid: _boundTodo?.id,
-      todoTitle: _boundTodo?.title,
-      tagUuids: _selectedTagUuids,
-      sessionStartMs: now,
-      plannedFocusSeconds: _settings.focusMinutes * 60,
-    ));
+    await _saveCurrentRunState();
   }
 
   Future<void> _onBreakEnd() async {
@@ -1734,6 +1708,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             _selectedTagUuids = selected;
           });
           await _persistIdleBoundTodo(_boundTodo);
+          await _saveCurrentRunState();
           _showLocalFloat();
           if (_phase == PomodoroPhase.focusing) {
             final tagNames = tags
@@ -1782,8 +1757,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                           child: const Icon(Icons.clear, size: 20)),
                       title: const Text('不绑定任务（自由专注）'),
                       onTap: () async {
-                        setState(() => _boundTodo = null);
-                        await _persistIdleBoundTodo(null);
+                        if (_phase == PomodoroPhase.focusing) {
+                          await _switchTask(null);
+                        } else {
+                          setState(() => _boundTodo = null);
+                          await _persistIdleBoundTodo(null);
+                          await _saveCurrentRunState();
+                        }
                         Navigator.pop(ctx);
                       },
                     ),
@@ -1812,11 +1792,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                             .withValues(alpha: 0.3),
                         onTap: () async {
                           Navigator.pop(ctx);
-                          if (isSwitching) {
+                          if (_phase == PomodoroPhase.focusing) {
                             await _switchTask(t);
                           } else {
                             setState(() => _boundTodo = t);
                             await _persistIdleBoundTodo(t);
+                            await _saveCurrentRunState();
                           }
                         },
                       )),
@@ -1838,6 +1819,37 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       ),
     );
   }
+
+  Future<void> _saveCurrentRunState() async {
+    if (_phase == PomodoroPhase.idle ||
+        _phase == PomodoroPhase.finished ||
+        _phase == PomodoroPhase.remoteWatching) {
+      return;
+    }
+    await PomodoroService.saveRunState(PomodoroRunState(
+      phase: _phase,
+      sessionUuid: _currentSessionUuid,
+      targetEndMs: _targetEndMs,
+      currentCycle: _currentCycle,
+      totalCycles: _settings.cycles,
+      focusSeconds:
+          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
+      breakSeconds: _settings.breakMinutes * 60,
+      todoUuid: _boundTodo?.id,
+      todoTitle: _boundTodo?.title,
+      tagUuids: _selectedTagUuids,
+      sessionStartMs: _sessionStartMs,
+      plannedFocusSeconds:
+          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
+      mode: _settings.mode,
+      isPaused: _isPaused,
+      pausedAtMs: _pausedAtMs,
+      accumulatedMs: _accumulatedMs,
+      pauseStartMs: _pauseStartMs,
+    ));
+  }
+
+
 
   Future<void> _showLocalFloat() async {
     final bool isFocusing = _phase == PomodoroPhase.focusing;
