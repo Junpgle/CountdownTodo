@@ -1290,7 +1290,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }).toList();
 
     return Container(
-      width: 280,
+      width: double.infinity,
       color: isDark ? Colors.grey[900] : Colors.grey[50],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1574,7 +1574,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                     ),
                     if (isWide)
                       Container(
-                        width: 280,
+                        width: 350,
                         decoration: BoxDecoration(
                           border: Border(
                             left: BorderSide(
