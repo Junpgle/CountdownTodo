@@ -162,7 +162,7 @@ class CourseImportHandler {
     // 🚀 1. 弹出高校选择器，预设地址
     final Map<String, String> schoolUrls = {
       '合肥工业大学': 'https://one.hfut.edu.cn/',
-      '厦门大学': 'https://ids.xmu.edu.cn/',
+      '厦门大学': 'https://jw.xmu.edu.cn/gsapp/sys/wdkbapp/*default/index.do',
       '河南财经政法大学': 'https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html',
     };
 
