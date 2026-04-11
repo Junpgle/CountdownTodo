@@ -924,6 +924,7 @@ class _SettingsPageState extends State<SettingsPage> {
           child: CourseSection(
             onUploadCourses: _uploadCoursesToCloud,
             onSmartImport: _courseImportHandler.smartImportCourse,
+            onWebViewImport: _courseImportHandler.importFromWebView,
             onFetchFromCloud: _fetchCoursesFromCloud,
             noCourseBehavior: _noCourseBehavior,
             onNoCourseBehaviorChanged: (val) {
@@ -1287,6 +1288,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 CourseSection(
                   onUploadCourses: _uploadCoursesToCloud,
                   onSmartImport: _courseImportHandler.smartImportCourse,
+                  onWebViewImport: Platform.isWindows ? null : _courseImportHandler.importFromWebView,
                   onFetchFromCloud: _fetchCoursesFromCloud,
                   noCourseBehavior: _noCourseBehavior,
                   onNoCourseBehaviorChanged: (val) {

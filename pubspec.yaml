@@ -1,7 +1,7 @@
 name: CountDownTodo
 description: A new Flutter project.
 publish_to: 'none'
-version: 3.2.6
+version: 3.2.9
 environment:
   sdk: '>=3.1.0 <4.0.0'
 
@@ -43,6 +43,8 @@ dependencies:
   pointycastle: ^3.9.1
   launch_at_startup: any
   tray_manager: ^0.5.2
+  webview_flutter: ^4.13.1
+  webview_win_floating: ^3.0.2
 
 
 dev_dependencies:

@@ -204,7 +204,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
   }
 
+  bool _isInitProcessing = false;
   Future<void> _init() async {
+    if (_isInitProcessing) {
+      debugPrint('[PomodoroWorkbench] _init already in progress, skipping redundant call');
+      return;
+    }
+    _isInitProcessing = true;
     final _initStart = DateTime.now();
     debugPrint(
         '[PomodoroWorkbench] _init start: ${_initStart.toIso8601String()}');
@@ -319,6 +325,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       }
     } catch (e, st) {
     } finally {
+      _isInitProcessing = false;
       _initWatchdog?.cancel();
       final elapsed = DateTime.now().difference(_initStart).inMilliseconds;
     }

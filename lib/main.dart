@@ -6,6 +6,7 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 import 'package:video_player_win/video_player_win_plugin.dart'; // video_player_win plugin
+import 'package:webview_win_floating/webview_win_floating.dart'; // webview_win_floating plugin
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'update_service.dart';
@@ -417,9 +418,6 @@ class _MyAppState extends State<MyApp> {
 
     if (!kIsWeb &&
         (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-      if (Platform.isWindows) {
-        WindowsVideoPlayer.registerWith();
-      }
       await windowManager.ensureInitialized();
       WindowOptions windowOptions = const WindowOptions(
         size: Size(1280, 720),

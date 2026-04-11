@@ -8,6 +8,7 @@ import '../../../utils/page_transitions.dart';
 class CourseSection extends StatelessWidget {
   final VoidCallback onUploadCourses;
   final VoidCallback onSmartImport;
+  final VoidCallback? onWebViewImport;
   final VoidCallback onFetchFromCloud;
   final String noCourseBehavior;
   final ValueChanged<String?> onNoCourseBehaviorChanged;
@@ -16,6 +17,7 @@ class CourseSection extends StatelessWidget {
     Key? key,
     required this.onUploadCourses,
     required this.onSmartImport,
+    this.onWebViewImport,
     required this.onFetchFromCloud,
     required this.noCourseBehavior,
     required this.onNoCourseBehaviorChanged,
@@ -57,6 +59,31 @@ class CourseSection extends StatelessWidget {
                 onTap: onSmartImport,
               ),
               const Divider(height: 1, indent: 56),
+              /* 暂时隐藏在线导入入口
+              if (onWebViewImport != null) ...[
+                ListTile(
+                  leading:
+                      const Icon(Icons.language_outlined, color: Colors.teal),
+                  title: const Text('在线登录并导入 (推荐)'),
+                  subtitle: const Text('从应用内浏览器登录教务系统直接抓取'),
+                  trailing: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text('NEW',
+                        style: TextStyle(
+                            color: Colors.teal,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                  onTap: onWebViewImport,
+                ),
+                const Divider(height: 1, indent: 56),
+              ],
+              */
               ListTile(
                 leading: const Icon(Icons.cloud_download_outlined,
                     color: Colors.green),

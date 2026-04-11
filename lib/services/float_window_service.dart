@@ -467,8 +467,16 @@ class FloatWindowService {
     await _deliverToIsland(structured);
   }
 
+  static int _lastDeliveryMs = 0;
+
   /// Deliver payload to island window
   static Future<void> _deliverToIsland(Map<String, dynamic> structured) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Throttle deliveries to at most once every 100ms to avoid clogging the channel
+    if (now - _lastDeliveryMs < 100 && structured['state'] == 'focusing') {
+       return;
+    }
+    _lastDeliveryMs = now;
     try {
       final islandId = 'island-1';
       var winId = IslandManager().getCachedWindowId(islandId);
