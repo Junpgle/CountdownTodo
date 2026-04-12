@@ -60,6 +60,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   bool _showAllVisionModels = false;
   List<CustomTextModel> _customTextModels = [];
   List<CustomVisionModel> _customVisionModels = [];
+  String _zhipuApiKey = '';
   final _uuid = const Uuid();
 
   static const List<TextModelInfo> textModels = [
@@ -230,11 +231,20 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     final config = await LLMService.getConfig();
     _customTextModels = await LLMService.getCustomTextModels();
     _customVisionModels = await LLMService.getCustomVisionModels();
+    _zhipuApiKey = await LLMService.getZhipuApiKey();
 
     if (config != null) {
       _presetApiKeyCtrl.text = config.apiKey;
       _textPromptCtrl.text = config.textPrompt;
       _visionPromptCtrl.text = config.visionPrompt;
+
+      // 如果存储的智谱 API Key 为空且当前是预设模型，则初始化它
+      if (_zhipuApiKey.isEmpty) {
+        final textModelExists = textModels.any((m) => m.id == config.model);
+        if (textModelExists) {
+          _zhipuApiKey = config.apiKey;
+        }
+      }
 
       final textModelId = config.model;
       final visionModelId = config.visionModel;
@@ -278,6 +288,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
     if (customText != null) {
       _presetApiKeyCtrl.text = customText.apiKey;
+    } else {
+      _presetApiKeyCtrl.text = _zhipuApiKey;
     }
   }
 
@@ -670,6 +682,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   },
                 ),
               ),
+              onChanged: (val) {
+                if (!isUsingCustomText) {
+                  _zhipuApiKey = val.trim();
+                }
+              },
             ),
             if (isUsingCustomText) ...[
               const SizedBox(height: 12),
@@ -1440,6 +1457,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             visionPrompt:
                 _visionPromptCtrl.text.isEmpty ? null : _visionPromptCtrl.text,
           );
+
+          if (_zhipuApiKey.isNotEmpty) {
+            await LLMService.saveZhipuApiKey(_zhipuApiKey);
+          }
+
           await LLMService.saveConfig(config);
           if (context.mounted) {
             Navigator.pop(context, true);
