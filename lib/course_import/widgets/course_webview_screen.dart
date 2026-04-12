@@ -9,7 +9,7 @@ import 'package:webview_win_floating/webview_win_floating.dart';
 import 'dart:io';
 import 'dart:convert'; // 🚀 添加了 jsonDecode 必需的包
 import '../../storage_service.dart';
-import 'package:http/http.dart' as http;
+
 
 class CourseWebViewScreen extends StatefulWidget {
   final String initialUrl;

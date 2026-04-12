@@ -363,7 +363,7 @@ class TodoGroup {
 // 【规范】
 //   - 所有时间字段在存储、传输中统一使用 UTC 毫秒时间戳 (int)
 //   - DateTime.now().millisecondsSinceEpoch 与 JS Date.now()
-//     均为 UTC epoch，天然一致，无需 any +8/-8 偏移
+//     均为 UTC epoch，天然一致，无需 +8/-8 偏移
 //   - 显示给用户时：DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal()
 //
 // 【历史数据兼容】新数据统一 int ms；历史数据库中可能存有 ISO 字符串，兼容解析不再写入。

@@ -332,20 +332,27 @@ export default {
         const batchStatements = [];
 
         // 0. 容错建表与增量表架构更新
-        await DB.prepare(`CREATE TABLE IF NOT EXISTS todo_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT UNIQUE, user_id INTEGER, name TEXT, is_expanded INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at INTEGER, created_at INTEGER)`).run();
+        await DB.prepare(`CREATE TABLE IF NOT EXISTS todo_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT, user_id INTEGER, name TEXT, is_expanded INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at INTEGER, created_at INTEGER, UNIQUE(user_id, uuid))`).run();
 
         const todoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
-        const todoColNames = new Set(todoColumns.results.map(r => r.name));
+        let todoColNames = new Set(todoColumns.results.map(r => r.name));
         
         if (!todoColNames.has('group_id')) {
-            try { await DB.prepare("ALTER TABLE todos ADD COLUMN group_id TEXT").run(); } catch(e) {}
+            try { 
+                await DB.prepare("ALTER TABLE todos ADD COLUMN group_id TEXT").run(); 
+                // 刷新列名集合
+                const refreshedTodoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
+                todoColNames = new Set(refreshedTodoColumns.results.map(r => r.name));
+            } catch(e) {
+                console.error("Failed to add group_id column:", e.message);
+            }
         }
 
         const hasRecurrence       = todoColNames.has('recurrence');
         const hasCustomInterval   = todoColNames.has('custom_interval_days');
         const hasRecurrenceEnd    = todoColNames.has('recurrence_end_date');
         const hasRemark           = todoColNames.has('remark');
-        const hasGroupId          = todoColNames.has('group_id') || true; // 强制设为真，因为上面刚加了
+        const hasGroupId          = todoColNames.has('group_id');
 
         if (Array.isArray(todos)) {
           for (const t of todos) {
@@ -369,6 +376,25 @@ export default {
             if (hasCreatedDate) {
               const raw = t.created_date ?? t.createdDate;
               tCreatedDate = raw != null ? (normalizeToMs(raw) || null) : null;
+            }
+
+            const extraCols = [
+              hasRecurrence     ? 'recurrence'            : null,
+              hasCustomInterval ? 'custom_interval_days'  : null,
+              hasRecurrenceEnd  ? 'recurrence_end_date'   : null,
+              hasRemark         ? 'remark'                : null,
+              hasGroupId        ? 'group_id'              : null,
+            ].filter(Boolean);
+            const extraColStr = extraCols.length > 0 ? ', ' + extraCols.join(', ') : '';
+
+            let existing = await DB.prepare(
+              `SELECT id, version, created_at, due_date, created_date, updated_at, uuid${extraColStr} FROM todos WHERE uuid = ? AND user_id = ?`
+            ).bind(tUuid, authUserId).first();
+
+            if (!existing) {
+              existing = await DB.prepare(
+                `SELECT id, version, created_at, due_date, created_date, updated_at, uuid${extraColStr} FROM todos WHERE user_id = ? AND content = ? AND (uuid IS NULL OR uuid = '')`
+              ).bind(authUserId, tContent).first();
             }
 
             const isRecurrenceProvided = hasRecurrence && ('recurrence' in t);
@@ -396,27 +422,8 @@ export default {
               tGroupId = t.group_id;
             } else if (t.hasOwnProperty('groupId')) {
               tGroupId = t.groupId;
-            } else if (existing) {
+            } else if (existing && hasGroupId) {
               tGroupId = existing.group_id;
-            }
-
-            const extraCols = [
-              hasRecurrence     ? 'recurrence'            : null,
-              hasCustomInterval ? 'custom_interval_days'  : null,
-              hasRecurrenceEnd  ? 'recurrence_end_date'   : null,
-              hasRemark         ? 'remark'                : null,
-              'group_id',
-            ].filter(Boolean);
-            const extraColStr = extraCols.length > 0 ? ', ' + extraCols.join(', ') : '';
-
-            let existing = await DB.prepare(
-              `SELECT id, version, created_at, due_date, created_date, updated_at, uuid${extraColStr} FROM todos WHERE uuid = ? AND user_id = ?`
-            ).bind(tUuid, authUserId).first();
-
-            if (!existing) {
-              existing = await DB.prepare(
-                `SELECT id, version, created_at, due_date, created_date, updated_at, uuid${extraColStr} FROM todos WHERE user_id = ? AND content = ? AND (uuid IS NULL OR uuid = '')`
-              ).bind(authUserId, tContent).first();
             }
 
             if (!existing) {
@@ -428,7 +435,7 @@ export default {
               if (hasCustomInterval) { insertCols += ', custom_interval_days';  insertPlaceholders += ', ?'; insertValues.push(tCustomIntervalDays); }
               if (hasRecurrenceEnd)  { insertCols += ', recurrence_end_date';   insertPlaceholders += ', ?'; insertValues.push(tRecurrenceEndDate); }
               if (hasRemark)         { insertCols += ', remark';                insertPlaceholders += ', ?'; insertValues.push(tRemark); }
-              insertCols += ', group_id'; insertPlaceholders += ', ?'; insertValues.push(tGroupId);
+              if (hasGroupId)        { insertCols += ', group_id';              insertPlaceholders += ', ?'; insertValues.push(tGroupId); }
 
               let stmt = DB.prepare(`INSERT INTO todos (${insertCols}) VALUES (${insertPlaceholders})`);
               batchStatements.push(stmt.bind(...insertValues));
@@ -466,8 +473,10 @@ export default {
                   setValues.push(isRemarkProvided ? tRemark : (existing.remark ?? null));
                 }
                 
-                setClauses.push('group_id = ?');
-                setValues.push(tGroupId);
+                if (hasGroupId) {
+                  setClauses.push('group_id = ?');
+                  setValues.push(tGroupId);
+                }
 
                 setValues.push(existing.id);
                 let stmt = DB.prepare(`UPDATE todos SET ${setClauses.join(', ')} WHERE id = ?`);
@@ -1061,7 +1070,7 @@ export default {
             batchStatements.push(DB.prepare(`
               INSERT INTO todo_groups (uuid, user_id, name, is_expanded, is_deleted, version, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(uuid) DO UPDATE SET
+              ON CONFLICT(user_id, uuid) DO UPDATE SET
                 name=excluded.name, is_expanded=excluded.is_expanded, is_deleted=excluded.is_deleted, version=excluded.version, updated_at=excluded.updated_at
               WHERE excluded.updated_at > todo_groups.updated_at OR (excluded.updated_at = todo_groups.updated_at AND excluded.version > todo_groups.version)
             `).bind(g.uuid, getMappedUserId(g.user_id), g.name, g.is_expanded, g.is_deleted, g.version, g.created_at, g.updated_at));
@@ -1085,7 +1094,9 @@ export default {
 		return errorResponse("S2S 验证失败：非法访问", 401);
 	  }
 
-	  try {
+		// 容错：导出前确保表存在
+		await DB.prepare(`CREATE TABLE IF NOT EXISTS todo_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT, user_id INTEGER, name TEXT, is_expanded INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at INTEGER, created_at INTEGER, UNIQUE(user_id, uuid))`).run();
+
 		// 获取所有表的全量数据
 		const payload = {
 			users: (await DB.prepare("SELECT * FROM users").all()).results,

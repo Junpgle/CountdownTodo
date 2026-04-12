@@ -950,9 +950,10 @@ class StorageService {
               sItem.updatedAt > allLocalTodos[idx].updatedAt) {
             allLocalTodos[idx] = sItem;
             hasChanges = true;
-          } else if (sItem.groupId != allLocalTodos[idx].groupId) {
-            // Even if overall version is not newer, accept group_id changes
-            // to ensure folder assignments always propagate across devices
+          } else if (sItem.groupId != allLocalTodos[idx].groupId &&
+              sItem.updatedAt >= allLocalTodos[idx].updatedAt) {
+            // Only accept group_id changes if server item is at least as new
+            // as local item, preserving LWW semantics for folder assignments.
             allLocalTodos[idx].groupId = sItem.groupId;
             hasChanges = true;
           }

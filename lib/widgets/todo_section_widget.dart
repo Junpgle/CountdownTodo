@@ -2640,7 +2640,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
               maxLines: 3,
               minLines: 1),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          DropdownButtonFormField<String?>(
             value: _selectedGroupId,
             decoration: InputDecoration(
               labelText: '所属文件夹 (可选)',
@@ -2649,11 +2649,11 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                   OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
             items: [
-              const DropdownMenuItem<String>(
+              const DropdownMenuItem<String?>(
                 value: null,
                 child: Text('无计划 / 未分类'),
               ),
-              ...widget.todoGroups.map((g) => DropdownMenuItem<String>(
+              ...widget.todoGroups.map((g) => DropdownMenuItem<String?>(
                     value: g.id,
                     child: Text(g.name),
                   )),
