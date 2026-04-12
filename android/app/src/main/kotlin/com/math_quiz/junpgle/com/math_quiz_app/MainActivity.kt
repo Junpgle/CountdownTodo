@@ -1401,8 +1401,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         //  为图片生成的待办添加「查看图片」动作
         // ==========================================
-        var viewImagePendingIntent: PendingIntent? = null
-        if (!imagePath.isNullOrEmpty()) {
+        val viewImagePendingIntent = if (!imagePath.isNullOrEmpty()) {
+            var pi: PendingIntent? = null
             try {
                 val file = File(imagePath)
                 if (file.exists()) {
@@ -1411,7 +1411,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                         putExtra("analysis_image_path", imagePath)
                     }
-                    viewImagePendingIntent = PendingIntent.getActivity(
+                    pi = PendingIntent.getActivity(
                         this,
                         notificationId + 1000,
                         openAppWithImageIntent,
@@ -1420,7 +1420,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val viewAction = NotificationCompat.Action.Builder(
                         IconCompat.createWithResource(this, R.drawable.ic_notification),
                         "查看图片",
-                        viewImagePendingIntent
+                        pi
                     ).build()
                     builder.addAction(viewAction)
                     Log.d(TAG, "📸 Added VIEW_IMAGE(Internal) action for path: $imagePath")
@@ -1428,7 +1428,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             } catch (e: Exception) {
                 Log.e(TAG, "Add viewImageAction error", e)
             }
-        }
+            pi
+        } else null
 
         // ==========================================
         //  为文本生成的待办添加「查看原文」动作
@@ -1452,29 +1453,27 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             builder.addAction(viewTextAction)
             Log.d(TAG, "📄 Added VIEW_TEXT action")
         }
-                Log.e(TAG, "📸 Failed to add VIEW_IMAGE action", e)
-            }
-        }
 
         // ==========================================
         //  为番茄钟添加「提前完成」和「放弃专注」按钮
         // ==========================================
-        var pomodoroFinishPendingIntent: PendingIntent? = null
-        var pomodoroAbandonPendingIntent: PendingIntent? = null
+        val pomodoroFinishPendingIntent: PendingIntent?
+        val pomodoroAbandonPendingIntent: PendingIntent?
         
         if (channelId == POMODORO_CHANNEL_ID && isOngoing) {
             // 提前完成 - 直接启动Activity
             val finishIntent = Intent(this, MainActivity::class.java).apply {
                 putExtra("pomodoro_action", "com.math_quiz.POMODORO_FINISH_EARLY")
             }
-            pomodoroFinishPendingIntent = PendingIntent.getActivity(
+            val fPI = PendingIntent.getActivity(
                 this, 101, finishIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            pomodoroFinishPendingIntent = fPI
             val finishAction = NotificationCompat.Action.Builder(
                 IconCompat.createWithResource(this, R.drawable.ic_done),
                 "提前完成",
-                pomodoroFinishPendingIntent
+                fPI
             ).build()
             builder.addAction(finishAction)
 
@@ -1482,16 +1481,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             val abandonIntent = Intent(this, MainActivity::class.java).apply {
                 putExtra("pomodoro_action", "com.math_quiz.POMODORO_ABANDON")
             }
-            pomodoroAbandonPendingIntent = PendingIntent.getActivity(
+            val aPI = PendingIntent.getActivity(
                 this, 102, abandonIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            pomodoroAbandonPendingIntent = aPI
             val abandonAction = NotificationCompat.Action.Builder(
                 IconCompat.createWithResource(this, R.drawable.ic_cancel),
                 "放弃专注",
-                pomodoroAbandonPendingIntent
+                aPI
             ).build()
             builder.addAction(abandonAction)
+        } else {
+            pomodoroFinishPendingIntent = null
+            pomodoroAbandonPendingIntent = null
         }
 
         // ==========================================
