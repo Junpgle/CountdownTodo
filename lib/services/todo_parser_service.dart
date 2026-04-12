@@ -38,6 +38,19 @@ class ParsedTodoResult {
   });
 
   bool get hasContent => title.isNotEmpty;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'remark': remark,
+      'isAllDay': isAllDay,
+      'startTime': startTime?.toIso8601String(),
+      'endTime': endTime?.toIso8601String(),
+      'recurrence': recurrence.name,
+      'customIntervalDays': customIntervalDays,
+      'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
+    };
+  }
 }
 
 // 内部使用的记录坐标类

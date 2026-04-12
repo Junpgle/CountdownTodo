@@ -11,12 +11,14 @@ import '../utils/page_transitions.dart';
 
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
+  final Function(List<TodoItem>)? onTodosBatchAdded;
   final Function(List<Map<String, dynamic>>, String?, String?)?
       onLLMResultsParsed;
 
   const AddTodoScreen({
     super.key,
     required this.onTodoAdded,
+    this.onTodosBatchAdded,
     this.onLLMResultsParsed,
   });
 
@@ -157,6 +159,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     });
 
     if (_parsedResults.isNotEmpty) {
+      // 🚀 如果开启了确认回调且结果多于1个，直接去确认页面批量处理
+      if (widget.onLLMResultsParsed != null && _parsedResults.length > 1) {
+        final maps = _parsedResults.map((e) => e.toMap()).toList();
+        widget.onLLMResultsParsed!(maps, null, _aiInputCtrl.text);
+        return;
+      }
+
       _applyParsedResult(_parsedResults[0]);
       setState(() => _selectedTabIndex = 0);
       if (mounted) {
@@ -288,6 +297,32 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
 
     widget.onTodoAdded(todo);
+    Navigator.pop(context);
+  }
+
+  void _addBatchTodos() {
+    if (_parsedResults.isEmpty) return;
+
+    final List<TodoItem> todos = _parsedResults.map((r) {
+      return TodoItem(
+        title: r.title,
+        recurrence: r.recurrence,
+        customIntervalDays: r.customIntervalDays,
+        recurrenceEndDate: r.recurrenceEndDate,
+        dueDate: r.endTime,
+        createdDate: (r.startTime ?? DateTime.now()).millisecondsSinceEpoch,
+        remark: r.remark,
+        originalText: _currentOriginalText,
+      );
+    }).toList();
+
+    if (widget.onTodosBatchAdded != null) {
+      widget.onTodosBatchAdded!(todos);
+    } else {
+      for (var t in todos) {
+        widget.onTodoAdded(t);
+      }
+    }
     Navigator.pop(context);
   }
 
@@ -645,6 +680,22 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   ),
               ],
             ),
+            if (_parsedResults.length > 1) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _addBatchTodos,
+                  icon: const Icon(Icons.done_all),
+                  label: Text("一键添加全部 ${_parsedResults.length} 个待办"),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (_llmRawResponse != null) ...[
               const SizedBox(height: 12),
               ExpansionTile(

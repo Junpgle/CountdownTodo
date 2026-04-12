@@ -2302,6 +2302,26 @@ class _HomeDashboardState extends State<HomeDashboard>
                     });
                   }
                 },
+                onTodosBatchAdded: (todos) async {
+                  final allTodos =
+                      await StorageService.getTodos(widget.username);
+                  allTodos.addAll(todos);
+                  await StorageService.saveTodos(widget.username, allTodos);
+                  await _saveTodosToSharedFile(allTodos);
+                  FloatWindowService.triggerReminderCheck();
+                  FloatWindowService.invalidateSlotCache();
+                  _syncTodoNotification();
+                  await WidgetService.updateTodoWidget(allTodos);
+                  if (mounted) {
+                    setState(() {
+                      _todos = List<TodoItem>.from(allTodos);
+                    });
+                  }
+                },
+                onLLMResultsParsed: (results, imagePath, originalText) {
+                  Navigator.pop(context); // 关闭添加页面
+                  _navigateToTodoConfirm(results, imagePath, originalText);
+                },
               ),
               sourceKey: _fabTodoKey,
               sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
