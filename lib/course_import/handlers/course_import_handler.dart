@@ -9,6 +9,7 @@ import '../parsers/hfut_parser.dart';
 import '../widgets/zf_time_config_dialog.dart';
 import '../widgets/course_webview_screen.dart';
 import '../../utils/page_transitions.dart';
+import '../../storage_service.dart';
 
 class CourseImportHandler {
   final BuildContext context;
@@ -159,6 +160,8 @@ class CourseImportHandler {
 
   Future<void> importFromWebView() async {
     // 🚀 1. 弹出高校选择器，预设地址
+    final String? lastUrl = await StorageService.getLastCourseImportUrl();
+    
     final Map<String, String> schoolUrls = {
       '合肥工业大学': 'https://one.hfut.edu.cn/',
       '厦门大学': 'https://jw.xmu.edu.cn/gsapp/sys/wdkbapp/*default/index.do',
@@ -196,6 +199,13 @@ class CourseImportHandler {
                   subtitle: Text(e.value, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
                   onTap: () => Navigator.pop(context, e.value),
                 )).toList(),
+                if (lastUrl != null && !schoolUrls.values.contains(lastUrl))
+                  ListTile(
+                    leading: const Icon(Icons.history_rounded, color: Colors.orangeAccent),
+                    title: const Text('上次抓取的链接'),
+                    subtitle: Text(lastUrl, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onTap: () => Navigator.pop(context, lastUrl),
+                  ),
                 ListTile(
                   leading: const Icon(Icons.input_rounded, color: Colors.grey),
                   title: const Text('手动输入'),

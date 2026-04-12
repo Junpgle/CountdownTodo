@@ -83,6 +83,7 @@ class StorageService {
       "notify_pomodoro_end_enabled";
   static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
   static const String KEY_COURSE_REMINDER_MINUTES = "course_reminder_minutes";
+  static const String KEY_LAST_COURSE_IMPORT_URL = "last_course_import_url";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -1549,5 +1550,15 @@ class StorageService {
   static Future<void> setTodoFoldersInline(bool inline) async {
     final prefs = await StorageService.prefs;
     await prefs.setBool(KEY_TODO_FOLDERS_INLINE, inline);
+  }
+
+  static Future<void> saveLastCourseImportUrl(String url) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_LAST_COURSE_IMPORT_URL, url);
+  }
+
+  static Future<String?> getLastCourseImportUrl() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getString(KEY_LAST_COURSE_IMPORT_URL);
   }
 }

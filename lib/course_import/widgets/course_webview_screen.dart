@@ -7,6 +7,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 // Import for Windows features.
 import 'package:webview_win_floating/webview_win_floating.dart';
 import 'dart:io';
+import '../../storage_service.dart';
 
 class CourseWebViewScreen extends StatefulWidget {
   final String initialUrl;
@@ -179,6 +180,13 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
           cleanJson = cleanJson.substring(1, cleanJson.length - 1).replaceAll(r'\"', '"');
         }
         debugPrint('[WebViewCapture] JS Spy SUCCESS! Length: ${cleanJson.length}');
+        
+        // 🚀 保存当前链接供下次快捷抓取
+        final currentUrl = await _controller?.currentUrl();
+        if (currentUrl != null) {
+          await StorageService.saveLastCourseImportUrl(currentUrl);
+        }
+        
         Navigator.pop(context, cleanJson);
         return;
       }
@@ -203,6 +211,11 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
       }
 
       if (mounted) {
+        // 🚀 保存当前链接供下次快捷抓取
+        final currentUrl = await _controller?.currentUrl();
+        if (currentUrl != null) {
+          await StorageService.saveLastCourseImportUrl(currentUrl);
+        }
         Navigator.pop(context, processedHtml);
       }
     } catch (e) {
