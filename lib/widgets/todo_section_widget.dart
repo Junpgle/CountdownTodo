@@ -1396,15 +1396,42 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       );
     }
 
-    return Dismissible(
-      key: key ?? _getTodoDismissKey('dismiss', todo.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          color: Colors.redAccent.shade400,
-          borderRadius: BorderRadius.circular(14),
+    return LongPressDraggable<String>(
+      data: todo.id,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.8,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12, spreadRadius: 1)],
+          ),
+          child: Text(todo.title, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
         ),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.3,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(todo.title, style: TextStyle(color: titleColor, fontSize: 14.5)),
+        ),
+      ),
+      child: Dismissible(
+        key: key ?? _getTodoDismissKey('dismiss', todo.id),
+        direction: DismissDirection.endToStart,
+        background: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          decoration: BoxDecoration(
+            color: Colors.redAccent.shade400,
+            borderRadius: BorderRadius.circular(14),
+          ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         child: const Icon(
@@ -1702,6 +1729,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             ),
           ),
         ),
+        ),
       ),
     );
   }
@@ -1897,6 +1925,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
     // 1. Process Folders
     for (var g in widget.todoGroups) {
+      if (g.isDeleted) continue;
       final gTodos = groupTodosMap[g.id] ?? [];
       if (gTodos.isEmpty && !g.isExpanded) continue;
 
@@ -1945,17 +1974,45 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               widget.onTodosChanged(widget.todos);
             }
           },
-          onDelete: () {
-            StorageService.deleteTodoGroupGlobally(widget.username, g.id);
-            final newList = widget.todoGroups.where((group) => group.id != g.id).toList();
-            widget.onGroupsChanged(newList);
+          onTodoRemoved: (todoId) {
+            final idx = widget.todos.indexWhere((t) => t.id == todoId);
+            if (idx != -1 && widget.todos[idx].groupId != null) {
+              setState(() {
+                widget.todos[idx].groupId = null;
+                widget.todos[idx].markAsChanged();
+              });
+              widget.onTodosChanged(widget.todos);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('自由了！已移出文件夹')),
+              );
+            }
+          },
+          onDelete: () async {
+            final idx = widget.todoGroups.indexWhere((x) => x.id == g.id);
+            if (idx != -1) {
+              widget.todoGroups[idx].isDeleted = true;
+              widget.todoGroups[idx].markAsChanged();
+            }
+            await StorageService.deleteTodoGroupGlobally(widget.username, g.id);
+            widget.onGroupsChanged(widget.todoGroups);
             widget.onRefreshRequested();
           },
           onTodoTap: (todo) => _editTodo(todo, context),
         ),
       );
 
-      final groupStartMs = gTodos.isNotEmpty ? (gTodos.first.createdDate ?? gTodos.first.createdAt) : 0;
+      // Calculate folder progress: use the highest time-elapsed ratio among undone todos
+      double groupProgress = 0.0;
+      for (var t in gTodos) {
+        if (t.isDone) continue;
+        final cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
+        final end = t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+        final totalMin = end.difference(cDate).inMinutes;
+        if (totalMin > 0 && now.isAfter(cDate)) {
+          final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+          if (p > groupProgress) groupProgress = p;
+        }
+      }
       
       if (_inlineFolders) {
         placeItem(_SortedDisplayItem(
@@ -1964,7 +2021,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           date: minDate,
           widget: w,
           isDone: isAllDone,
-          startMs: groupStartMs,
+          startMs: 0,
+          progress: groupProgress,
         ));
       } else {
         separateGroupWidgets.add(w);
@@ -1980,20 +2038,40 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       final isPast = t.dueDate != null && DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day).isBefore(today);
       final isFuture = t.dueDate != null && DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day).isAfter(today);
 
+      // Calculate individual todo progress
+      double todoProgress = 0.0;
+      {
+        final cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
+        final end = t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+        final totalMin = end.difference(cDate).inMinutes;
+        if (totalMin > 0 && now.isAfter(cDate)) {
+          todoProgress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+        }
+      }
+
       placeItem(_SortedDisplayItem(
         todo: t,
         group: null,
         date: t.dueDate,
-        widget: const SizedBox.shrink(), // Placeholder, we build it directly when mapping
+        widget: const SizedBox.shrink(),
         isDone: t.isDone,
         startMs: t.createdDate ?? t.createdAt,
+        progress: todoProgress,
       ));
     }
 
     void sortItems(List<_SortedDisplayItem> list) {
       list.sort((a, b) {
+        // 1. Undone first
         if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-        return a.startMs.compareTo(b.startMs);
+        // 2. Higher progress (more urgent / more time elapsed) first
+        final progressCmp = b.progress.compareTo(a.progress);
+        if (progressCmp != 0) return progressCmp;
+        // 3. Earlier deadline first
+        if (a.date != null && b.date != null) return a.date!.compareTo(b.date!);
+        if (a.date != null) return -1;
+        if (b.date != null) return 1;
+        return 0;
       });
     }
 
@@ -2256,7 +2334,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               child: SectionHeader(
                 title: "待办清单",
                 icon: Icons.check_circle_outline,
-                onAdd: showAddTodoDialog,
                 actionIcon: Icons.create_new_folder_outlined,
                 actionTooltip: "管理文件夹",
                 isLight: widget.isLight,
@@ -2786,6 +2863,7 @@ class _SortedDisplayItem {
   final Widget widget;
   final bool isDone;
   final int startMs;
+  final double progress;
 
   _SortedDisplayItem({
     this.todo,
@@ -2793,6 +2871,7 @@ class _SortedDisplayItem {
     this.date,
     required this.widget,
     required this.isDone,
-    required this.startMs,
+    this.startMs = 0,
+    this.progress = 0.0,
   });
 }

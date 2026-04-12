@@ -2305,6 +2305,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             onPressed: () => PageTransitions.pushFromRect(
               context: context,
               page: AddTodoScreen(
+                todoGroups: _todoGroups,
                 onTodoAdded: (todo) async {
                   final allTodos =
                       await StorageService.getTodos(widget.username);
