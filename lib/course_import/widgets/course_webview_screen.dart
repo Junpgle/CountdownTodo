@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 // Import for Android features.
-import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart' as wv_android;
 // Import for iOS features.
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 // Import for Windows features.
 import 'package:webview_win_floating/webview_win_floating.dart';
 import 'dart:io';
 import '../../storage_service.dart';
+import 'package:http/http.dart' as http;
 
 class CourseWebViewScreen extends StatefulWidget {
   final String initialUrl;
@@ -102,9 +103,9 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
       )
       ..loadRequest(Uri.parse(widget.initialUrl));
 
-    if (controller.platform is AndroidWebViewController) {
-      AndroidWebViewController.enableDebugging(true);
-      (controller.platform as AndroidWebViewController)
+    if (controller.platform is wv_android.AndroidWebViewController) {
+      wv_android.AndroidWebViewController.enableDebugging(true);
+      (controller.platform as wv_android.AndroidWebViewController)
           .setMediaPlaybackRequiresUserGesture(false);
     }
 
@@ -131,6 +132,45 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
     });
 
     try {
+      // 🚀 方案 1：针对合工大，优先尝试直接从后台接口抓取 JSON (最稳)
+      final currentUrl = await _controller?.currentUrl();
+      debugPrint('[WebViewCapture] Current URL: $currentUrl');
+      if (currentUrl != null && currentUrl.contains('hfut.edu.cn')) {
+        String? cookieStr;
+        try {
+          // 🚀 优先尝试从 JavaScript 环境获取 Cookie
+          final Object? jsCookie = await _controller?.runJavaScriptReturningResult('document.cookie');
+          cookieStr = jsCookie?.toString();
+          if (cookieStr != null && cookieStr.startsWith('"') && cookieStr.endsWith('"')) {
+            cookieStr = cookieStr.substring(1, cookieStr.length - 1);
+          }
+          
+          debugPrint('[WebViewCapture] Cookie keywords check: contains JSESSIONID=${cookieStr?.contains('JSESSIONID')}, SERVERID=${cookieStr?.contains('SERVERID')}, CAS=${cookieStr?.contains('CAS')}');
+
+          if (cookieStr != null && (cookieStr.contains('JSESSIONID') || cookieStr.contains('SERVERID') || cookieStr.contains('CAS'))) {
+            debugPrint('[WebViewCapture] Detected HFUT, attempting direct API POST...');
+            final response = await http.post(
+              Uri.parse('https://jxglstu.hfut.edu.cn/eams5-student/ws/schedule-table/datum'),
+              headers: {
+                'Cookie': cookieStr,
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36',
+              },
+            ).timeout(const Duration(seconds: 10));
+
+            if (response.statusCode == 200 && response.body.contains('lessonList')) {
+              debugPrint('[WebViewCapture] Direct API Success! Length: ${response.body.length}');
+              // 打印前 500 个字符进行调试
+              debugPrint('[WebViewCapture] Response Preview: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}');
+              await StorageService.saveLastCourseImportUrl(currentUrl);
+              if (mounted) Navigator.pop(context, response.body);
+              return;
+            }
+          }
+        } catch (e) {
+          debugPrint('[WebViewCapture] Direct API Attempt failed: $e');
+        }
+      }
+
       // 🚀 核心改进：深度扫描浏览器内存中的课表变量
       final String? jsData = await _controller?.runJavaScriptReturningResult('''
         (function() {

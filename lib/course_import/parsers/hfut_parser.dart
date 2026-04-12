@@ -16,11 +16,15 @@ class HfutScheduleParser {
     String input = _preprocessInput(rawInput);
     List<CourseItem> initialCourses = [];
 
-    // 1. 优先尝试使用聚在工大 JSON 结构解析 (兼容旧版 API)
+    // 1. 优先尝试使用 JSON 结构解析 (兼容原生 EAMS5 Datum 接口 和 聚在工大旧版 API)
     final data = _extractData(input);
-    if (data != null) {
-      initialCourses = _parseJuZaiJson(data);
-    } else {
+
+    // 【修改点】防御性校验：确保提取到了真实数据，如果 lessonList 为空，说明 JS 抓取失败，应当向下走降级
+    if (data != null && (data['lessonList'] as List?)?.isNotEmpty == true) {
+      initialCourses = _parseJson(data);
+    }
+
+    if (initialCourses.isEmpty) {
       // 2. 尝试使用教务系统原生 HTML TaskActivity 解析 (兼容直接抓取官方网页)
       final eams5Courses = _parseEams5TaskActivity(input);
       if (eams5Courses != null && eams5Courses.isNotEmpty) {
@@ -213,10 +217,21 @@ class HfutScheduleParser {
               .trim();
           String roomName = roomRaw.isNotEmpty ? roomRaw : '未知教室';
 
+          // 🚀 核心改进：从文本片段中尝试提取教师姓名
+          String teacherName = '未知教师';
+          // 常见格式：(张三), [李四], {王五}, 或者空括号
+          final teacherMatch = RegExp(r'[\(（]([^\d周单双]+)[\)）]').firstMatch(textToParse);
+          if (teacherMatch != null) {
+            teacherName = teacherMatch.group(1)!.trim();
+          } else if (textToParse.contains('教师') || textToParse.contains('讲师')) {
+             final tMatch = RegExp(r'(?:教师|讲师)[:：]\s*(\S+)').firstMatch(textToParse);
+             if (tMatch != null) teacherName = tMatch.group(1)!;
+          }
+
           for (int week in weekList) {
             courses.add(CourseItem(
               courseName: courseName,
-              teacherName: '未知教师',
+              teacherName: teacherName,
               date: '',
               weekday: weekday,
               startTime: startTime,
@@ -395,7 +410,16 @@ class HfutScheduleParser {
           }
         }
       }
-      if (names.isNotEmpty) teacherName = names.join(',');
+      if (names.isNotEmpty) {
+        teacherName = names.join(',');
+      } else {
+        // 🚀 进一步尝试：匹配 `teachers : [ { id:..., name:"XXX" } ]` 或类似结构
+        final teachersArrayRegex = RegExp(r'''teachers\s*:\s*\[\s*\{\s*[^}]*name\s*:\s*(?:"([^"]+)"|'([^']+)')''');
+        final teachersMatch = teachersArrayRegex.firstMatch(prevPart);
+        if (teachersMatch != null) {
+          teacherName = teachersMatch.group(1) ?? teachersMatch.group(2) ?? '未知教师';
+        }
+      }
 
       int endArgsIdx = currentPart.indexOf(');');
       if (endArgsIdx == -1) continue;
@@ -470,26 +494,94 @@ class HfutScheduleParser {
     return args;
   }
 
-  static List<CourseItem> _parseJuZaiJson(Map<String, dynamic> data) {
+  /// 通用 JSON 结构解析 (兼容原生 EAMS5 与聚在工大结构)
+  static List<CourseItem> _parseJson(Map<String, dynamic> data) {
     final lessonList = data['lessonList'] as List? ?? [];
     final scheduleList = data['scheduleList'] as List? ?? [];
-    Map<int, dynamic> lessonMap = {for (var item in lessonList) if (item['id'] != null) item['id']: item};
-    List<CourseItem> courses = [];
-    for (var schedule in scheduleList) {
-      final lessonId = schedule['lessonId'];
-      final lessonInfo = lessonMap[lessonId];
-      if (lessonInfo != null) {
-        String roomName = schedule['room'] != null ? (schedule['room']['nameZh'] ?? schedule['room']['name'] ?? '未知教室') : '未知教室';
-        courses.add(CourseItem(
-          courseName: lessonInfo['courseName']?.toString().trim() ?? '未知课程',
-          teacherName: schedule['personName'] ?? '未知教师', date: schedule['date'] ?? '',
-          weekday: schedule['weekday'] ?? 1, startTime: schedule['startTime'] ?? 0,
-          endTime: schedule['endTime'] ?? 0, weekIndex: schedule['weekIndex'] ?? 1,
-          roomName: roomName, lessonType: schedule['lessonType'] ?? '',
-        ));
+    
+    print('[HfutParser] Parsing JSON: ${lessonList.length} lessons, ${scheduleList.length} schedules');
+
+    // 【修改点】使用 String 作为 Key，防止 `int` 和 `String` 的隐式类型崩溃异常
+    Map<String, dynamic> lessonMap = {};
+    Map<String, String> teacherMap = {};
+
+    for (var item in lessonList) {
+      if (item['id'] != null) {
+        String lessonId = item['id'].toString();
+        lessonMap[lessonId] = item;
+
+        // 核心：从 EAMS5 原生结构的 teacherAssignmentList 提取教师名称
+        List<String> teachers = [];
+        final assignments = item['teacherAssignmentList'] as List?;
+        if (assignments != null) {
+          for (var assign in assignments) {
+            if (assign['name'] != null) {
+              teachers.add(assign['name'].toString().trim());
+            }
+          }
+        }
+        if (teachers.isNotEmpty) {
+          teacherMap[lessonId] = teachers.join(', ');
+          print('[HfutParser] Lesson $lessonId teachers found: ${teacherMap[lessonId]}');
+        } else {
+          print('[HfutParser] Lesson $lessonId NO teachers in teacherAssignmentList');
+          // Try another fallback for teacher name inside lesson item
+          if (item['teacherNames'] != null) {
+            teacherMap[lessonId] = item['teacherNames'].toString();
+            print('[HfutParser] Using fallback teacherNames: ${teacherMap[lessonId]}');
+          } else if (item['teachers'] != null && item['teachers'] is List) {
+            String names = (item['teachers'] as List).map((t) => t['name']?.toString() ?? '').where((n) => n.isNotEmpty).join(', ');
+            if (names.isNotEmpty) {
+              teacherMap[lessonId] = names;
+              print('[HfutParser] Using fallback teachers list: $names');
+            }
+          }
+        }
       }
     }
-    courses.sort((a, b) { int dateCmp = a.date.compareTo(b.date); return dateCmp != 0 ? dateCmp : a.startTime.compareTo(b.startTime); });
+
+    List<CourseItem> courses = [];
+    for (var schedule in scheduleList) {
+      String? lessonId;
+      // 【修改点】兼容不同版本的 schedule 结构取 id (防空指针)
+      if (schedule['lessonId'] != null) {
+        lessonId = schedule['lessonId'].toString();
+      } else if (schedule['lesson'] != null && schedule['lesson']['id'] != null) {
+        lessonId = schedule['lesson']['id'].toString();
+      }
+
+      if (lessonId != null) {
+        final lessonInfo = lessonMap[lessonId];
+        if (lessonInfo != null) {
+          String roomName = schedule['room'] != null ? (schedule['room']['nameZh'] ?? schedule['room']['name'] ?? '未知教室') : '未知教室';
+
+          // 优先使用聚在结构的 schedule['personName']，如果为空，则使用刚才提取的 teacherMap 原生数据
+          String teacherName = schedule['personName']?.toString() ?? teacherMap[lessonId] ?? '未知教师';
+          if (teacherName == '未知教师' || teacherName.isEmpty) {
+            print('[HfutParser] Warning: Missing teacher for schedule of lesson $lessonId');
+          }
+          if (teacherName.isEmpty || teacherName == 'null') teacherName = '未知教师';
+
+          courses.add(CourseItem(
+            courseName: lessonInfo['courseName']?.toString().trim() ?? '未知课程',
+            teacherName: teacherName,
+            date: schedule['date']?.toString() ?? '',
+            weekday: (schedule['weekday'] as num?)?.toInt() ?? 1,
+            startTime: (schedule['startTime'] as num?)?.toInt() ?? 0,
+            endTime: (schedule['endTime'] as num?)?.toInt() ?? 0,
+            weekIndex: (schedule['weekIndex'] as num?)?.toInt() ?? 1,
+            roomName: roomName,
+            lessonType: schedule['lessonType']?.toString() ?? '',
+          ));
+        }
+      }
+    }
+
+    courses.sort((a, b) {
+      int dateCmp = a.date.compareTo(b.date);
+      return dateCmp != 0 ? dateCmp : a.startTime.compareTo(b.startTime);
+    });
+
     return courses;
   }
 
