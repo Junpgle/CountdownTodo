@@ -1816,23 +1816,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     required bool expanded,
     required Widget child,
   }) {
-    return ClipRect(
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return SizeTransition(
-            sizeFactor: animation,
-            axis: Axis.vertical,
-            axisAlignment: 0.0,
-            child: FadeTransition(opacity: animation, child: child),
-          );
-        },
-        child: expanded
-            ? Container(key: const ValueKey('expanded'), child: child)
-            : const SizedBox.shrink(key: ValueKey('collapsed')),
-      ),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.fastOutSlowIn,
+      alignment: Alignment.topCenter,
+      child: expanded ? child : const SizedBox.shrink(),
     );
   }
 
