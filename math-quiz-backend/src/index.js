@@ -336,10 +336,10 @@ export default {
 
         const todoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
         let todoColNames = new Set(todoColumns.results.map(r => r.name));
-        
+
         if (!todoColNames.has('group_id')) {
-            try { 
-                await DB.prepare("ALTER TABLE todos ADD COLUMN group_id TEXT").run(); 
+            try {
+                await DB.prepare("ALTER TABLE todos ADD COLUMN group_id TEXT").run();
                 // 刷新列名集合
                 const refreshedTodoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
                 todoColNames = new Set(refreshedTodoColumns.results.map(r => r.name));
@@ -416,7 +416,7 @@ export default {
 
             const isRemarkProvided = hasRemark && ('remark' in t);
             const tRemark = isRemarkProvided ? (t.remark != null ? String(t.remark) : null) : null;
-            
+
             let tGroupId = null;
             if (t.hasOwnProperty('group_id')) {
               tGroupId = t.group_id;
@@ -472,7 +472,7 @@ export default {
                   setClauses.push('remark = ?');
                   setValues.push(isRemarkProvided ? tRemark : (existing.remark ?? null));
                 }
-                
+
                 if (hasGroupId) {
                   setClauses.push('group_id = ?');
                   setValues.push(tGroupId);
@@ -1089,10 +1089,11 @@ export default {
       }
 
 	if (url.pathname === "/api/admin/s2s_export" && request.method === "GET") {
-	  const adminSecret = request.headers.get("x-admin-secret");
-	  if (adminSecret !== (env.API_SECRET)) {
-		return errorResponse("S2S 验证失败：非法访问", 401);
-	  }
+	  try {
+		const adminSecret = request.headers.get("x-admin-secret");
+		if (adminSecret !== (env.API_SECRET)) {
+			return errorResponse("S2S 验证失败：非法访问", 401);
+		}
 
 		// 容错：导出前确保表存在
 		await DB.prepare(`CREATE TABLE IF NOT EXISTS todo_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT, user_id INTEGER, name TEXT, is_expanded INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at INTEGER, created_at INTEGER, UNIQUE(user_id, uuid))`).run();
