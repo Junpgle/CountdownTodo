@@ -313,6 +313,7 @@ export default {
         const { user_id, last_sync_time = 0, device_id, screen_time } = payload;
         const todos = payload.todos || payload.todos_changes || payload.todosChanges || [];
         const countdowns = payload.countdowns || payload.countdowns_changes || payload.countdownsChanges || [];
+        const todoGroups = payload.todo_groups || payload.todo_groups_changes || payload.todoGroupsChanges || [];
         const timeLogs = payload.time_logs_changes || payload.timeLogsChanges || [];
 
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权操作被拒绝", 403);
@@ -330,13 +331,21 @@ export default {
 
         const batchStatements = [];
 
-        // 1. 处理 Todos
+        // 0. 容错建表与增量表架构更新
+        await DB.prepare(`CREATE TABLE IF NOT EXISTS todo_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT UNIQUE, user_id INTEGER, name TEXT, is_expanded INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at INTEGER, created_at INTEGER)`).run();
+
         const todoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
         const todoColNames = new Set(todoColumns.results.map(r => r.name));
+        
+        if (!todoColNames.has('group_id')) {
+            try { await DB.prepare("ALTER TABLE todos ADD COLUMN group_id TEXT").run(); } catch(e) {}
+        }
+
         const hasRecurrence       = todoColNames.has('recurrence');
         const hasCustomInterval   = todoColNames.has('custom_interval_days');
         const hasRecurrenceEnd    = todoColNames.has('recurrence_end_date');
         const hasRemark           = todoColNames.has('remark');
+        const hasGroupId          = todoColNames.has('group_id') || true; // 强制设为真，因为上面刚加了
 
         if (Array.isArray(todos)) {
           for (const t of todos) {
@@ -381,12 +390,15 @@ export default {
 
             const isRemarkProvided = hasRemark && ('remark' in t);
             const tRemark = isRemarkProvided ? (t.remark != null ? String(t.remark) : null) : null;
+            
+            const tGroupId = t.group_id ?? t.groupId ?? null;
 
             const extraCols = [
               hasRecurrence     ? 'recurrence'            : null,
               hasCustomInterval ? 'custom_interval_days'  : null,
               hasRecurrenceEnd  ? 'recurrence_end_date'   : null,
               hasRemark         ? 'remark'                : null,
+              'group_id',
             ].filter(Boolean);
             const extraColStr = extraCols.length > 0 ? ', ' + extraCols.join(', ') : '';
 
@@ -409,6 +421,7 @@ export default {
               if (hasCustomInterval) { insertCols += ', custom_interval_days';  insertPlaceholders += ', ?'; insertValues.push(tCustomIntervalDays); }
               if (hasRecurrenceEnd)  { insertCols += ', recurrence_end_date';   insertPlaceholders += ', ?'; insertValues.push(tRecurrenceEndDate); }
               if (hasRemark)         { insertCols += ', remark';                insertPlaceholders += ', ?'; insertValues.push(tRemark); }
+              insertCols += ', group_id'; insertPlaceholders += ', ?'; insertValues.push(tGroupId);
 
               let stmt = DB.prepare(`INSERT INTO todos (${insertCols}) VALUES (${insertPlaceholders})`);
               batchStatements.push(stmt.bind(...insertValues));
@@ -445,6 +458,9 @@ export default {
                   setClauses.push('remark = ?');
                   setValues.push(isRemarkProvided ? tRemark : (existing.remark ?? null));
                 }
+                
+                setClauses.push('group_id = ?');
+                setValues.push(('group_id' in t || 'groupId' in t) ? tGroupId : (existing.group_id ?? null));
 
                 setValues.push(existing.id);
                 let stmt = DB.prepare(`UPDATE todos SET ${setClauses.join(', ')} WHERE id = ?`);
@@ -498,6 +514,26 @@ export default {
           }
         }
 
+        // 2.5 处理 Todo Groups (文件夹)
+        if (Array.isArray(todoGroups)) {
+          for (const g of todoGroups) {
+            const gUuid = String(g.uuid ?? g.id ?? g._id);
+            const gName = String(g.name ?? "未命名分组");
+            const gIsExpanded = (g.is_expanded ?? g.isExpanded) ? 1 : 0;
+            const gIsDeleted = (g.is_deleted ?? g.isDeleted) ? 1 : 0;
+            const gVersion = parseInt(g.version || 1, 10);
+            const gUpdatedAtClient = normalizeToMs(g.updated_at ?? g.updatedAt ?? now);
+            const gCreatedAt = normalizeToMs(g.created_at ?? g.createdAt) || now;
+
+            const existing = await DB.prepare("SELECT uuid, version, updated_at FROM todo_groups WHERE uuid = ? AND user_id = ?").bind(gUuid, authUserId).first();
+            if (!existing) {
+              batchStatements.push(DB.prepare(`INSERT INTO todo_groups (uuid, user_id, name, is_expanded, is_deleted, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(gUuid, authUserId, gName, gIsExpanded, gIsDeleted, gVersion, gCreatedAt, now));
+            } else if (gVersion > (existing.version || 0) || gUpdatedAtClient > normalizeToMs(existing.updated_at)) {
+              batchStatements.push(DB.prepare(`UPDATE todo_groups SET name=?, is_expanded=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?`).bind(gName, gIsExpanded, gIsDeleted, gVersion, now, gUuid, authUserId));
+            }
+          }
+        }
+
         // 3. 处理 Time Logs
         if (Array.isArray(timeLogs)) {
           for (const l of timeLogs) {
@@ -545,15 +581,17 @@ export default {
         if (batchStatements.length > 0) await DB.batch(batchStatements);
 
         // 5. 拉取最终的增量数据
-        let serverTodosRaw, serverCountdownsRaw, serverTimeLogsRaw;
+        let serverTodosRaw, serverCountdownsRaw, serverTimeLogsRaw, serverTodoGroupsRaw;
 
         if (last_sync_time === 0) {
           serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE user_id = ?`).bind(authUserId).all();
           serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE user_id = ?`).bind(authUserId).all();
+          serverTodoGroupsRaw = await DB.prepare(`SELECT * FROM todo_groups WHERE user_id = ?`).bind(authUserId).all();
           serverTimeLogsRaw = await DB.prepare(`SELECT * FROM time_logs WHERE user_id = ?`).bind(authUserId).all();
         } else {
           serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
           serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
+          serverTodoGroupsRaw = await DB.prepare(`SELECT * FROM todo_groups WHERE user_id = ?`).bind(authUserId).all();
           serverTimeLogsRaw = await DB.prepare(`SELECT * FROM time_logs WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
         }
 
@@ -568,7 +606,15 @@ export default {
             const idStr = row.uuid || String(row.id);
             return {
               id: idStr, uuid: idStr, content: row.content, is_completed: row.is_completed, is_deleted: row.is_deleted, version: row.version, device_id: row.device_id,
-              created_at: normalizeTimestamp(row.created_at), updated_at: normalizeTimestamp(row.updated_at), created_date: nullableTimestamp(row.created_date), due_date: nullableTimestamp(row.due_date), recurrence: row.recurrence ?? 0, customIntervalDays: row.custom_interval_days ?? null, recurrenceEndDate: nullableTimestamp(row.recurrence_end_date), recurrence_end_date: nullableTimestamp(row.recurrence_end_date), remark: row.remark ?? null,
+              created_at: normalizeTimestamp(row.created_at), updated_at: normalizeTimestamp(row.updated_at), created_date: nullableTimestamp(row.created_date), due_date: nullableTimestamp(row.due_date), recurrence: row.recurrence ?? 0, customIntervalDays: row.custom_interval_days ?? null, recurrenceEndDate: nullableTimestamp(row.recurrence_end_date), recurrence_end_date: nullableTimestamp(row.recurrence_end_date), remark: row.remark ?? null, group_id: row.group_id ?? null,
+            };
+        });
+
+        const mappedTodoGroups = serverTodoGroupsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time).map(row => {
+            const idStr = row.uuid || String(row.id);
+            return {
+              id: idStr, uuid: idStr, name: row.name, is_expanded: row.is_expanded === 1, is_deleted: row.is_deleted === 1, version: row.version,
+              created_at: normalizeTimestamp(row.created_at), updated_at: normalizeTimestamp(row.updated_at)
             };
         });
 
@@ -592,6 +638,7 @@ export default {
         return jsonResponse({
           success: true,
           server_todos: mappedTodos,
+          server_todo_groups: mappedTodoGroups,
           server_countdowns: mappedCountdowns,
           server_time_logs: mappedTimeLogs,
           new_sync_time: now,
@@ -1000,6 +1047,20 @@ export default {
            }
         }
 
+        // 13. 合并 Todo Groups
+        if (body.todo_groups && body.todo_groups.length > 0) {
+          body.todo_groups.forEach(g => {
+            if (!g.uuid) return;
+            batchStatements.push(DB.prepare(`
+              INSERT INTO todo_groups (uuid, user_id, name, is_expanded, is_deleted, version, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(uuid) DO UPDATE SET
+                name=excluded.name, is_expanded=excluded.is_expanded, is_deleted=excluded.is_deleted, version=excluded.version, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > todo_groups.updated_at OR (excluded.updated_at = todo_groups.updated_at AND excluded.version > todo_groups.version)
+            `).bind(g.uuid, getMappedUserId(g.user_id), g.name, g.is_expanded, g.is_deleted, g.version, g.created_at, g.updated_at));
+          });
+        }
+
         // 统一提交批处理，单次最多执行 100 条 (Cloudflare 限制)
         syncedRecords += batchStatements.length;
         if (batchStatements.length > 0) {
@@ -1031,7 +1092,8 @@ export default {
 			todo_tags: (await DB.prepare("SELECT * FROM todo_tags").all()).results,
 			screen_time_logs: (await DB.prepare("SELECT * FROM screen_time_logs").all()).results,
 			leaderboard: (await DB.prepare("SELECT * FROM leaderboard").all()).results,
-			app_name_mappings: (await DB.prepare("SELECT * FROM app_name_mappings").all()).results
+			app_name_mappings: (await DB.prepare("SELECT * FROM app_name_mappings").all()).results,
+			todo_groups: (await DB.prepare("SELECT * FROM todo_groups").all()).results
 		};
 		return jsonResponse({ success: true, data: payload });
 	  } catch (e) {

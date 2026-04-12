@@ -8,6 +8,9 @@ class SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
   final VoidCallback? onAdd;
+  final VoidCallback? onAction; // 📁 新增操作回调
+  final IconData? actionIcon; // 📁 新增操作图标
+  final String? actionTooltip; // 📁 新增操作提示
   final bool isLight;
 
   const SectionHeader({
@@ -15,6 +18,9 @@ class SectionHeader extends StatelessWidget {
     required this.title,
     required this.icon,
     this.onAdd,
+    this.onAction,
+    this.actionIcon,
+    this.actionTooltip,
     this.isLight = false,
   });
 
@@ -45,14 +51,19 @@ class SectionHeader extends StatelessWidget {
                   color: textColor,
                 ),
           ),
-          if (onAdd != null) ...[
-            const Spacer(),
+          const Spacer(),
+          if (onAction != null && actionIcon != null)
+            IconButton(
+              onPressed: onAction,
+              icon: Icon(actionIcon, color: iconColor),
+              tooltip: actionTooltip ?? "操作",
+            ),
+          if (onAdd != null)
             IconButton(
               onPressed: onAdd,
               icon: Icon(Icons.add_circle_outline, color: iconColor),
               tooltip: "添加",
             )
-          ]
         ],
       ),
     );

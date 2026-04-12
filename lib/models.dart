@@ -118,6 +118,7 @@ class TodoItem {
   String? remark; // 📝 备注
   String? imagePath; // 📸 图片分析路径
   String? originalText; // 📄 原始分析文本
+  String? groupId;      // 📁 所属分组 ID (null 表示未分组)
 
   TodoItem({
     String? id,
@@ -135,6 +136,7 @@ class TodoItem {
     this.remark,
     this.imagePath,
     this.originalText,
+    this.groupId,
   }) :
         this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
@@ -167,6 +169,7 @@ class TodoItem {
     'remark': remark,                 // 📝 备注（可为 null）
     'image_path': imagePath,          // 📸 图片路径
     'original_text': originalText,    // 📄 原始分析文本
+    'group_id': groupId,              // 📁 分组 ID
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -203,6 +206,8 @@ class TodoItem {
       imagePath: (json['image_path'] ?? json['imagePath']) as String?,
       // 📄 原始分析文本
       originalText: (json['original_text'] ?? json['originalText']) as String?,
+      // 📁 分组 ID
+      groupId: (json['group_id'] ?? json['groupId']) as String?,
     );
   }
 
@@ -295,6 +300,62 @@ class CountdownItem {
     );
   }
 }
+
+// ==========================================
+// 📁 待办组模型 (Todo Group)
+// ==========================================
+
+class TodoGroup {
+  String id;
+  String name;
+  bool isExpanded;
+  bool isDeleted;
+  int version;
+  int updatedAt;
+  int createdAt;
+
+  TodoGroup({
+    String? id,
+    required this.name,
+    this.isExpanded = false,
+    this.isDeleted = false,
+    this.version = 1,
+    int? updatedAt,
+    int? createdAt,
+  })  : id = id ?? const Uuid().v4(),
+        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  void markAsChanged() {
+    version++;
+    updatedAt = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'uuid': id,
+    'name': name,
+    'is_expanded': isExpanded ? 1 : 0,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'updated_at': updatedAt,
+    'created_at': createdAt,
+  };
+
+  factory TodoGroup.fromJson(Map<String, dynamic> json) {
+    String parsedId = json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
+    return TodoGroup(
+      id: parsedId,
+      name: json['name']?.toString() ?? '未命名分组',
+      isExpanded: json['is_expanded'] == 1 || json['is_expanded'] == true,
+      isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
+      version: json['version'] as int? ?? 1,
+      updatedAt: _parseTimestamp(json['updated_at'] ?? json['updatedAt']),
+      createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
+    );
+  }
+}
+
 
 // ============================================================
 // 🕐 统一时间规范（v3 - 最终版）
