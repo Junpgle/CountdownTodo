@@ -14,6 +14,7 @@ import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
 import '../screens/todo_chat_screen.dart';
 import 'home_sections.dart';
+import 'todo_group_widget.dart';
 import '../utils/page_transitions.dart';
 
 class TodoSectionWidget extends StatefulWidget {
@@ -22,6 +23,8 @@ class TodoSectionWidget extends StatefulWidget {
   final bool isLight;
   final Function(List<TodoItem>) onTodosChanged;
   final VoidCallback onRefreshRequested;
+  final List<TodoGroup> todoGroups;
+  final Function(List<TodoGroup>) onGroupsChanged;
 
   /// 大模型识别成功后的回调，用于导航到确认页面
   final Function(List<Map<String, dynamic>>, String?, String?)?
@@ -34,8 +37,12 @@ class TodoSectionWidget extends StatefulWidget {
     required this.isLight,
     required this.onTodosChanged,
     required this.onRefreshRequested,
+    this.todoGroups = const [],
+    this.onGroupsChanged = _defaultOnGroupsChanged,
     this.onLLMResultsParsed,
   });
+
+  static void _defaultOnGroupsChanged(List<TodoGroup> _) {}
 
   @override
   State<TodoSectionWidget> createState() => TodoSectionWidgetState();
@@ -1233,6 +1240,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           todo: todo,
           todos: widget.todos,
           onTodosChanged: widget.onTodosChanged,
+          todoGroups: widget.todoGroups,
         ),
         sourceRect: rect,
         sourceColor: color,
@@ -1848,6 +1856,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     for (final t in widget.todos) {
       if (_isHistoricalTodo(t)) continue;
       if (t.isDeleted) continue;
+      if (t.groupId != null) continue;
       if (t.dueDate != null) {
         final DateTime d = DateTime(
           t.dueDate!.year,
@@ -1875,6 +1884,80 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final List<TodoItem> sortedFutureTodos = _sortFutureTodos(futureTodos, now);
 
     final List<Widget> sections = [];
+
+    // ── 顶部横向文件夹区域 ──
+    final visibleGroups = widget.todoGroups.where((group) {
+      final children = widget.todos.where((t) => t.groupId == group.id && !t.isDeleted).toList();
+      return children.isNotEmpty || group.isExpanded;
+    }).toList();
+
+    if (visibleGroups.isNotEmpty) {
+      sections.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 12, top: 4),
+              child: Text(
+                "文件夹 · ${visibleGroups.length}",
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: useDarkUI ? Colors.white70 : Colors.grey[600],
+                ),
+              ),
+            ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: visibleGroups.map((group) {
+                  final children = widget.todos.where((t) => t.groupId == group.id && !t.isDeleted).toList();
+                  return Container(
+                    width: 320,
+                    margin: const EdgeInsets.only(right: 16, bottom: 10),
+                    child: TodoGroupWidget(
+                      group: group,
+                      groupTodos: children,
+                      isLight: widget.isLight,
+                      onToggle: () {
+                        setState(() {
+                          group.isExpanded = !group.isExpanded;
+                          group.markAsChanged();
+                        });
+                        widget.onGroupsChanged(widget.todoGroups);
+                      },
+                      onTodoToggle: (todo) {
+                        todo.isDone = !todo.isDone;
+                        todo.markAsChanged();
+                        widget.onTodosChanged(widget.todos);
+                      },
+                      onTodoDropped: (todoId) {
+                        final idx = widget.todos.indexWhere((t) => t.id == todoId);
+                        if (idx != -1) {
+                          widget.todos[idx].groupId = group.id;
+                          widget.todos[idx].markAsChanged();
+                          widget.onTodosChanged(widget.todos);
+                        }
+                      },
+                      onDelete: () {
+                        StorageService.deleteTodoGroupGlobally(widget.username, group.id);
+                        final newList = widget.todoGroups.where((g) => g.id != group.id).toList();
+                        widget.onGroupsChanged(newList);
+                        widget.onRefreshRequested();
+                      },
+                      onTodoTap: (todo) => _editTodo(todo, context),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      );
+    }
 
     // ── 以往待办（逾期）──
     if (pastTodos.isNotEmpty) {
@@ -2102,7 +2185,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 title: "待办清单",
                 icon: Icons.check_circle_outline,
                 onAdd: showAddTodoDialog,
-                isLight: widget.isLight, // SectionHeader自带了很好的适应逻辑
+                actionIcon: Icons.create_new_folder_outlined,
+                actionTooltip: "新建分组",
+                isLight: widget.isLight,
+                onAction: () => _showCreateGroupDialog(context),
               ),
             ),
             Row(
@@ -2225,14 +2311,44 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       ],
     );
   }
+
+  void _showCreateGroupDialog(BuildContext context) {
+    final titleCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("新建待办文件夹"),
+        content: TextField(
+          controller: titleCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: "文件夹名称"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+          FilledButton(
+            onPressed: () async {
+              if (titleCtrl.text.trim().isEmpty) return;
+              final newGroup = TodoGroup(name: titleCtrl.text.trim());
+              final currentGroups = List<TodoGroup>.from(widget.todoGroups)..add(newGroup);
+              await StorageService.saveTodoGroups(widget.username, currentGroups);
+              widget.onRefreshRequested();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text("创建"),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TodoEditScreen extends StatefulWidget {
   final TodoItem todo;
   final List<TodoItem> todos;
   final Function(List<TodoItem>) onTodosChanged;
+  final List<TodoGroup> todoGroups;
   const _TodoEditScreen(
-      {required this.todo, required this.todos, required this.onTodosChanged});
+      {required this.todo, required this.todos, required this.onTodosChanged, required this.todoGroups});
   @override
   State<_TodoEditScreen> createState() => _TodoEditScreenState();
 }
@@ -2247,6 +2363,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
   int? _customDays;
   DateTime? _recurrenceEndDate;
   late bool _isAllDay;
+  String? _selectedGroupId;
 
   @override
   void initState() {
@@ -2269,6 +2386,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
         _createdDate.minute == 0 &&
         _dueDate!.hour == 23 &&
         _dueDate!.minute == 59;
+    _selectedGroupId = t.groupId;
   }
 
   @override
@@ -2290,6 +2408,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     todo.recurrenceEndDate = _recurrenceEndDate;
     todo.remark =
         _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim();
+    todo.groupId = _selectedGroupId;
     todo.markAsChanged();
     widget.onTodosChanged(List<TodoItem>.from(widget.todos));
     if (mounted) Navigator.pop(context);
@@ -2329,6 +2448,27 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                       borderRadius: BorderRadius.circular(12))),
               maxLines: 3,
               minLines: 1),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _selectedGroupId,
+            decoration: InputDecoration(
+              labelText: '所属文件夹 (可选)',
+              prefixIcon: const Icon(Icons.folder_outlined),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            items: [
+              const DropdownMenuItem<String>(
+                value: null,
+                child: Text('无计划 / 未分类'),
+              ),
+              ...widget.todoGroups.map((g) => DropdownMenuItem<String>(
+                    value: g.id,
+                    child: Text(g.name),
+                  )),
+            ],
+            onChanged: (val) => setState(() => _selectedGroupId = val),
+          ),
           const SizedBox(height: 12),
           SwitchListTile(
               contentPadding: EdgeInsets.zero,
