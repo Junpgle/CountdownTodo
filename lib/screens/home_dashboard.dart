@@ -2065,6 +2065,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                           FloatWindowService.update();
                           _syncTodoNotification();
                           await WidgetService.updateTodoWidget(_todos);
+                          // _loadAllData(); // 🚀 关键修复：不再立即 reload，由 setState 驱动 UI 更新
                         },
                         onRefreshRequested: _loadAllData,
                         onLLMResultsParsed: (results, imagePath, originalText) {

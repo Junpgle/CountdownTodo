@@ -8,6 +8,7 @@ class ChatMessage {
   final String content;
   final String reasoningContent;
   final DateTime timestamp;
+  final List<Map<String, dynamic>>? todoActions;
 
   ChatMessage({
     String? id,
@@ -15,6 +16,7 @@ class ChatMessage {
     required this.content,
     this.reasoningContent = '',
     DateTime? timestamp,
+    this.todoActions,
   })  : id = id ?? const Uuid().v4(),
         timestamp = timestamp ?? DateTime.now();
 
@@ -24,6 +26,7 @@ class ChatMessage {
         'content': content,
         'reasoningContent': reasoningContent,
         'timestamp': timestamp.millisecondsSinceEpoch,
+        'todoActions': todoActions,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -36,6 +39,7 @@ class ChatMessage {
         json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
         isUtc: true,
       ).toLocal(),
+      todoActions: (json['todoActions'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
     );
   }
 

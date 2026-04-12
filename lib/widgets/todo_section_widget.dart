@@ -2386,7 +2386,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         .where((t) =>
                             !t.isDeleted && !t.isDone && !_isHistoricalTodo(t))
                         .map((t) {
-                      return {
+                      return <String, dynamic>{
+                        'id': t.id,
                         'title': t.title,
                         'remark': t.remark ?? '',
                         'startTime': t.createdDate != null
@@ -2402,6 +2403,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             t.dueDate!.hour == 23 &&
                             t.dueDate!.minute == 59,
                         'recurrence': t.recurrence.name,
+                        'groupId': t.groupId ?? '',
                       };
                     }).toList();
 
@@ -2411,16 +2413,48 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         builder: (_) => TodoChatScreen(
                           username: widget.username,
                           todos: todosForChat,
+                          todoGroups: widget.todoGroups,
                           onTodoInserted: (newTodo) {
                             final updatedList =
                                 List<TodoItem>.from(widget.todos)..add(newTodo);
                             widget.onTodosChanged(updatedList);
                           },
-                          onTodosBatchInserted: (newTodos) {
-                            final updatedList =
-                                List<TodoItem>.from(widget.todos)
-                                  ..addAll(newTodos);
-                            widget.onTodosChanged(updatedList);
+                          onTodosBatchAction: (inserted, updated) {
+                            final List<TodoItem> resultList =
+                                List<TodoItem>.from(widget.todos);
+
+                            // 1. 处理新增
+                            resultList.addAll(inserted);
+
+                            // 2. 处理更新
+                            for (final update in updated) {
+                              final idx = resultList
+                                  .indexWhere((t) => t.id == update.id);
+                              if (idx != -1) {
+                                final existing = resultList[idx];
+                                  final gId = update.groupId;
+                                  resultList[idx] = TodoItem(
+                                    id: existing.id,
+                                    title: existing.title,
+                                    isDone: existing.isDone,
+                                    isDeleted: existing.isDeleted,
+                                    version: existing.version,
+                                    updatedAt:
+                                        DateTime.now().millisecondsSinceEpoch,
+                                    createdAt: existing.createdAt,
+                                    createdDate: existing.createdDate,
+                                    recurrence: existing.recurrence,
+                                    customIntervalDays:
+                                        existing.customIntervalDays,
+                                    recurrenceEndDate: existing.recurrenceEndDate,
+                                    dueDate: existing.dueDate,
+                                    remark: existing.remark,
+                                    groupId: (gId == null || gId.isEmpty) ? null : gId,
+                                  )..markAsChanged();
+                              }
+                            }
+
+                            widget.onTodosChanged(resultList);
                           },
                         ),
                       ),
