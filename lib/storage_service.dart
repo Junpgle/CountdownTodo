@@ -29,6 +29,7 @@ class StorageService {
   static const String KEY_SETTINGS = "quiz_settings";
   static const String KEY_CURRENT_USER = "current_login_user";
   static const String KEY_TODOS = "user_todos";
+  static const String KEY_TODO_GROUPS = "user_todo_groups";
   static const String KEY_COUNTDOWNS = "user_countdowns";
   static const String KEY_SCREEN_TIME_CACHE = "screen_time_cache";
   static const String KEY_LAST_SCREEN_TIME_SYNC = "last_screen_time_sync";
@@ -70,8 +71,9 @@ class StorageService {
   static const String KEY_NOTIFY_NORMAL_ENABLED = "notify_normal_enabled";
   static const String KEY_NOTIFY_COURSE_ENABLED = "notify_course_enabled";
   static const String KEY_NOTIFY_QUIZ_ENABLED = "notify_quiz_enabled";
-  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED =
-      "notify_todo_summary_enabled";
+  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED = "notify_todo_summary_enabled";
+  static const String KEY_NOTIFY_APP_UPDATES_ENABLED = "notify_app_updates_enabled";
+  static const String KEY_TODO_FOLDERS_INLINE = "todo_folders_inline";
   static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
       "notify_special_todo_enabled";
   static const String KEY_NOTIFY_POMODORO_ENABLED = "notify_pomodoro_enabled";
@@ -81,6 +83,7 @@ class StorageService {
       "notify_pomodoro_end_enabled";
   static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
   static const String KEY_COURSE_REMINDER_MINUTES = "course_reminder_minutes";
+  static const String KEY_LAST_COURSE_IMPORT_URL = "last_course_import_url";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -533,6 +536,69 @@ class StorageService {
   }
 
   // ==========================================
+  // 📁 待办组 (Todo Groups)
+  // ==========================================
+  static Future<void> saveTodoGroups(String username, List<TodoGroup> items,
+      {bool sync = true}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, TodoGroup> dedupeMap = {};
+
+    for (var item in items) {
+      final existing = dedupeMap[item.id];
+      if (existing == null || item.updatedAt > existing.updatedAt) {
+        dedupeMap[item.id] = item;
+      }
+    }
+
+    List<String> jsonList =
+        dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
+    await prefs.setStringList("${KEY_TODO_GROUPS}_$username", jsonList);
+    if (sync) Future.microtask(() => syncData(username));
+  }
+
+  static Future<List<TodoGroup>> getTodoGroups(String username) async {
+    final prefs = await StorageService.prefs;
+    List<String> list =
+        prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+    List<TodoGroup> result = [];
+
+    for (var e in list) {
+      try {
+        result.add(TodoGroup.fromJson(jsonDecode(e)));
+      } catch (err) {
+        debugPrint("Parse TodoGroup Error: $err");
+      }
+    }
+    return result;
+  }
+
+  static Future<void> deleteTodoGroupGlobally(
+      String username, String idToDelete) async {
+    List<TodoGroup> localGroups = await getTodoGroups(username);
+    int index = localGroups.indexWhere((t) => t.id == idToDelete);
+
+    if (index != -1) {
+      localGroups[index].isDeleted = true;
+      localGroups[index].markAsChanged();
+      await saveTodoGroups(username, localGroups, sync: true);
+    }
+
+    // 同时将组内的待办恢复为未分组状态
+    List<TodoItem> allTodos = await getTodos(username);
+    bool todoChanged = false;
+    for (var t in allTodos) {
+      if (t.groupId == idToDelete) {
+        t.groupId = null;
+        t.markAsChanged();
+        todoChanged = true;
+      }
+    }
+    if (todoChanged) {
+      await saveTodos(username, allTodos, sync: true);
+    }
+  }
+
+  // ==========================================
   // 时间日志 (Time Logs)
   // ==========================================
   static Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
@@ -758,7 +824,9 @@ class StorageService {
 
   static Future<void> resetSyncTime(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('last_sync_time_$username');
+    await prefs.remove('last_sync_time_aliyun_$username');
+    await prefs.remove('last_sync_time_cf_$username');
+    await prefs.remove('last_sync_time_$username'); // 兼容旧版本
   }
 
   static Future<bool> syncData(
@@ -783,17 +851,25 @@ class StorageService {
       // 2. 环境信息准备
       final String deviceId = await _getUniqueDeviceId(username);
       final String friendlyName = await _getDetailedDeviceName();
-      final int lastSyncTime =
-          forceFullSync ? 0 : (prefs.getInt('last_sync_time_$username') ?? 0);
+      final String serverKey =
+          ApiService.baseUrl == ApiService.aliyunUrl ? "aliyun" : "cf";
+      final int lastSyncTime = forceFullSync
+          ? 0
+          : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
 
       // 3. 准备增量数据包 (Todos, Countdowns, TimeLogs)
       List<TodoItem> allLocalTodos = await getTodos(username);
+      List<TodoGroup> allLocalGroups = await getTodoGroups(username);
       List<CountdownItem> allLocalCountdowns = await getCountdowns(username);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
 
       List<Map<String, dynamic>> dirtyTodos = allLocalTodos
           .where((t) => t.updatedAt > lastSyncTime)
           .map((t) => t.toJson())
+          .toList();
+      List<Map<String, dynamic>> dirtyGroups = allLocalGroups
+          .where((g) => g.updatedAt > lastSyncTime)
+          .map((g) => g.toJson())
           .toList();
       List<Map<String, dynamic>> dirtyCountdowns = allLocalCountdowns
           .where((c) => c.updatedAt > lastSyncTime)
@@ -842,6 +918,7 @@ class StorageService {
         lastSyncTime: lastSyncTime,
         deviceId: deviceId,
         todosChanges: dirtyTodos,
+        todoGroupsChanges: dirtyGroups,
         countdownsChanges: dirtyCountdowns,
         timeLogsChanges: dirtyTimeLogs,
         screenTime: screenPayload,
@@ -873,11 +950,40 @@ class StorageService {
               sItem.updatedAt > allLocalTodos[idx].updatedAt) {
             allLocalTodos[idx] = sItem;
             hasChanges = true;
+          } else if (sItem.groupId != allLocalTodos[idx].groupId) {
+            // Even if overall version is not newer, accept group_id changes
+            // to ensure folder assignments always propagate across devices
+            allLocalTodos[idx].groupId = sItem.groupId;
+            hasChanges = true;
           }
         } else {
           if (!sItem.isDeleted) {
             todosIndexMap[sItem.id] = allLocalTodos.length;
             allLocalTodos.add(sItem);
+            hasChanges = true;
+          }
+        }
+      }
+
+      // 合并 TodoGroups
+      List<dynamic> serverGroups = response['server_todo_groups'] ?? [];
+      final Map<String, int> groupsIndexMap = {
+        for (var i = 0; i < allLocalGroups.length; i++) allLocalGroups[i].id: i
+      };
+      for (var raw in serverGroups) {
+        TodoGroup sItem = TodoGroup.fromJson(raw);
+        if (groupsIndexMap.containsKey(sItem.id)) {
+          final idx = groupsIndexMap[sItem.id]!;
+          if (sItem.isDeleted ||
+              sItem.version > allLocalGroups[idx].version ||
+              sItem.updatedAt > allLocalGroups[idx].updatedAt) {
+            allLocalGroups[idx] = sItem;
+            hasChanges = true;
+          }
+        } else {
+          if (!sItem.isDeleted) {
+            groupsIndexMap[sItem.id] = allLocalGroups.length;
+            allLocalGroups.add(sItem);
             hasChanges = true;
           }
         }
@@ -936,6 +1042,7 @@ class StorageService {
       // 7. 持久化数据
       if (hasChanges) {
         await saveTodos(username, allLocalTodos, sync: false);
+        await saveTodoGroups(username, allLocalGroups, sync: false);
         await saveCountdowns(username, allLocalCountdowns, sync: false);
         await saveTimeLogs(username, allLocalTimeLogs, sync: false);
       }
@@ -943,7 +1050,7 @@ class StorageService {
       // 8. 更新同步水位线
       int newSyncTime =
           response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
-      await prefs.setInt('last_sync_time_$username', newSyncTime);
+      await prefs.setInt('last_sync_time_${serverKey}_$username', newSyncTime);
 
       // 如果屏幕时间同步成功，可以在这里刷新 UI 用的 Cache 数据（如果后端有返回最新的聚合数据）
       if (response['screen_time_results'] != null) {
@@ -1433,5 +1540,25 @@ class StorageService {
   static Future<void> saveWallpaperResolution(String resolution) async {
     final prefs = await StorageService.prefs;
     await prefs.setString(KEY_WALLPAPER_RESOLUTION, resolution);
+  }
+
+  static Future<bool> getTodoFoldersInline() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_TODO_FOLDERS_INLINE) ?? true; // Defaults to embedded/inline
+  }
+
+  static Future<void> setTodoFoldersInline(bool inline) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_TODO_FOLDERS_INLINE, inline);
+  }
+
+  static Future<void> saveLastCourseImportUrl(String url) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_LAST_COURSE_IMPORT_URL, url);
+  }
+
+  static Future<String?> getLastCourseImportUrl() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getString(KEY_LAST_COURSE_IMPORT_URL);
   }
 }

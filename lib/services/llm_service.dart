@@ -231,6 +231,7 @@ class CustomVisionModel {
 
 class LLMService {
   static const String _configKey = 'llm_config';
+  static const String _zhipuApiKeyKey = 'zhipu_api_key';
   static const String _customTextModelsKey = 'custom_text_models';
   static const String _customVisionModelsKey = 'custom_vision_models';
 
@@ -254,6 +255,16 @@ class LLMService {
   static Future<void> clearConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_configKey);
+  }
+
+  static Future<String> getZhipuApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_zhipuApiKeyKey) ?? '';
+  }
+
+  static Future<void> saveZhipuApiKey(String apiKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_zhipuApiKeyKey, apiKey);
   }
 
   static Future<List<CustomTextModel>> getCustomTextModels() async {

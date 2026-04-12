@@ -14,7 +14,9 @@ import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
 import '../screens/todo_chat_screen.dart';
 import 'home_sections.dart';
+import 'todo_group_widget.dart';
 import '../utils/page_transitions.dart';
+import '../screens/folder_manage_screen.dart';
 
 class TodoSectionWidget extends StatefulWidget {
   final List<TodoItem> todos;
@@ -22,6 +24,8 @@ class TodoSectionWidget extends StatefulWidget {
   final bool isLight;
   final Function(List<TodoItem>) onTodosChanged;
   final VoidCallback onRefreshRequested;
+  final List<TodoGroup> todoGroups;
+  final Function(List<TodoGroup>) onGroupsChanged;
 
   /// 大模型识别成功后的回调，用于导航到确认页面
   final Function(List<Map<String, dynamic>>, String?, String?)?
@@ -34,8 +38,12 @@ class TodoSectionWidget extends StatefulWidget {
     required this.isLight,
     required this.onTodosChanged,
     required this.onRefreshRequested,
+    this.todoGroups = const [],
+    this.onGroupsChanged = _defaultOnGroupsChanged,
     this.onLLMResultsParsed,
   });
+
+  static void _defaultOnGroupsChanged(List<TodoGroup> _) {}
 
   @override
   State<TodoSectionWidget> createState() => TodoSectionWidgetState();
@@ -54,6 +62,22 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   final Map<String, Key> _todoDismissKeys = {};
   final Map<String, AnimationController> _completingAnimations = {};
   final Map<String, bool> _isCompleting = {};
+  bool _inlineFolders = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final inline = await StorageService.getTodoFoldersInline();
+    if (mounted) {
+      setState(() {
+        _inlineFolders = inline;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -780,9 +804,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         ),
                                         customIntervalDays:
                                             result['customIntervalDays'],
-                                      originalText: aiInputCtrl.text, // 📄 保存原始输入文字
-                                    );
-                                  }).toList();
+                                        originalText: aiInputCtrl.text, // 📄 保存原始输入文字
+                                      );
+                                    }).toList();
 
                                     setDialogState(() {
                                       parsedResults = parsedResultsList;
@@ -1233,6 +1257,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           todo: todo,
           todos: widget.todos,
           onTodosChanged: widget.onTodosChanged,
+          todoGroups: widget.todoGroups,
         ),
         sourceRect: rect,
         sourceColor: color,
@@ -1371,15 +1396,42 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       );
     }
 
-    return Dismissible(
-      key: key ?? _getTodoDismissKey('dismiss', todo.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          color: Colors.redAccent.shade400,
-          borderRadius: BorderRadius.circular(14),
+    return LongPressDraggable<String>(
+      data: todo.id,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.8,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12, spreadRadius: 1)],
+          ),
+          child: Text(todo.title, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
         ),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.3,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(todo.title, style: TextStyle(color: titleColor, fontSize: 14.5)),
+        ),
+      ),
+      child: Dismissible(
+        key: key ?? _getTodoDismissKey('dismiss', todo.id),
+        direction: DismissDirection.endToStart,
+        background: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          decoration: BoxDecoration(
+            color: Colors.redAccent.shade400,
+            borderRadius: BorderRadius.circular(14),
+          ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         child: const Icon(
@@ -1677,6 +1729,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             ),
           ),
         ),
+        ),
       ),
     );
   }
@@ -1763,25 +1816,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     required bool expanded,
     required Widget child,
   }) {
-    return ClipRect(
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return SizeTransition(
-            sizeFactor: animation,
-            axis: Axis.vertical,
-            axisAlignment: 0.0,
-            child: FadeTransition(opacity: animation, child: child),
-          );
-        },
-        child: expanded
-            ? Container(key: const ValueKey('expanded'), child: child)
-            : const SizedBox.shrink(key: ValueKey('collapsed')),
-      ),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.fastOutSlowIn,
+      alignment: Alignment.topCenter,
+      child: expanded ? child : const SizedBox.shrink(),
     );
   }
+
 
   Widget _buildTodoList() {
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
@@ -1838,49 +1880,224 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       );
     }
 
-    List<TodoItem> pastTodos = [];
-    List<TodoItem> todayTodos = [];
-    List<TodoItem> futureTodos = [];
-
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
-    for (final t in widget.todos) {
-      if (_isHistoricalTodo(t)) continue;
-      if (t.isDeleted) continue;
-      if (t.dueDate != null) {
-        final DateTime d = DateTime(
-          t.dueDate!.year,
-          t.dueDate!.month,
-          t.dueDate!.day,
-        );
-        if (d.isBefore(today)) {
-          pastTodos.add(t);
-        } else if (d.isAfter(today)) {
-          futureTodos.add(t);
-        } else {
-          todayTodos.add(t);
-        }
-      } else {
-        todayTodos.add(t);
+    List<_SortedDisplayItem> pastItems = [];
+    List<_SortedDisplayItem> todayItems = [];
+    List<_SortedDisplayItem> futureItems = [];
+    List<Widget> separateGroupWidgets = [];
+
+    final groupTodosMap = <String, List<TodoItem>>{};
+    for (var t in widget.todos) {
+      if (t.isDeleted || _isHistoricalTodo(t)) continue;
+      final tid = (t.groupId == null || t.groupId!.isEmpty) ? null : t.groupId;
+      if (tid != null) {
+        groupTodosMap.putIfAbsent(tid, () => []).add(t);
       }
     }
 
-    final bool allTodayDone =
-        todayTodos.isNotEmpty && todayTodos.every((t) => t.isDone);
-    final bool showTodayItems =
-        _isTodayManuallyExpanded || (!allTodayDone && _isTodayExpanded);
+    void placeItem(_SortedDisplayItem item) {
+      if (item.date == null) {
+        todayItems.add(item);
+      } else {
+        final d = DateTime(item.date!.year, item.date!.month, item.date!.day);
+        if (d.isBefore(today)) {
+          pastItems.add(item);
+        } else if (d.isAfter(today)) {
+          futureItems.add(item);
+        } else {
+          todayItems.add(item);
+        }
+      }
+    }
 
-    final List<TodoItem> sortedTodayTodos = _sortTodayTodos(todayTodos, now);
-    final List<TodoItem> sortedFutureTodos = _sortFutureTodos(futureTodos, now);
+    // 1. Process Folders
+    for (var g in widget.todoGroups) {
+      if (g.isDeleted) continue;
+      final gTodos = groupTodosMap[g.id] ?? [];
+      if (gTodos.isEmpty && !g.isExpanded) continue;
+
+      bool isAllDone = gTodos.isNotEmpty && gTodos.every((t) => t.isDone);
+      DateTime? minDate;
+      for (var t in gTodos) {
+        if (!t.isDone && t.dueDate != null) {
+          if (minDate == null || t.dueDate!.isBefore(minDate)) {
+            minDate = t.dueDate;
+          }
+        }
+      }
+      if (minDate == null) {
+        for (var t in gTodos) {
+          if (t.dueDate != null) {
+            if (minDate == null || t.dueDate!.isBefore(minDate)) {
+              minDate = t.dueDate;
+            }
+          }
+        }
+      }
+
+      final w = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6.0),
+        child: TodoGroupWidget(
+          group: g,
+          groupTodos: gTodos,
+          isLight: widget.isLight,
+          onToggle: () {
+            setState(() {
+              g.isExpanded = !g.isExpanded;
+              g.markAsChanged();
+            });
+            widget.onGroupsChanged(widget.todoGroups);
+          },
+          onTodoToggle: (todo) {
+            todo.isDone = !todo.isDone;
+            todo.markAsChanged();
+            widget.onTodosChanged(widget.todos);
+          },
+          onTodoDropped: (todoId) {
+            final idx = widget.todos.indexWhere((t) => t.id == todoId);
+            if (idx != -1) {
+              setState(() {
+                widget.todos[idx].groupId = g.id;
+                // 对于这种结构性调整，大幅提升版本号，确保覆盖另一端的自动重置（由于通常只+1）
+                widget.todos[idx].version += 10;
+                widget.todos[idx].updatedAt = DateTime.now().millisecondsSinceEpoch;
+              });
+              widget.onTodosChanged(widget.todos);
+            }
+          },
+          onTodoRemoved: (todoId) {
+            final idx = widget.todos.indexWhere((t) => t.id == todoId);
+            if (idx != -1 && widget.todos[idx].groupId != null) {
+              setState(() {
+                widget.todos[idx].groupId = null;
+                // 对于这种结构性调整，大幅提升版本号，确保覆盖另一端的自动重置（由于通常只+1）
+                widget.todos[idx].version += 10;
+                widget.todos[idx].updatedAt = DateTime.now().millisecondsSinceEpoch;
+              });
+              widget.onTodosChanged(widget.todos);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('自由了！已移出文件夹')),
+              );
+            }
+          },
+          onDelete: () async {
+            final idx = widget.todoGroups.indexWhere((x) => x.id == g.id);
+            if (idx != -1) {
+              widget.todoGroups[idx].isDeleted = true;
+              widget.todoGroups[idx].markAsChanged();
+            }
+            await StorageService.deleteTodoGroupGlobally(widget.username, g.id);
+            widget.onGroupsChanged(widget.todoGroups);
+            widget.onRefreshRequested();
+          },
+          onTodoTap: (todo) => _editTodo(todo, context),
+        ),
+      );
+
+      // Calculate folder progress: use the highest time-elapsed ratio among undone todos
+      double groupProgress = 0.0;
+      for (var t in gTodos) {
+        if (t.isDone) continue;
+        final cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
+        final end = t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+        final totalMin = end.difference(cDate).inMinutes;
+        if (totalMin > 0 && now.isAfter(cDate)) {
+          final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+          if (p > groupProgress) groupProgress = p;
+        }
+      }
+      
+      if (_inlineFolders) {
+        placeItem(_SortedDisplayItem(
+          todo: null,
+          group: g,
+          date: minDate,
+          widget: w,
+          isDone: isAllDone,
+          startMs: 0,
+          progress: groupProgress,
+        ));
+      } else {
+        separateGroupWidgets.add(w);
+      }
+    }
+
+    // 2. Process Standalone Todos
+    for (final t in widget.todos) {
+      if (_isHistoricalTodo(t)) continue;
+      if (t.isDeleted) continue;
+      if (t.groupId != null && t.groupId!.isNotEmpty) continue;
+
+      final isPast = t.dueDate != null && DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day).isBefore(today);
+      final isFuture = t.dueDate != null && DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day).isAfter(today);
+
+      // Calculate individual
+      double todoProgress = 0.0;
+      {
+        final cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
+        final end = t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+        final totalMin = end.difference(cDate).inMinutes;
+        if (totalMin > 0 && now.isAfter(cDate)) {
+          todoProgress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+        }
+      }
+
+      placeItem(_SortedDisplayItem(
+        todo: t,
+        group: null,
+        date: t.dueDate,
+        widget: const SizedBox.shrink(),
+        isDone: t.isDone,
+        startMs: t.createdDate ?? t.createdAt,
+        progress: todoProgress,
+      ));
+    }
+
+    void sortItems(List<_SortedDisplayItem> list) {
+      list.sort((a, b) {
+        // 1. Undone first
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        // 2. Higher progress (more urgent / more time elapsed) first
+        final progressCmp = b.progress.compareTo(a.progress);
+        if (progressCmp != 0) return progressCmp;
+        // 3. Earlier deadline first
+        if (a.date != null && b.date != null) return a.date!.compareTo(b.date!);
+        if (a.date != null) return -1;
+        if (b.date != null) return 1;
+        return 0;
+      });
+    }
+
+    sortItems(pastItems);
+    sortItems(todayItems);
+    sortItems(futureItems);
 
     final List<Widget> sections = [];
 
-    // ── 以往待办（逾期）──
-    if (pastTodos.isNotEmpty) {
+    if (!_inlineFolders && separateGroupWidgets.isNotEmpty) {
       sections.add(
         _buildGroupLabel(
-          text: "逾期 · ${pastTodos.length}",
+          text: "📂 文件夹",
+          expanded: true,
+          color: Theme.of(context).colorScheme.primary,
+          onTap: () {},
+        ),
+      );
+      sections.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: separateGroupWidgets,
+        )
+      );
+    }
+
+    // ── 以往待办（逾期）──
+    if (pastItems.isNotEmpty) {
+      sections.add(
+        _buildGroupLabel(
+          text: "逾期 · ${pastItems.length}",
           expanded: _isPastTodosExpanded,
           color: Colors.redAccent.shade200,
           onTap: () =>
@@ -1891,23 +2108,27 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         _buildAnimatedSection(
           expanded: _isPastTodosExpanded,
           child: Column(
-            children: pastTodos
-                .map(
-                  (t) => _buildTodoItemCard(
-                    t,
-                    isPast: true,
-                    isFuture: false,
-                    key: _getTodoDismissKey('dismiss', t.id),
-                  ),
-                )
-                .toList(),
+            children: pastItems.map((item) {
+              if (item.todo != null) {
+                return _buildTodoItemCard(
+                  item.todo!,
+                  isPast: true,
+                  isFuture: false,
+                  key: _getTodoDismissKey('dismiss', item.todo!.id),
+                );
+              }
+              return item.widget;
+            }).toList(),
           ),
         ),
       );
     }
 
-    // ── 今日待办 ──
-    if (!showTodayItems && todayTodos.isNotEmpty) {
+    // ── 今日待办（含无日期）──
+    final bool allTodayDone = todayItems.isNotEmpty && todayItems.every((t) => t.isDone);
+    final bool showTodayItems = _isTodayManuallyExpanded || (!allTodayDone && _isTodayExpanded);
+
+    if (!showTodayItems && todayItems.isNotEmpty) {
       sections.add(
         GestureDetector(
           onTap: () => setState(() {
@@ -1920,9 +2141,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             decoration: BoxDecoration(
               color: useDarkUI
                   ? Colors.white.withOpacity(0.1)
-                  : Theme.of(
-                      context,
-                    ).colorScheme.surfaceVariant.withOpacity(0.3),
+                  : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -1933,7 +2152,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   child: Text(
                     allTodayDone
                         ? "今日待办均已完成"
-                        : "还有 ${todayTodos.where((t) => !t.isDone).length} 个今日待办",
+                        : "还有 ${todayItems.where((t) => !t.isDone).length} 个今日待办",
                     style: TextStyle(
                       color: useDarkUI ? Colors.white : null,
                       fontWeight: FontWeight.w600,
@@ -1952,11 +2171,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         ),
       );
     } else if (showTodayItems) {
-      if (todayTodos.isNotEmpty) {
+      if (todayItems.isNotEmpty) {
         sections.add(
           _buildGroupLabel(
-            text:
-                "今日 · ${todayTodos.where((t) => t.isDone).length}/${todayTodos.length} 已完成",
+            text: "今日 · ${todayItems.where((t) => t.isDone).length}/${todayItems.length} 已完成",
             expanded: true,
             onTap: () => setState(() {
               _isTodayExpanded = false;
@@ -1985,15 +2203,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               },
               onReorder: (oldIndex, newIndex) {
                 if (newIndex > oldIndex) newIndex -= 1;
+                final oldItem = todayItems[oldIndex];
+                if (oldItem.group != null) return; // Disallow dragging groups
+
                 final List<int> todayIndices = [];
                 for (int i = 0; i < widget.todos.length; i++) {
                   final t = widget.todos[i];
-                  if (_isHistoricalTodo(t) || t.isDeleted) continue;
+                  if (_isHistoricalTodo(t) || t.isDeleted || t.groupId != null) continue;
                   if (t.dueDate != null) {
                     final DateTime d = DateTime(
-                      t.dueDate!.year,
-                      t.dueDate!.month,
-                      t.dueDate!.day,
+                      t.dueDate!.year, t.dueDate!.month, t.dueDate!.day,
                     );
                     if (!d.isBefore(today) && !d.isAfter(today)) {
                       todayIndices.add(i);
@@ -2002,35 +2221,43 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     todayIndices.add(i);
                   }
                 }
-                final List<TodoItem> reordered = List.from(sortedTodayTodos);
+                
+                final reordered = List<_SortedDisplayItem>.from(todayItems);
                 final item = reordered.removeAt(oldIndex);
                 reordered.insert(newIndex, item);
-                final List<TodoItem> updatedList = List.from(widget.todos);
-                for (int i = 0;
-                    i < todayIndices.length && i < reordered.length;
-                    i++) {
-                  updatedList[todayIndices[i]] = reordered[i];
+
+                final reorderedTodos = reordered.where((e) => e.todo != null).map((e) => e.todo!).toList();
+                final updatedList = List<TodoItem>.from(widget.todos);
+                for (int i = 0; i < todayIndices.length && i < reorderedTodos.length; i++) {
+                  updatedList[todayIndices[i]] = reorderedTodos[i];
                 }
                 widget.onTodosChanged(updatedList);
               },
-              children: sortedTodayTodos.asMap().entries.map((entry) {
+              children: todayItems.asMap().entries.map((entry) {
                 final int index = entry.key;
-                final TodoItem t = entry.value;
-                return ReorderableDelayedDragStartListener(
-                  key: _getTodoDismissKey('drag', t.id),
-                  index: index,
-                  child: _buildTodoItemCard(
-                    t,
-                    isPast: false,
-                    isFuture: false,
-                    key: _getTodoDismissKey('dismiss', t.id),
-                  ),
-                );
+                final _SortedDisplayItem item = entry.value;
+                if (item.todo != null) {
+                  return ReorderableDelayedDragStartListener(
+                    key: _getTodoDismissKey('drag', item.todo!.id),
+                    index: index,
+                    child: _buildTodoItemCard(
+                      item.todo!,
+                      isPast: false,
+                      isFuture: false,
+                      key: _getTodoDismissKey('dismiss', item.todo!.id),
+                    ),
+                  );
+                } else {
+                  return Container(
+                    key: ValueKey('group_${item.group!.id}'),
+                    child: item.widget,
+                  );
+                }
               }).toList(),
             ),
           ),
         );
-      } else if (futureTodos.isEmpty) {
+      } else if (futureItems.isEmpty) {
         sections.add(
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4),
@@ -2047,8 +2274,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     }
 
     // ── 未来待办 ──
-    if (sortedFutureTodos.isNotEmpty) {
-      final int futureUndone = sortedFutureTodos.where((t) => !t.isDone).length;
+    if (futureItems.isNotEmpty) {
+      final int futureUndone = futureItems.where((t) => !t.isDone).length;
       sections.add(
         _buildGroupLabel(
           text: "将来 · $futureUndone 未完成",
@@ -2061,16 +2288,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         _buildAnimatedSection(
           expanded: _isFutureExpanded,
           child: Column(
-            children: sortedFutureTodos
-                .map(
-                  (t) => _buildTodoItemCard(
-                    t,
+            children: futureItems.map((item) {
+              if (item.todo != null) {
+                 return _buildTodoItemCard(
+                    item.todo!,
                     isPast: false,
                     isFuture: true,
-                    key: _getTodoDismissKey('dismiss', t.id),
-                  ),
-                )
-                .toList(),
+                    key: _getTodoDismissKey('dismiss', item.todo!.id),
+                 );
+              }
+              return item.widget;
+            }).toList(),
           ),
         ),
       );
@@ -2101,8 +2329,23 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               child: SectionHeader(
                 title: "待办清单",
                 icon: Icons.check_circle_outline,
-                onAdd: showAddTodoDialog,
-                isLight: widget.isLight, // SectionHeader自带了很好的适应逻辑
+                actionIcon: Icons.create_new_folder_outlined,
+                actionTooltip: "管理文件夹",
+                isLight: widget.isLight,
+                onAction: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => FolderManageScreen(
+                        username: widget.username,
+                        todoGroups: widget.todoGroups,
+                        onGroupsChanged: widget.onGroupsChanged,
+                        allTodos: widget.todos,
+                        onTodosChanged: widget.onTodosChanged,
+                      ),
+                    ),
+                  );
+                  _loadSettings();
+                },
               ),
             ),
             Row(
@@ -2144,7 +2387,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         .where((t) =>
                             !t.isDeleted && !t.isDone && !_isHistoricalTodo(t))
                         .map((t) {
-                      return {
+                      return <String, dynamic>{
+                        'id': t.id,
                         'title': t.title,
                         'remark': t.remark ?? '',
                         'startTime': t.createdDate != null
@@ -2160,6 +2404,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             t.dueDate!.hour == 23 &&
                             t.dueDate!.minute == 59,
                         'recurrence': t.recurrence.name,
+                        'groupId': t.groupId ?? '',
                       };
                     }).toList();
 
@@ -2169,16 +2414,48 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         builder: (_) => TodoChatScreen(
                           username: widget.username,
                           todos: todosForChat,
+                          todoGroups: widget.todoGroups,
                           onTodoInserted: (newTodo) {
                             final updatedList =
                                 List<TodoItem>.from(widget.todos)..add(newTodo);
                             widget.onTodosChanged(updatedList);
                           },
-                          onTodosBatchInserted: (newTodos) {
-                            final updatedList =
-                                List<TodoItem>.from(widget.todos)
-                                  ..addAll(newTodos);
-                            widget.onTodosChanged(updatedList);
+                          onTodosBatchAction: (inserted, updated) {
+                            final List<TodoItem> resultList =
+                                List<TodoItem>.from(widget.todos);
+
+                            // 1. 处理新增
+                            resultList.addAll(inserted);
+
+                            // 2. 处理更新
+                            for (final update in updated) {
+                              final idx = resultList
+                                  .indexWhere((t) => t.id == update.id);
+                              if (idx != -1) {
+                                final existing = resultList[idx];
+                                  final gId = update.groupId;
+                                  resultList[idx] = TodoItem(
+                                    id: existing.id,
+                                    title: existing.title,
+                                    isDone: existing.isDone,
+                                    isDeleted: existing.isDeleted,
+                                    version: existing.version,
+                                    updatedAt:
+                                        DateTime.now().millisecondsSinceEpoch,
+                                    createdAt: existing.createdAt,
+                                    createdDate: existing.createdDate,
+                                    recurrence: existing.recurrence,
+                                    customIntervalDays:
+                                        existing.customIntervalDays,
+                                    recurrenceEndDate: existing.recurrenceEndDate,
+                                    dueDate: existing.dueDate,
+                                    remark: existing.remark,
+                                    groupId: (gId == null || gId.isEmpty) ? null : gId,
+                                  )..markAsChanged();
+                              }
+                            }
+
+                            widget.onTodosChanged(resultList);
                           },
                         ),
                       ),
@@ -2225,14 +2502,44 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       ],
     );
   }
+
+  void _showCreateGroupDialog(BuildContext context) {
+    final titleCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("新建待办文件夹"),
+        content: TextField(
+          controller: titleCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: "文件夹名称"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+          FilledButton(
+            onPressed: () async {
+              if (titleCtrl.text.trim().isEmpty) return;
+              final newGroup = TodoGroup(name: titleCtrl.text.trim());
+              final currentGroups = List<TodoGroup>.from(widget.todoGroups)..add(newGroup);
+              await StorageService.saveTodoGroups(widget.username, currentGroups);
+              widget.onRefreshRequested();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text("创建"),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TodoEditScreen extends StatefulWidget {
   final TodoItem todo;
   final List<TodoItem> todos;
   final Function(List<TodoItem>) onTodosChanged;
+  final List<TodoGroup> todoGroups;
   const _TodoEditScreen(
-      {required this.todo, required this.todos, required this.onTodosChanged});
+      {required this.todo, required this.todos, required this.onTodosChanged, required this.todoGroups});
   @override
   State<_TodoEditScreen> createState() => _TodoEditScreenState();
 }
@@ -2247,6 +2554,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
   int? _customDays;
   DateTime? _recurrenceEndDate;
   late bool _isAllDay;
+  String? _selectedGroupId;
 
   @override
   void initState() {
@@ -2269,6 +2577,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
         _createdDate.minute == 0 &&
         _dueDate!.hour == 23 &&
         _dueDate!.minute == 59;
+    _selectedGroupId = t.groupId;
   }
 
   @override
@@ -2290,6 +2599,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     todo.recurrenceEndDate = _recurrenceEndDate;
     todo.remark =
         _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim();
+    todo.groupId = _selectedGroupId;
     todo.markAsChanged();
     widget.onTodosChanged(List<TodoItem>.from(widget.todos));
     if (mounted) Navigator.pop(context);
@@ -2329,6 +2639,27 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                       borderRadius: BorderRadius.circular(12))),
               maxLines: 3,
               minLines: 1),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _selectedGroupId,
+            decoration: InputDecoration(
+              labelText: '所属文件夹 (可选)',
+              prefixIcon: const Icon(Icons.folder_outlined),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            items: [
+              const DropdownMenuItem<String>(
+                value: null,
+                child: Text('无计划 / 未分类'),
+              ),
+              ...widget.todoGroups.map((g) => DropdownMenuItem<String>(
+                    value: g.id,
+                    child: Text(g.name),
+                  )),
+            ],
+            onChanged: (val) => setState(() => _selectedGroupId = val),
+          ),
           const SizedBox(height: 12),
           SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -2554,4 +2885,24 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
       ),
     );
   }
+}
+
+class _SortedDisplayItem {
+  final TodoItem? todo;
+  final TodoGroup? group;
+  final DateTime? date;
+  final Widget widget;
+  final bool isDone;
+  final int startMs;
+  final double progress;
+
+  _SortedDisplayItem({
+    this.todo,
+    this.group,
+    this.date,
+    required this.widget,
+    required this.isDone,
+    this.startMs = 0,
+    this.progress = 0.0,
+  });
 }

@@ -228,6 +228,7 @@ class ApiService {
     required String deviceId,
     required List<Map<String, dynamic>> todosChanges,
     required List<Map<String, dynamic>> countdownsChanges,
+    List<Map<String, dynamic>> todoGroupsChanges = const [],
     Map<String, dynamic>? screenTime,
     List<Map<String, dynamic>> timeLogsChanges =
         const [], // 🚀 1. 新增命名参数，默认为空列表
@@ -238,6 +239,7 @@ class ApiService {
         'last_sync_time': lastSyncTime,
         'device_id': deviceId,
         'todos': todosChanges,
+        'todo_groups': todoGroupsChanges,
         'countdowns': countdownsChanges,
         'time_logs_changes': timeLogsChanges, // 🚀 2. 将数据加入到 JSON Payload 中
       };
@@ -258,6 +260,7 @@ class ApiService {
         return {
           'success': true,
           'server_todos': data['server_todos'] ?? [],
+          'server_todo_groups': data['server_todo_groups'] ?? [],
           'server_countdowns': data['server_countdowns'] ?? [],
           'new_sync_time': data['new_sync_time'],
           'server_time_logs': data['server_time_logs'] ?? [],

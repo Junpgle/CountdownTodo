@@ -49,6 +49,7 @@ class ParsedTodoResult {
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
       'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
+      'originalText': originalText,
     };
   }
 }

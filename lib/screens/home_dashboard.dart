@@ -69,6 +69,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   // === 状态变量 ===
   List<CountdownItem> _countdowns = [];
   List<TodoItem> _todos = [];
+  List<TodoGroup> _todoGroups = [];
   Map<String, dynamic> _mathStats = {};
   List<dynamic> _screenTimeStats = [];
   Map<String, dynamic> _dashboardCourseData = {
@@ -1551,6 +1552,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _loadAllData() async {
     final allCountdowns = await StorageService.getCountdowns(widget.username);
     final allTodos = await StorageService.getTodos(widget.username);
+    final allGroups = await StorageService.getTodoGroups(widget.username);
     final stats = await StorageService.getMathStats(widget.username);
     final courseData = await CourseService.getDashboardCourses();
 
@@ -1558,6 +1560,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       setState(() {
         _countdowns = allCountdowns.where((c) => !c.isDeleted).toList();
         _todos = allTodos.where((t) => !t.isDeleted).toList();
+        _todoGroups = allGroups.where((g) => !g.isDeleted).toList();
         _mathStats = stats;
         _dashboardCourseData = courseData;
       });
@@ -2023,8 +2026,22 @@ class _HomeDashboardState extends State<HomeDashboard>
                       Widget todoSection = TodoSectionWidget(
                         key: _todoSectionKey,
                         todos: _todos,
+                        todoGroups: _todoGroups,
                         username: widget.username,
                         isLight: isLight,
+                        onGroupsChanged: (newGroups) async {
+                          setState(() => _todoGroups = newGroups.where((g) => !g.isDeleted).toList());
+                          final allGroups = await StorageService.getTodoGroups(widget.username);
+                          for (var g in newGroups) {
+                            int idx = allGroups.indexWhere((x) => x.id == g.id);
+                            if (idx != -1) {
+                              if (g.updatedAt >= allGroups[idx].updatedAt) allGroups[idx] = g;
+                            } else {
+                              allGroups.add(g);
+                            }
+                          }
+                          await StorageService.saveTodoGroups(widget.username, allGroups, sync: true);
+                        },
                         onTodosChanged: (newTodos) async {
                           setState(() => _todos = newTodos);
                           // 🚀 这里只修改当前展示的待办，存回数据库前要和隐藏的老数据合并
@@ -2048,6 +2065,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                           FloatWindowService.update();
                           _syncTodoNotification();
                           await WidgetService.updateTodoWidget(_todos);
+                          // _loadAllData(); // 🚀 关键修复：不再立即 reload，由 setState 驱动 UI 更新
                         },
                         onRefreshRequested: _loadAllData,
                         onLLMResultsParsed: (results, imagePath, originalText) {
@@ -2286,6 +2304,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             onPressed: () => PageTransitions.pushFromRect(
               context: context,
               page: AddTodoScreen(
+                todoGroups: _todoGroups,
                 onTodoAdded: (todo) async {
                   final allTodos =
                       await StorageService.getTodos(widget.username);

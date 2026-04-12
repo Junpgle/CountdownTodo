@@ -14,12 +14,14 @@ class AddTodoScreen extends StatefulWidget {
   final Function(List<TodoItem>)? onTodosBatchAdded;
   final Function(List<Map<String, dynamic>>, String?, String?)?
       onLLMResultsParsed;
+  final List<TodoGroup> todoGroups;
 
   const AddTodoScreen({
     super.key,
     required this.onTodoAdded,
     this.onTodosBatchAdded,
     this.onLLMResultsParsed,
+    this.todoGroups = const [],
   });
 
   @override
@@ -39,6 +41,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   int? _customDays;
   DateTime? _recurrenceEndDate;
   bool _isAllDay = false;
+  String? _selectedGroupId;
 
   int _selectedTabIndex = 0;
   bool _isParsing = false;
@@ -294,6 +297,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       createdDate: _createdAt.millisecondsSinceEpoch,
       remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
       originalText: _currentOriginalText,
+      groupId: _selectedGroupId,
     );
 
     widget.onTodoAdded(todo);
@@ -550,6 +554,38 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             },
           ),
           const Divider(),
+          // Folder selection
+          if (widget.todoGroups.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              value: _selectedGroupId,
+              decoration: InputDecoration(
+                labelText: "归类到文件夹 (可选)",
+                prefixIcon: const Icon(Icons.folder_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text("不归类 (独立待办)"),
+                ),
+                ...widget.todoGroups.where((g) => !g.isDeleted).map((g) => DropdownMenuItem<String?>(
+                  value: g.id,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.folder, size: 18, color: Colors.amber),
+                      const SizedBox(width: 8),
+                      Text(g.name),
+                    ],
+                  ),
+                )),
+              ],
+              onChanged: (val) => setState(() => _selectedGroupId = val),
+            ),
+            const SizedBox(height: 12),
+          ],
           DropdownButtonFormField<RecurrenceType>(
             value: _recurrence,
             decoration: InputDecoration(

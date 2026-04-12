@@ -98,6 +98,18 @@ class ChatStorageService {
     await prefs.setString(_sessionsKey, jsonEncode(jsonList));
   }
 
+  static Future<void> clearAllSessions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+    for (final key in keys) {
+      if (key.startsWith('chat_history_') ||
+          key == _sessionsKey ||
+          key == _activeSessionKey) {
+        await prefs.remove(key);
+      }
+    }
+  }
+
   static Future<String?> getActiveSessionId() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_activeSessionKey);
