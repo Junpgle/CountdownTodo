@@ -173,6 +173,12 @@ class _HomeDashboardState extends State<HomeDashboard>
               _handleShortcut(shortcutType);
             }
             break;
+          case "viewAnalysisImage":
+            final imagePath = call.arguments as String?;
+            if (imagePath != null && mounted) {
+              _showAnalysisImage(imagePath);
+            }
+            break;
           // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
         }
       });
@@ -223,6 +229,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (mounted) _checkUpcomingEvents();
       });
       _checkAndNavigateToPomodoro();
+      // 🚀 清理 7 天前的过期图片
+      TodoItem.cleanupAnalysisImages();
     });
   }
 
@@ -298,6 +306,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         remark: data['remark'],
         dueDate: dueDate,
         createdDate: createdDate,
+        imagePath: data['imagePath'], // 📸 关联图片路径
       );
     }).toList();
 
@@ -359,6 +368,40 @@ class _HomeDashboardState extends State<HomeDashboard>
     setState(() {
       _pendingTodoConfirm = null;
     });
+  }
+
+  /// 显示全屏图片预览（针对分析产生的图片）
+  void _showAnalysisImage(String imagePath) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text("原本分析图片"),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.file(
+                File(imagePath),
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Center(
+                    child: Text(
+                      "图片加载失败，文件可能已过期删除",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// 处理 App Shortcut 导航

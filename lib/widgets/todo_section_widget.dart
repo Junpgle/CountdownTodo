@@ -2459,7 +2459,69 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                   if (picked != null)
                     setState(() => _recurrenceEndDate = picked);
                 }),
+          if (widget.todo.imagePath != null) ...[
+            const SizedBox(height: 20),
+            const Text('分析原始图片',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () => _showFullImage(context, widget.todo.imagePath!),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(widget.todo.imagePath!),
+                  height: 200,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (ctx, _, __) => Container(
+                    height: 100,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                        child: Text('图片已过期或被删除',
+                            style: TextStyle(color: Colors.grey))),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ]),
+      ),
+    );
+  }
+
+  void _showFullImage(BuildContext context, String imagePath) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text("图片预览"),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.file(
+                File(imagePath),
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Center(
+                    child: Text(
+                      "图片加载失败",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

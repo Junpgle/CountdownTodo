@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import '../services/llm_service.dart';
 import '../services/notification_service.dart';
 
@@ -368,13 +370,43 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     }
   }
 
-  void _finishConfirm() {
+  Future<void> _finishConfirm() async {
     if (_confirmedTodos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('没有添加任何待办')),
       );
       Navigator.pop(context);
       return;
+    }
+
+    // 🚀 核心：移动图片到持久化目录
+    String? persistentImagePath;
+    if (widget.imagePath != null) {
+      try {
+        final imageFile = File(widget.imagePath!);
+        if (await imageFile.exists()) {
+          final appDir = await getApplicationSupportDirectory();
+          final imageDir = Directory('${appDir.path}/analysis_images');
+          if (!await imageDir.exists()) {
+            await imageDir.create(recursive: true);
+          }
+
+          final fileName = '${DateTime.now().millisecondsSinceEpoch}_${p.basename(widget.imagePath!)}';
+          final newPath = '${imageDir.path}/$fileName';
+          await imageFile.copy(newPath);
+          persistentImagePath = newPath;
+          debugPrint('📸 图片已持久化到: $persistentImagePath');
+        }
+      } catch (e) {
+        debugPrint('❌ 持久化图片失败: $e');
+      }
+    }
+
+    // 将路径注入到所有待办中
+    if (persistentImagePath != null) {
+      for (var todo in _confirmedTodos) {
+        todo['imagePath'] = persistentImagePath;
+      }
     }
 
     if (widget.onConfirm != null) {

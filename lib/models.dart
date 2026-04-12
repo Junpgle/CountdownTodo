@@ -1,5 +1,8 @@
 import 'dart:math';
+import 'dart:io';
 import 'package:uuid/uuid.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 
 // ==========================================
 // 1. 测验相关 (完整保留原有逻辑)
@@ -113,6 +116,7 @@ class TodoItem {
   DateTime? recurrenceEndDate;
   DateTime? dueDate;
   String? remark; // 📝 备注
+  String? imagePath; // 📸 图片分析路径
 
   TodoItem({
     String? id,
@@ -128,6 +132,7 @@ class TodoItem {
     this.recurrenceEndDate,
     this.dueDate,
     this.remark,
+    this.imagePath,
   }) :
         this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
@@ -158,6 +163,7 @@ class TodoItem {
     'recurrenceEndDate': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
     'recurrence_end_date': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
     'remark': remark,                 // 📝 备注（可为 null）
+    'image_path': imagePath,          // 📸 图片路径
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -190,7 +196,39 @@ class TodoItem {
       dueDate: _parseDateField(json['due_date']),
       // 📝 备注
       remark: json['remark'] as String?,
+      // 📸 图片路径
+      imagePath: (json['image_path'] ?? json['imagePath']) as String?,
     );
+  }
+
+  /// 🚀 静态方法：清理过期的图片分析文件（7天以上）
+  static Future<void> cleanupAnalysisImages() async {
+    try {
+      final appDir = await getApplicationSupportDirectory();
+      final imageDir = Directory('${appDir.path}/analysis_images');
+      if (!await imageDir.exists()) return;
+
+      final now = DateTime.now();
+      final expiration = now.subtract(const Duration(days: 7));
+
+      final files = imageDir.listSync();
+      int deletedCount = 0;
+
+      for (var file in files) {
+        if (file is File) {
+          final stat = await file.stat();
+          if (stat.modified.isBefore(expiration)) {
+            await file.delete();
+            deletedCount++;
+          }
+        }
+      }
+      if (deletedCount > 0) {
+        debugPrint('🧹 清理了 $deletedCount 个过期的识别图片');
+      }
+    } catch (e) {
+      debugPrint('❌ 清理识别图片失败: $e');
+    }
   }
 }
 

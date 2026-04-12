@@ -25,6 +25,8 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.*
 import org.json.JSONArray as KJSONArray
+import java.io.File
+import androidx.core.content.FileProvider
 
 // 导入 HyperIsland Kit 的核心类
 import io.github.d4viddf.hyperisland_kit.HyperAction
@@ -64,6 +66,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingPomodoroAction: String? = null
     // 保存待处理的待办确认动作（在methodChannel初始化前）
     private var pendingTodoConfirm = false
+    // 保存待处理的图片查看路径（在methodChannel初始化前）
+    private var pendingAnalysisImagePath: String? = null
     // 手环通信插件，全局可访问
     private var bandPlugin: BandCommunicationPlugin? = null
 
@@ -111,6 +115,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 处理从通知栏传来的待办确认动作
         handleTodoConfirmFromIntent(intent)
 
+        // 处理从通知栏传来的图片查看动作
+        handleAnalysisImageFromIntent(intent)
+
         // 处理 App Shortcuts 导航
         handleShortcutFromIntent(intent)
 
@@ -146,7 +153,24 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         super.onNewIntent(intent)
         handlePomodoroActionFromIntent(intent)
         handleTodoConfirmFromIntent(intent)
+        handleAnalysisImageFromIntent(intent)
         handleShortcutFromIntent(intent)
+    }
+
+    private fun handleAnalysisImageFromIntent(intent: Intent?) {
+        val path = intent?.getStringExtra("analysis_image_path") ?: return
+        Log.d(TAG, "📸 handleAnalysisImageFromIntent: $path")
+        // 清除 extra，防止重复处理
+        intent.removeExtra("analysis_image_path")
+
+        if (methodChannel != null) {
+            methodChannel?.invokeMethod("viewAnalysisImage", path)
+            Log.d(TAG, "📸 Invoked viewAnalysisImage to Flutter with path: $path")
+        } else {
+            // methodChannel还未初始化，保存待处理状态
+            pendingAnalysisImagePath = path
+            Log.d(TAG, "📸 Saved pending analysis image path")
+        }
     }
 
     private fun handleTodoConfirmFromIntent(intent: Intent?) {
@@ -298,6 +322,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.d(TAG, "📋 Processing pending todo confirm")
             methodChannel?.invokeMethod("openTodoConfirm", null)
             pendingTodoConfirm = false
+        }
+
+        // 处理待处理的图片查看动作
+        pendingAnalysisImagePath?.let { path ->
+            Log.d(TAG, "📸 Processing pending analysis image: $path")
+            methodChannel?.invokeMethod("viewAnalysisImage", path)
+            pendingAnalysisImagePath = null
         }
 
         // 处理待处理的 Shortcut 导航
@@ -881,12 +912,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
-    // 🚀 新增：处理即将开始的具体时间待办
     private fun updateUpcomingTodoNotification(args: Map<String, Any>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val todoTitle = args["todoTitle"] as? String ?: "待办事项"
         val todoRemark = (args["todoRemark"] as? String)?.trim() ?: ""
         val timeStr = args["timeStr"] as? String ?: ""
+        val imagePath = args["imagePath"] as? String
 
         // 主标题 = 待办内容；正文 = 备注（有则显示）否则显示时间段；subText = 🕒即将开始 + 时间
         val title = todoTitle
@@ -905,7 +936,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             totalSteps = 0,
             isTodo = true,
             shortText = timeStr,
-            iconResId = R.drawable.calendar_clock
+            iconResId = R.drawable.calendar_clock,
+            imagePath = imagePath
         )
         // 🔔 上岛同时触发一次性普通提醒
         sendAlertIfNew(
@@ -924,6 +956,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val todoRemark = (args["todoRemark"] as? String)?.trim() ?: ""
         val timeStr = args["timeStr"] as? String ?: ""
         val todoType = args["todoType"] as? String ?: "default"
+        val imagePath = args["imagePath"] as? String
         
         // 使用 Number 来接收，避免类型转换问题
         val customNotifId = (args["notificationId"] as? Number)?.toInt()
@@ -961,7 +994,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             iconResId = iconResId,
             largeIconResId = iconResId,
             notificationId = notifId,
-            islandBizTag = SPECIAL_TODO_ISLAND_BIZ_TAG
+            islandBizTag = SPECIAL_TODO_ISLAND_BIZ_TAG,
+            imagePath = imagePath
         )
 
         // 📳 同步发送到手环
@@ -1213,7 +1247,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         largeIconResId: Int? = null,
         channelId: String = NOTIFICATION_CHANNEL_ID,
         notificationId: Int = NOTIFICATION_ID,
-        islandBizTag: String = TODO_ISLAND_BIZ_TAG
+        islandBizTag: String = TODO_ISLAND_BIZ_TAG,
+        imagePath: String? = null
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
@@ -1346,6 +1381,38 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
 
         // ==========================================
+        //  为图片生成的待办添加「查看图片」动作
+        // ==========================================
+        var viewImagePendingIntent: PendingIntent? = null
+        if (!imagePath.isNullOrEmpty()) {
+            try {
+                val file = File(imagePath)
+                if (file.exists()) {
+                    // 直接打开应用，并携带图片路径
+                    val openAppWithImageIntent = Intent(this, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        putExtra("analysis_image_path", imagePath)
+                    }
+                    viewImagePendingIntent = PendingIntent.getActivity(
+                        this,
+                        notificationId + 1000,
+                        openAppWithImageIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    val viewAction = NotificationCompat.Action.Builder(
+                        IconCompat.createWithResource(this, R.drawable.ic_notification),
+                        "查看图片",
+                        viewImagePendingIntent
+                    ).build()
+                    builder.addAction(viewAction)
+                    Log.d(TAG, "📸 Added VIEW_IMAGE(Internal) action for path: $imagePath")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "📸 Failed to add VIEW_IMAGE action", e)
+            }
+        }
+
+        // ==========================================
         //  为番茄钟添加「提前完成」和「放弃专注」按钮
         // ==========================================
         var pomodoroFinishPendingIntent: PendingIntent? = null
@@ -1440,6 +1507,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         2
                     )
                     hyperBuilder.addAction(abandonAction)
+                }
+
+                if (viewImagePendingIntent != null) {
+                    val viewAction = HyperAction(
+                        "btn_view_image",
+                        "查看图片",
+                        viewImagePendingIntent,
+                        3
+                    )
+                    hyperBuilder.addAction(viewAction)
                 }
 
                 extras.putString("miui.focus.param", hyperBuilder.buildJsonParam())
