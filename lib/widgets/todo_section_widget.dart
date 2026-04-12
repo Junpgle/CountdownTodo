@@ -1891,8 +1891,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final groupTodosMap = <String, List<TodoItem>>{};
     for (var t in widget.todos) {
       if (t.isDeleted || _isHistoricalTodo(t)) continue;
-      if (t.groupId != null) {
-        groupTodosMap.putIfAbsent(t.groupId!, () => []).add(t);
+      final tid = (t.groupId == null || t.groupId!.isEmpty) ? null : t.groupId;
+      if (tid != null) {
+        groupTodosMap.putIfAbsent(tid, () => []).add(t);
       }
     }
 
@@ -2027,12 +2028,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     for (final t in widget.todos) {
       if (_isHistoricalTodo(t)) continue;
       if (t.isDeleted) continue;
-      if (t.groupId != null) continue;
+      if (t.groupId != null && t.groupId!.isNotEmpty) continue;
 
       final isPast = t.dueDate != null && DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day).isBefore(today);
       final isFuture = t.dueDate != null && DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day).isAfter(today);
 
-      // Calculate individual todo progress
+      // Calculate individual
       double todoProgress = 0.0;
       {
         final cDate = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
