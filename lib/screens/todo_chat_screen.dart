@@ -570,8 +570,13 @@ JSON格式（必须严格遵循）：
         _streamingReasoning = '';
         _isLoading = false;
         if (todoActions.isNotEmpty) {
-          _pendingTodos = todoActions;
-          _selectedTodoIndices = todoActions.asMap().keys.toSet();
+          // 为每个待办动作关联原始用户指令
+          _pendingTodos = todoActions.map((todo) {
+            final Map<String, dynamic> newTodo = Map.from(todo);
+            newTodo['originalText'] = text; // 📄 用户原始指令
+            return newTodo;
+          }).toList();
+          _selectedTodoIndices = _pendingTodos.asMap().keys.toSet();
         } else {
           _pendingTodos = [];
           _selectedTodoIndices.clear();
@@ -1770,6 +1775,7 @@ JSON格式（必须严格遵循）：
         recurrence: recurrence,
         customIntervalDays: customIntervalDays,
         recurrenceEndDate: recurrenceEndDate,
+        originalText: todoData['originalText'] as String?,
       ));
     }
 

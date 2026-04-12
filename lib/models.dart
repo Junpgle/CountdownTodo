@@ -117,6 +117,7 @@ class TodoItem {
   DateTime? dueDate;
   String? remark; // 📝 备注
   String? imagePath; // 📸 图片分析路径
+  String? originalText; // 📄 原始分析文本
 
   TodoItem({
     String? id,
@@ -133,6 +134,7 @@ class TodoItem {
     this.dueDate,
     this.remark,
     this.imagePath,
+    this.originalText,
   }) :
         this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
@@ -164,6 +166,7 @@ class TodoItem {
     'recurrence_end_date': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
     'remark': remark,                 // 📝 备注（可为 null）
     'image_path': imagePath,          // 📸 图片路径
+    'original_text': originalText,    // 📄 原始分析文本
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -198,6 +201,8 @@ class TodoItem {
       remark: json['remark'] as String?,
       // 📸 图片路径
       imagePath: (json['image_path'] ?? json['imagePath']) as String?,
+      // 📄 原始分析文本
+      originalText: (json['original_text'] ?? json['originalText']) as String?,
     );
   }
 

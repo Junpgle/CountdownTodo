@@ -117,6 +117,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 处理从通知栏传来的图片查看动作
         handleAnalysisImageFromIntent(intent)
+        handleOriginalTextFromIntent(intent)
 
         // 处理 App Shortcuts 导航
         handleShortcutFromIntent(intent)
@@ -154,6 +155,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handlePomodoroActionFromIntent(intent)
         handleTodoConfirmFromIntent(intent)
         handleAnalysisImageFromIntent(intent)
+        handleOriginalTextFromIntent(intent)
         handleShortcutFromIntent(intent)
     }
 
@@ -162,6 +164,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         Log.d(TAG, "📸 handleAnalysisImageFromIntent: $path")
         // 清除 extra，防止重复处理
         intent.removeExtra("analysis_image_path")
+        intent.removeExtra("original_analysis_text")
 
         if (methodChannel != null) {
             methodChannel?.invokeMethod("viewAnalysisImage", path)
@@ -170,6 +173,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             // methodChannel还未初始化，保存待处理状态
             pendingAnalysisImagePath = path
             Log.d(TAG, "📸 Saved pending analysis image path")
+        }
+    }
+
+    private fun handleOriginalTextFromIntent(intent: Intent?) {
+        val text = intent?.getStringExtra("original_analysis_text") ?: return
+        Log.d(TAG, "📄 handleOriginalTextFromIntent: $text")
+        // 清除 extra，防止重复处理
+        intent.removeExtra("original_analysis_text")
+
+        if (methodChannel != null) {
+            methodChannel?.invokeMethod("viewOriginalText", text)
+            Log.d(TAG, "📄 Invoked viewOriginalText to Flutter")
         }
     }
 
@@ -937,7 +952,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             isTodo = true,
             shortText = timeStr,
             iconResId = R.drawable.calendar_clock,
-            imagePath = imagePath
+            imagePath = imagePath,
+            originalText = args["originalText"] as? String
         )
         // 🔔 上岛同时触发一次性普通提醒
         sendAlertIfNew(
@@ -995,7 +1011,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             largeIconResId = iconResId,
             notificationId = notifId,
             islandBizTag = SPECIAL_TODO_ISLAND_BIZ_TAG,
-            imagePath = imagePath
+            imagePath = imagePath,
+            originalText = args["originalText"] as? String
         )
 
         // 📳 同步发送到手环
@@ -1248,7 +1265,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         channelId: String = NOTIFICATION_CHANNEL_ID,
         notificationId: Int = NOTIFICATION_ID,
         islandBizTag: String = TODO_ISLAND_BIZ_TAG,
-        imagePath: String? = null
+        imagePath: String? = null,
+        originalText: String? = null
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
@@ -1408,6 +1426,32 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     Log.d(TAG, "📸 Added VIEW_IMAGE(Internal) action for path: $imagePath")
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Add viewImageAction error", e)
+            }
+        }
+
+        // ==========================================
+        //  为文本生成的待办添加「查看原文」动作
+        // ==========================================
+        if (!originalText.isNullOrEmpty()) {
+            val openAppWithTextIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("original_analysis_text", originalText)
+            }
+            val viewTextPendingIntent = PendingIntent.getActivity(
+                this,
+                notificationId + 2000,
+                openAppWithTextIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val viewTextAction = NotificationCompat.Action.Builder(
+                IconCompat.createWithResource(this, R.drawable.ic_notification),
+                "查看原文",
+                viewTextPendingIntent
+            ).build()
+            builder.addAction(viewTextAction)
+            Log.d(TAG, "📄 Added VIEW_TEXT action")
+        }
                 Log.e(TAG, "📸 Failed to add VIEW_IMAGE action", e)
             }
         }

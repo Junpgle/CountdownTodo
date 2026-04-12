@@ -179,6 +179,12 @@ class _HomeDashboardState extends State<HomeDashboard>
               _showAnalysisImage(imagePath);
             }
             break;
+          case "viewOriginalText":
+            final text = call.arguments as String?;
+            if (text != null && mounted) {
+              _showOriginalText(text);
+            }
+            break;
           // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
         }
       });
@@ -265,8 +271,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   /// 导航到待办确认页面
-  void _navigateToTodoConfirm(
-      List<Map<String, dynamic>> results, String? imagePath) {
+  void _navigateToTodoConfirm(List<Map<String, dynamic>> results,
+      String? imagePath, [String? originalText]) {
     if (!mounted || results.isEmpty) return;
 
     Navigator.push(
@@ -274,6 +280,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       PageTransitions.slideHorizontal(TodoConfirmScreen(
         llmResults: results,
         imagePath: imagePath,
+        originalText: originalText,
         onConfirm: (confirmedResults) {
           // 用户确认后，直接批量添加待办
           _batchAddTodos(confirmedResults);
@@ -307,6 +314,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         dueDate: dueDate,
         createdDate: createdDate,
         imagePath: data['imagePath'], // 📸 关联图片路径
+        originalText: data['originalText'], // 📄 原始分析文本
       );
     }).toList();
 
@@ -400,6 +408,29 @@ class _HomeDashboardState extends State<HomeDashboard>
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 显示原始分析文本对话框
+  void _showOriginalText(String text) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("分析原始文字"),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            text,
+            style: const TextStyle(fontSize: 14, height: 1.5),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("确定"),
+          ),
+        ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -2019,9 +2050,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                           await WidgetService.updateTodoWidget(_todos);
                         },
                         onRefreshRequested: _loadAllData,
-                        onLLMResultsParsed: (results, imagePath) {
+                        onLLMResultsParsed: (results, imagePath, originalText) {
                           // 导航到 TodoConfirmScreen
-                          _navigateToTodoConfirm(results, imagePath);
+                          _navigateToTodoConfirm(
+                              results, imagePath, originalText);
                         },
                       );
                       Widget screenTimeSection = RepaintBoundary(

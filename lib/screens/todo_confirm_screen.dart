@@ -16,6 +16,7 @@ class ParsedTodoResult {
   final DateTime? endTime;
   final RecurrenceType recurrence;
   final int? customIntervalDays;
+  final String? originalText;
 
   ParsedTodoResult({
     required this.title,
@@ -25,6 +26,7 @@ class ParsedTodoResult {
     this.endTime,
     this.recurrence = RecurrenceType.none,
     this.customIntervalDays,
+    this.originalText,
   });
 
   Map<String, dynamic> toMap() {
@@ -36,6 +38,7 @@ class ParsedTodoResult {
       'endTime': endTime?.toIso8601String(),
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
+      'originalText': originalText,
     };
   }
 }
@@ -43,12 +46,14 @@ class ParsedTodoResult {
 class TodoConfirmScreen extends StatefulWidget {
   final List<Map<String, dynamic>> llmResults;
   final String? imagePath;
+  final String? originalText;
   final Function(List<Map<String, dynamic>>)? onConfirm;
 
   const TodoConfirmScreen({
     Key? key,
     required this.llmResults,
     this.imagePath,
+    this.originalText,
     this.onConfirm,
   }) : super(key: key);
 
@@ -83,6 +88,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             : null,
         recurrence: _parseRecurrenceType(result['recurrence']),
         customIntervalDays: result['customIntervalDays'],
+        originalText: widget.originalText, // 📄 传入原始文本
       );
     }).toList();
   }

@@ -11,7 +11,8 @@ import '../utils/page_transitions.dart';
 
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
-  final Function(List<Map<String, dynamic>>, String?)? onLLMResultsParsed;
+  final Function(List<Map<String, dynamic>>, String?, String?)?
+      onLLMResultsParsed;
 
   const AddTodoScreen({
     super.key,
@@ -42,6 +43,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   List<ParsedTodoResult> _parsedResults = [];
   int _currentParseIndex = 0;
   String? _llmRawResponse;
+  String? _currentOriginalText;
 
   late AnimationController _dotsController;
 
@@ -151,6 +153,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       _parsedResults = results;
       _currentParseIndex = 0;
       _isParsing = false;
+      _currentOriginalText = _aiInputCtrl.text;
     });
 
     if (_parsedResults.isNotEmpty) {
@@ -210,8 +213,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
       // 如果有回调且有多个待办结果，导航到确认页面
       if (widget.onLLMResultsParsed != null && results.length > 1) {
-        setState(() => _isParsing = false);
-        widget.onLLMResultsParsed!(results, null);
+        setState(() {
+          _isParsing = false;
+          _currentOriginalText = _aiInputCtrl.text;
+        });
+        widget.onLLMResultsParsed!(results, null, _aiInputCtrl.text);
         return;
       }
 
@@ -237,6 +243,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _currentParseIndex = 0;
         _isParsing = false;
         _llmRawResponse = const JsonEncoder.withIndent('  ').convert(results);
+        _currentOriginalText = _aiInputCtrl.text;
       });
 
       if (_parsedResults.isNotEmpty) {
@@ -277,6 +284,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       dueDate: _dueDate,
       createdDate: _createdAt.millisecondsSinceEpoch,
       remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
+      originalText: _currentOriginalText,
     );
 
     widget.onTodoAdded(todo);

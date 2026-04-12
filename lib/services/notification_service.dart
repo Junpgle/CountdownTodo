@@ -243,6 +243,7 @@ class NotificationService {
         'todoType': todoType,
         'notificationId': notifId,
         'imagePath': todo.imagePath,
+        'originalText': todo.originalText, // 📄 原始分析文本
       });
       debugPrint(
           "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");

@@ -24,7 +24,8 @@ class TodoSectionWidget extends StatefulWidget {
   final VoidCallback onRefreshRequested;
 
   /// 大模型识别成功后的回调，用于导航到确认页面
-  final Function(List<Map<String, dynamic>>, String?)? onLLMResultsParsed;
+  final Function(List<Map<String, dynamic>>, String?, String?)?
+      onLLMResultsParsed;
 
   const TodoSectionWidget({
     super.key,
@@ -120,9 +121,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   void showAddTodoDialogWithData(
     List<Map<String, dynamic>> llmResults, [
     String? imagePath,
+    String? originalText,
   ]) {
     if (widget.onLLMResultsParsed != null) {
-      widget.onLLMResultsParsed!(llmResults, imagePath);
+      widget.onLLMResultsParsed!(llmResults, imagePath, originalText);
     } else {
       // 如果没有回调，使用旧的对话框方式
       _showAddTodoDialogWithData(llmResults, imagePath);
@@ -152,6 +154,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     String? sharedImagePath = imagePath; // 保存分享的图片路径
 
     int selectedTabIndex = 0;
+    String? currentOriginalText; // 📄 保存原始文本内容
 
     // 如果有预填充的大模型数据，解析并设置
     if (llmResults != null && llmResults.isNotEmpty) {
@@ -207,6 +210,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         if (customDays != null) {
           customDaysCtrl.text = customDays.toString();
         }
+        currentOriginalText = first.originalText;
       }
     }
 
@@ -626,6 +630,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     parsedResults = results;
                                     currentParseIndex = 0;
                                     isParsing = false;
+                                    currentOriginalText = aiInputCtrl.text;
                                   });
 
                                   if (parsedResults.isNotEmpty) {
@@ -775,8 +780,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         ),
                                         customIntervalDays:
                                             result['customIntervalDays'],
-                                      );
-                                    }).toList();
+                                      originalText: aiInputCtrl.text, // 📄 保存原始输入文字
+                                    );
+                                  }).toList();
 
                                     setDialogState(() {
                                       parsedResults = parsedResultsList;
@@ -793,7 +799,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                       if (widget.onLLMResultsParsed != null) {
                                         Navigator.pop(ctx);
                                         widget.onLLMResultsParsed!(
-                                            results, null);
+                                            results, null, aiInputCtrl.text);
                                         return;
                                       }
 
@@ -832,6 +838,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                           customDaysCtrl.text =
                                               customDays.toString();
                                         }
+                                        currentOriginalText = aiInputCtrl.text;
                                         selectedTabIndex = 0;
                                       });
 
@@ -1057,6 +1064,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       remark: remarkCtrl.text.trim().isEmpty
                           ? null
                           : remarkCtrl.text.trim(),
+                      imagePath: sharedImagePath,
+                      originalText: currentOriginalText,
                     );
                     List<TodoItem> updatedList = List.from(widget.todos)
                       ..add(newTodo);
@@ -2485,6 +2494,26 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                             style: TextStyle(color: Colors.grey))),
                   ),
                 ),
+              ),
+            ),
+          ],
+          if (widget.todo.originalText != null &&
+              widget.todo.originalText!.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            const Text('分析原始文字',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: SelectableText(
+                widget.todo.originalText!,
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
               ),
             ),
           ],

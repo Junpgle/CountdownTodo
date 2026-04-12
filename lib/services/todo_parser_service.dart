@@ -21,6 +21,7 @@ class ParsedTodoResult {
   DateTime? recurrenceEndDate;
   bool isValid;
   List<TodoSegment> segments; // 新增：保存整句被切割后的分片明细
+  String? originalText;      // 📄 原始分析文本
 
   ParsedTodoResult({
     required this.title,
@@ -33,6 +34,7 @@ class ParsedTodoResult {
     this.recurrenceEndDate,
     this.isValid = true,
     this.segments = const [],
+    this.originalText,
   });
 
   bool get hasContent => title.isNotEmpty;
@@ -142,6 +144,9 @@ class TodoParserService {
     DateTime? startTime;
     DateTime? endTime;
     bool isAllDay = false;
+
+    // 保存原始文本（如果外部没传）
+    String? currentOriginalText = original;
 
     // 1. 提取地点 / 备注 (Location)
     final atMatch = RegExp(r'@(\S+)').firstMatch(masked);
@@ -385,6 +390,7 @@ class TodoParserService {
       recurrenceEndDate: recurrenceEndDate,
       isValid: true,
       segments: finalSegments, // 暴露给外部
+      originalText: original, // 📄 原始分析文本
     );
   }
 
