@@ -71,8 +71,9 @@ class StorageService {
   static const String KEY_NOTIFY_NORMAL_ENABLED = "notify_normal_enabled";
   static const String KEY_NOTIFY_COURSE_ENABLED = "notify_course_enabled";
   static const String KEY_NOTIFY_QUIZ_ENABLED = "notify_quiz_enabled";
-  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED =
-      "notify_todo_summary_enabled";
+  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED = "notify_todo_summary_enabled";
+  static const String KEY_NOTIFY_APP_UPDATES_ENABLED = "notify_app_updates_enabled";
+  static const String KEY_TODO_FOLDERS_INLINE = "todo_folders_inline";
   static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
       "notify_special_todo_enabled";
   static const String KEY_NOTIFY_POMODORO_ENABLED = "notify_pomodoro_enabled";
@@ -1533,5 +1534,15 @@ class StorageService {
   static Future<void> saveWallpaperResolution(String resolution) async {
     final prefs = await StorageService.prefs;
     await prefs.setString(KEY_WALLPAPER_RESOLUTION, resolution);
+  }
+
+  static Future<bool> getTodoFoldersInline() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_TODO_FOLDERS_INLINE) ?? true; // Defaults to embedded/inline
+  }
+
+  static Future<void> setTodoFoldersInline(bool inline) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_TODO_FOLDERS_INLINE, inline);
   }
 }
