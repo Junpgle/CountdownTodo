@@ -7,6 +7,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 // Import for Windows features.
 import 'package:webview_win_floating/webview_win_floating.dart';
 import 'dart:io';
+import 'dart:convert'; // 🚀 添加了 jsonDecode 必需的包
 import '../../storage_service.dart';
 import 'package:http/http.dart' as http;
 
@@ -28,10 +29,10 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
   String _currentTitle = '教务系统登录';
   double _progress = 0;
 
-  bool get _isSupported => 
-    Theme.of(context).platform == TargetPlatform.android || 
-    Theme.of(context).platform == TargetPlatform.iOS ||
-    Theme.of(context).platform == TargetPlatform.windows;
+  bool get _isSupported =>
+      Theme.of(context).platform == TargetPlatform.android ||
+          Theme.of(context).platform == TargetPlatform.iOS ||
+          Theme.of(context).platform == TargetPlatform.windows;
 
   late TextEditingController _urlController;
 
@@ -69,7 +70,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
     }
 
     final WebViewController controller =
-        WebViewController.fromPlatformCreationParams(params);
+    WebViewController.fromPlatformCreationParams(params);
 
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -132,122 +133,98 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
     });
 
     try {
-      // 🚀 方案 1：针对合工大，优先尝试直接从后台接口抓取 JSON (最稳)
       final currentUrl = await _controller?.currentUrl();
       debugPrint('[WebViewCapture] Current URL: $currentUrl');
+
       if (currentUrl != null && currentUrl.contains('hfut.edu.cn')) {
-        String? cookieStr;
-        try {
-          // 🚀 优先尝试从 JavaScript 环境获取 Cookie
-          final Object? jsCookie = await _controller?.runJavaScriptReturningResult('document.cookie');
-          cookieStr = jsCookie?.toString();
-          if (cookieStr != null && cookieStr.startsWith('"') && cookieStr.endsWith('"')) {
-            cookieStr = cookieStr.substring(1, cookieStr.length - 1);
-          }
-          
-          debugPrint('[WebViewCapture] Cookie keywords check: contains JSESSIONID=${cookieStr?.contains('JSESSIONID')}, SERVERID=${cookieStr?.contains('SERVERID')}, CAS=${cookieStr?.contains('CAS')}');
+        debugPrint('[WebViewCapture] Detected HFUT, injecting JS to fetch datum API...');
 
-          if (cookieStr != null && (cookieStr.contains('JSESSIONID') || cookieStr.contains('SERVERID') || cookieStr.contains('CAS'))) {
-            debugPrint('[WebViewCapture] Detected HFUT, attempting direct API POST...');
-            final response = await http.post(
-              Uri.parse('https://jxglstu.hfut.edu.cn/eams5-student/ws/schedule-table/datum'),
-              headers: {
-                'Cookie': cookieStr,
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36',
-              },
-            ).timeout(const Duration(seconds: 10));
+        // 🚀 终极方案：在 WebView 内部直接构造 fetch 请求，利用自带身份验证，并传入必需参数！
+        // 使用 async IIFE (立即调用的异步函数)，webview_flutter 会等待其 Promise 返回。
+        final Object? jsResultObj = await _controller?.runJavaScriptReturningResult('''
+          (async function() {
+            try {
+                // 1. 从当前页面的 HTML 源码中正则匹配出必需的请求参数
+                let html = document.documentElement.outerHTML;
+                let semMatch = html.match(/semesterId:\\s*(\\d+)/);
+                let dataMatch = html.match(/dataId:\\s*(\\d+)/);
+                
+                // 提取 contextPath (例如 /eams5-student)
+                let contextMatch = html.match(/window\\.CONTEXT_PATH\\s*=\\s*['"]([^'"]*)['"]/);
+                let contextPath = contextMatch ? contextMatch[1] : '/eams5-student';
 
-            if (response.statusCode == 200 && response.body.contains('lessonList')) {
-              debugPrint('[WebViewCapture] Direct API Success! Length: ${response.body.length}');
-              // 打印前 500 个字符进行调试
-              debugPrint('[WebViewCapture] Response Preview: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}');
-              await StorageService.saveLastCourseImportUrl(currentUrl);
-              if (mounted) Navigator.pop(context, response.body);
-              return;
+                // 如果找到了核心参数，则发起真实的 POST 请求
+                if (semMatch && dataMatch) {
+                    let response = await fetch(contextPath + "/ws/schedule-table/datum", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        // 🚀 这里就是之前 Dart http.post 缺失的关键 Payload！
+                        body: 'bizTypeId=2&semesterId=' + semMatch[1] + '&dataId=' + dataMatch[1]
+                    });
+                    
+                    let data = await response.json();
+                    return JSON.stringify(data); // 完美拿到包含教师的 JSON
+                } else {
+                    return "ERROR: 找不到 semesterId 或 dataId";
+                }
+            } catch (e) {
+                return "ERROR: " + e.toString();
             }
-          }
-        } catch (e) {
-          debugPrint('[WebViewCapture] Direct API Attempt failed: $e');
-        }
-      }
+          })();
+        ''');
 
-      // 🚀 核心改进：深度扫描浏览器内存中的课表变量
-      final String? jsData = await _controller?.runJavaScriptReturningResult('''
-        (function() {
+        String? jsResult = jsResultObj?.toString();
+
+        // 🚀 webview_flutter 在返回字符串时可能会加上额外的引号和转义符，这里进行安全脱壳
+        if (jsResult != null && jsResult.startsWith('"') && jsResult.endsWith('"')) {
+          // 修复点：使用局部非空变量暂存，避免在 try/catch 块中因为重赋值导致的空安全(Null-Safety)报错
+          final String nonNullResult = jsResult;
           try {
-            // 定义探测函数
-            function probe() {
-              // 1. 尝试已知的合工大全局变量
-              if (typeof lessons !== 'undefined' && typeof schedules !== 'undefined') {
-                return { lessonList: lessons, scheduleList: schedules };
-              }
-              
-              // 2. 深度扫描 window 对象中的所有可枚举属性
-              for (var key in window) {
-                try {
-                  var obj = window[key];
-                  if (obj && typeof obj === 'object') {
-                    // 如果对象包含 result.lessonList (合工大 EAMS 特征)
-                    if (obj.result && obj.result.lessonList && obj.result.scheduleList) {
-                      return obj.result;
-                    }
-                    // 如果对象本身就是 lessonList
-                    if (obj.lessonList && obj.scheduleList) {
-                      return obj;
-                    }
-                  }
-                } catch(e) {}
-              }
-              return null;
-            }
-
-            var result = probe();
-            if (result) {
-              console.log("JS Spy: Found data structure!");
-              return JSON.stringify({ "result": result });
-            }
-          } catch (e) {}
-          return "NOT_FOUND";
-        })()
-      ''') as String?;
-
-      debugPrint('[WebViewCapture] JS Spy Result: ${jsData?.substring(0, (jsData?.length ?? 0) > 20 ? 20 : (jsData?.length ?? 0))}');
-
-      // 如果 JS 抓取到了结构化数据，优先使用
-      if (jsData != null && jsData != '"NOT_FOUND"' && jsData != '""' && jsData != 'null') {
-        String cleanJson = jsData;
-        if (cleanJson.startsWith('"') && cleanJson.endsWith('"')) {
-          cleanJson = cleanJson.substring(1, cleanJson.length - 1).replaceAll(r'\"', '"');
+            jsResult = jsonDecode(nonNullResult) as String;
+          } catch (e) {
+            jsResult = nonNullResult.substring(1, nonNullResult.length - 1).replaceAll(r'\"', '"');
+          }
         }
-        debugPrint('[WebViewCapture] JS Spy SUCCESS! Length: ${cleanJson.length}');
-        
-        // 🚀 保存当前链接供下次快捷抓取
-        final currentUrl = await _controller?.currentUrl();
-        if (currentUrl != null) {
+
+        // 校验我们是否拿到了含有教师信息的真实 JSON 数据
+        if (jsResult != null && jsResult.contains('lessonList')) {
+          debugPrint('[WebViewCapture] Direct JS Fetch Success! Length: ${jsResult.length}');
           await StorageService.saveLastCourseImportUrl(currentUrl);
-        }
-        
-        Navigator.pop(context, cleanJson);
-        return;
-      }
-      debugPrint('[WebViewCapture] JS Spy FAILED. Falling back to HTML capture...');
 
-      // 兜底方案：抓取全页 HTML 源码
+          if (mounted) {
+            // 直接将这段纯正的 JSON 交给 hfut_parser 即可完美提取教师
+            Navigator.pop(context, jsResult);
+          }
+          return; // 成功截获，退出函数，不走 HTML 降级
+        } else {
+          debugPrint('[WebViewCapture] JS Fetch failed or returned error: $jsResult');
+        }
+      }
+
+      // --- 兜底方案：抓取全页 HTML 源码 ---
+      debugPrint('[WebViewCapture] Falling back to HTML capture...');
       final Object? htmlResult = await _controller?.runJavaScriptReturningResult(
-        'document.documentElement.outerHTML'
+          'document.documentElement.outerHTML'
       );
-      
+
       if (htmlResult == null) return;
       String html = htmlResult.toString();
-      
+
       // runJavaScriptReturningResult might return a string with quotes if it's a JSON string
       String processedHtml = html;
       if (processedHtml.startsWith('"') && processedHtml.endsWith('"')) {
-        processedHtml = processedHtml.substring(1, processedHtml.length - 1);
-        processedHtml = processedHtml.replaceAll('\\u003C', '<');
-        processedHtml = processedHtml.replaceAll('\\u003E', '>');
-        processedHtml = processedHtml.replaceAll('\\"', '"');
-        processedHtml = processedHtml.replaceAll('\\\\', '\\');
+        try {
+          processedHtml = jsonDecode(processedHtml) as String;
+        } catch (e) {
+          processedHtml = processedHtml.substring(1, processedHtml.length - 1);
+          processedHtml = processedHtml.replaceAll('\\u003C', '<');
+          processedHtml = processedHtml.replaceAll('\\u003E', '>');
+          processedHtml = processedHtml.replaceAll('\\"', '"');
+          processedHtml = processedHtml.replaceAll('\\\\', '\\');
+        }
       }
 
       if (mounted) {
@@ -354,32 +331,32 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
           ),
           Expanded(
             child: _isSupported
-                ? (_controller != null 
-                    ? WebViewWidget(controller: _controller!) 
-                    : const Center(child: CircularProgressIndicator()))
+                ? (_controller != null
+                ? WebViewWidget(controller: _controller!)
+                : const Center(child: CircularProgressIndicator()))
                 : const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.error_outline, size: 48, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('当前平台暂不支持内置浏览器'),
-                        Text('此功能主要适配 Android 和 iOS ', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      ],
-                    ),
-                  ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('当前平台暂不支持内置浏览器'),
+                  Text('此功能主要适配 Android 和 iOS ', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ),
           ),
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isLoading ? null : _captureHtml,
-        icon: _isLoading 
+        icon: _isLoading
             ? const SizedBox(
-                width: 18, 
-                height: 18, 
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-              )
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
+        )
             : const Icon(Icons.auto_fix_high),
         label: Text(_isLoading ? '正处理网页内容...' : '抓取当前页面的课程表'),
         backgroundColor: colorScheme.primary,
