@@ -949,6 +949,11 @@ class StorageService {
               sItem.updatedAt > allLocalTodos[idx].updatedAt) {
             allLocalTodos[idx] = sItem;
             hasChanges = true;
+          } else if (sItem.groupId != allLocalTodos[idx].groupId) {
+            // Even if overall version is not newer, accept group_id changes
+            // to ensure folder assignments always propagate across devices
+            allLocalTodos[idx].groupId = sItem.groupId;
+            hasChanges = true;
           }
         } else {
           if (!sItem.isDeleted) {

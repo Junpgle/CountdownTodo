@@ -2030,19 +2030,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                         username: widget.username,
                         isLight: isLight,
                         onGroupsChanged: (newGroups) async {
-                          setState(() => _todoGroups = newGroups);
-                          final allGroups = await StorageService.getTodoGroups(
-                              widget.username);
-                          // 合并并保存
-                          for (var g in _todoGroups) {
+                          setState(() => _todoGroups = newGroups.where((g) => !g.isDeleted).toList());
+                          final allGroups = await StorageService.getTodoGroups(widget.username);
+                          for (var g in newGroups) {
                             int idx = allGroups.indexWhere((x) => x.id == g.id);
-                            if (idx != -1)
-                              allGroups[idx] = g;
-                            else
+                            if (idx != -1) {
+                              if (g.updatedAt >= allGroups[idx].updatedAt) allGroups[idx] = g;
+                            } else {
                               allGroups.add(g);
+                            }
                           }
-                          await StorageService.saveTodoGroups(
-                              widget.username, allGroups);
+                          await StorageService.saveTodoGroups(widget.username, allGroups, sync: true);
                         },
                         onTodosChanged: (newTodos) async {
                           setState(() => _todos = newTodos);

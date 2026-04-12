@@ -391,7 +391,14 @@ export default {
             const isRemarkProvided = hasRemark && ('remark' in t);
             const tRemark = isRemarkProvided ? (t.remark != null ? String(t.remark) : null) : null;
             
-            const tGroupId = t.group_id ?? t.groupId ?? null;
+            let tGroupId = null;
+            if (t.hasOwnProperty('group_id')) {
+              tGroupId = t.group_id;
+            } else if (t.hasOwnProperty('groupId')) {
+              tGroupId = t.groupId;
+            } else if (existing) {
+              tGroupId = existing.group_id;
+            }
 
             const extraCols = [
               hasRecurrence     ? 'recurrence'            : null,
@@ -460,7 +467,7 @@ export default {
                 }
                 
                 setClauses.push('group_id = ?');
-                setValues.push(('group_id' in t || 'groupId' in t) ? tGroupId : (existing.group_id ?? null));
+                setValues.push(tGroupId);
 
                 setValues.push(existing.id);
                 let stmt = DB.prepare(`UPDATE todos SET ${setClauses.join(', ')} WHERE id = ?`);

@@ -1969,8 +1969,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           onTodoDropped: (todoId) {
             final idx = widget.todos.indexWhere((t) => t.id == todoId);
             if (idx != -1) {
-              widget.todos[idx].groupId = g.id;
-              widget.todos[idx].markAsChanged();
+              setState(() {
+                widget.todos[idx].groupId = g.id;
+                // 对于这种结构性调整，大幅提升版本号，确保覆盖另一端的自动重置（由于通常只+1）
+                widget.todos[idx].version += 10;
+                widget.todos[idx].updatedAt = DateTime.now().millisecondsSinceEpoch;
+              });
               widget.onTodosChanged(widget.todos);
             }
           },
@@ -1979,7 +1983,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             if (idx != -1 && widget.todos[idx].groupId != null) {
               setState(() {
                 widget.todos[idx].groupId = null;
-                widget.todos[idx].markAsChanged();
+                // 对于这种结构性调整，大幅提升版本号，确保覆盖另一端的自动重置（由于通常只+1）
+                widget.todos[idx].version += 10;
+                widget.todos[idx].updatedAt = DateTime.now().millisecondsSinceEpoch;
               });
               widget.onTodosChanged(widget.todos);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -2340,10 +2346,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 onAction: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => FolderManageScreen(
+                        builder: (_) => FolderManageScreen(
                         username: widget.username,
                         todoGroups: widget.todoGroups,
                         onGroupsChanged: widget.onGroupsChanged,
+                        allTodos: widget.todos,
+                        onTodosChanged: widget.onTodosChanged,
                       ),
                     ),
                   );
