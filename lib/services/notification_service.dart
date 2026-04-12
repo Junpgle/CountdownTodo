@@ -13,6 +13,9 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
+  // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
+  static final Set<String> _windowsAllDayTodoNotifiedKeys = <String>{};
+
   static Future<void> init() async {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
@@ -198,6 +201,27 @@ class NotificationService {
     return 'default';
   }
 
+  static bool _isAllDayTodo(TodoItem todo) {
+    if (todo.dueDate == null) return false;
+
+    final DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
+            todo.createdDate ?? todo.createdAt,
+            isUtc: true)
+        .toLocal();
+    final DateTime dueDate = todo.dueDate!.toLocal();
+
+    return _isSameDay(startDate, dueDate) &&
+        startDate.hour == 0 &&
+        startDate.minute == 0 &&
+        dueDate.hour == 23 &&
+        dueDate.minute == 59;
+  }
+
+  static String _windowsAllDayTodoKey(TodoItem todo) {
+    final dayStr = DateFormat('yyyy-MM-dd').format(todo.dueDate!.toLocal());
+    return '${todo.id}@$dayStr';
+  }
+
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
     if (todo.dueDate == null) return;
@@ -205,6 +229,7 @@ class NotificationService {
 
     final todoType = _detectTodoType(todo.title);
     final isSpecialTodo = todoType != 'default';
+    final isAllDayTodo = _isAllDayTodo(todo);
 
     if (isSpecialTodo) {
       if (!await StorageService.isSpecialTodoNotificationEnabled()) return;
@@ -224,6 +249,20 @@ class NotificationService {
         "🔔 showUpcomingTodoNotification: title=${todo.title}, todoId=${todo.id}, hashCode=${todo.id.hashCode}, todoType=$todoType, isSpecialTodo=$isSpecialTodo, notifId=$notifId");
 
     if (Platform.isWindows) {
+      if (isAllDayTodo) {
+        final todaySuffix =
+            '@${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+        _windowsAllDayTodoNotifiedKeys
+            .removeWhere((key) => !key.endsWith(todaySuffix));
+
+        final dedupeKey = _windowsAllDayTodoKey(todo);
+        if (_windowsAllDayTodoNotifiedKeys.contains(dedupeKey)) {
+          debugPrint('⏭️ 跳过重复的 Windows 全天待办通知: $dedupeKey');
+          return;
+        }
+        _windowsAllDayTodoNotifiedKeys.add(dedupeKey);
+      }
+
       await _plugin.show(
         id: todo.id.hashCode,
         title: '🔔 待办提醒: ${todo.title}',
