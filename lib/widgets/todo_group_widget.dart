@@ -250,8 +250,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              urgencyColor.withOpacity(widget.isLight ? 0.13 : 0.18),
-                              urgencyColor.withOpacity(widget.isLight ? 0.05 : 0.07),
+                              urgencyColor.withOpacity(widget.isLight ? 0.32 : 0.18),
+                              urgencyColor.withOpacity(widget.isLight ? 0.15 : 0.07),
                             ],
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,

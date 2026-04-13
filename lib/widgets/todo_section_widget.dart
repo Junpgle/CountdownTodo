@@ -1573,8 +1573,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
-                                    fillColor.withOpacity(isLight ? 0.13 : 0.18),
-                                    fillColor.withOpacity(isLight ? 0.06 : 0.08),
+                                    fillColor.withOpacity(isLight ? 0.32 : 0.18),
+                                    fillColor.withOpacity(isLight ? 0.15 : 0.08),
                                   ],
                                   begin: Alignment.centerLeft,
                                   end: Alignment.centerRight,
