@@ -26,7 +26,7 @@
 | `time_log_screen.dart` | 时间日志 | 手动记录时间块 |
 | `time_log_components.dart` | 时间日志组件 | 时间日志页面专用组件 |
 | `historical_countdowns_screen.dart` | 历史倒计时 | 已删除倒计时回收站 |
-| `historical_todos_screen.dart` | 历史待办 | 已完成/已删除待办 |
+| `historical_todos_screen.dart` | 历史待办 | 已完成/已删除待办、**孤儿待办召回** |
 | `feature_guide_screen.dart` | 功能引导 | 首次安装引导页 |
 | `other_screens.dart` | 其他页面 | 排行榜、测验设置等 |
 | `course_screens.dart` | 课程相关 | 课表导入、解析 |
@@ -78,7 +78,7 @@ settings/
 │   ├── migration_dialog.dart         # 数据迁移
 │   └── zf_time_config_dialog.dart    # 正方教务时间配置
 ├── server_choice_page.dart     # 服务器选择页
-├── notification_settings_page.dart # 通知设置页
+├── notification_settings_page.dart # 通知设置页 (按分类配置提醒)
 ├── llm_config_page.dart        # LLM 配置页
 └── device_version_detail_page.dart # 设备版本详情
 ```
@@ -151,4 +151,4 @@ HomeDashboard
 
 ---
 
-*最后更新：2026-04-05*
+*最后更新：2026-04-13*

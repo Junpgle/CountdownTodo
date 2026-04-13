@@ -12,7 +12,7 @@
 |------|------|------|
 | `home_app_bar.dart` | `HomeAppBar` | 首页顶部栏：问候语、用户头像、同步按钮、设置入口 |
 | `home_sections.dart` | `SectionHeader`, `ScreenTimeCard`, `SemesterProgressCard` | 通用板块标题、屏幕时间卡片、学期进度条 |
-| `todo_section_widget.dart` | `TodoSectionWidget` | 待办事项板块：今日待办列表、勾选完成、快速添加 |
+| `todo_section_widget.dart` | `TodoSectionWidget` | 待办事项板块：今日待办列表、勾选完成、快速添加、任务组精简设计 |
 | `countdown_section_widget.dart` | `CountdownSectionWidget` | 倒计时板块：重要日期卡片、剩余天数 |
 | `course_section_widget.dart` | `CourseSectionWidget` | 课程提醒板块：今日课程、下一节课高亮 |
 | `pomodoro_today_section.dart` | `PomodoroTodaySection` | 今日番茄钟统计：专注时长、标签分布 |
@@ -112,4 +112,4 @@ home_sections.dart (基础组件)
 
 ---
 
-*最后更新：2026-04-05*
+*最后更新：2026-04-13*

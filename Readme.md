@@ -5,7 +5,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20%7C%20Web-green)]()
 [![Version](https://img.shields.io/badge/Version-3.2.14-orange)]()
 
-CountDownTodo 是一款跨平台的生产力与时间管理套件，集成待办事项、倒计时、番茄钟、数学测验、课程表、屏幕时间统计等功能，支持 Android / Windows / Web 多端数据同步。
+CountDownTodo 是一款跨平台的生产力与时间管理套件，集成待办事项、倒计时、番茄钟、数学测验、课程表、屏幕时间统计等功能，支持 Android / Windows / Web 多端数据同步。集成 AI 智能解析、手环互联等前沿特性。
 
 > **注意**：C++ 桌面悬浮组件 (`MathQuizLite/`) 位于独立仓库 [CountDownTodoLite](https://github.com/Junpgle/CountDownTodoLite)，本仓库仅包含 Flutter 移动端 + Cloudflare Workers 后端。
 
@@ -128,5 +128,5 @@ npx wrangler deploy
 
 ---
 
-*最后更新：2026-04-05*
-*版本：v3.0.8*
+*最后更新：2026-04-13*
+*版本：v3.2.14*

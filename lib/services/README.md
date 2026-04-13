@@ -33,7 +33,7 @@
 | 文件 | 适配院校/系统 | 关键导出 |
 |------|--------------|----------|
 | `course_service.dart` | 课表统一管理入口 | `CourseService`, `CourseItem` |
-| `hfut_schedule_parser.dart` | 合肥工业大学 (JSON 格式) | `HfutScheduleParser` |
+| `hfut_schedule_parser.dart` | 合肥工业大学 (API 直连 & Cookie 捕获) | `HfutScheduleParser` |
 | `xmu_schedule_parser.dart` | 厦门大学 (HTML/正方教务) | `XmuScheduleParser` |
 | `xidian_schedule_parser.dart` | 西安电子科技大学 (ICS 格式) | `XidianScheduleParser` |
 | `zfsoft_schedule_parser.dart` | 正方教务系统通用解析 | `ZfsoftScheduleParser` |
@@ -52,7 +52,7 @@
 
 | 文件 | 职责 |
 |------|------|
-| `reminder_schedule_service.dart` | 定时提醒调度 |
+| `reminder_schedule_service.dart` | 定时提醒调度（支持文件夹分类默认提醒） |
 | `snooze_dialog.dart` | 稍后提醒弹窗 |
 | `todo_parser_service.dart` | 待办解析（LLM 调用封装） |
 | `external_share_handler.dart` | 接收外部分享内容 → LLM 解析 |
@@ -185,4 +185,4 @@ services/ 内部依赖
 
 ---
 
-*最后更新：2026-04-05*
+*最后更新：2026-04-13*
