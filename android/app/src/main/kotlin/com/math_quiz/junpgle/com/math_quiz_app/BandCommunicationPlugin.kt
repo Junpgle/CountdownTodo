@@ -43,6 +43,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     // 服务连接监听器
     private val serviceConnectionListener = object : OnServiceConnectionListener {
         override fun onServiceConnected() {
+            // Log.d(TAG, "小米穿戴服务已连接")
             getConnectedDevice()
         }
 
@@ -64,6 +65,8 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
             serviceApi?.registerServiceConnectionListener(serviceConnectionListener)
             getConnectedDevice()
+
+            // Log.d(TAG, "小米穿戴 SDK 初始化成功")
         } catch (e: Exception) {
             Log.e(TAG, "小米穿戴 SDK 初始化失败", e)
         }
@@ -79,6 +82,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                     "name" to (currentNode!!.name ?: "小米手环"),
                     "isConnected" to true
                 )
+                // Log.d(TAG, "获取到已连接设备: $deviceInfo")
                 invokeMethod("onDeviceConnected", deviceInfo)
                 checkAndRequestPermission()
             } else {
@@ -98,9 +102,12 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     // 检查并申请 DEVICE_MANAGER 权限
     private fun checkAndRequestPermission() {
         val node = currentNode ?: return
+
+        // Log.d(TAG, "checkAndRequestPermission: 检查权限状态...")
         
         authApi?.checkPermission(node.id, Permission.DEVICE_MANAGER)?.addOnSuccessListener { granted ->
             hasDeviceManagerPermission = granted
+            Log.d(TAG, "DEVICE_MANAGER 权限状态: $granted")
             
             // 通知 Flutter 当前权限状态
             invokeMethod("onPermissionChecked", mapOf(
@@ -323,6 +330,13 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             Log.e(TAG, "doRegisterListener: 没有 DEVICE_MANAGER 权限")
             invokeMethod("onError", mapOf(
                 "code" to 1001,
+                "message" to "缺少 DEVICE_MANAGER 权限，请先申请权限"
+            ))
+            return
+        }
+
+        // Log.d(TAG, "doRegisterListener: nodeId=${node.id}, nodeName=${node.name}")
+
         // 先移除旧的监听器
         unregisterMessageListener()
 
@@ -332,8 +346,10 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             invokeMethod("onMessageReceived", mapOf("data" to messageStr))
         }
 
+        // Log.d(TAG, "调用 addListener...")
         messageApi?.addListener(node.id, messageListener!!)
             ?.addOnSuccessListener {
+                // Log.d(TAG, "消息监听器注册成功")
                 invokeMethod("onListenerRegistered", mapOf("success" to true))
             }
             ?.addOnFailureListener { e ->
@@ -351,7 +367,9 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         val listener = messageListener ?: return
 
         messageApi?.removeListener(node.id)?.addOnSuccessListener {
+            // Log.d(TAG, "消息监听器取消成功")
         }?.addOnFailureListener { e ->
+            // Log.e(TAG, "消息监听器取消失败", e)
         }
         messageListener = null
     }
