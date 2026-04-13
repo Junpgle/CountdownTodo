@@ -31,6 +31,60 @@ class TodoGroupWidget extends StatefulWidget {
 }
 
 class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderStateMixin {
+
+  // Dynamic color based on group urgency (most urgent task wins)
+  Color _getGroupUrgencyColor(List<TodoItem> todos) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    bool hasOverdue = false;
+    double maxProgress = 0.0;
+
+    for (final t in todos) {
+      if (t.isDone) continue;
+      final cDate = DateTime.fromMillisecondsSinceEpoch(
+        t.createdDate ?? t.createdAt, isUtc: true,
+      ).toLocal();
+      final end = t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final dueDay = DateTime(end.year, end.month, end.day);
+      if (dueDay.isBefore(today)) {
+        hasOverdue = true;
+        break;
+      }
+      final totalMin = end.difference(cDate).inMinutes;
+      if (totalMin > 0 && now.isAfter(cDate)) {
+        final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+        if (p > maxProgress) maxProgress = p;
+      }
+    }
+
+    if (hasOverdue || maxProgress >= 1.0) {
+      return const Color(0xFFE57373); // red
+    } else if (maxProgress >= 0.5) {
+      return const Color(0xFFFFB74D); // orange
+    } else {
+      return const Color(0xFF66BB6A); // green
+    }
+  }
+
+  // Compute the overall group progress (max progress of any undone task)
+  double _getGroupProgress(List<TodoItem> todos) {
+    final now = DateTime.now();
+    double maxProgress = 0.0;
+    for (final t in todos) {
+      if (t.isDone) continue;
+      final cDate = DateTime.fromMillisecondsSinceEpoch(
+        t.createdDate ?? t.createdAt, isUtc: true,
+      ).toLocal();
+      final end = t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final totalMin = end.difference(cDate).inMinutes;
+      if (totalMin > 0 && now.isAfter(cDate)) {
+        final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+        if (p > maxProgress) maxProgress = p;
+      }
+    }
+    return maxProgress;
+  }
+
   @override
   Widget build(BuildContext context) {
     final group = widget.group;
@@ -41,7 +95,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
     final onTodoDropped = widget.onTodoDropped;
     final onDelete = widget.onDelete;
     final onTodoTap = widget.onTodoTap;
-    // 自动按截止日期排序
+    // Sort by deadline
     final sortedTodos = List<TodoItem>.from(groupTodos)
       ..sort((a, b) {
         if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
@@ -56,13 +110,17 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
     final progress = totalCount == 0 ? 0.0 : doneCount / totalCount;
     final allDone = totalCount > 0 && doneCount == totalCount;
 
-    // 找到最近的截止日期
+    // Nearest deadline
     DateTime? nearestDeadline;
     final upcomingTodos = groupTodos.where((t) => !t.isDone && t.dueDate != null).toList();
     if (upcomingTodos.isNotEmpty) {
       upcomingTodos.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
       nearestDeadline = upcomingTodos.first.dueDate;
     }
+
+    // Urgency metrics for background fill
+    final urgencyColor = allDone ? Colors.green : _getGroupUrgencyColor(groupTodos);
+    final groupFillProgress = allDone ? 1.0 : _getGroupProgress(groupTodos);
 
     return DragTarget<String>(
       onWillAccept: (data) => data != null,
@@ -84,7 +142,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
             child: Column(
               children: [
                 _buildGroupHeader(context, progress, doneCount, totalCount,
-                    nearestDeadline, allDone, isHovering),
+                    nearestDeadline, allDone, isHovering, urgencyColor, groupFillProgress),
                 if (widget.group.isExpanded)
                   Container(
                     padding: const EdgeInsets.only(left: 12, right: 12, bottom: 20, top: 8),
@@ -124,14 +182,17 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
     DateTime? nearestDeadline,
     bool allDone,
     bool isHovering,
+    Color urgencyColor,
+    double groupFillProgress,
   ) {
     final theme = Theme.of(context);
-    final primaryColor = allDone ? Colors.green : theme.colorScheme.primary;
     final isDark = theme.brightness == Brightness.dark;
+    // Icon and accent color syncs with urgency
+    final statusColor = allDone ? Colors.green : urgencyColor;
 
     return Column(
       children: [
-        // 堆叠效果：紧凑版
+        // Stack layers for collapsed effect
         if (totalCount > 1 && !widget.group.isExpanded)
           AnimatedOpacity(
             duration: const Duration(milliseconds: 300),
@@ -146,25 +207,16 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
             ),
           ),
 
-        // 主卡片
+        // Main card with background fill
         GestureDetector(
           onTap: widget.onToggle,
           onLongPress: () => _showGroupMenu(context),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              gradient: allDone 
-                ? LinearGradient(
-                    colors: isDark 
-                      ? [Colors.green.withOpacity(0.12), Colors.green.withOpacity(0.04)]
-                      : [Colors.green.withOpacity(0.06), Colors.green.withOpacity(0.01)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
-              color: isHovering 
-                  ? primaryColor.withOpacity(0.08) 
+              color: isHovering
+                  ? statusColor.withOpacity(0.08)
                   : (widget.isLight ? Colors.white : Colors.grey[900]),
               borderRadius: widget.group.isExpanded
                   ? const BorderRadius.vertical(top: Radius.circular(20))
@@ -173,7 +225,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                   color: allDone
                       ? Colors.green.withOpacity(isDark ? 0.25 : 0.15)
                       : isHovering
-                          ? primaryColor
+                          ? statusColor
                           : (widget.isLight
                               ? Colors.grey.withOpacity(0.12)
                               : Colors.white.withOpacity(0.06)),
@@ -186,85 +238,103 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                 ),
               ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Stack(
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: allDone 
-                          ? Colors.green.withOpacity(0.12)
-                          : primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        allDone 
-                          ? Icons.task_alt_rounded
-                          : (widget.group.isExpanded ? Icons.folder_open_rounded : Icons.folder_rounded),
-                        color: primaryColor,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.group.name,
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                              color: allDone 
-                                ? (isDark ? Colors.green.shade200 : Colors.green.shade800)
-                                : (widget.isLight ? Colors.black87 : Colors.white),
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            allDone ? "全部任务已完成 ✨" : "$doneCount/$totalCount 已完成",
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: allDone 
-                                ? (isDark ? Colors.green.withOpacity(0.5) : Colors.green.withOpacity(0.6))
-                                : Colors.grey[500],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (nearestDeadline != null && !widget.group.isExpanded && !allDone) ...[
-                      _buildDeadlineTag(context, nearestDeadline),
-                      const SizedBox(width: 8),
-                    ],
-                    Icon(
-                      widget.group.isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                      color: Colors.grey.withOpacity(0.4),
-                      size: 20,
-                    ),
-                  ],
-                ),
+                // Background progress fill
                 if (!allDone)
-                  const SizedBox(height: 12),
-                if (!allDone)
-                  Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          backgroundColor: primaryColor.withOpacity(0.08),
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            primaryColor,
+                  Positioned.fill(
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: groupFillProgress.clamp(0.0, 1.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              urgencyColor.withOpacity(widget.isLight ? 0.13 : 0.18),
+                              urgencyColor.withOpacity(widget.isLight ? 0.05 : 0.07),
+                            ],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
                           ),
-                          minHeight: 10,
                         ),
+                      ),
+                    ),
+                  ),
+                // All-done gradient overlay
+                if (allDone)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isDark
+                              ? [Colors.green.withOpacity(0.12), Colors.green.withOpacity(0.04)]
+                              : [Colors.green.withOpacity(0.06), Colors.green.withOpacity(0.01)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                    ),
+                  ),
+                // Actual content
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          allDone
+                            ? Icons.task_alt_rounded
+                            : (widget.group.isExpanded ? Icons.folder_open_rounded : Icons.folder_rounded),
+                          color: statusColor,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.group.name,
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: allDone
+                                  ? (isDark ? Colors.green.shade200 : Colors.green.shade800)
+                                  : (widget.isLight ? Colors.black87 : Colors.white),
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              allDone ? "全部任务已完成 ✨" : "$doneCount/$totalCount 已完成",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: allDone
+                                  ? (isDark ? Colors.green.withOpacity(0.5) : Colors.green.withOpacity(0.6))
+                                  : Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (nearestDeadline != null && !widget.group.isExpanded && !allDone) ...[
+                        _buildDeadlineTag(context, nearestDeadline),
+                        const SizedBox(width: 8),
+                      ],
+                      Icon(
+                        widget.group.isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        color: Colors.grey.withOpacity(0.4),
+                        size: 20,
                       ),
                     ],
                   ),
+                ),
               ],
             ),
           ),

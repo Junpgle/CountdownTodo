@@ -1329,7 +1329,23 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   }
 
   // ─────────────────────────────────────────────
-  // 🎨 紧凑卡片：重新设计，更小更精致
+  // Dynamic progress fill color system
+  // ─────────────────────────────────────────────
+  Color _getProgressFillColor(double progress, bool isPast) {
+    if (isPast || progress >= 1.0) {
+      // Overdue / at deadline: light red
+      return const Color(0xFFE57373); // red 300
+    } else if (progress >= 0.5) {
+      // Mid stage: orange-yellow
+      return const Color(0xFFFFB74D); // orange 300
+    } else {
+      // Early stage: emerald green
+      return const Color(0xFF66BB6A); // green 400
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // Compact card: redesigned
   // ─────────────────────────────────────────────
   Widget _buildTodoItemCard(
     TodoItem todo, {
@@ -1522,6 +1538,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             key: _getTodoCardKey(todo.id),
             child: Container(
               margin: const EdgeInsets.only(bottom: 6),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: cardBg,
                 borderRadius: BorderRadius.circular(14),
@@ -1541,16 +1558,43 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       ]
                     : [],
               ),
-              child: Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => _editTodo(todo, cardCtx),
-                  child: Padding(
-                    // ✨ 核心：更小的内边距
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: Stack(
+                children: [
+                  // Background progress fill
+                  if (!todo.isDone)
+                    Positioned.fill(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final fillColor = _getProgressFillColor(progress, isPast);
+                          return FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: progress.clamp(0.0, 1.0),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    fillColor.withOpacity(isLight ? 0.13 : 0.18),
+                                    fillColor.withOpacity(isLight ? 0.06 : 0.08),
+                                  ],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => _editTodo(todo, cardCtx),
+                      child: Padding(
+                        // ✨ 核心：更小的内边距
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -1731,25 +1775,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                 ),
                               ],
 
-                              // 进度条（仅未完成项显示）
-                              if (!todo.isDone) ...[
-                                const SizedBox(height: 6),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: progress,
-                                    minHeight: 3,
-                                    backgroundColor:
-                                        colorScheme.onSurface.withOpacity(0.07),
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      isPast
-                                          ? Colors.redAccent.shade200
-                                          : colorScheme.primary
-                                              .withOpacity(0.75),
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
                         ),
@@ -1757,6 +1782,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     ),
                   ),
                 ),
+              ),
+                ],
               ),
             ),
           ),
