@@ -259,42 +259,24 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                     ),
                   ],
                 ),
-                const SizedBox(height: 22),
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: allDone 
-                          ? Colors.green.withOpacity(0.05)
-                          : primaryColor.withOpacity(0.08),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          allDone ? Colors.green.shade400 : primaryColor,
-                        ),
-                        minHeight: 10,
-                      ),
-                    ),
-                    if (allDone)
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.white.withOpacity(0),
-                                Colors.white.withOpacity(0.4),
-                                Colors.white.withOpacity(0),
-                              ],
-                              stops: const [0.3, 0.5, 0.7],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                if (!allDone)
+                  const SizedBox(height: 22),
+                if (!allDone)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: primaryColor.withOpacity(0.08),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            primaryColor,
                           ),
+                          minHeight: 10,
                         ),
                       ),
-                  ],
-                ),
+                    ],
+                  ),
               ],
             ),
           ),
