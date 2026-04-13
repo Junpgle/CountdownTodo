@@ -570,18 +570,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       case 'SWITCH':
         if (_phase != PomodoroPhase.remoteWatching) break;
-        if (signal.todoTitle != null && signal.todoTitle!.isNotEmpty) {
+        {
           final isCountUp = _remoteState?.mode == 1;
           final newTimestamp =
               signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
 
           setState(() {
-            _boundTodo = TodoItem(
-              id: signal.todoUuid ?? '',
-              title: signal.todoTitle!,
-              isDone: false,
-              createdAt: 0,
-            );
+            _boundTodo = (signal.todoTitle != null && signal.todoTitle!.isNotEmpty)
+                ? TodoItem(
+                    id: signal.todoUuid ?? '',
+                    title: signal.todoTitle!,
+                    isDone: false,
+                    createdAt: 0,
+                  )
+                : null;
             _currentSessionUuid = signal.sessionUuid ?? _currentSessionUuid;
             if (isCountUp) {
               int elapsed = ((DateTime.now().millisecondsSinceEpoch - newTimestamp) / 1000).floor();
@@ -1752,28 +1754,38 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 controller: controller,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 children: [
-                  if (!isSwitching)
-                    ListTile(
-                      leading: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                              shape: BoxShape.circle),
-                          child: const Icon(Icons.clear, size: 20)),
-                      title: const Text('不绑定任务（自由专注）'),
-                      onTap: () async {
-                        if (_phase == PomodoroPhase.focusing) {
-                          await _switchTask(null);
-                        } else {
-                          setState(() => _boundTodo = null);
-                          await _persistIdleBoundTodo(null);
-                          await _saveCurrentRunState();
-                        }
-                        Navigator.pop(ctx);
-                      },
-                    ),
+                  ListTile(
+                    leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                            color: _boundTodo == null 
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : Theme.of(context).colorScheme.surfaceContainerHighest,
+                            shape: BoxShape.circle),
+                        child: Icon(
+                          _boundTodo == null ? Icons.check : Icons.clear, 
+                          size: 20,
+                          color: _boundTodo == null 
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        )),
+                    title: const Text('不绑定任务（自由专注）'),
+                    selected: _boundTodo == null,
+                    selectedTileColor: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer
+                        .withValues(alpha: 0.3),
+                    onTap: () async {
+                      if (_phase == PomodoroPhase.focusing) {
+                        await _switchTask(null);
+                      } else {
+                        setState(() => _boundTodo = null);
+                        await _persistIdleBoundTodo(null);
+                        await _saveCurrentRunState();
+                      }
+                      Navigator.pop(ctx);
+                    },
+                  ),
                   ..._todos.map((t) => ListTile(
                         leading: Container(
                             padding: const EdgeInsets.all(8),
