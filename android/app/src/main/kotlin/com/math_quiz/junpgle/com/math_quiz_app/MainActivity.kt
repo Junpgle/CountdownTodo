@@ -487,36 +487,67 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 "scheduleReminders" -> {
                     val args = call.arguments as? Map<String, Any>
                     val newJson = args?.get("remindersJson") as? String ?: "[]"
+                    val clearFirst = args?.get("clearFirst") as? Boolean ?: true
                     val prefs = getSharedPreferences(ReminderService.PREFS_NAME, MODE_PRIVATE)
 
-                    // ── Upsert：按 notifId 合并，不覆盖其他提醒 ──────────────
-                    val existing = KJSONArray(
-                        prefs.getString(ReminderService.KEY_REMINDERS, "[]") ?: "[]"
-                    )
+                    val existingJson = prefs.getString(ReminderService.KEY_REMINDERS, "[]") ?: "[]"
+                    val existing = KJSONArray(existingJson)
                     val incoming = KJSONArray(newJson)
 
-                    val incomingIds = mutableSetOf<Int>()
-                    for (i in 0 until incoming.length()) {
-                        incomingIds.add(incoming.getJSONObject(i).optInt("notifId", -1))
-                    }
-                    val merged = KJSONArray()
-                    for (i in 0 until existing.length()) {
-                        val obj = existing.getJSONObject(i)
-                        if (!incomingIds.contains(obj.optInt("notifId", -1))) {
-                            merged.put(obj)
+                    val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+                    if (clearFirst) {
+                        // ── Clear all existing alarms ──────────────
+                        for (i in 0 until existing.length()) {
+                            val obj = existing.getJSONObject(i)
+                            val notifId = obj.optInt("notifId", -1)
+                            if (notifId != -1) {
+                                val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+                                    action = ReminderAlarmReceiver.ACTION_FIRE
+                                }
+                                val pi = PendingIntent.getBroadcast(
+                                    this, notifId, intent,
+                                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+                                )
+                                pi?.let { am.cancel(it) }
+                                
+                                // Also cancel the notification itself if it's currently showing
+                                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                                nm.cancel(notifId)
+                            }
                         }
-                    }
-                    for (i in 0 until incoming.length()) {
-                        merged.put(incoming.getJSONObject(i))
+                        prefs.edit().putString(ReminderService.KEY_REMINDERS, newJson).apply()
+                    } else {
+                        // ── Upsert logic (original) ──────────────
+                        val incomingIds = mutableSetOf<Int>()
+                        for (i in 0 until incoming.length()) {
+                            incomingIds.add(incoming.getJSONObject(i).optInt("notifId", -1))
+                        }
+                        val merged = KJSONArray()
+                        for (i in 0 until existing.length()) {
+                            val obj = existing.getJSONObject(i)
+                            if (!incomingIds.contains(obj.optInt("notifId", -1))) {
+                                merged.put(obj)
+                            }
+                        }
+                        for (i in 0 until incoming.length()) {
+                            merged.put(incoming.getJSONObject(i))
+                        }
+                        prefs.edit().putString(ReminderService.KEY_REMINDERS, merged.toString()).apply()
                     }
 
-                    prefs.edit().putString(ReminderService.KEY_REMINDERS, merged.toString()).apply()
                     startForegroundService(
                         Intent(this, ReminderService::class.java).apply {
                             action = ReminderService.ACTION_RESCHEDULE
                         }
                     )
                     result.success(true)
+                }
+
+                "getScheduledReminders" -> {
+                    val prefs = getSharedPreferences(ReminderService.PREFS_NAME, MODE_PRIVATE)
+                    val json = prefs.getString(ReminderService.KEY_REMINDERS, "[]") ?: "[]"
+                    result.success(json)
                 }
 
                 "cancelReminder" -> {
@@ -940,6 +971,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val subText = "🕒即将开始 · $timeStr"
         val color = 0xFFFF9800.toInt() // 橙色警示
 
+        val customNotifId = (args["notificationId"] as? Number)?.toInt()
+        val notifId = customNotifId ?: NOTIFICATION_ID
+
         buildAndNotify(
             title = title,
             text = text,
@@ -953,7 +987,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             shortText = timeStr,
             iconResId = R.drawable.calendar_clock,
             imagePath = imagePath,
-            originalText = args["originalText"] as? String
+            originalText = args["originalText"] as? String,
+            notificationId = notifId
         )
         // 🔔 上岛同时触发一次性普通提醒
         sendAlertIfNew(

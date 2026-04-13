@@ -17,6 +17,8 @@ class ParsedTodoResult {
   final RecurrenceType recurrence;
   final int? customIntervalDays;
   final String? originalText;
+  final int? reminderMinutes;
+  final String? groupId;
 
   ParsedTodoResult({
     required this.title,
@@ -27,6 +29,8 @@ class ParsedTodoResult {
     this.recurrence = RecurrenceType.none,
     this.customIntervalDays,
     this.originalText,
+    this.reminderMinutes,
+    this.groupId,
   });
 
   Map<String, dynamic> toMap() {
@@ -39,6 +43,8 @@ class ParsedTodoResult {
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
       'originalText': originalText,
+      'reminderMinutes': reminderMinutes,
+      'groupId': groupId,
     };
   }
 }
@@ -67,11 +73,29 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   int _currentIndex = 0;
   bool _isRetrying = false;
   String? _retryStatus;
+  List<TodoGroup> _todoGroups = [];
+  Map<String, int> _categoryReminderDefaults = {};
+  String? _username;
 
   @override
   void initState() {
     super.initState();
     _allTodos = _parseResults(widget.llmResults);
+    _loadTodoMetadata();
+  }
+
+  Future<void> _loadTodoMetadata() async {
+    final username = await StorageService.getLoginSession();
+    if (username != null) {
+      final groups = await StorageService.getTodoGroups(username);
+      final defaults =
+          await StorageService.getCategoryReminderMinutes(username);
+      setState(() {
+        _username = username;
+        _todoGroups = groups.where((g) => !g.isDeleted).toList();
+        _categoryReminderDefaults = defaults;
+      });
+    }
   }
 
   List<ParsedTodoResult> _parseResults(List<Map<String, dynamic>> results) {
@@ -89,6 +113,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         recurrence: _parseRecurrenceType(result['recurrence']),
         customIntervalDays: result['customIntervalDays'],
         originalText: widget.originalText, // 📄 传入原始文本
+        reminderMinutes: result['reminderMinutes'],
+        groupId: result['groupId'],
       );
     }).toList();
   }
@@ -200,6 +226,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     bool isAllDay = todo.isAllDay;
     DateTime createdAt = todo.startTime ?? DateTime.now();
     DateTime? dueDate = todo.endTime;
+    String? selectedGroupId = todo.groupId;
+    int reminderMinutes = todo.reminderMinutes ?? 5;
 
     showDialog(
       context: context,
@@ -324,6 +352,63 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       }
                     },
                   ),
+                  const Divider(),
+                  DropdownButtonFormField<String?>(
+                    value: selectedGroupId,
+                    decoration: InputDecoration(
+                      labelText: '归类到文件夹 (可选)',
+                      prefixIcon: const Icon(Icons.folder_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('不归类 (独立待办)'),
+                      ),
+                      ..._todoGroups.map((g) => DropdownMenuItem<String?>(
+                            value: g.id,
+                            child: Text(g.name),
+                          )),
+                    ],
+                    onChanged: (val) {
+                      setDialogState(() {
+                        selectedGroupId = val;
+                        if (val != null &&
+                            _categoryReminderDefaults.containsKey(val)) {
+                          reminderMinutes = _categoryReminderDefaults[val]!;
+                        }
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: reminderMinutes,
+                    decoration: InputDecoration(
+                      labelText: '温馨提醒 (提前量)',
+                      prefixIcon: const Icon(Icons.notifications_active_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text('准时提醒')),
+                      DropdownMenuItem(value: 5, child: Text('提前 5 分钟')),
+                      DropdownMenuItem(value: 10, child: Text('提前 10 分钟')),
+                      DropdownMenuItem(value: 15, child: Text('提前 15 分钟')),
+                      DropdownMenuItem(value: 30, child: Text('提前 30 分钟')),
+                      DropdownMenuItem(value: 45, child: Text('提前 45 分钟')),
+                      DropdownMenuItem(value: 60, child: Text('提前 1 小时')),
+                      DropdownMenuItem(value: 120, child: Text('提前 2 小时')),
+                      DropdownMenuItem(value: 1440, child: Text('提前 1 天')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() => reminderMinutes = val);
+                      }
+                    },
+                  ),
                 ],
               ),
             ),
@@ -343,6 +428,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       endTime: dueDate,
                       recurrence: todo.recurrence,
                       customIntervalDays: todo.customIntervalDays,
+                      reminderMinutes: reminderMinutes,
+                      groupId: selectedGroupId,
                     );
                   });
                   Navigator.pop(ctx);

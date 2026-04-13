@@ -80,6 +80,9 @@ class LLMConfig {
    - 特别注意：类似"下周一"、"这周五"、"下个月1号"是指【特定的某一天】，不是重复事件，recurrence 必须设为 "none"。
 7. customIntervalDays: 仅限customDays时使用，否则为null。
 8. recurrenceEndDate: 循环截止日期，若无则null。
+9. reminderMinutes: 提前多少分钟提醒。
+   - 识别用户提到的"提前5分钟"、"提前半小时"、"提前1小时"、"准时提醒"等。
+   - 默认为 5。如果是"准时提醒"设为 0。
 
 【输出格式】
 如果输入包含多个待办，请返回JSON数组；如果是单个待办，也请返回JSON数组（只有一个元素）。
@@ -131,6 +134,7 @@ class LLMConfig {
 6. recurrence: 重复规则（none/daily/weekly/monthly/yearly/weekdays/customDays）
 7. customIntervalDays: 仅customDays时使用
 8. recurrenceEndDate: 循环截止日期
+9. reminderMinutes: 提前多少分钟提醒（默认 5）
 
 【输出格式】
 如果图片中有多个待办，请返回JSON数组；如果是单个待办，也请返回JSON数组（只有一个元素）。

@@ -168,6 +168,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     int? customDays;
     DateTime? recurrenceEndDate;
     bool isAllDay = false;
+    int reminderMinutes = 5; // 🚀 新增提醒设置
+    Map<String, int> categoryReminderDefaults = {};
+    String? currentUsername;
 
     int currentTab = 0;
     TextEditingController aiInputCtrl = TextEditingController();
@@ -195,6 +198,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               : null,
           recurrence: _parseRecurrenceType(result['recurrence']),
           customIntervalDays: result['customIntervalDays'],
+          reminderMinutes: result['reminderMinutes'],
         );
       }).toList();
 
@@ -234,6 +238,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         if (customDays != null) {
           customDaysCtrl.text = customDays.toString();
         }
+        reminderMinutes = first.reminderMinutes ?? 5;
         currentOriginalText = first.originalText;
       }
     }
@@ -498,6 +503,32 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         }
                       },
                     ),
+                  const Divider(),
+                  DropdownButtonFormField<int>(
+                    value: reminderMinutes,
+                    decoration: InputDecoration(
+                      labelText: "温馨提醒 (提前量)",
+                      prefixIcon:
+                          const Icon(Icons.notifications_active_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text("准时提醒")),
+                      DropdownMenuItem(value: 5, child: Text("提前 5 分钟")),
+                      DropdownMenuItem(value: 10, child: Text("提前 10 分钟")),
+                      DropdownMenuItem(value: 15, child: Text("提前 15 分钟")),
+                      DropdownMenuItem(value: 30, child: Text("提前 30 分钟")),
+                      DropdownMenuItem(value: 45, child: Text("提前 45 分钟")),
+                      DropdownMenuItem(value: 60, child: Text("提前 1 小时")),
+                      DropdownMenuItem(value: 120, child: Text("提前 2 小时")),
+                      DropdownMenuItem(value: 1440, child: Text("提前 1 天")),
+                    ],
+                    onChanged: (val) => setDialogState(() {
+                      if (val != null) reminderMinutes = val;
+                    }),
+                  ),
                 ],
               ),
             );
@@ -1090,6 +1121,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                           : remarkCtrl.text.trim(),
                       imagePath: sharedImagePath,
                       originalText: currentOriginalText,
+                      reminderMinutes: reminderMinutes,
                     );
                     List<TodoItem> updatedList = List.from(widget.todos)
                       ..add(newTodo);
@@ -2555,6 +2587,9 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
   DateTime? _recurrenceEndDate;
   late bool _isAllDay;
   String? _selectedGroupId;
+  late int _reminderMinutes; // 🚀 新增提醒设置
+  Map<String, int> _categoryReminderDefaults = {};
+  String? _username;
 
   @override
   void initState() {
@@ -2578,6 +2613,20 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
         _dueDate!.hour == 23 &&
         _dueDate!.minute == 59;
     _selectedGroupId = t.groupId;
+    _reminderMinutes = t.reminderMinutes ?? 5;
+    _loadCategoryDefaults();
+  }
+
+  Future<void> _loadCategoryDefaults() async {
+    final username = await StorageService.getLoginSession();
+    if (username != null) {
+      final defaults =
+          await StorageService.getCategoryReminderMinutes(username);
+      setState(() {
+        _username = username;
+        _categoryReminderDefaults = defaults;
+      });
+    }
   }
 
   @override
@@ -2600,6 +2649,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     todo.remark =
         _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim();
     todo.groupId = _selectedGroupId;
+    todo.reminderMinutes = _reminderMinutes;
     todo.markAsChanged();
     widget.onTodosChanged(List<TodoItem>.from(widget.todos));
     if (mounted) Navigator.pop(context);
@@ -2658,7 +2708,16 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                     child: Text(g.name),
                   )),
             ],
-            onChanged: (val) => setState(() => _selectedGroupId = val),
+            onChanged: (val) {
+              setState(() {
+                _selectedGroupId = val;
+                if (val != null && _categoryReminderDefaults.containsKey(val)) {
+                  _reminderMinutes = _categoryReminderDefaults[val]!;
+                } else if (val == null) {
+                  _reminderMinutes = 5;
+                }
+              });
+            },
           ),
           const SizedBox(height: 12),
           SwitchListTile(
@@ -2745,6 +2804,33 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                   }
                 }
               }),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            value: _reminderMinutes,
+            decoration: InputDecoration(
+              labelText: "温馨提醒 (提前量)",
+              prefixIcon: const Icon(Icons.notifications_active_outlined),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            items: const [
+              DropdownMenuItem(value: 0, child: Text("准时提醒")),
+              DropdownMenuItem(value: 5, child: Text("提前 5 分钟")),
+              DropdownMenuItem(value: 10, child: Text("提前 10 分钟")),
+              DropdownMenuItem(value: 15, child: Text("提前 15 分钟")),
+              DropdownMenuItem(value: 30, child: Text("提前 30 分钟")),
+              DropdownMenuItem(value: 45, child: Text("提前 45 分钟")),
+              DropdownMenuItem(value: 60, child: Text("提前 1 小时")),
+              DropdownMenuItem(value: 120, child: Text("提前 2 小时")),
+              DropdownMenuItem(value: 1440, child: Text("提前 1 天")),
+            ],
+            onChanged: (val) {
+              if (val != null) {
+                setState(() => _reminderMinutes = val);
+              }
+            },
+          ),
           const Divider(),
           DropdownButtonFormField<RecurrenceType>(
               value: _recurrence,

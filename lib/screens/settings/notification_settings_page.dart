@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../storage_service.dart';
+import '../../models.dart';
 import '../../services/course_service.dart';
 import '../../services/reminder_schedule_service.dart';
+import '../../services/notification_service.dart';
+import 'package:intl/intl.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
@@ -21,11 +24,15 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool _specialTodoEnabled = true;
   bool _pomodoroEnabled = true;
   bool _todoRecognizeEnabled = true;
+  bool _todoLiveEnabled = true;
 
   bool _pomodoroEndEnabled = true;
   bool _reminderEnabled = true;
 
   int _courseReminderMinutes = 15;
+  List<TodoGroup> _todoGroups = [];
+  Map<String, int> _categoryReminderMinutes = {};
+  String? _username;
 
   @override
   void initState() {
@@ -47,6 +54,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         await StorageService.isPomodoroNotificationEnabled();
     final todoRecognizeEnabled =
         await StorageService.isTodoRecognizeNotificationEnabled();
+    final todoLiveEnabled =
+        await StorageService.isTodoLiveNotificationEnabled();
     final pomodoroEndEnabled =
         await StorageService.isPomodoroEndNotificationEnabled();
     final reminderEnabled =
@@ -62,10 +71,23 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       _specialTodoEnabled = specialTodoEnabled;
       _pomodoroEnabled = pomodoroEnabled;
       _todoRecognizeEnabled = todoRecognizeEnabled;
+      _todoLiveEnabled = todoLiveEnabled;
       _pomodoroEndEnabled = pomodoroEndEnabled;
       _reminderEnabled = reminderEnabled;
       _courseReminderMinutes = reminderMinutes;
     });
+
+    final username = await StorageService.getLoginSession();
+    if (username != null) {
+      final groups = await StorageService.getTodoGroups(username);
+      final catReminders =
+          await StorageService.getCategoryReminderMinutes(username);
+      setState(() {
+        _username = username;
+        _todoGroups = groups.where((g) => !g.isDeleted).toList();
+        _categoryReminderMinutes = catReminders;
+      });
+    }
   }
 
   Future<void> _toggleLiveActivityMaster(bool? value) async {
@@ -80,6 +102,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         _specialTodoEnabled = false;
         _pomodoroEnabled = false;
         _todoRecognizeEnabled = false;
+        _todoLiveEnabled = false;
       }
     });
     if (enabled) {
@@ -89,6 +112,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       await StorageService.setSpecialTodoNotificationEnabled(true);
       await StorageService.setPomodoroNotificationEnabled(true);
       await StorageService.setTodoRecognizeNotificationEnabled(true);
+      await StorageService.setTodoLiveNotificationEnabled(true);
     } else {
       await StorageService.setCourseNotificationEnabled(false);
       await StorageService.setQuizNotificationEnabled(false);
@@ -96,6 +120,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       await StorageService.setSpecialTodoNotificationEnabled(false);
       await StorageService.setPomodoroNotificationEnabled(false);
       await StorageService.setTodoRecognizeNotificationEnabled(false);
+      await StorageService.setTodoLiveNotificationEnabled(false);
     }
   }
 
@@ -229,6 +254,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   StorageService.setTodoRecognizeNotificationEnabled,
                 ),
               ),
+              _buildSwitchTile(
+                title: '待办实时通知',
+                subtitle: '由闹钟触发，实时显示即将开始的待办进度',
+                icon: Icons.event_available,
+                value: _todoLiveEnabled,
+                onChanged: (v) => _toggleSubNotification(
+                  'todo_live',
+                  v,
+                  (val) => _todoLiveEnabled = val,
+                  StorageService.setTodoLiveNotificationEnabled,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -299,6 +336,34 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 2,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              leading: CircleAvatar(
+                backgroundColor: Colors.teal.withOpacity(0.12),
+                child: const Icon(Icons.manage_search, color: Colors.teal),
+              ),
+              title: const Text(
+                '定时闹钟管理',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
+              subtitle: Text(
+                '查看当前已注册到系统的精确闹钟提醒',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showScheduledReminders,
+            ),
+          ),
+          if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildCategoryRemindersSection(),
+          ],
         ],
       ),
     );
@@ -447,6 +512,222 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                           _courseReminderMinutes = mins;
                         });
                         _triggerReschedule();
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showScheduledReminders() async {
+    final reminders = await NotificationService.getScheduledReminders();
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '已注册的提醒',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          await NotificationService.scheduleReminders([],
+                              clearFirst: true);
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(this.context).showSnackBar(
+                            const SnackBar(content: Text('已清除所有系统闹钟')),
+                          );
+                        },
+                        icon: const Icon(Icons.delete_sweep, color: Colors.red),
+                        label:
+                            const Text('清除全部', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: reminders.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.alarm_off,
+                                  size: 48, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text('暂无预约的提醒',
+                                  style: TextStyle(color: Colors.grey[500])),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          controller: scrollController,
+                          itemCount: reminders.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1, indent: 72),
+                          itemBuilder: (context, index) {
+                            final r = reminders[index];
+                            final triggerAt = DateTime.fromMillisecondsSinceEpoch(
+                                r['triggerAtMs']);
+                            final isPast = triggerAt.isBefore(DateTime.now());
+
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: isPast
+                                    ? Colors.grey[200]
+                                    : Colors.blue[50],
+                                child: Icon(
+                                  isPast ? Icons.history : Icons.alarm,
+                                  color: isPast ? Colors.grey : Colors.blue,
+                                ),
+                              ),
+                              title: Text(r['title'] ?? '未命名提醒'),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(r['text'] ?? ''),
+                                  Text(
+                                    DateFormat('MM-dd HH:mm').format(triggerAt),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color:
+                                          isPast ? Colors.red : Colors.grey[600],
+                                      fontWeight: isPast ? FontWeight.bold : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.close, size: 20),
+                                onPressed: () async {
+                                  await NotificationService.cancelReminder(
+                                      r['notifId']);
+                                  Navigator.pop(context);
+                                  _showScheduledReminders();
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildCategoryRemindersSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4.0, bottom: 8.0, top: 8.0),
+          child: Text(
+            '分类默认提醒时间',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+        ),
+        Card(
+          elevation: 1,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            children: _todoGroups.map((group) {
+              final mins = _categoryReminderMinutes[group.id] ?? 5;
+              return ListTile(
+                leading: const Icon(Icons.folder_open_outlined, size: 20),
+                title: Text(group.name, style: const TextStyle(fontSize: 14)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      mins == 0 ? '准时' : '提前 $mins 分钟',
+                      style: TextStyle(fontSize: 13, color: Colors.blue[700]),
+                    ),
+                    const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                  ],
+                ),
+                onTap: () => _showCategoryReminderPicker(group),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showCategoryReminderPicker(TodoGroup group) {
+    final options = [0, 5, 10, 15, 20, 30, 45, 60, 120, 1440];
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '设置 "${group.name}" 的默认提醒',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: options.length,
+                  itemBuilder: (context, index) {
+                    final mins = options[index];
+                    final currentMins = _categoryReminderMinutes[group.id] ?? 5;
+                    return ListTile(
+                      title: Text(mins == 0
+                          ? '准时提醒'
+                          : mins >= 60
+                              ? (mins >= 1440 ? '提前 1 天' : '提前 ${mins ~/ 60} 小时')
+                              : '提前 $mins 分钟'),
+                      trailing: currentMins == mins
+                          ? const Icon(Icons.check, color: Colors.blue)
+                          : null,
+                      onTap: () async {
+                        if (_username != null) {
+                          final newData = Map<String, int>.from(_categoryReminderMinutes);
+                          newData[group.id] = mins;
+                          await StorageService.saveCategoryReminderMinutes(
+                              _username!, newData);
+                          setState(() {
+                            _categoryReminderMinutes = newData;
+                          });
+                        }
                         Navigator.pop(context);
                       },
                     );

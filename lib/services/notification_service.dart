@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -243,7 +244,7 @@ class NotificationService {
         .toLocal();
     String timeStr =
         "${DateFormat('HH:mm').format(startDate)} - ${DateFormat('HH:mm').format(todo.dueDate!.toLocal())}";
-    final notifId = isSpecialTodo ? todo.id.hashCode : null;
+    final notifId = todo.id.hashCode;
 
     debugPrint(
         "🔔 showUpcomingTodoNotification: title=${todo.title}, todoId=${todo.id}, hashCode=${todo.id.hashCode}, todoType=$todoType, isSpecialTodo=$isSpecialTodo, notifId=$notifId");
@@ -379,18 +380,33 @@ class NotificationService {
   }
 
   static Future<void> scheduleReminders(
-      List<Map<String, dynamic>> reminders) async {
+      List<Map<String, dynamic>> reminders, {bool clearFirst = true}) async {
     if (!await StorageService.isReminderNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
-    if (reminders.isEmpty) return;
+    if (reminders.isEmpty && !clearFirst) return;
     try {
       final json = reminders
           .map((r) => '{"triggerAtMs":${r['triggerAtMs']},'
               '"title":${_jsonStr(r['title'])},"text":${_jsonStr(r['text'])},"notifId":${r['notifId']}}')
           .join(',');
       await _channel
-          .invokeMethod('scheduleReminders', {'remindersJson': '[$json]'});
+          .invokeMethod('scheduleReminders', {'remindersJson': '[$json]', 'clearFirst': clearFirst});
     } catch (e) {}
+  }
+
+  static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return [];
+    try {
+      final jsonStr =
+          await _channel.invokeMethod<String>('getScheduledReminders');
+      if (jsonStr == null || jsonStr.isEmpty) return [];
+
+      final List<dynamic> list = jsonDecode(jsonStr);
+      return list.map((item) => Map<String, dynamic>.from(item)).toList();
+    } catch (e) {
+      debugPrint('Error getting scheduled reminders: $e');
+      return [];
+    }
   }
 
   static Future<void> cancelReminder(int notifId) async {

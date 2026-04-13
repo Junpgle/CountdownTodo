@@ -104,55 +104,56 @@ class ReminderScheduleService {
       final todoType = _detectTodoType(t.title);
       final isSpecialTodo = todoType != 'default';
 
-      // 有 dueDate 的具体时间待办
-      if (t.dueDate != null) {
-        final dueDateLocal = t.dueDate!.toLocal();
-        // 只处理今天的待办
-        if (!_isSameDay(dueDateLocal, now)) continue;
+      // 确定参考时间点（优先开始时间，其次截止时间）
+      DateTime? refTime;
+      if (t.createdDate != null && t.createdDate! > 0) {
+        refTime = DateTime.fromMillisecondsSinceEpoch(t.createdDate!, isUtc: true).toLocal();
+      } else if (t.dueDate != null) {
+        refTime = t.dueDate!.toLocal();
+      }
 
-        // 获取开始时间
-        DateTime? startTime;
-        final startMs = t.createdDate;
-        if (startMs != null && startMs > 0) {
-          startTime = DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true)
-              .toLocal();
-        }
+      if (refTime == null) continue;
 
+      // 提醒提前量
+      final advance = t.reminderMinutes ?? _todoAdvanceMinutes;
+      final triggerAt = refTime.subtract(Duration(minutes: advance));
+
+      // 检查是否在调度窗口内 (未来 7 天)
+      if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
         if (isSpecialTodo) {
-          // 特殊待办：在开始时间触发提醒
-          final triggerTime = startTime ?? dueDateLocal;
-          final triggerAt =
-              triggerTime.subtract(Duration(minutes: _todoAdvanceMinutes));
+          final label = _getSpecialTodoLabel(todoType);
+          // 如果有时间段，显示范围，否则只显示参考时间
+          String timeStr = _hm(refTime);
+          if (t.dueDate != null && t.createdDate != null) {
+             final end = t.dueDate!.toLocal();
+             timeStr = '${_hm(refTime)} - ${_hm(end)}';
+          }
 
-          if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
-            final label = _getSpecialTodoLabel(todoType);
-            final timeStr = '${_hm(triggerTime)} - ${_hm(dueDateLocal)}';
-            reminders.add({
-              'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-              'title': '$label ${t.title}',
-              'text': t.remark?.isNotEmpty == true
-                  ? '${t.remark!} · $timeStr'
-                  : timeStr,
-              'notifId': _specialTodoBaseId + i,
-              'todoType': todoType,
-            });
-          }
+          reminders.add({
+            'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+            'title': '$label ${t.title}',
+            'text': t.remark?.isNotEmpty == true
+                ? '${t.remark!} · $timeStr'
+                : timeStr,
+            'notifId': _specialTodoBaseId + i,
+            'todoType': todoType,
+          });
         } else {
-          // 普通待办：有开始时间的在开始前提醒
-          if (startTime != null) {
-            final triggerAt =
-                startTime.subtract(Duration(minutes: _todoAdvanceMinutes));
-            if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
-              reminders.add({
-                'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-                'title': '⏰ ${t.title}',
-                'text': t.remark?.isNotEmpty == true
-                    ? t.remark!
-                    : '即将开始 · ${_hm(startTime)}',
-                'notifId': _todoBaseId + i,
-              });
-            }
+          // 普通待办
+          String text = t.remark?.isNotEmpty == true ? t.remark! : '即将开始';
+          if (t.dueDate != null && t.createdDate != null) {
+            final end = t.dueDate!.toLocal();
+            text += ' · ${_hm(refTime)} - ${_hm(end)}';
+          } else {
+            text += ' · ${_hm(refTime)}';
           }
+
+          reminders.add({
+            'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+            'title': '⏰ ${t.title}',
+            'text': text,
+            'notifId': _todoBaseId + i,
+          });
         }
       }
     }

@@ -8,6 +8,7 @@ import '../models/chat_message.dart';
 import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
 import '../screens/settings/llm_config_page.dart';
+import '../storage_service.dart';
 
 class TodoChatScreen extends StatefulWidget {
   final String username;
@@ -52,6 +53,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   List<ChatSession> _sessions = [];
   bool _includeContextTodos = true;
   String? _activeSessionId;
+  String? _username;
+  Map<String, int> _categoryReminderDefaults = {};
 
   @override
   void initState() {
@@ -60,6 +63,19 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     _loadPromptSettings();
     _loadChatConfig();
     _loadDeepThinking();
+    _loadCategoryDefaults();
+  }
+
+  Future<void> _loadCategoryDefaults() async {
+    final username = widget.username;
+    final defaults =
+        await StorageService.getCategoryReminderMinutes(username);
+    if (mounted) {
+      setState(() {
+        _username = username;
+        _categoryReminderDefaults = defaults;
+      });
+    }
   }
 
   @override
@@ -218,6 +234,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         final endTime = t['endTime'] ?? '';
         final isAllDay = t['isAllDay'] ?? false;
         final recurrence = t['recurrence'] ?? 'none';
+        final reminderMinutes = t['reminderMinutes'] ?? 5;
         final gid = t['groupId'] ?? '';
         String folderName = '';
         if (gid.isNotEmpty) {
@@ -226,7 +243,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               .name;
         }
 
-        return '- [ID: $id] 标题: $title${remark.isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.isNotEmpty ? ' | 开始: $startTime' : ''}${endTime.isNotEmpty ? ' | 结束: $endTime' : ''} | 全天: $isAllDay | 循环: $recurrence';
+        return '- [ID: $id] 标题: $title${remark.isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.isNotEmpty ? ' | 开始: $startTime' : ''}${endTime.isNotEmpty ? ' | 结束: $endTime' : ''} | 全天: $isAllDay | 循环: $recurrence | 提醒: 提前$reminderMinutes分钟';
       }).join('\n');
     }
 
@@ -254,10 +271,10 @@ $folderList
 3. JSON格式必须严格遵循以下两种之一：
 
 创建待办：
-[ACTION_START]{"action":"create_todo","todos":[{"title":"待办标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","customIntervalDays":3,"recurrenceEndDate":"YYYY-MM-DD","groupId":"分类ID"}]}[ACTION_END]
+[ACTION_START]{"action":"create_todo","todos":[{"title":"待办标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","customIntervalDays":3,"recurrenceEndDate":"YYYY-MM-DD","groupId":"分类ID","reminderMinutes":5}]}[ACTION_END]
 
 归类/更正待办：
-[ACTION_START]{"action":"categorize_todo","updates":[{"todoId":"待办ID","title":"待办标题","groupId":"新的分类ID"}]}[ACTION_END]
+[ACTION_START]{"action":"categorize_todo","updates":[{"todoId":"待办ID","title":"待办标题","groupId":"新的分类ID","reminderMinutes":5}]}[ACTION_END]
 
 合并多种操作（推荐）：
 [ACTION_START][{"action":"create_todo","todos":[...]},{"action":"categorize_todo","updates":[...]}] [ACTION_END]
@@ -267,6 +284,7 @@ $folderList
 - todoId: 现有待办的ID（仅在 categorize_todo 时使用）
 - title: 待办标题
 - groupId: 所属分类的ID
+- reminderMinutes: 提前多少分钟提醒（默认为 5）
 
 【后续建议功能 - 重要规则】
 在每次回复的最后，请附带3-4个简短的后续问题建议，帮助用户继续对话
@@ -1982,13 +2000,15 @@ $folderList
              isDeleted: e['isDeleted'] ?? false,
              remark: e['remark'] ?? todoData['remark'],
              dueDate: e['endTime'] != null ? DateTime.tryParse(e['endTime']) : null,
-             createdDate: e['startTime'] != null ? DateTime.tryParse(e['startTime'])?.millisecondsSinceEpoch : null,
+             createdDate: (e['startTime'] != null) ? DateTime.tryParse(e['startTime'])?.millisecondsSinceEpoch : null,
+             reminderMinutes: todoData['reminderMinutes'] ?? e['reminderMinutes'] as int?,
            )..markAsChanged());
         } else {
           updatedTodos.add(TodoItem(
             id: id,
             title: todoData['title'] ?? '',
             groupId: (gId == null || gId.isEmpty) ? null : gId,
+            reminderMinutes: todoData['reminderMinutes'],
           )..markAsChanged());
         }
         todoData['isAdded'] = true;
@@ -2018,6 +2038,8 @@ $folderList
         recurrenceEndDate: recurrenceEndDate,
         originalText: todoData['originalText'],
         groupId: (gId == null || gId.isEmpty) ? null : gId,
+        reminderMinutes: todoData['reminderMinutes'] ??
+            (gId != null ? _categoryReminderDefaults[gId] : null),
       ));
       
       todoData['isAdded'] = true;

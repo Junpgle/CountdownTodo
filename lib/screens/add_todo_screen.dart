@@ -42,6 +42,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   DateTime? _recurrenceEndDate;
   bool _isAllDay = false;
   String? _selectedGroupId;
+  int _reminderMinutes = 5; // 🚀 默认提前 5 分钟
 
   int _selectedTabIndex = 0;
   bool _isParsing = false;
@@ -49,6 +50,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   int _currentParseIndex = 0;
   String? _llmRawResponse;
   String? _currentOriginalText;
+
+  Map<String, int> _categoryReminderDefaults = {};
+  String? _username;
 
   late AnimationController _dotsController;
 
@@ -59,6 +63,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat();
+    _loadCategoryDefaults();
+  }
+
+  Future<void> _loadCategoryDefaults() async {
+    final username = await StorageService.getLoginSession();
+    if (username != null) {
+      final defaults =
+          await StorageService.getCategoryReminderMinutes(username);
+      setState(() {
+        _username = username;
+        _categoryReminderDefaults = defaults;
+      });
+    }
   }
 
   @override
@@ -140,6 +157,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       if (_customDays != null) {
         _customDaysCtrl.text = _customDays.toString();
       }
+      _reminderMinutes = result.reminderMinutes ?? 5;
     });
   }
 
@@ -247,6 +265,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               : null,
           recurrence: _parseRecurrenceType(result['recurrence']),
           customIntervalDays: result['customIntervalDays'],
+          reminderMinutes: result['reminderMinutes'],
         );
       }).toList();
 
@@ -298,6 +317,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
       originalText: _currentOriginalText,
       groupId: _selectedGroupId,
+      reminderMinutes: _reminderMinutes,
     );
 
     widget.onTodoAdded(todo);
@@ -317,6 +337,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         createdDate: (r.startTime ?? DateTime.now()).millisecondsSinceEpoch,
         remark: r.remark,
         originalText: _currentOriginalText,
+        reminderMinutes: r.reminderMinutes ?? _reminderMinutes,
       );
     }).toList();
 
@@ -582,7 +603,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   ),
                 )),
               ],
-              onChanged: (val) => setState(() => _selectedGroupId = val),
+              onChanged: (val) {
+                setState(() {
+                  _selectedGroupId = val;
+                  if (val != null && _categoryReminderDefaults.containsKey(val)) {
+                    _reminderMinutes = _categoryReminderDefaults[val]!;
+                  } else if (val == null) {
+                    _reminderMinutes = 5; // Default for independent
+                  }
+                });
+              },
             ),
             const SizedBox(height: 12),
           ],
@@ -616,6 +646,33 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     _customDaysCtrl.clear();
                   }
                 });
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            value: _reminderMinutes,
+            decoration: InputDecoration(
+              labelText: "温馨提醒 (提前量)",
+              prefixIcon: const Icon(Icons.notifications_active_outlined),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            items: [
+              const DropdownMenuItem(value: 0, child: Text("准时提醒")),
+              const DropdownMenuItem(value: 5, child: Text("提前 5 分钟")),
+              const DropdownMenuItem(value: 10, child: Text("提前 10 分钟")),
+              const DropdownMenuItem(value: 15, child: Text("提前 15 分钟")),
+              const DropdownMenuItem(value: 30, child: Text("提前 30 分钟")),
+              const DropdownMenuItem(value: 45, child: Text("提前 45 分钟")),
+              const DropdownMenuItem(value: 60, child: Text("提前 1 小时")),
+              const DropdownMenuItem(value: 120, child: Text("提前 2 小时")),
+              const DropdownMenuItem(value: 1440, child: Text("提前 1 天")),
+            ],
+            onChanged: (val) {
+              if (val != null) {
+                setState(() => _reminderMinutes = val);
               }
             },
           ),

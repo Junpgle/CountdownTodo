@@ -119,6 +119,7 @@ class TodoItem {
   String? imagePath; // 📸 图片分析路径
   String? originalText; // 📄 原始分析文本
   String? groupId;      // 📁 所属分组 ID (null 表示未分组)
+  int? reminderMinutes; // 🚀 新增：提前几分钟提醒
 
   TodoItem({
     String? id,
@@ -137,6 +138,7 @@ class TodoItem {
     this.imagePath,
     this.originalText,
     this.groupId,
+    this.reminderMinutes,
   }) :
         this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
@@ -170,6 +172,7 @@ class TodoItem {
     'image_path': imagePath,          // 📸 图片路径
     'original_text': originalText,    // 📄 原始分析文本
     'group_id': groupId,              // 📁 分组 ID
+    'reminder_minutes': reminderMinutes, // 🚀 提醒提前量
   };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -208,6 +211,8 @@ class TodoItem {
       originalText: (json['original_text'] ?? json['originalText']) as String?,
       // 📁 分组 ID
       groupId: (json['group_id'] ?? json['groupId']) as String?,
+      // 🚀 提醒提前量
+      reminderMinutes: json['reminder_minutes'] as int? ?? json['reminderMinutes'] as int?,
     );
   }
 

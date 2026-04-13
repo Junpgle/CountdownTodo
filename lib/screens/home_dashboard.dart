@@ -1057,16 +1057,46 @@ class _HomeDashboardState extends State<HomeDashboard>
       return 'default';
     }
 
-    final specialTodosNow = _todos.where((t) {
-      if (t.isDone) return false;
+    // ── 待办提醒 ────────────────────────────────────────────────
+    // 1. 特殊待办 (快递/外卖等): 今天所有的都显示 (保持原逻辑)
+    final specialTodosToday = _todos.where((t) {
+      if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
       final todoType = _detectTodoType(t.title);
       if (todoType == 'default') return false;
-      DateTime localDueDate = t.dueDate!.toLocal();
-      return _isSameDay(localDueDate, now);
+      return _isSameDay(t.dueDate!.toLocal(), now);
     }).toList();
 
-    for (final todo in specialTodosNow) {
+    for (final todo in specialTodosToday) {
+      await NotificationService.showUpcomingTodoNotification(todo);
+    }
+
+    // 2. 普通待办 (非全天): 如果即将开始 (例如 30 分钟内)，则上岛显示
+    final upcomingRegularTodos = _todos.where((t) {
+      if (t.isDone || t.isDeleted) return false;
+      if (t.dueDate == null) return false;
+      final todoType = _detectTodoType(t.title);
+      if (todoType != 'default') return false;
+
+      // 排除全天待办 (00:00 - 23:59)
+      DateTime localDueDate = t.dueDate!.toLocal();
+      DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
+              t.createdDate ?? t.createdAt,
+              isUtc: true)
+          .toLocal();
+      bool isAllDay = startDate.hour == 0 &&
+          startDate.minute == 0 &&
+          localDueDate.hour == 23 &&
+          localDueDate.minute == 59;
+      if (isAllDay) return false;
+
+      // 检查是否即将开始 (提前 30 分钟到甚至已经开始但没结束)
+      // 这里的 logic 可以根据需求调整，通常我们希望在开始前一段时间“上岛”
+      final diff = startDate.difference(now).inMinutes;
+      return diff >= -15 && diff <= 30; // 开始前 30min 到开始后 15min 内显示
+    }).toList();
+
+    for (final todo in upcomingRegularTodos) {
       await NotificationService.showUpcomingTodoNotification(todo);
     }
 
@@ -1582,6 +1612,14 @@ class _HomeDashboardState extends State<HomeDashboard>
     _initManifestWallpaper();
   }
 
+  Future<void> _rescheduleAlarms() async {
+    final courses = await CourseService.getAllCourses();
+    await ReminderScheduleService.scheduleAll(
+      todos: _todos,
+      courses: courses,
+    );
+  }
+
   void _syncTodoNotification() {
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
@@ -2064,6 +2102,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                           FloatWindowService.invalidateSlotCache();
                           FloatWindowService.update();
                           _syncTodoNotification();
+                          _rescheduleAlarms();
                           await WidgetService.updateTodoWidget(_todos);
                           // _loadAllData(); // 🚀 关键修复：不再立即 reload，由 setState 驱动 UI 更新
                         },
@@ -2313,8 +2352,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
                   FloatWindowService.invalidateSlotCache();
-                  _syncTodoNotification();
-                  await WidgetService.updateTodoWidget(allTodos);
+                    _syncTodoNotification();
+                    _rescheduleAlarms();
+                    await WidgetService.updateTodoWidget(allTodos);
                   if (mounted) {
                     setState(() {
                       _todos = List<TodoItem>.from(allTodos);
@@ -2329,8 +2369,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
                   FloatWindowService.invalidateSlotCache();
-                  _syncTodoNotification();
-                  await WidgetService.updateTodoWidget(allTodos);
+                    _syncTodoNotification();
+                    _rescheduleAlarms();
+                    await WidgetService.updateTodoWidget(allTodos);
                   if (mounted) {
                     setState(() {
                       _todos = List<TodoItem>.from(allTodos);

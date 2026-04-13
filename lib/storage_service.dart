@@ -81,9 +81,11 @@ class StorageService {
       "notify_todo_recognize_enabled";
   static const String KEY_NOTIFY_POMODORO_END_ENABLED =
       "notify_pomodoro_end_enabled";
+  static const String KEY_NOTIFY_TODO_LIVE_ENABLED = "notify_todo_live_enabled";
   static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
   static const String KEY_COURSE_REMINDER_MINUTES = "course_reminder_minutes";
   static const String KEY_LAST_COURSE_IMPORT_URL = "last_course_import_url";
+  static const String KEY_CATEGORY_REMINDER_MINUTES = "category_reminder_minutes";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -1343,6 +1345,16 @@ class StorageService {
     await prefs.setBool(KEY_NOTIFY_TODO_RECOGNIZE_ENABLED, enabled);
   }
 
+  static Future<bool> isTodoLiveNotificationEnabled() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getBool(KEY_NOTIFY_TODO_LIVE_ENABLED) ?? true;
+  }
+
+  static Future<void> setTodoLiveNotificationEnabled(bool enabled) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setBool(KEY_NOTIFY_TODO_LIVE_ENABLED, enabled);
+  }
+
   static Future<bool> isPomodoroEndNotificationEnabled() async {
     final prefs = await StorageService.prefs;
     return prefs.getBool(KEY_NOTIFY_POMODORO_END_ENABLED) ?? true;
@@ -1561,5 +1573,26 @@ class StorageService {
   static Future<String?> getLastCourseImportUrl() async {
     final prefs = await StorageService.prefs;
     return prefs.getString(KEY_LAST_COURSE_IMPORT_URL);
+  }
+
+  // categoryGroupId -> minutes
+  static Future<Map<String, int>> getCategoryReminderMinutes(
+      String username) async {
+    final prefs = await StorageService.prefs;
+    final jsonStr = prefs.getString("${KEY_CATEGORY_REMINDER_MINUTES}_$username");
+    if (jsonStr == null) return {};
+    try {
+      final Map<String, dynamic> rawResult = jsonDecode(jsonStr);
+      return rawResult.map((key, value) => MapEntry(key, value as int));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<void> saveCategoryReminderMinutes(
+      String username, Map<String, int> data) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(
+        "${KEY_CATEGORY_REMINDER_MINUTES}_$username", jsonEncode(data));
   }
 }

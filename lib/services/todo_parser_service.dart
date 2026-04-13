@@ -22,6 +22,7 @@ class ParsedTodoResult {
   bool isValid;
   List<TodoSegment> segments; // 新增：保存整句被切割后的分片明细
   String? originalText;      // 📄 原始分析文本
+  int? reminderMinutes;      // 🚀 提醒提前时间
 
   ParsedTodoResult({
     required this.title,
@@ -35,6 +36,7 @@ class ParsedTodoResult {
     this.isValid = true,
     this.segments = const [],
     this.originalText,
+    this.reminderMinutes,
   });
 
   bool get hasContent => title.isNotEmpty;
@@ -50,6 +52,7 @@ class ParsedTodoResult {
       'customIntervalDays': customIntervalDays,
       'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
       'originalText': originalText,
+      'reminderMinutes': reminderMinutes,
     };
   }
 }
