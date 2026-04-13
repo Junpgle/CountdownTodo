@@ -3,6 +3,7 @@ import '../storage_service.dart';
 import '../models.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'add_todo_screen.dart';
 
 class FolderManageScreen extends StatefulWidget {
   final String username;
@@ -250,46 +251,26 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
     );
   }
 
-  void _showCreateTodoInFolderDialog(TodoGroup g) {
-    final TextEditingController _ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('创建待办至 "${g.name}"'),
-          content: TextField(
-            controller: _ctrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: '输入待办事项内容',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final text = _ctrl.text.trim();
-                if (text.isNotEmpty) {
-                  final newTodo = TodoItem(
-                    title: text,
-                    groupId: g.id,
-                  );
-                  setState(() {
-                    _todos.add(newTodo);
-                  });
-                  widget.onTodosChanged(_todos);
-                  Navigator.pop(ctx);
-                }
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
+  void _showCreateTodoInFolderScreen(TodoGroup g) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => AddTodoScreen(
+          todoGroups: _groups,
+          initialGroupId: g.id,
+          onTodoAdded: (todo) {
+            setState(() {
+              _todos.add(todo);
+            });
+            widget.onTodosChanged(_todos);
+          },
+          onTodosBatchAdded: (todos) {
+            setState(() {
+              _todos.addAll(todos);
+            });
+            widget.onTodosChanged(_todos);
+          },
+        ),
+      ),
     );
   }
 
@@ -383,9 +364,9 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                       spacing: 12,
                       runSpacing: 8,
                       children: [
-                        // 🚀 新增：直接创建新待办
+                        // 🚀 已优化：直接打开完整的添加页面
                         InkWell(
-                          onTap: () => _showCreateTodoInFolderDialog(g),
+                          onTap: () => _showCreateTodoInFolderScreen(g),
                           borderRadius: BorderRadius.circular(8),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

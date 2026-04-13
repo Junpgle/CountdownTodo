@@ -15,6 +15,7 @@ class AddTodoScreen extends StatefulWidget {
   final Function(List<Map<String, dynamic>>, String?, String?)?
       onLLMResultsParsed;
   final List<TodoGroup> todoGroups;
+  final String? initialGroupId;
 
   const AddTodoScreen({
     super.key,
@@ -22,6 +23,7 @@ class AddTodoScreen extends StatefulWidget {
     this.onTodosBatchAdded,
     this.onLLMResultsParsed,
     this.todoGroups = const [],
+    this.initialGroupId,
   });
 
   @override
@@ -59,11 +61,18 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   @override
   void initState() {
     super.initState();
+    _selectedGroupId = widget.initialGroupId;
     _dotsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat();
-    _loadCategoryDefaults();
+    _loadCategoryDefaults().then((_) {
+      if (_selectedGroupId != null && _categoryReminderDefaults.containsKey(_selectedGroupId)) {
+        setState(() {
+          _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
+        });
+      }
+    });
   }
 
   Future<void> _loadCategoryDefaults() async {
