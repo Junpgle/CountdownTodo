@@ -102,7 +102,6 @@ class ScreenTimeService {
       }
 
       await StorageService.syncData(username);
-      debugPrint("📤 本机数据已推送到云端");
 
       // 🚀 只要推送成功，即便云端还没聚合好，也更新本地同步水位线，防止 2 分钟死循环
       await StorageService.updateLastScreenTimeSync();
@@ -115,7 +114,6 @@ class ScreenTimeService {
       if (cloudStats.isNotEmpty) {
         // 4. 用云端总表覆盖【UI显示缓存】
         await StorageService.saveScreenTimeCache(cloudStats);
-        debugPrint("📥 成功拉取云端聚合数据，准备刷新 UI！");
       }
     } catch (e) {
       debugPrint("屏幕时间后台同步失败: $e");

@@ -254,7 +254,6 @@ class PomodoroSyncService {
       );
 
       _setConnState(SyncConnectionState.connected);
-      debugPrint('[PomodoroSync] ✅ 已连接 (平台:$platform, 版本:$versionParam)');
 
       _wsSub = _channel!.stream.listen(
         _onMessage,
@@ -284,9 +283,6 @@ class PomodoroSyncService {
 
       if (signal.action == 'UPDATE_AVAILABLE') {
         debugPrint('[PomodoroSync] 🎁 收到新版本推送: ${signal.latestVersion}');
-      } else {
-        debugPrint(
-            '[PomodoroSync] 📨 ${signal.action} from ${signal.sourceDevice}');
       }
 
       if (signal.action == 'START' || signal.action == 'RECONNECT_SYNC') {

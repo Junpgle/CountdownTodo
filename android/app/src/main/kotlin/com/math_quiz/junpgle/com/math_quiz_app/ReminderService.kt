@@ -117,7 +117,6 @@ class ReminderService : Service() {
                 if (triggerAtMs <= now) continue   // 过期的跳过
 
                 scheduleOneAlarm(am, triggerAtMs, title, text, notifId)
-                Log.d(TAG, "Scheduled: $title @ $triggerAtMs")
             }
         } catch (e: Exception) {
             Log.e(TAG, "rescheduleAll parse error", e)

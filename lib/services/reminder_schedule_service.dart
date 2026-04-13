@@ -192,7 +192,6 @@ class ReminderScheduleService {
       return;
     }
 
-    debugPrint('[ReminderSchedule] 注册 ${reminders.length} 个提醒');
     await NotificationService.scheduleReminders(reminders);
   }
 

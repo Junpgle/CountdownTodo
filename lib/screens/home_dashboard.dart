@@ -1013,9 +1013,6 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     if (hasUpcomingCourse) return;
 
-    debugPrint(
-        "🔔 _checkUpcomingEvents: 开始检查特殊待办, _todos.length=${_todos.length}");
-
     String _detectTodoType(String title) {
       final lowerTitle = title.toLowerCase();
       if (lowerTitle.contains('快递') ||

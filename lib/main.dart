@@ -191,8 +191,6 @@ class _MyAppState extends State<MyApp> {
     final wasLoggedIn = user != null && user.isNotEmpty;
     final storedDate = (await SharedPreferences.getInstance())
         .getString(StorageService.KEY_PRIVACY_DATE);
-    debugPrint(
-        '[Privacy] wasLoggedIn=$wasLoggedIn, wasAgreed=$wasAgreed, needsUpdate=$privacyNeedsUpdate, storedDate=$storedDate');
 
     // 2. 检查升级引导
     final needGuide = await FeatureGuideScreen.shouldShow();
@@ -211,8 +209,6 @@ class _MyAppState extends State<MyApp> {
 
       // 4. 如果需要弹窗，在界面渲染后弹出
       if (_showPrivacyUpdate) {
-        debugPrint(
-            '[Privacy] Showing dialog via post frame callback (agreed=$wasAgreed, upToDate=$privacyNeedsUpdate)');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showPrivacyUpdateDialog();
         });
@@ -299,11 +295,9 @@ class _MyAppState extends State<MyApp> {
     try {
       await BandSyncService.init(
         onDeviceConnected: (info) {
-          debugPrint('[Band] 设备已连接: ${info['name']}');
           BandSyncService.registerListener();
         },
         onDeviceDisconnected: () {
-          debugPrint('[Band] 设备已断开');
         },
         onMessageReceived: (data) {
           debugPrint('[Band] 收到消息: $data');

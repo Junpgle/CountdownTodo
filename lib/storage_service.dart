@@ -722,8 +722,6 @@ class StorageService {
 
     // 更新最后同步成功的时间戳（记录到毫秒）
     await prefs.setInt(KEY_LAST_SCREEN_TIME_SYNC, now.millisecondsSinceEpoch);
-
-    debugPrint("屏幕时间本地缓存已更新: $today, 记录条数: ${stats.length}");
   }
 
   static Future<List<dynamic>> getScreenTimeCache() async {
@@ -911,7 +909,7 @@ class StorageService {
           debugPrint("屏幕时间 payload 构造失败: $se");
         }
       } else {
-        debugPrint("📭 本机暂无新的屏幕时间需要上传");
+        // null
       }
 
       // 5. 发起网络同步请求
@@ -1105,8 +1103,6 @@ class StorageService {
 
       if (success) {
         await prefs.remove(KEY_LOCAL_SCREEN_TIME);
-        debugPrint(
-            "✅ syncScreenTimeAlone: success, ${formattedApps.length} apps uploaded");
         return true;
       } else {
         debugPrint("syncScreenTimeAlone failed");
@@ -1440,18 +1436,15 @@ class StorageService {
         }
       }
     } catch (e) {
-      debugPrint('[Privacy] Failed to fetch version: $e');
     }
     
     // 如果网络请求失败但有缓存，返回缓存的版本
     if (cachedVersion != null) {
-      debugPrint('[Privacy] Network error, using cached version: $cachedVersion');
       return cachedVersion;
     }
     
     // 默认返回当前日期
     final defaultDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    debugPrint('[Privacy] Using default date: $defaultDate');
     return defaultDate;
   }
 

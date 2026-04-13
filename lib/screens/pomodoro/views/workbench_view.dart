@@ -1114,12 +1114,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _showPauseDialog() {
-    debugPrint(
-        '[PauseDialog] _showPauseDialog called, calling _pauseFocus first');
-    debugPrint('[PauseDialog] Before _pauseFocus, _isPaused = $_isPaused');
     _pauseFocus();
-    debugPrint('[PauseDialog] After _pauseFocus, _isPaused = $_isPaused');
-    debugPrint('[PauseDialog] showing dialog');
     showDialog(
       context: context,
       barrierDismissible: false,
