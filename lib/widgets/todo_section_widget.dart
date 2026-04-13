@@ -1797,45 +1797,52 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     Color? color,
     IconData? icon,
   }) {
-    // 💡 修复：确保文字颜色识别系统深色模式或自定义背景图片
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
+    final Color textColor = color ?? (useDarkUI ? Colors.white70 : Colors.black54);
 
-    // 根据背景智能反色，深色环境用亮白色，浅色环境用半透黑色
-    final c = color ??
-        (useDarkUI
-            ? Colors.white70
-            : Theme.of(context).colorScheme.onSurface.withOpacity(0.5));
-
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 4, left: 2),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Row(
           children: [
-            AnimatedRotation(
-              turns: expanded ? 0.0 : -0.25,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 16,
-                color: c,
-              ),
-            ),
             if (icon != null) ...[
-              const SizedBox(width: 4),
-              Icon(icon, size: 13, color: c),
+              Icon(icon, size: 16, color: textColor),
+              const SizedBox(width: 8),
             ],
-            const SizedBox(width: 4),
             Text(
               text,
               style: TextStyle(
-                color: c,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      textColor.withOpacity(0.15),
+                      textColor.withOpacity(0.02),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            AnimatedRotation(
+              turns: expanded ? 0 : -0.25,
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                Icons.expand_more_rounded,
+                size: 18,
+                color: textColor.withOpacity(0.5),
               ),
             ),
           ],
@@ -2168,34 +2175,75 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             _isTodayExpanded = true;
           }),
           child: Container(
-            margin: const EdgeInsets.only(top: 6, bottom: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              color: useDarkUI
-                  ? Colors.white.withOpacity(0.1)
-                  : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                colors: allTodayDone
+                    ? [Colors.green.withOpacity(0.12), Colors.green.withOpacity(0.04)]
+                    : [Theme.of(context).colorScheme.primary.withOpacity(0.08), Theme.of(context).colorScheme.primary.withOpacity(0.02)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: allTodayDone 
+                    ? Colors.green.withOpacity(0.2) 
+                    : Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Row(
               children: [
-                const Text("🎉", style: TextStyle(fontSize: 15)),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: allTodayDone ? Colors.green.withOpacity(0.1) : Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    allTodayDone ? Icons.celebration_rounded : Icons.task_alt_rounded,
+                    size: 20,
+                    color: allTodayDone ? Colors.green : Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 16),
                 Expanded(
-                  child: Text(
-                    allTodayDone
-                        ? "今日待办均已完成"
-                        : "还有 ${todayItems.where((t) => !t.isDone).length} 个今日待办",
-                    style: TextStyle(
-                      color: useDarkUI ? Colors.white : null,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        allTodayDone ? "任务已全部达成！" : "今日事今日毕",
+                        style: TextStyle(
+                          color: allTodayDone ? (isDarkTheme ? Colors.green.shade200 : Colors.green.shade800) : null,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        allTodayDone
+                            ? "今天也很努力呢，休息一下吧 ✨"
+                            : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办等待完成",
+                        style: TextStyle(
+                          color: (allTodayDone ? Colors.green : Theme.of(context).colorScheme.onSurface).withOpacity(0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Icon(
-                  Icons.expand_more,
-                  size: 16,
-                  color: useDarkUI ? Colors.white60 : Colors.grey,
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: (allTodayDone ? Colors.green : Colors.grey).withOpacity(0.5),
                 ),
               ],
             ),
