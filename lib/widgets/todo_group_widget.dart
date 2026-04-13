@@ -131,17 +131,17 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
 
     return Column(
       children: [
-        // 堆叠效果：仅在任务 > 1 且折叠时显示
+        // 堆叠效果：紧凑版
         if (totalCount > 1 && !widget.group.isExpanded)
           AnimatedOpacity(
             duration: const Duration(milliseconds: 300),
             opacity: 1.0,
             child: Column(
               children: [
-                _buildStackLayerInline(context, 0.92, 0.3),
-                const SizedBox(height: 3),
-                _buildStackLayerInline(context, 0.96, 0.6),
-                const SizedBox(height: 3),
+                _buildStackLayerInline(context, 0.94, 0.3),
+                const SizedBox(height: 2),
+                _buildStackLayerInline(context, 0.97, 0.6),
+                const SizedBox(height: 2),
               ],
             ),
           ),
@@ -152,39 +152,37 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
           onLongPress: () => _showGroupMenu(context),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               gradient: allDone 
                 ? LinearGradient(
                     colors: isDark 
-                      ? [Colors.green.withOpacity(0.15), Colors.green.withOpacity(0.05)]
-                      : [Colors.green.withOpacity(0.08), Colors.green.withOpacity(0.02)],
+                      ? [Colors.green.withOpacity(0.12), Colors.green.withOpacity(0.04)]
+                      : [Colors.green.withOpacity(0.06), Colors.green.withOpacity(0.01)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   )
                 : null,
               color: isHovering 
-                  ? primaryColor.withOpacity(0.1) 
+                  ? primaryColor.withOpacity(0.08) 
                   : (widget.isLight ? Colors.white : Colors.grey[900]),
               borderRadius: widget.group.isExpanded
-                  ? const BorderRadius.vertical(top: Radius.circular(24))
-                  : BorderRadius.circular(24),
+                  ? const BorderRadius.vertical(top: Radius.circular(20))
+                  : BorderRadius.circular(20),
               border: Border.all(
                   color: allDone
-                      ? Colors.green.withOpacity(isDark ? 0.3 : 0.2)
+                      ? Colors.green.withOpacity(isDark ? 0.25 : 0.15)
                       : isHovering
                           ? primaryColor
                           : (widget.isLight
-                              ? Colors.grey.withOpacity(0.15)
-                              : Colors.white.withOpacity(0.08)),
-                  width: allDone || isHovering ? 1.5 : 1),
+                              ? Colors.grey.withOpacity(0.12)
+                              : Colors.white.withOpacity(0.06)),
+                  width: allDone || isHovering ? 1.2 : 1),
               boxShadow: [
                 BoxShadow(
-                  color: allDone 
-                    ? Colors.green.withOpacity(0.05)
-                    : Colors.black.withOpacity(0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -194,29 +192,22 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: allDone 
-                          ? Colors.green.withOpacity(0.15)
-                          : primaryColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: allDone ? [
-                          BoxShadow(
-                            color: Colors.green.withOpacity(0.2),
-                            blurRadius: 8,
-                            spreadRadius: -2,
-                          )
-                        ] : [],
+                          ? Colors.green.withOpacity(0.12)
+                          : primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
                         allDone 
                           ? Icons.task_alt_rounded
                           : (widget.group.isExpanded ? Icons.folder_open_rounded : Icons.folder_rounded),
                         color: primaryColor,
-                        size: 24,
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,23 +215,22 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                           Text(
                             widget.group.name,
                             style: TextStyle(
-                              fontSize: 19,
+                              fontSize: 17,
                               fontWeight: FontWeight.bold,
                               color: allDone 
                                 ? (isDark ? Colors.green.shade200 : Colors.green.shade800)
                                 : (widget.isLight ? Colors.black87 : Colors.white),
-                              letterSpacing: 0.3,
+                              letterSpacing: 0.2,
                             ),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 1),
                           Text(
-                            allDone ? "全部任务已完成 ✨" : "$doneCount/$totalCount 个任务已完成",
+                            allDone ? "全部任务已完成 ✨" : "$doneCount/$totalCount 已完成",
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11,
                               color: allDone 
-                                ? (isDark ? Colors.green.withOpacity(0.6) : Colors.green.withOpacity(0.7))
+                                ? (isDark ? Colors.green.withOpacity(0.5) : Colors.green.withOpacity(0.6))
                                 : Colors.grey[500],
-                              fontWeight: allDone ? FontWeight.w600 : FontWeight.normal,
                             ),
                           ),
                         ],
@@ -252,15 +242,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                     ],
                     Icon(
                       widget.group.isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                      color: allDone 
-                        ? Colors.green.withOpacity(0.4)
-                        : Colors.grey.withOpacity(0.4),
-                      size: 24,
+                      color: Colors.grey.withOpacity(0.4),
+                      size: 20,
                     ),
                   ],
                 ),
                 if (!allDone)
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 12),
                 if (!allDone)
                   Stack(
                     children: [
