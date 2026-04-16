@@ -46,6 +46,7 @@ dependencies:
   tray_manager: ^0.5.2
   webview_flutter: ^4.13.1
   webview_win_floating: ^3.0.2
+  visibility_detector: ^0.4.0+2
 
 
 dev_dependencies:

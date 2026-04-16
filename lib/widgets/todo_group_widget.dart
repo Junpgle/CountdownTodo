@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../models.dart';
 
 class TodoGroupWidget extends StatefulWidget {
@@ -30,7 +31,25 @@ class TodoGroupWidget extends StatefulWidget {
   State<TodoGroupWidget> createState() => _TodoGroupWidgetState();
 }
 
-class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderStateMixin {
+class _TodoGroupWidgetState extends State<TodoGroupWidget>
+    with TickerProviderStateMixin {
+  late AnimationController _progressController;
+  bool _hasAnimated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+  }
+
+  @override
+  void dispose() {
+    _progressController.dispose();
+    super.dispose();
+  }
 
   // Dynamic color based on group urgency (most urgent task wins)
   Color _getGroupUrgencyColor(List<TodoItem> todos) {
@@ -42,9 +61,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
     for (final t in todos) {
       if (t.isDone) continue;
       final cDate = DateTime.fromMillisecondsSinceEpoch(
-        t.createdDate ?? t.createdAt, isUtc: true,
+        t.createdDate ?? t.createdAt,
+        isUtc: true,
       ).toLocal();
-      final end = t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final end =
+          t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
       final dueDay = DateTime(end.year, end.month, end.day);
       if (dueDay.isBefore(today)) {
         hasOverdue = true;
@@ -73,9 +94,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
     for (final t in todos) {
       if (t.isDone) continue;
       final cDate = DateTime.fromMillisecondsSinceEpoch(
-        t.createdDate ?? t.createdAt, isUtc: true,
+        t.createdDate ?? t.createdAt,
+        isUtc: true,
       ).toLocal();
-      final end = t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+      final end =
+          t.dueDate ?? DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
       final totalMin = end.difference(cDate).inMinutes;
       if (totalMin > 0 && now.isAfter(cDate)) {
         final p = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
@@ -112,14 +135,16 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
 
     // Nearest deadline
     DateTime? nearestDeadline;
-    final upcomingTodos = groupTodos.where((t) => !t.isDone && t.dueDate != null).toList();
+    final upcomingTodos =
+        groupTodos.where((t) => !t.isDone && t.dueDate != null).toList();
     if (upcomingTodos.isNotEmpty) {
       upcomingTodos.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
       nearestDeadline = upcomingTodos.first.dueDate;
     }
 
     // Urgency metrics for background fill
-    final urgencyColor = allDone ? Colors.green : _getGroupUrgencyColor(groupTodos);
+    final urgencyColor =
+        allDone ? Colors.green : _getGroupUrgencyColor(groupTodos);
     final groupFillProgress = allDone ? 1.0 : _getGroupProgress(groupTodos);
 
     return DragTarget<String>(
@@ -128,45 +153,80 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
       builder: (context, candidateData, rejectedData) {
         final isHovering = candidateData.isNotEmpty;
 
-        return AnimatedSize(
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.fastOutSlowIn,
-          alignment: Alignment.topCenter,
-          child: Container(
-            decoration: BoxDecoration(
-              color: group.isExpanded 
-                  ? (isLight ? Colors.white.withValues(alpha: 0.5) : Colors.grey[900]?.withValues(alpha: 0.5))
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              children: [
-                _buildGroupHeader(context, progress, doneCount, totalCount,
-                    nearestDeadline, allDone, isHovering, urgencyColor, groupFillProgress),
-                if (widget.group.isExpanded)
-                  Container(
-                    padding: const EdgeInsets.only(left: 12, right: 12, bottom: 20, top: 8),
-                    decoration: BoxDecoration(
-                      color: isLight ? Colors.white.withValues(alpha: 0.9) : Colors.grey[850]!.withValues(alpha: 0.95),
-                      border: Border(
-                        left: BorderSide(color: isLight ? Colors.grey.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.08)),
-                        right: BorderSide(color: isLight ? Colors.grey.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.08)),
-                        bottom: BorderSide(color: isLight ? Colors.grey.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.08)),
-                      ),
-                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isLight ? 0.03 : 0.15),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+        return VisibilityDetector(
+          key: Key('group_visibility_${group.id}'),
+          onVisibilityChanged: (info) {
+            if (info.visibleFraction > 0.2 && !_hasAnimated) {
+              _hasAnimated = true;
+              _progressController.forward(from: 0.0);
+            }
+          },
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.fastOutSlowIn,
+            alignment: Alignment.topCenter,
+            child: Container(
+              decoration: BoxDecoration(
+                color: group.isExpanded
+                    ? (isLight
+                        ? Colors.white.withValues(alpha: 0.5)
+                        : Colors.grey[900]?.withValues(alpha: 0.5))
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                children: [
+                  _buildGroupHeader(
+                      context,
+                      progress,
+                      doneCount,
+                      totalCount,
+                      nearestDeadline,
+                      allDone,
+                      isHovering,
+                      urgencyColor,
+                      groupFillProgress),
+                  if (widget.group.isExpanded)
+                    Container(
+                      padding: const EdgeInsets.only(
+                          left: 12, right: 12, bottom: 20, top: 8),
+                      decoration: BoxDecoration(
+                        color: isLight
+                            ? Colors.white.withValues(alpha: 0.9)
+                            : Colors.grey[850]!.withValues(alpha: 0.95),
+                        border: Border(
+                          left: BorderSide(
+                              color: isLight
+                                  ? Colors.grey.withValues(alpha: 0.15)
+                                  : Colors.white.withValues(alpha: 0.08)),
+                          right: BorderSide(
+                              color: isLight
+                                  ? Colors.grey.withValues(alpha: 0.15)
+                                  : Colors.white.withValues(alpha: 0.08)),
+                          bottom: BorderSide(
+                              color: isLight
+                                  ? Colors.grey.withValues(alpha: 0.15)
+                                  : Colors.white.withValues(alpha: 0.08)),
                         ),
-                      ],
+                        borderRadius: const BorderRadius.vertical(
+                            bottom: Radius.circular(24)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black
+                                .withValues(alpha: isLight ? 0.03 : 0.15),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: sortedTodos
+                            .map((todo) => _buildTodoItem(context, todo))
+                            .toList(),
+                      ),
                     ),
-                    child: Column(
-                      children: sortedTodos.map((todo) => _buildTodoItem(context, todo)).toList(),
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -243,15 +303,32 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                 // Background progress fill
                 if (!allDone)
                   Positioned.fill(
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: groupFillProgress.clamp(0.0, 1.0),
+                    child: AnimatedBuilder(
+                      animation: _progressController,
+                      builder: (context, child) {
+                        // 如果紧急度(时间进度)为0，则显示一点点完成度进度，确保用户能看到动画效果
+                        double effectiveProgress = groupFillProgress;
+                        if (effectiveProgress < 0.1 && progress > 0) {
+                          effectiveProgress = progress * 0.4; // 弱化显示的完成进度
+                        }
+
+                        final curveValue = Curves.easeOutQuart
+                            .transform(_progressController.value);
+                        return FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor:
+                              (effectiveProgress * curveValue).clamp(0.0, 1.0),
+                          child: child,
+                        );
+                      },
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              urgencyColor.withOpacity(widget.isLight ? 0.32 : 0.18),
-                              urgencyColor.withOpacity(widget.isLight ? 0.15 : 0.07),
+                              urgencyColor
+                                  .withOpacity(widget.isLight ? 0.32 : 0.18),
+                              urgencyColor
+                                  .withOpacity(widget.isLight ? 0.15 : 0.07),
                             ],
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
@@ -263,21 +340,39 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                 // All-done gradient overlay
                 if (allDone)
                   Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isDark
-                              ? [Colors.green.withOpacity(0.12), Colors.green.withOpacity(0.04)]
-                              : [Colors.green.withOpacity(0.06), Colors.green.withOpacity(0.01)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    child: AnimatedBuilder(
+                      animation: _progressController,
+                      builder: (context, child) {
+                        final animValue = Curves.easeOutQuart
+                            .transform(_progressController.value);
+                        return Opacity(
+                          opacity: animValue,
+                          child: child,
+                        );
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isDark
+                                ? [
+                                    Colors.green.withOpacity(0.12),
+                                    Colors.green.withOpacity(0.04)
+                                  ]
+                                : [
+                                    Colors.green.withOpacity(0.06),
+                                    Colors.green.withOpacity(0.01)
+                                  ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 // Actual content
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   child: Row(
                     children: [
                       Container(
@@ -288,8 +383,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                         ),
                         child: Icon(
                           allDone
-                            ? Icons.task_alt_rounded
-                            : (widget.group.isExpanded ? Icons.folder_open_rounded : Icons.folder_rounded),
+                              ? Icons.task_alt_rounded
+                              : (widget.group.isExpanded
+                                  ? Icons.folder_open_rounded
+                                  : Icons.folder_rounded),
                           color: statusColor,
                           size: 20,
                         ),
@@ -305,30 +402,42 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                                 fontSize: 17,
                                 fontWeight: FontWeight.bold,
                                 color: allDone
-                                  ? (isDark ? Colors.green.shade200 : Colors.green.shade800)
-                                  : (widget.isLight ? Colors.black87 : Colors.white),
+                                    ? (isDark
+                                        ? Colors.green.shade200
+                                        : Colors.green.shade800)
+                                    : (widget.isLight
+                                        ? Colors.black87
+                                        : Colors.white),
                                 letterSpacing: 0.2,
                               ),
                             ),
                             const SizedBox(height: 1),
                             Text(
-                              allDone ? "全部任务已完成 ✨" : "$doneCount/$totalCount 已完成",
+                              allDone
+                                  ? "全部任务已完成 ✨"
+                                  : "$doneCount/$totalCount 已完成",
                               style: TextStyle(
                                 fontSize: 11,
                                 color: allDone
-                                  ? (isDark ? Colors.green.withOpacity(0.5) : Colors.green.withOpacity(0.6))
-                                  : Colors.grey[500],
+                                    ? (isDark
+                                        ? Colors.green.withOpacity(0.5)
+                                        : Colors.green.withOpacity(0.6))
+                                    : Colors.grey[500],
                               ),
                             ),
                           ],
                         ),
                       ),
-                      if (nearestDeadline != null && !widget.group.isExpanded && !allDone) ...[
+                      if (nearestDeadline != null &&
+                          !widget.group.isExpanded &&
+                          !allDone) ...[
                         _buildDeadlineTag(context, nearestDeadline),
                         const SizedBox(width: 8),
                       ],
                       Icon(
-                        widget.group.isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        widget.group.isExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
                         color: Colors.grey.withOpacity(0.4),
                         size: 20,
                       ),
@@ -343,17 +452,21 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
     );
   }
 
-  Widget _buildStackLayerInline(BuildContext context, double scale, double opacity) {
+  Widget _buildStackLayerInline(
+      BuildContext context, double scale, double opacity) {
     return Transform.scale(
       scale: scale,
       child: Container(
         height: 7,
         width: MediaQuery.of(context).size.width * 0.88,
         decoration: BoxDecoration(
-          color: (widget.isLight ? Colors.white : Colors.grey[800])!.withValues(alpha: opacity),
+          color: (widget.isLight ? Colors.white : Colors.grey[800])!
+              .withValues(alpha: opacity),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
           border: Border.all(
-            color: widget.isLight ? Colors.black.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.08),
+            color: widget.isLight
+                ? Colors.black.withValues(alpha: 0.08)
+                : Colors.white.withValues(alpha: 0.08),
             width: 1,
           ),
         ),
@@ -392,24 +505,32 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
+        style:
+            TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
       ),
     );
   }
 
   Widget _buildTodoItem(BuildContext context, TodoItem todo) {
-    DateTime start = DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
+    DateTime start = DateTime.fromMillisecondsSinceEpoch(
+            todo.createdDate ?? todo.createdAt,
+            isUtc: true)
+        .toLocal();
     final bool isAllDay = todo.dueDate != null &&
-        start.hour == 0 && start.minute == 0 &&
-        todo.dueDate!.hour == 23 && todo.dueDate!.minute == 59;
+        start.hour == 0 &&
+        start.minute == 0 &&
+        todo.dueDate!.hour == 23 &&
+        todo.dueDate!.minute == 59;
 
     // Build time string: "MM/dd HH:mm → MM/dd HH:mm" or "MM/dd → MM/dd" for all-day
     String timeStr = "";
     if (todo.dueDate != null) {
       if (isAllDay) {
-        timeStr = "${DateFormat('MM/dd').format(start)} → ${DateFormat('MM/dd').format(todo.dueDate!)}";
+        timeStr =
+            "${DateFormat('MM/dd').format(start)} → ${DateFormat('MM/dd').format(todo.dueDate!)}";
       } else {
-        timeStr = "${DateFormat('MM/dd HH:mm').format(start)} → ${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}";
+        timeStr =
+            "${DateFormat('MM/dd HH:mm').format(start)} → ${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}";
       }
     } else {
       timeStr = "开始 ${DateFormat('MM/dd HH:mm').format(start)}";
@@ -420,7 +541,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
     if (todo.dueDate != null && !todo.isDone) {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      final dueDay = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+      final dueDay =
+          DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
       if (dueDay.isBefore(today)) {
         deadlineColor = Colors.redAccent;
       } else if (dueDay.isAtSameMomentAs(today)) {
@@ -443,9 +565,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
           decoration: BoxDecoration(
             color: widget.isLight ? Colors.white : Colors.grey[900],
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 1)],
+            boxShadow: [
+              BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 1)
+            ],
           ),
-          child: Text(todo.title, style: TextStyle(color: widget.isLight ? Colors.black : Colors.white)),
+          child: Text(todo.title,
+              style: TextStyle(
+                  color: widget.isLight ? Colors.black : Colors.white)),
         ),
       ),
       child: InkWell(
@@ -454,7 +580,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
           padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
           margin: const EdgeInsets.symmetric(vertical: 4.0),
           decoration: BoxDecoration(
-            color: widget.isLight ? Colors.black.withOpacity(0.02) : Colors.white.withOpacity(0.03),
+            color: widget.isLight
+                ? Colors.black.withOpacity(0.02)
+                : Colors.white.withOpacity(0.03),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -471,7 +599,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                       color: todo.isDone ? Colors.green : Colors.transparent,
                       borderRadius: BorderRadius.circular(7),
                       border: Border.all(
-                        color: todo.isDone ? Colors.green : Colors.grey.withOpacity(0.4),
+                        color: todo.isDone
+                            ? Colors.green
+                            : Colors.grey.withOpacity(0.4),
                         width: 1.8,
                       ),
                     ),
@@ -492,7 +622,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: widget.isLight ? Colors.black87 : Colors.white,
-                        decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                        decoration:
+                            todo.isDone ? TextDecoration.lineThrough : null,
                         height: 1.25,
                       ),
                     ),
@@ -500,7 +631,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                     // Time row
                     Row(
                       children: [
-                        Icon(Icons.access_time_rounded, size: 12, color: deadlineColor ?? Colors.grey[500]),
+                        Icon(Icons.access_time_rounded,
+                            size: 12, color: deadlineColor ?? Colors.grey[500]),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -508,7 +640,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                             style: TextStyle(
                               fontSize: 12.5,
                               color: deadlineColor ?? Colors.grey[500],
-                              fontWeight: deadlineColor != null ? FontWeight.w600 : FontWeight.w500,
+                              fontWeight: deadlineColor != null
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
                             ),
                           ),
                         ),
@@ -522,7 +656,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                         children: [
                           Padding(
                             padding: const EdgeInsets.only(top: 1),
-                            child: Icon(Icons.notes_rounded, size: 12, color: Colors.grey[500]),
+                            child: Icon(Icons.notes_rounded,
+                                size: 12, color: Colors.grey[500]),
                           ),
                           const SizedBox(width: 4),
                           Expanded(
@@ -530,7 +665,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
                               todo.remark!,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 12.5, color: Colors.grey[600], height: 1.4),
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: Colors.grey[600],
+                                  height: 1.4),
                             ),
                           ),
                         ],
@@ -591,14 +729,15 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget> with TickerProviderSt
           decoration: const InputDecoration(hintText: "输入新名称"),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
           TextButton(
             onPressed: () {
               if (ctrl.text.trim().isNotEmpty) {
                 widget.group.name = ctrl.text.trim();
                 widget.group.markAsChanged();
                 // 触发保存
-                widget.onToggle(); 
+                widget.onToggle();
                 Navigator.pop(ctx);
               }
             },
