@@ -150,8 +150,17 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final info = await PackageInfo.fromPlatform();
     _currentVersion = info.version;
 
+    final prefs = await SharedPreferences.getInstance();
+    final shownVersion = prefs.getString(FeatureGuideScreen._guideKey) ?? '';
+    // 仅在“更新后的第一次开屏”时优先联网，避免看到旧缓存更新日志。
+    final isFirstSplashAfterUpdate =
+        shownVersion.isNotEmpty && shownVersion != _currentVersion;
+
     try {
-      final manifest = await UpdateService.checkManifest();
+      final manifest = await UpdateService.checkManifest(
+        preferCache: !isFirstSplashAfterUpdate,
+        refreshInBackground: !isFirstSplashAfterUpdate,
+      );
       if (manifest != null && mounted) {
         setState(() {
           _changelogHistory = manifest.changelogHistory;
