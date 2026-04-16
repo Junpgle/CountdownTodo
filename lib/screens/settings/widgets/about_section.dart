@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../../../update_service.dart';
 
 class AboutSection extends StatefulWidget {
   final bool isCheckingUpdate;
@@ -19,11 +20,14 @@ class AboutSection extends StatefulWidget {
 
 class _AboutSectionState extends State<AboutSection> {
   String _version = '加载中...';
+  List<ChangelogEntry> _changelogHistory = [];
+  bool _isRefreshingChangelog = false;
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
+    _loadChangelogFromManifest();
   }
 
   Future<void> _loadVersion() async {
@@ -32,6 +36,43 @@ class _AboutSectionState extends State<AboutSection> {
       setState(() {
         _version = '${info.version} (Build ${info.buildNumber})';
       });
+    }
+  }
+
+  Future<void> _loadChangelogFromManifest() async {
+    try {
+      final manifest = await UpdateService.checkManifest();
+      if (manifest != null && mounted) {
+        setState(() {
+          _changelogHistory = manifest.changelogHistory;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _refreshChangelogFromNetwork() async {
+    if (_isRefreshingChangelog) return;
+    setState(() {
+      _isRefreshingChangelog = true;
+    });
+
+    try {
+      final manifest = await UpdateService.checkManifest(
+        preferCache: false,
+        refreshInBackground: false,
+      );
+      if (manifest != null && mounted) {
+        setState(() {
+          _changelogHistory = manifest.changelogHistory;
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshingChangelog = false;
+        });
+      }
     }
   }
 
@@ -53,31 +94,43 @@ class _AboutSectionState extends State<AboutSection> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('更新日志'),
-        content: const SingleChildScrollView(
+        content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('v2.4.0', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 8),
-              Text('• 优化了系统性能和稳定性'),
-              Text('• 修复了已知问题'),
-              SizedBox(height: 16),
-              Text('v2.3.0', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 8),
-              Text('• 新增屏幕时间统计功能'),
-              Text('• 新增番茄钟专注功能'),
-              Text('• 优化了数据同步机制'),
-              SizedBox(height: 16),
-              Text('v2.2.0', style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 8),
-              Text('• 新增课程管理功能'),
-              Text('• 新增学期进度显示'),
-              Text('• 支持多设备数据同步'),
-            ],
+            children: _changelogHistory.isEmpty
+                ? const [Text('暂无更新日志，请稍后重试。')]
+                : _changelogHistory
+                    .map((entry) => Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'v${entry.versionName} ${entry.date}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              ...entry.items.map((item) => Text('• $item')),
+                            ],
+                          ),
+                        ))
+                    .toList(),
           ),
         ),
         actions: [
+          TextButton(
+            onPressed:
+                _isRefreshingChangelog ? null : _refreshChangelogFromNetwork,
+            child: _isRefreshingChangelog
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('刷新'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('关闭'),
@@ -99,9 +152,9 @@ class _AboutSectionState extends State<AboutSection> {
             ListTile(
               leading: const Icon(Icons.email),
               title: const Text('邮箱'),
-              subtitle: const Text('junpgle@example.com'),
+              subtitle: const Text('junpgle@qq.com'),
               onTap: () {
-                _launchURL('mailto:junpgle@example.com');
+                _launchURL('mailto:junpgle@qq.com');
               },
             ),
             ListTile(

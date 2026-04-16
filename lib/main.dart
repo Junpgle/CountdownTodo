@@ -179,6 +179,7 @@ class _MyAppState extends State<MyApp> {
 
       // 0.5 初始化壁纸(从manifest获取)
       UpdateService.initWallpaper();
+      unawaited(UpdateService.preloadManifestCache());
 
       // Initialize server choice
       String serverChoice = await StorageService.getServerChoice();

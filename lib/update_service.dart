@@ -223,6 +223,9 @@ class _AnnouncementCarouselDialogState
 class UpdateService {
   static const String MANIFEST_URL =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
+  static const String _manifestCacheKey = 'update_manifest_cache_json';
+  static const String _manifestCacheTimeKey = 'update_manifest_cache_time';
+  static Future<AppManifest?>? _manifestRefreshFuture;
 
   static bool _isDialogShowing = false;
   static bool _isAnnouncementDialogShowing = false;
@@ -305,6 +308,90 @@ class UpdateService {
     return !isRead;
   }
 
+  static int _dateTimeToSortKey(DateTime dt) {
+    final y = dt.year.toString().padLeft(4, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    final ss = dt.second.toString().padLeft(2, '0');
+    return int.tryParse('$y$m$d$hh$mm$ss') ?? 0;
+  }
+
+  /// 从公告 id 中解析时间片段用于排序。
+  /// 支持：
+  /// - ann_YYYYMMDD_NNN（按 YYYYMMDD）
+  /// - ann_YYYYMMDDHHmm / ann_YYYYMMDDHHmmss
+  /// - 10/13 位 Unix 时间戳
+  static int parseAnnouncementSortKey(String id) {
+    if (id.isEmpty) return 0;
+
+    final unixMs = RegExp(r'(1\d{12})').firstMatch(id)?.group(1);
+    if (unixMs != null) {
+      final ms = int.tryParse(unixMs);
+      if (ms != null) {
+        return _dateTimeToSortKey(
+            DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal());
+      }
+    }
+
+    final unixSec = RegExp(r'(1\d{9})').firstMatch(id)?.group(1);
+    if (unixSec != null) {
+      final sec = int.tryParse(unixSec);
+      if (sec != null) {
+        return _dateTimeToSortKey(
+            DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true)
+                .toLocal());
+      }
+    }
+
+    final matches = RegExp(r'(\d{14}|\d{12}|\d{10}|\d{8})')
+        .allMatches(id)
+        .map((m) => m.group(0)!)
+        .toList();
+    if (matches.isEmpty) return 0;
+
+    matches.sort((a, b) => b.length.compareTo(a.length));
+    final raw = matches.first;
+
+    if (raw.length == 14) return int.tryParse(raw) ?? 0;
+    if (raw.length == 12) return int.tryParse('${raw}00') ?? 0;
+    if (raw.length == 10) return int.tryParse('${raw}0000') ?? 0;
+    return int.tryParse('${raw}000000') ?? 0;
+  }
+
+  static List<Announcement> sortAnnouncementsByIdDesc(
+      List<Announcement> items) {
+    final sorted = List<Announcement>.from(items);
+    sorted.sort((a, b) {
+      final keyA = parseAnnouncementSortKey(a.id);
+      final keyB = parseAnnouncementSortKey(b.id);
+      if (keyA != keyB) return keyB.compareTo(keyA);
+      return b.id.compareTo(a.id);
+    });
+    return sorted;
+  }
+
+  /// 设置页公告：忽略已读状态，只按 show + target_versions 过滤。
+  /// 返回按 id 时间片段降序后的列表，首条即最新公告。
+  /// 发生网络/解析异常时返回 null，便于 UI 区分“无公告”和“加载失败”。
+  static Future<List<Announcement>?> getAnnouncementsForSettings() async {
+    try {
+      final manifest = await checkManifest();
+      if (manifest == null) return null;
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+
+      final visible = manifest.announcements
+          .where((ann) => shouldShowAnnouncement(ann, false, currentVersion))
+          .toList();
+      return sortAnnouncementsByIdDesc(visible);
+    } catch (_) {
+      return null;
+    }
+  }
+
   // 全局下载状态：脱离UI独立存活，弹窗重开也能接上进度
   static bool _isDownloading = false;
   static double _downloadProgress = 0.0;
@@ -347,15 +434,86 @@ class UpdateService {
     return manifest.updateInfo.fullPackageUrl;
   }
 
-  static Future<AppManifest?> checkManifest() async {
+  static Future<AppManifest?> _readManifestCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(_manifestCacheKey);
+      if (cached == null || cached.isEmpty) return null;
+      return AppManifest.fromJson(jsonDecode(cached));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> _writeManifestCache(String rawJson) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_manifestCacheKey, rawJson);
+      await prefs.setInt(
+          _manifestCacheTimeKey, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  static Future<AppManifest?> _fetchManifestFromNetwork() async {
     try {
       final response = await http.get(Uri.parse(MANIFEST_URL));
       if (response.statusCode == 200) {
-        String body = utf8.decode(response.bodyBytes);
-        return AppManifest.fromJson(jsonDecode(body));
+        final body = utf8.decode(response.bodyBytes);
+        final manifest = AppManifest.fromJson(jsonDecode(body));
+        await _writeManifestCache(body);
+        return manifest;
       }
-    } catch (e) {}
+    } catch (_) {}
     return null;
+  }
+
+  /// 强制联网刷新 Manifest 缓存。
+  /// 默认进行请求去重：已有进行中的请求时复用同一 Future。
+  static Future<AppManifest?> refreshManifestCache({bool dedupe = true}) {
+    if (dedupe && _manifestRefreshFuture != null) {
+      return _manifestRefreshFuture!;
+    }
+
+    final future = _fetchManifestFromNetwork();
+    _manifestRefreshFuture = future;
+
+    future.whenComplete(() {
+      if (identical(_manifestRefreshFuture, future)) {
+        _manifestRefreshFuture = null;
+      }
+    });
+
+    return future;
+  }
+
+  /// 启动预热：优先确保本地有可读缓存，同时异步联网更新。
+  static Future<void> preloadManifestCache() async {
+    final cached = await _readManifestCache();
+    if (cached == null) {
+      await refreshManifestCache();
+      return;
+    }
+    unawaited(refreshManifestCache());
+  }
+
+  /// Manifest 读取策略：默认优先返回本地缓存，同时后台刷新网络。
+  /// [preferCache] 为 false 时将优先走网络（如手动检查更新）。
+  static Future<AppManifest?> checkManifest(
+      {bool preferCache = true, bool refreshInBackground = true}) async {
+    if (preferCache) {
+      final cached = await _readManifestCache();
+      if (cached != null) {
+        if (refreshInBackground) {
+          unawaited(refreshManifestCache());
+        }
+        return cached;
+      }
+    }
+
+    final network = await refreshManifestCache();
+    if (network != null) return network;
+
+    return preferCache ? _readManifestCache() : null;
   }
 
   static Future<String?> isPackageAlreadyDownloaded(String versionName) async {
@@ -483,7 +641,10 @@ class UpdateService {
       {bool isManual = false}) async {
     if (_isDialogShowing) return;
 
-    AppManifest? manifest = await checkManifest();
+    AppManifest? manifest = await checkManifest(
+      preferCache: !isManual,
+      refreshInBackground: !isManual,
+    );
     if (manifest == null) {
       if (isManual && context.mounted) {
         ScaffoldMessenger.of(context)
