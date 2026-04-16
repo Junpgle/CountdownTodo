@@ -37,7 +37,8 @@ class Question {
 
     String result = "$num1 $opStr $num2 = ${userAnswer ?? '?'}";
     if (isAnswered) {
-      result += (userAnswer == correctAnswer) ? " (正确)" : " (错误, 正解: $correctAnswer)";
+      result +=
+          (userAnswer == correctAnswer) ? " (正确)" : " (错误, 正解: $correctAnswer)";
     } else {
       result += " (未作答)";
     }
@@ -88,7 +89,8 @@ class QuestionGenerator {
       }
 
       if (isValid) {
-        questions.add(Question(num1: n1, num2: n2, operatorSymbol: op, correctAnswer: ans));
+        questions.add(Question(
+            num1: n1, num2: n2, operatorSymbol: op, correctAnswer: ans));
       }
     }
     return questions;
@@ -99,16 +101,24 @@ class QuestionGenerator {
 // 🚀 2. 效率功能：支持 Delta Sync 的数据模型
 // ==========================================
 
-enum RecurrenceType { none, daily, customDays, weekly, monthly, yearly, weekdays }
+enum RecurrenceType {
+  none,
+  daily,
+  customDays,
+  weekly,
+  monthly,
+  yearly,
+  weekdays
+}
 
 class TodoItem {
   String id; // 核心：全局唯一 UUID
   String title;
   bool isDone;
   bool isDeleted; // 核心：逻辑删除标记
-  int version;    // 核心：并发版本号
-  int updatedAt;  // 核心：最后修改时间戳 (毫秒)
-  int createdAt;  // 🚀 真正的创建时间戳 (物理生成时间，毫秒)
+  int version; // 核心：并发版本号
+  int updatedAt; // 核心：最后修改时间戳 (毫秒)
+  int createdAt; // 🚀 真正的创建时间戳 (物理生成时间，毫秒)
   int? createdDate; // 🚀 真正的开始时间戳 (业务逻辑设定的开始日期，毫秒)
 
   RecurrenceType recurrence;
@@ -116,9 +126,9 @@ class TodoItem {
   DateTime? recurrenceEndDate;
   DateTime? dueDate;
   String? remark; // 📝 备注
-  String? imagePath; // 📸 图片分析路径
+  String? imagePath; // 📸 本地图片路径（仅本机，不参与多设备同步）
   String? originalText; // 📄 原始分析文本
-  String? groupId;      // 📁 所属分组 ID (null 表示未分组)
+  String? groupId; // 📁 所属分组 ID (null 表示未分组)
   int? reminderMinutes; // 🚀 新增：提前几分钟提醒
 
   TodoItem({
@@ -139,8 +149,7 @@ class TodoItem {
     this.originalText,
     this.groupId,
     this.reminderMinutes,
-  }) :
-        this.id = id ?? const Uuid().v4(),
+  })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -151,40 +160,49 @@ class TodoItem {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'uuid': id,
-    'content': title,
-    'is_completed': isDone ? 1 : 0,
-    'is_deleted': isDeleted ? 1 : 0,
-    'version': version,
-    'updated_at': updatedAt,          // UTC 毫秒时间戳
-    'created_at': createdAt,          // UTC 毫秒时间戳（物理创建时间，不可变）
-    'created_date': createdDate,      // UTC 毫秒时间戳（任务开始时间，可为 null）
-    'due_date': dueDate?.toUtc().millisecondsSinceEpoch,  // UTC 毫秒时间戳（任务截止时间，可为 null）
-    'recurrence': recurrence.index,
-    // 循环间隔：同时输出两种键名兼容后端列名(custom_interval_days)和本地存储名(customIntervalDays)
-    'customIntervalDays': customIntervalDays,
-    'custom_interval_days': customIntervalDays,
-    // 循环结束日：同时输出两种键名
-    'recurrenceEndDate': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
-    'recurrence_end_date': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
-    'remark': remark,                 // 📝 备注（可为 null）
-    'image_path': imagePath,          // 📸 图片路径
-    'original_text': originalText,    // 📄 原始分析文本
-    'group_id': groupId,              // 📁 分组 ID
-    'reminder_minutes': reminderMinutes, // 🚀 提醒提前量
-  };
+        'id': id,
+        'uuid': id,
+        'content': title,
+        'is_completed': isDone ? 1 : 0,
+        'is_deleted': isDeleted ? 1 : 0,
+        'version': version,
+        'updated_at': updatedAt, // UTC 毫秒时间戳
+        'created_at': createdAt, // UTC 毫秒时间戳（物理创建时间，不可变）
+        'created_date': createdDate, // UTC 毫秒时间戳（任务开始时间，可为 null）
+        'due_date': dueDate
+            ?.toUtc()
+            .millisecondsSinceEpoch, // UTC 毫秒时间戳（任务截止时间，可为 null）
+        'recurrence': recurrence.index,
+        // 循环间隔：同时输出两种键名兼容后端列名(custom_interval_days)和本地存储名(customIntervalDays)
+        'customIntervalDays': customIntervalDays,
+        'custom_interval_days': customIntervalDays,
+        // 循环结束日：同时输出两种键名
+        'recurrenceEndDate': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
+        'recurrence_end_date':
+            recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
+        'remark': remark, // 📝 备注（可为 null）
+        'image_path': imagePath, // 📸 图片路径
+        'original_text': originalText, // 📄 原始分析文本
+        'group_id': groupId, // 📁 分组 ID
+        'reminder_minutes': reminderMinutes, // 🚀 提醒提前量
+      };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
     // 优先读取后端的 uuid 字段，如果没有再尝试 id 字段，最后才兜底生成
-    String parsedId = json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
-    if (!parsedId.contains('-')) parsedId = const Uuid().v4(); // 如果旧数据是自增ID，强制转UUID
+    String parsedId =
+        json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
+    if (!parsedId.contains('-'))
+      parsedId = const Uuid().v4(); // 如果旧数据是自增ID，强制转UUID
 
     return TodoItem(
       id: parsedId,
       title: json['content'] ?? json['title'] ?? '',
-      isDone: json['is_completed'] == 1 || json['is_completed'] == true || json['isDone'] == true,
-      isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true || json['isDeleted'] == true,
+      isDone: json['is_completed'] == 1 ||
+          json['is_completed'] == true ||
+          json['isDone'] == true,
+      isDeleted: json['is_deleted'] == 1 ||
+          json['is_deleted'] == true ||
+          json['isDeleted'] == true,
       version: json['version'] ?? 1,
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
@@ -192,12 +210,14 @@ class TodoItem {
       // created_date = 任务开始时间（业务字段），与 created_at（物理创建时间）严格区分
       createdDate: (json['created_date'] != null)
           ? _parseTimestamp(json['created_date'])
-          : ((json['createdDate'] != null) ? _parseTimestamp(json['createdDate']) : null),
+          : ((json['createdDate'] != null)
+              ? _parseTimestamp(json['createdDate'])
+              : null),
 
       recurrence: RecurrenceType.values[json['recurrence'] as int? ?? 0],
       // 兼容两种字段名：后端列名 custom_interval_days 和本地存储名 customIntervalDays
-      customIntervalDays: json['customIntervalDays'] as int?
-          ?? json['custom_interval_days'] as int?,
+      customIntervalDays: json['customIntervalDays'] as int? ??
+          json['custom_interval_days'] as int?,
       // 兼容两种字段名：后端列名 recurrence_end_date 和本地存储名 recurrenceEndDate
       recurrenceEndDate: _parseDateField(
           json['recurrenceEndDate'] ?? json['recurrence_end_date']),
@@ -212,7 +232,8 @@ class TodoItem {
       // 📁 分组 ID
       groupId: (json['group_id'] ?? json['groupId']) as String?,
       // 🚀 提醒提前量
-      reminderMinutes: json['reminder_minutes'] as int? ?? json['reminderMinutes'] as int?,
+      reminderMinutes:
+          json['reminder_minutes'] as int? ?? json['reminderMinutes'] as int?,
     );
   }
 
@@ -264,8 +285,7 @@ class CountdownItem {
     this.version = 1,
     int? updatedAt,
     int? createdAt,
-  }) :
-        this.id = id ?? const Uuid().v4(),
+  })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -276,19 +296,20 @@ class CountdownItem {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,           // 兼容本地读取
-    'uuid': id,         // 对齐后端数据库主键
-    'title': title,
-    'target_time': targetDate.millisecondsSinceEpoch, // UTC 毫秒时间戳
-    'is_deleted': isDeleted ? 1 : 0,
-    'version': version,
-    'updated_at': updatedAt,   // UTC 毫秒时间戳
-    'created_at': createdAt,   // UTC 毫秒时间戳
-  };
+        'id': id, // 兼容本地读取
+        'uuid': id, // 对齐后端数据库主键
+        'title': title,
+        'target_time': targetDate.millisecondsSinceEpoch, // UTC 毫秒时间戳
+        'is_deleted': isDeleted ? 1 : 0,
+        'version': version,
+        'updated_at': updatedAt, // UTC 毫秒时间戳
+        'created_at': createdAt, // UTC 毫秒时间戳
+      };
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) {
     // 优先读取后端的 uuid 字段
-    String parsedId = json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
+    String parsedId =
+        json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
     if (!parsedId.contains('-')) parsedId = const Uuid().v4();
 
     return CountdownItem(
@@ -296,9 +317,13 @@ class CountdownItem {
       title: json['title'] ?? '',
       // 🚀 修复：正确解析 targetDate（可能是毫秒时间戳或 ISO 字符串）
       // 兼容所有字段名：target_time(客户端), target_date(新服务器DB列名), targetDate(旧格式)
-      targetDate: _parseDateField(json['target_time'] ?? json['target_date'] ?? json['targetDate']) ??
+      targetDate: _parseDateField(json['target_time'] ??
+              json['target_date'] ??
+              json['targetDate']) ??
           DateTime.now().add(const Duration(days: 1)),
-      isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true || json['isDeleted'] == true,
+      isDeleted: json['is_deleted'] == 1 ||
+          json['is_deleted'] == true ||
+          json['isDeleted'] == true,
       version: json['version'] ?? 1,
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
@@ -337,18 +362,19 @@ class TodoGroup {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'uuid': id,
-    'name': name,
-    'is_expanded': isExpanded ? 1 : 0,
-    'is_deleted': isDeleted ? 1 : 0,
-    'version': version,
-    'updated_at': updatedAt,
-    'created_at': createdAt,
-  };
+        'id': id,
+        'uuid': id,
+        'name': name,
+        'is_expanded': isExpanded ? 1 : 0,
+        'is_deleted': isDeleted ? 1 : 0,
+        'version': version,
+        'updated_at': updatedAt,
+        'created_at': createdAt,
+      };
 
   factory TodoGroup.fromJson(Map<String, dynamic> json) {
-    String parsedId = json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
+    String parsedId =
+        json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
     return TodoGroup(
       id: parsedId,
       name: json['name']?.toString() ?? '未命名分组',
@@ -360,7 +386,6 @@ class TodoGroup {
     );
   }
 }
-
 
 // ============================================================
 // 🕐 统一时间规范（v3 - 最终版）
@@ -410,9 +435,8 @@ DateTime? _parseDateField(dynamic val) {
     } else {
       // 兼容历史 ISO 8601 字符串
       final dt = DateTime.tryParse(trimmed);
-      if (dt != null) return dt.toUtc().millisecondsSinceEpoch > 0
-          ? dt.toLocal()
-          : null;
+      if (dt != null)
+        return dt.toUtc().millisecondsSinceEpoch > 0 ? dt.toLocal() : null;
       return null;
     }
   } else {
@@ -424,19 +448,19 @@ DateTime? _parseDateField(dynamic val) {
 }
 
 class TimeLogItem {
-  String id;             // 全局唯一标识
-  String title;          // 日志标题（如：阅读《人月神话》）
+  String id; // 全局唯一标识
+  String title; // 日志标题（如：阅读《人月神话》）
   List<String> tagUuids; // 🚀 核心：复用 pomodoro_tags 表的标签 ID
-  int startTime;         // 开始时间 (UTC 毫秒时间戳)
-  int endTime;           // 结束时间 (UTC 毫秒时间戳)
-  String? remark;        // 可选备注
+  int startTime; // 开始时间 (UTC 毫秒时间戳)
+  int endTime; // 结束时间 (UTC 毫秒时间戳)
+  String? remark; // 可选备注
 
   // --- Delta Sync 增量同步必需字段 ---
-  int version;           // 并发版本号
-  int updatedAt;         // 最后修改时间戳 (UTC 毫秒)
-  int createdAt;         // 创建时间戳 (UTC 毫秒)
-  bool isDeleted;        // 逻辑删除标记
-  String? deviceId;      // 设备标识（防冲突）
+  int version; // 并发版本号
+  int updatedAt; // 最后修改时间戳 (UTC 毫秒)
+  int createdAt; // 创建时间戳 (UTC 毫秒)
+  bool isDeleted; // 逻辑删除标记
+  String? deviceId; // 设备标识（防冲突）
 
   TimeLogItem({
     String? id,
@@ -461,27 +485,32 @@ class TimeLogItem {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'tag_uuids': tagUuids,
-    'start_time': startTime,
-    'end_time': endTime,
-    'remark': remark,
-    'version': version,
-    'updated_at': updatedAt,
-    'created_at': createdAt,
-    'is_deleted': isDeleted ? 1 : 0,
-    'device_id': deviceId,
-  };
+        'id': id,
+        'title': title,
+        'tag_uuids': tagUuids,
+        'start_time': startTime,
+        'end_time': endTime,
+        'remark': remark,
+        'version': version,
+        'updated_at': updatedAt,
+        'created_at': createdAt,
+        'is_deleted': isDeleted ? 1 : 0,
+        'device_id': deviceId,
+      };
 
   factory TimeLogItem.fromJson(Map<String, dynamic> json) {
     return TimeLogItem(
       // 兼容后端可能传回 id 或 uuid 的情况
-      id: json['id']?.toString() ?? json['uuid']?.toString() ?? const Uuid().v4(),
+      id: json['id']?.toString() ??
+          json['uuid']?.toString() ??
+          const Uuid().v4(),
       title: json['title']?.toString() ?? '',
 
       // 安全解析 List
-      tagUuids: (json['tag_uuids'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      tagUuids: (json['tag_uuids'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
 
       // 🚀 核心修复：使用 num 强转 toInt()，彻底避免 int/double 类型冲突
       startTime: (json['start_time'] as num?)?.toInt() ?? 0,
@@ -491,8 +520,10 @@ class TimeLogItem {
 
       // 其他数字与标识同样做安全转换
       version: (json['version'] as num?)?.toInt() ?? 1,
-      updatedAt: (json['updated_at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
-      createdAt: (json['created_at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+      updatedAt: (json['updated_at'] as num?)?.toInt() ??
+          DateTime.now().millisecondsSinceEpoch,
+      createdAt: (json['created_at'] as num?)?.toInt() ??
+          DateTime.now().millisecondsSinceEpoch,
 
       // 兼容 1/0 或者 true/false
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
@@ -529,8 +560,10 @@ class CourseItem {
   });
 
   // 格式化时间，如 800 -> 08:00
-  String get formattedStartTime => '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
-  String get formattedEndTime => '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
+  String get formattedStartTime =>
+      '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
+  String get formattedEndTime =>
+      '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
 
   // 用于统一序列化存储
   Map<String, dynamic> toJson() {

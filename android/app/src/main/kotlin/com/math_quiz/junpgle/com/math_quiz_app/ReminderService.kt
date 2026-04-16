@@ -66,8 +66,9 @@ class ReminderService : Service() {
                 val title = intent.getStringExtra("title") ?: "提醒"
                 val text  = intent.getStringExtra("text")  ?: ""
                 val notifId = intent.getIntExtra("notifId", 20000)
+                val imagePath = intent.getStringExtra("analysis_image_path")
                 executor.execute {
-                    postReminderNotification(notifId, title, text)
+                    postReminderNotification(notifId, title, text, imagePath)
                     // 发完通知就结束，不常驻
                     stopSelf(startId)
                     // 顺手重新调度下一个 Alarm（因为 setExactAndAllowWhileIdle 只触发一次）
@@ -113,10 +114,11 @@ class ReminderService : Service() {
                 val title       = item.optString("title", "提醒")
                 val text        = item.optString("text", "")
                 val notifId     = item.optInt("notifId", 20000 + i)
+                val imagePath   = item.optString("analysisImagePath", "").takeIf { it.isNotBlank() }
 
                 if (triggerAtMs <= now) continue   // 过期的跳过
 
-                scheduleOneAlarm(am, triggerAtMs, title, text, notifId)
+                scheduleOneAlarm(am, triggerAtMs, title, text, notifId, imagePath)
             }
         } catch (e: Exception) {
             Log.e(TAG, "rescheduleAll parse error", e)
@@ -128,13 +130,17 @@ class ReminderService : Service() {
         triggerAtMs: Long,
         title: String,
         text: String,
-        notifId: Int
+        notifId: Int,
+        analysisImagePath: String?
     ) {
         val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
             action = ReminderAlarmReceiver.ACTION_FIRE
             putExtra("title", title)
             putExtra("text", text)
             putExtra("notifId", notifId)
+            if (!analysisImagePath.isNullOrBlank()) {
+                putExtra("analysis_image_path", analysisImagePath)
+            }
         }
         val pi = PendingIntent.getBroadcast(
             this,
@@ -163,22 +169,44 @@ class ReminderService : Service() {
     // 发出提醒通知
     // ─────────────────────────────────────────────────────────────
 
-    private fun postReminderNotification(notifId: Int, title: String, text: String) {
+    private fun postReminderNotification(notifId: Int, title: String, text: String, analysisImagePath: String?) {
         val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (!analysisImagePath.isNullOrBlank()) {
+                putExtra("analysis_image_path", analysisImagePath)
+            }
         }
         val pi = PendingIntent.getActivity(
             this, notifId, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val notification = NotificationCompat.Builder(this, REMINDER_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, REMINDER_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pi)
-            .build()
+
+        if (!analysisImagePath.isNullOrBlank()) {
+            val viewImageIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("analysis_image_path", analysisImagePath)
+            }
+            val viewImagePi = PendingIntent.getActivity(
+                this,
+                notifId + 100000,
+                viewImageIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            builder.addAction(0, "查看图片", viewImagePi)
+        }
+
+        val notification = builder.build()
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         try { nm.notify(notifId, notification) } catch (e: Exception) {

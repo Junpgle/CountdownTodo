@@ -1,7 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/todo_parser_service.dart';
@@ -52,6 +55,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   int _currentParseIndex = 0;
   String? _llmRawResponse;
   String? _currentOriginalText;
+  String? _selectedImagePath;
 
   Map<String, int> _categoryReminderDefaults = {};
   String? _username;
@@ -67,12 +71,67 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       duration: const Duration(milliseconds: 600),
     )..repeat();
     _loadCategoryDefaults().then((_) {
-      if (_selectedGroupId != null && _categoryReminderDefaults.containsKey(_selectedGroupId)) {
+      if (_selectedGroupId != null &&
+          _categoryReminderDefaults.containsKey(_selectedGroupId)) {
         setState(() {
           _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
         });
       }
     });
+  }
+
+  Future<void> _pickAttachmentImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final filePath = result.files.single.path;
+      if (filePath == null || filePath.isEmpty) return;
+
+      setState(() {
+        _selectedImagePath = filePath;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择图片失败: $e')),
+      );
+    }
+  }
+
+  Future<String?> _persistAttachmentImageIfNeeded() async {
+    final sourcePath = _selectedImagePath;
+    if (sourcePath == null || sourcePath.isEmpty) return null;
+
+    try {
+      final sourceFile = File(sourcePath);
+      if (!await sourceFile.exists()) return null;
+
+      final appDir = await getApplicationSupportDirectory();
+      final imageDir = Directory('${appDir.path}/todo_attachments');
+      if (!await imageDir.exists()) {
+        await imageDir.create(recursive: true);
+      }
+
+      if (p.normalize(sourcePath).startsWith(p.normalize(imageDir.path))) {
+        return sourcePath;
+      }
+
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${p.basename(sourcePath)}';
+      final targetPath = '${imageDir.path}/$fileName';
+      await sourceFile.copy(targetPath);
+      setState(() {
+        _selectedImagePath = targetPath;
+      });
+      return targetPath;
+    } catch (e) {
+      debugPrint('❌ 持久化待办图片失败: $e');
+      return null;
+    }
   }
 
   Future<void> _loadCategoryDefaults() async {
@@ -308,13 +367,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
   }
 
-  void _addTodo() {
+  Future<void> _addTodo() async {
     if (_titleCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("请输入待办内容")),
       );
       return;
     }
+
+    final persistentImagePath = await _persistAttachmentImageIfNeeded();
 
     final todo = TodoItem(
       title: _titleCtrl.text,
@@ -325,16 +386,20 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       createdDate: _createdAt.millisecondsSinceEpoch,
       remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
       originalText: _currentOriginalText,
+      imagePath: persistentImagePath,
       groupId: _selectedGroupId,
       reminderMinutes: _reminderMinutes,
     );
 
     widget.onTodoAdded(todo);
+    if (!mounted) return;
     Navigator.pop(context);
   }
 
-  void _addBatchTodos() {
+  Future<void> _addBatchTodos() async {
     if (_parsedResults.isEmpty) return;
+
+    final persistentImagePath = await _persistAttachmentImageIfNeeded();
 
     final List<TodoItem> todos = _parsedResults.map((r) {
       return TodoItem(
@@ -346,6 +411,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         createdDate: (r.startTime ?? DateTime.now()).millisecondsSinceEpoch,
         remark: r.remark,
         originalText: _currentOriginalText,
+        imagePath: persistentImagePath,
         reminderMinutes: r.reminderMinutes ?? _reminderMinutes,
       );
     }).toList();
@@ -357,6 +423,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         widget.onTodoAdded(t);
       }
     }
+    if (!mounted) return;
     Navigator.pop(context);
   }
 
@@ -454,6 +521,69 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             ),
             maxLines: 3,
             minLines: 1,
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _pickAttachmentImage,
+            borderRadius: BorderRadius.circular(12),
+            child: Ink(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(color: Theme.of(context).dividerColor),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.image_outlined,
+                      color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _selectedImagePath == null
+                          ? '附加图片 (可选)'
+                          : '已附加图片，点击可重新选择',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  if (_selectedImagePath != null)
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedImagePath = null;
+                        });
+                      },
+                      tooltip: '移除图片',
+                      icon: const Icon(Icons.close),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (_selectedImagePath != null) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(_selectedImagePath!),
+                height: 140,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    height: 80,
+                    alignment: Alignment.center,
+                    color: Colors.grey.shade100,
+                    child: const Text('图片不可用，请重新选择'),
+                  );
+                },
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            '图片仅保存在当前设备，不参与多设备同步。',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
           const SizedBox(height: 12),
           SwitchListTile(
@@ -601,21 +731,25 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   value: null,
                   child: Text("不归类 (独立待办)"),
                 ),
-                ...widget.todoGroups.where((g) => !g.isDeleted).map((g) => DropdownMenuItem<String?>(
-                  value: g.id,
-                  child: Row(
-                    children: [
-                      const Icon(Icons.folder, size: 18, color: Colors.amber),
-                      const SizedBox(width: 8),
-                      Text(g.name),
-                    ],
-                  ),
-                )),
+                ...widget.todoGroups
+                    .where((g) => !g.isDeleted)
+                    .map((g) => DropdownMenuItem<String?>(
+                          value: g.id,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.folder,
+                                  size: 18, color: Colors.amber),
+                              const SizedBox(width: 8),
+                              Text(g.name),
+                            ],
+                          ),
+                        )),
               ],
               onChanged: (val) {
                 setState(() {
                   _selectedGroupId = val;
-                  if (val != null && _categoryReminderDefaults.containsKey(val)) {
+                  if (val != null &&
+                      _categoryReminderDefaults.containsKey(val)) {
                     _reminderMinutes = _categoryReminderDefaults[val]!;
                   } else if (val == null) {
                     _reminderMinutes = 5; // Default for independent

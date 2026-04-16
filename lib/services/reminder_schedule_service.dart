@@ -107,7 +107,9 @@ class ReminderScheduleService {
       // 确定参考时间点（优先开始时间，其次截止时间）
       DateTime? refTime;
       if (t.createdDate != null && t.createdDate! > 0) {
-        refTime = DateTime.fromMillisecondsSinceEpoch(t.createdDate!, isUtc: true).toLocal();
+        refTime =
+            DateTime.fromMillisecondsSinceEpoch(t.createdDate!, isUtc: true)
+                .toLocal();
       } else if (t.dueDate != null) {
         refTime = t.dueDate!.toLocal();
       }
@@ -125,8 +127,8 @@ class ReminderScheduleService {
           // 如果有时间段，显示范围，否则只显示参考时间
           String timeStr = _hm(refTime);
           if (t.dueDate != null && t.createdDate != null) {
-             final end = t.dueDate!.toLocal();
-             timeStr = '${_hm(refTime)} - ${_hm(end)}';
+            final end = t.dueDate!.toLocal();
+            timeStr = '${_hm(refTime)} - ${_hm(end)}';
           }
 
           reminders.add({
@@ -137,6 +139,7 @@ class ReminderScheduleService {
                 : timeStr,
             'notifId': _specialTodoBaseId + i,
             'todoType': todoType,
+            'analysisImagePath': t.imagePath,
           });
         } else {
           // 普通待办
@@ -153,13 +156,15 @@ class ReminderScheduleService {
             'title': '⏰ ${t.title}',
             'text': text,
             'notifId': _todoBaseId + i,
+            'analysisImagePath': t.imagePath,
           });
         }
       }
     }
 
     // ── 课程提醒 ──────────────────────────────────────────────────
-    final courseAdvanceMinutes = await StorageService.getCourseReminderMinutes();
+    final courseAdvanceMinutes =
+        await StorageService.getCourseReminderMinutes();
     for (int i = 0; i < courses.length && i < 999; i++) {
       final c = courses[i];
       // 课程 date 是 yyyy-MM-dd，startTime 是 800/1000 等整数

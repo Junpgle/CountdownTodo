@@ -49,7 +49,8 @@ class StorageService {
   static const String KEY_SERVER_CHOICE = "app_server_choice";
   static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
   static const String KEY_PRIVACY_DATE = "privacy_policy_date";
-  static const String KEY_PRIVACY_CACHED_VERSION = "privacy_policy_cached_version";
+  static const String KEY_PRIVACY_CACHED_VERSION =
+      "privacy_policy_cached_version";
   static const String KEY_PRIVACY_CACHE_TIME = "privacy_policy_cache_time";
   static const String PRIVACY_RAW_URL =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
@@ -71,8 +72,10 @@ class StorageService {
   static const String KEY_NOTIFY_NORMAL_ENABLED = "notify_normal_enabled";
   static const String KEY_NOTIFY_COURSE_ENABLED = "notify_course_enabled";
   static const String KEY_NOTIFY_QUIZ_ENABLED = "notify_quiz_enabled";
-  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED = "notify_todo_summary_enabled";
-  static const String KEY_NOTIFY_APP_UPDATES_ENABLED = "notify_app_updates_enabled";
+  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED =
+      "notify_todo_summary_enabled";
+  static const String KEY_NOTIFY_APP_UPDATES_ENABLED =
+      "notify_app_updates_enabled";
   static const String KEY_TODO_FOLDERS_INLINE = "todo_folders_inline";
   static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
       "notify_special_todo_enabled";
@@ -85,7 +88,8 @@ class StorageService {
   static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
   static const String KEY_COURSE_REMINDER_MINUTES = "course_reminder_minutes";
   static const String KEY_LAST_COURSE_IMPORT_URL = "last_course_import_url";
-  static const String KEY_CATEGORY_REMINDER_MINUTES = "category_reminder_minutes";
+  static const String KEY_CATEGORY_REMINDER_MINUTES =
+      "category_reminder_minutes";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -863,10 +867,14 @@ class StorageService {
       List<CountdownItem> allLocalCountdowns = await getCountdowns(username);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
 
-      List<Map<String, dynamic>> dirtyTodos = allLocalTodos
-          .where((t) => t.updatedAt > lastSyncTime)
-          .map((t) => t.toJson())
-          .toList();
+      List<Map<String, dynamic>> dirtyTodos =
+          allLocalTodos.where((t) => t.updatedAt > lastSyncTime).map((t) {
+        final payload = t.toJson();
+        // 图片附件仅本地可用，不参与多设备同步。
+        payload.remove('image_path');
+        payload.remove('imagePath');
+        return payload;
+      }).toList();
       List<Map<String, dynamic>> dirtyGroups = allLocalGroups
           .where((g) => g.updatedAt > lastSyncTime)
           .map((g) => g.toJson())
@@ -1406,7 +1414,8 @@ class StorageService {
     final now = DateTime.now().millisecondsSinceEpoch;
 
     // Check if we need to refresh the cache in the background
-    if (cachedVersion == null || now - cacheTime >= PRIVACY_CACHE_DURATION.inMilliseconds) {
+    if (cachedVersion == null ||
+        now - cacheTime >= PRIVACY_CACHE_DURATION.inMilliseconds) {
       // Fire-and-forget background fetch so we don't block the UI app startup
       _getPrivacyPolicyCurrentVersion();
     }
@@ -1422,24 +1431,25 @@ class StorageService {
   /// 从 GitHub 获取隐私政策的版本日期，包含缓存机制
   static Future<String> _getPrivacyPolicyCurrentVersion() async {
     final prefs = await StorageService.prefs;
-    
+
     // 检查缓存是否有效
     final cachedVersion = prefs.getString(KEY_PRIVACY_CACHED_VERSION);
     final cacheTime = prefs.getInt(KEY_PRIVACY_CACHE_TIME) ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;
-    
-    if (cachedVersion != null && 
+
+    if (cachedVersion != null &&
         now - cacheTime < PRIVACY_CACHE_DURATION.inMilliseconds) {
       debugPrint('[Privacy] Using cached version: $cachedVersion');
       return cachedVersion;
     }
-    
+
     // 从网络获取
     try {
       debugPrint('[Privacy] Fetching version from GitHub...');
-      final response = await http.get(Uri.parse(PRIVACY_RAW_URL))
+      final response = await http
+          .get(Uri.parse(PRIVACY_RAW_URL))
           .timeout(const Duration(seconds: 10));
-      
+
       if (response.statusCode == 200) {
         final version = _extractPrivacyVersionDate(response.body);
         if (version.isNotEmpty) {
@@ -1450,14 +1460,13 @@ class StorageService {
           return version;
         }
       }
-    } catch (e) {
-    }
-    
+    } catch (e) {}
+
     // 如果网络请求失败但有缓存，返回缓存的版本
     if (cachedVersion != null) {
       return cachedVersion;
     }
-    
+
     // 默认返回当前日期
     final defaultDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
     return defaultDate;
@@ -1476,14 +1485,14 @@ class StorageService {
         final day = match1.group(3)!.padLeft(2, '0');
         return '$year-$month-$day';
       }
-      
+
       // 匹配 "版本日期：YYYY-MM-DD" 格式
       final pattern2 = RegExp(r'版本日期[：:]?\s*(\d{4}-\d{2}-\d{2})');
       final match2 = pattern2.firstMatch(content);
       if (match2 != null) {
         return match2.group(1)!;
       }
-      
+
       debugPrint('[Privacy] Could not extract version date from content');
       return '';
     } catch (e) {
@@ -1565,7 +1574,8 @@ class StorageService {
 
   static Future<bool> getTodoFoldersInline() async {
     final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_TODO_FOLDERS_INLINE) ?? true; // Defaults to embedded/inline
+    return prefs.getBool(KEY_TODO_FOLDERS_INLINE) ??
+        true; // Defaults to embedded/inline
   }
 
   static Future<void> setTodoFoldersInline(bool inline) async {
@@ -1587,7 +1597,8 @@ class StorageService {
   static Future<Map<String, int>> getCategoryReminderMinutes(
       String username) async {
     final prefs = await StorageService.prefs;
-    final jsonStr = prefs.getString("${KEY_CATEGORY_REMINDER_MINUTES}_$username");
+    final jsonStr =
+        prefs.getString("${KEY_CATEGORY_REMINDER_MINUTES}_$username");
     if (jsonStr == null) return {};
     try {
       final Map<String, dynamic> rawResult = jsonDecode(jsonStr);

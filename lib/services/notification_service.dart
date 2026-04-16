@@ -73,8 +73,7 @@ class NotificationService {
         'timeStr': timeStr,
         'teacher': teacher,
       });
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   static Future<void> updateQuizNotification({
@@ -101,9 +100,7 @@ class NotificationService {
         'isOver': false,
         'score': score,
       });
-    } catch (e) {
-
-    }
+    } catch (e) {}
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
@@ -379,18 +376,28 @@ class NotificationService {
     } catch (e) {}
   }
 
-  static Future<void> scheduleReminders(
-      List<Map<String, dynamic>> reminders, {bool clearFirst = true}) async {
+  static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
+      {bool clearFirst = true}) async {
     if (!await StorageService.isReminderNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
     if (reminders.isEmpty && !clearFirst) return;
     try {
-      final json = reminders
-          .map((r) => '{"triggerAtMs":${r['triggerAtMs']},'
-              '"title":${_jsonStr(r['title'])},"text":${_jsonStr(r['text'])},"notifId":${r['notifId']}}')
-          .join(',');
-      await _channel
-          .invokeMethod('scheduleReminders', {'remindersJson': '[$json]', 'clearFirst': clearFirst});
+      final payload = reminders.map((r) {
+        final imagePath = r['analysisImagePath']?.toString();
+        return {
+          'triggerAtMs': r['triggerAtMs'],
+          'title': r['title'] ?? '',
+          'text': r['text'] ?? '',
+          'notifId': r['notifId'],
+          if (imagePath != null && imagePath.isNotEmpty)
+            'analysisImagePath': imagePath,
+        };
+      }).toList();
+
+      await _channel.invokeMethod('scheduleReminders', {
+        'remindersJson': jsonEncode(payload),
+        'clearFirst': clearFirst,
+      });
     } catch (e) {}
   }
 
@@ -431,10 +438,6 @@ class NotificationService {
     try {
       await _channel.invokeMethod('openExactAlarmSettings');
     } catch (e) {}
-  }
-
-  static String _jsonStr(dynamic v) {
-    return '"${(v ?? '').toString().replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
   }
 
   // ==========================================
