@@ -10,9 +10,8 @@ class TodoGroupWidget extends StatefulWidget {
   final VoidCallback onToggle;
   final Function(TodoItem) onTodoToggle;
   final Function(String todoId) onTodoDropped;
-  final Function(String todoId)? onTodoRemoved;
-  final VoidCallback onDelete;
   final Function(TodoItem) onTodoTap;
+  final Function(TodoItem) onTodoDelete;
 
   const TodoGroupWidget({
     super.key,
@@ -25,6 +24,7 @@ class TodoGroupWidget extends StatefulWidget {
     this.onTodoRemoved,
     required this.onDelete,
     required this.onTodoTap,
+    required this.onTodoDelete,
   });
 
   @override
@@ -550,134 +550,209 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       }
     }
 
-    return LongPressDraggable<String>(
-      data: todo.id,
-      onDragEnd: (details) {
-        if (!details.wasAccepted) {
-          widget.onTodoRemoved?.call(todo.id);
-        }
-      },
-      feedback: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.8,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: widget.isLight ? Colors.white : Colors.grey[900],
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 1)
-            ],
-          ),
-          child: Text(todo.title,
-              style: TextStyle(
-                  color: widget.isLight ? Colors.black : Colors.white)),
+    // Progress calculation logic (Sync with TodoSectionWidget)
+    double progress = 0.0;
+    final now = DateTime.now();
+    final cDate = DateTime.fromMillisecondsSinceEpoch(
+            todo.createdDate ?? todo.createdAt,
+            isUtc: true)
+        .toLocal();
+    final end = todo.dueDate ??
+        DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+    final totalMin = end.difference(cDate).inMinutes;
+    if (totalMin > 0 && now.isAfter(cDate)) {
+      progress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+    }
+    final isPast = todo.dueDate != null && todo.dueDate!.isBefore(now);
+
+    return Dismissible(
+      key: Key('folder_todo_dismiss_${todo.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.redAccent.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(12),
         ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Icon(Icons.delete_outline_rounded,
+            color: Colors.white, size: 22),
       ),
-      child: InkWell(
-        onTap: () => widget.onTodoTap(todo),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
-          margin: const EdgeInsets.symmetric(vertical: 4.0),
-          decoration: BoxDecoration(
-            color: widget.isLight
-                ? Colors.black.withOpacity(0.02)
-                : Colors.white.withOpacity(0.03),
-            borderRadius: BorderRadius.circular(12),
+      onDismissed: (_) => widget.onTodoDelete(todo),
+      child: LongPressDraggable<String>(
+        data: todo.id,
+        onDragEnd: (details) {
+          if (!details.wasAccepted) {
+            widget.onTodoRemoved?.call(todo.id);
+          }
+        },
+        feedback: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.8,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: widget.isLight ? Colors.white : Colors.grey[900],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 1)
+              ],
+            ),
+            child: Text(todo.title,
+                style: TextStyle(
+                    color: widget.isLight ? Colors.black : Colors.white)),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: GestureDetector(
-                  onTap: () => widget.onTodoToggle(todo),
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: todo.isDone ? Colors.green : Colors.transparent,
-                      borderRadius: BorderRadius.circular(7),
-                      border: Border.all(
-                        color: todo.isDone
-                            ? Colors.green
-                            : Colors.grey.withOpacity(0.4),
-                        width: 1.8,
-                      ),
+        ),
+        child: InkWell(
+          onTap: () => widget.onTodoTap(todo),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+            margin: const EdgeInsets.symmetric(vertical: 4.0),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: widget.isLight
+                  ? Colors.black.withOpacity(0.02)
+                  : Colors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Stack(
+              children: [
+                // Background progress fill
+                if (!todo.isDone)
+                  Positioned.fill(
+                    child: TweenAnimationBuilder<double>(
+                      duration: const Duration(milliseconds: 1200),
+                      curve: Curves.easeOutQuart,
+                      tween: Tween<double>(
+                          begin: 0.0,
+                          end: _hasAnimated
+                              ? (progress < 0.08 ? 0.08 : progress)
+                              : 0.0),
+                      builder: (context, value, child) {
+                        final color = isPast ? Colors.redAccent : Colors.blue;
+                        return FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: value,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  color.withOpacity(widget.isLight ? 0.2 : 0.1),
+                                  color.withOpacity(widget.isLight ? 0.1 : 0.05),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                    child: todo.isDone
-                        ? const Icon(Icons.check, size: 15, color: Colors.white)
-                        : null,
                   ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      todo.title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: widget.isLight ? Colors.black87 : Colors.white,
-                        decoration:
-                            todo.isDone ? TextDecoration.lineThrough : null,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    // Time row
-                    Row(
-                      children: [
-                        Icon(Icons.access_time_rounded,
-                            size: 12, color: deadlineColor ?? Colors.grey[500]),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            timeStr,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: deadlineColor ?? Colors.grey[500],
-                              fontWeight: deadlineColor != null
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: GestureDetector(
+                        onTap: () => widget.onTodoToggle(todo),
+                        child: Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            color:
+                                todo.isDone ? Colors.green : Colors.transparent,
+                            borderRadius: BorderRadius.circular(7),
+                            border: Border.all(
+                              color: todo.isDone
+                                  ? Colors.green
+                                  : Colors.grey.withOpacity(0.4),
+                              width: 1.8,
                             ),
                           ),
+                          child: todo.isDone
+                              ? const Icon(Icons.check,
+                                  size: 15, color: Colors.white)
+                              : null,
                         ),
-                      ],
+                      ),
                     ),
-                    // Remark
-                    if (todo.remark != null && todo.remark!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Row(
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 1),
-                            child: Icon(Icons.notes_rounded,
-                                size: 12, color: Colors.grey[500]),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              todo.remark!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: Colors.grey[600],
-                                  height: 1.4),
+                          Text(
+                            todo.title,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: widget.isLight
+                                  ? Colors.black87
+                                  : Colors.white,
+                              decoration: todo.isDone
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              height: 1.25,
                             ),
                           ),
+                          const SizedBox(height: 5),
+                          // Time row
+                          Row(
+                            children: [
+                              Icon(Icons.access_time_rounded,
+                                  size: 12,
+                                  color: deadlineColor ?? Colors.grey[500]),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  timeStr,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: deadlineColor ?? Colors.grey[500],
+                                    fontWeight: deadlineColor != null
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          // Remark
+                          if (todo.remark != null &&
+                              todo.remark!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1),
+                                  child: Icon(Icons.notes_rounded,
+                                      size: 12, color: Colors.grey[500]),
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    todo.remark!,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: Colors.grey[600],
+                                        height: 1.4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
-                    ],
+                    ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

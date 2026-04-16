@@ -2107,6 +2107,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             widget.onRefreshRequested();
           },
           onTodoTap: (todo) => _editTodo(todo, context),
+          onTodoDelete: (todo) async {
+            setState(() {
+              todo.isDeleted = true;
+              todo.markAsChanged();
+            });
+            widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+            await StorageService.deleteTodoGlobally(widget.username, todo.id);
+          },
         ),
       );
 
@@ -2263,35 +2271,25 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: allTodayDone
-                          ? [
-                              Colors.green.withOpacity(0.12),
-                              Colors.green.withOpacity(0.04)
-                            ]
-                          : [
-                              Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.08),
-                              Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.02)
-                            ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: allTodayDone
+                        ? (isDarkTheme ? Colors.green.withOpacity(0.15) : Colors.green.withOpacity(0.08))
+                        : (isDarkTheme ? Colors.white.withValues(alpha: 0.08) : Theme.of(context).colorScheme.primary.withValues(alpha: 0.04)),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: allTodayDone
-                          ? Colors.green.withOpacity(0.2)
-                          : Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.1),
-                      width: 1,
+                          ? Colors.green.withOpacity(0.4)
+                          : (isDarkTheme 
+                              ? Colors.white.withOpacity(0.22)
+                              : Theme.of(context).colorScheme.primary.withOpacity(0.25)),
+                      width: 1.5,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
@@ -2324,10 +2322,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     color: allTodayDone
                                         ? (isDarkTheme
                                             ? Colors.green.shade200
-                                            : Colors.green.shade800)
-                                        : null,
+                                            : Colors.green.shade900)
+                                        : (isDarkTheme
+                                            ? Colors.white.withOpacity(0.9)
+                                            : Colors.black.withOpacity(0.85)),
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 15)),
+                                    fontSize: 16,
+                                    letterSpacing: 0.2)),
                             const SizedBox(height: 2),
                             Text(
                                 allTodayDone
@@ -2335,12 +2336,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办等待完成",
                                 style: TextStyle(
                                     color: (allTodayDone
-                                            ? Colors.green
-                                            : Theme.of(context)
-                                                .colorScheme
-                                                .onSurface)
-                                        .withOpacity(0.6),
-                                    fontSize: 12)),
+                                            ? (isDarkTheme ? Colors.green[200] : Colors.green[800])
+                                            : (isDarkTheme ? Colors.white : Colors.black))
+                                        ?.withOpacity(0.7),
+                                    fontSize: 12.5)),
                           ],
                         ),
                       ),
@@ -2850,6 +2849,33 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
       appBar: AppBar(
         title: const Text('编辑待办'),
         actions: [
+          IconButton(
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('删除待办'),
+                  content: const Text('确定要删除这条待办吗？'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('删除', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                widget.todo.isDeleted = true;
+                widget.todo.markAsChanged();
+                widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+                if (mounted) Navigator.pop(context);
+              }
+            },
+            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+            tooltip: '删除待办',
+          ),
+          const SizedBox(width: 8),
           FilledButton.icon(
               onPressed: _save,
               icon: const Icon(Icons.check, size: 18),
