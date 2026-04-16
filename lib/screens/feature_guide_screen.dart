@@ -56,6 +56,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   String _currentVersion = '';
   List<ChangelogEntry> _changelogHistory = [];
   bool _loadingChangelog = true;
+  String? _changelogNotice;
   final Set<String> _expandedVersions = {};
 
   // 权限状态
@@ -165,8 +166,25 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         setState(() {
           _changelogHistory = manifest.changelogHistory;
           _loadingChangelog = false;
+          _changelogNotice = null;
         });
         return;
+      }
+
+      // 更新后首次开屏若联网失败，立即回退到离线缓存并给出提示。
+      if (isFirstSplashAfterUpdate) {
+        final cachedManifest = await UpdateService.checkManifest(
+          preferCache: true,
+          refreshInBackground: true,
+        );
+        if (cachedManifest != null && mounted) {
+          setState(() {
+            _changelogHistory = cachedManifest.changelogHistory;
+            _loadingChangelog = false;
+            _changelogNotice = '当前显示离线缓存更新日志，网络恢复后会自动刷新。';
+          });
+          return;
+        }
       }
     } catch (_) {}
 
@@ -174,6 +192,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       setState(() {
         _changelogHistory = [];
         _loadingChangelog = false;
+        _changelogNotice = null;
       });
     }
   }
@@ -379,6 +398,36 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           ]),
         ),
         const SizedBox(height: 16),
+        if (_changelogNotice != null) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.wifi_off, size: 16, color: Colors.orange[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _changelogNotice!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.75),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         // 当前版本
         Container(
           width: double.infinity,
