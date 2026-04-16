@@ -2272,15 +2272,25 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: BoxDecoration(
                     color: allTodayDone
-                        ? (isDarkTheme ? Colors.green.withOpacity(0.15) : Colors.green.withOpacity(0.08))
-                        : (isDarkTheme ? Colors.white.withValues(alpha: 0.08) : Theme.of(context).colorScheme.primary.withValues(alpha: 0.04)),
+                        ? (isDarkTheme
+                            ? Colors.green.withOpacity(0.15)
+                            : Colors.green.withOpacity(0.08))
+                        : (isDarkTheme
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.04)),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: allTodayDone
                           ? Colors.green.withOpacity(0.4)
-                          : (isDarkTheme 
+                          : (isDarkTheme
                               ? Colors.white.withOpacity(0.22)
-                              : Theme.of(context).colorScheme.primary.withOpacity(0.25)),
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(0.25)),
                       width: 1.5,
                     ),
                     boxShadow: [
@@ -2336,8 +2346,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办等待完成",
                                 style: TextStyle(
                                     color: (allTodayDone
-                                            ? (isDarkTheme ? Colors.green[200] : Colors.green[800])
-                                            : (isDarkTheme ? Colors.white : Colors.black))
+                                            ? (isDarkTheme
+                                                ? Colors.green[200]
+                                                : Colors.green[800])
+                                            : (isDarkTheme
+                                                ? Colors.white
+                                                : Colors.black))
                                         ?.withOpacity(0.7),
                                     fontSize: 12.5)),
                           ],
@@ -2857,10 +2871,13 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                   title: const Text('删除待办'),
                   content: const Text('确定要删除这条待办吗？'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('取消')),
                     TextButton(
                       onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('删除', style: TextStyle(color: Colors.red)),
+                      child:
+                          const Text('删除', style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),
@@ -2872,7 +2889,8 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                 if (mounted) Navigator.pop(context);
               }
             },
-            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+            icon: const Icon(Icons.delete_outline_rounded,
+                color: Colors.redAccent),
             tooltip: '删除待办',
           ),
           const SizedBox(width: 8),
