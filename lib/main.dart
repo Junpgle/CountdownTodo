@@ -81,6 +81,9 @@ Future<void> main(List<String> args) async {
   // 初始化 WindowService（监听窗口关闭事件）
   WindowService.init();
 
+  // 预热 SharedPreferences 缓存，避免启动时多次重复 load
+  unawaited(StorageService.prefs);
+
   // Register island entry as a tear-off so the desktop_multi_window plugin
   // can start a new Dart isolate using this symbol name. The plugin expects
   // the entrypoint to be available; when creating windows it passes the
@@ -116,22 +119,20 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     registerCloseDialogCallback(_showCloseConfirmDialog);
+    // 立即开始初始化，不等待首屏动画
+    _initializeApp();
+    // 处理开屏序列逻辑
     _startSplashSequence();
   }
 
   Future<void> _startSplashSequence() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    if (!mounted) return;
-
+    // 异步获取节日开屏内容，不在这加延迟，让 DefaultSplashScreen 自己跑
     final splashContent = await SplashService.getCachedContent();
-
-    setState(() {
-      _showDefaultSplash = false;
-      _splashContent = splashContent;
-      _showHolidaySplash = splashContent != null;
-    });
-
-    _initializeApp();
+    if (mounted) {
+      setState(() {
+        _splashContent = splashContent;
+      });
+    }
   }
 
   Future<bool> _showCloseConfirmDialog() async {
@@ -172,50 +173,58 @@ class _MyAppState extends State<MyApp> {
 
   // 将所有耗时的初始化工作放到异步方法中
   Future<void> _initializeApp() async {
-    // 0. 读取主题偏好
-    await StorageService.initTheme();
+    try {
+      // 0. 读取主题偏好
+      await StorageService.initTheme();
 
-    // 0.5 初始化壁纸(从manifest获取)
-    UpdateService.initWallpaper();
+      // 0.5 初始化壁纸(从manifest获取)
+      UpdateService.initWallpaper();
 
-    // Initialize server choice
-    String serverChoice = await StorageService.getServerChoice();
-    ApiService.setServerChoice(serverChoice);
+      // Initialize server choice
+      String serverChoice = await StorageService.getServerChoice();
+      ApiService.setServerChoice(serverChoice);
 
-    // 1. 读取登录状态
-    final user = await StorageService.getLoginSession();
+      // 1. 读取登录状态
+      final user = await StorageService.getLoginSession();
 
-    // 1.5 检查隐私协议是否需要更新
-    final privacyNeedsUpdate = await StorageService.isPrivacyPolicyUpToDate();
-    final wasAgreed = await StorageService.isPrivacyPolicyAgreed();
-    final wasLoggedIn = user != null && user.isNotEmpty;
-    final storedDate = (await SharedPreferences.getInstance())
-        .getString(StorageService.KEY_PRIVACY_DATE);
+      // 1.5 检查隐私协议是否需要更新
+      final privacyNeedsUpdate = await StorageService.isPrivacyPolicyUpToDate();
+      final wasAgreed = await StorageService.isPrivacyPolicyAgreed();
+      final wasLoggedIn = user != null && user.isNotEmpty;
 
-    // 2. 检查升级引导
-    final needGuide = await FeatureGuideScreen.shouldShow();
+      // 2. 检查升级引导 (增加超时保护，防止平台接口卡死)
+      final needGuide = await FeatureGuideScreen.shouldShow()
+          .timeout(const Duration(seconds: 2), onTimeout: () => false);
 
-    // 3. 判断是否需要弹窗：已登录但未同意过，或版本已过期
-    final shouldShowPrivacyDialog =
-        wasLoggedIn && (!wasAgreed || !privacyNeedsUpdate);
+      // 3. 判断是否需要弹窗：已登录但未同意过，或版本已过期
+      final shouldShowPrivacyDialog =
+          wasLoggedIn && (!wasAgreed || !privacyNeedsUpdate);
 
-    if (mounted) {
-      setState(() {
-        _loggedInUser = user;
-        _showFeatureGuide = needGuide;
-        _isChecking = false;
-        _showPrivacyUpdate = shouldShowPrivacyDialog;
-      });
+      if (mounted) {
+        setState(() {
+          _loggedInUser = user;
+          _showFeatureGuide = needGuide;
+          _isChecking = false;
+          _showPrivacyUpdate = shouldShowPrivacyDialog;
+        });
 
-      // 4. 如果需要弹窗，在界面渲染后弹出
-      if (_showPrivacyUpdate) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showPrivacyUpdateDialog();
+        // 4. 如果需要弹窗，在界面渲染后弹出
+        if (_showPrivacyUpdate) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showPrivacyUpdateDialog();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[Main] 初始化失败: $e');
+      if (mounted) {
+        setState(() {
+          _isChecking = false;
         });
       }
     }
 
-    // 5. 异步初始化耗时的底层插件
+    // 5. 异步初始化耗时的底层插件 (非关键路径，放在 try-catch 之后或并行)
     _initHeavyPlugins();
 
     // 6. 初始化手环通信服务（全局）
@@ -276,6 +285,10 @@ class _MyAppState extends State<MyApp> {
     if (mounted) {
       setState(() {
         _showDefaultSplash = false;
+        // 如果有开屏图，切换到开屏图状态
+        if (_splashContent != null) {
+          _showHolidaySplash = true;
+        }
       });
     }
   }

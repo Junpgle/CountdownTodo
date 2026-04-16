@@ -1400,8 +1400,23 @@ class StorageService {
     final prefs = await StorageService.prefs;
     final storedDate = prefs.getString(KEY_PRIVACY_DATE);
     if (storedDate == null) return false;
-    final currentVersion = await _getPrivacyPolicyCurrentVersion();
-    return _compareDates(storedDate, currentVersion) >= 0;
+
+    final cachedVersion = prefs.getString(KEY_PRIVACY_CACHED_VERSION);
+    final cacheTime = prefs.getInt(KEY_PRIVACY_CACHE_TIME) ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Check if we need to refresh the cache in the background
+    if (cachedVersion == null || now - cacheTime >= PRIVACY_CACHE_DURATION.inMilliseconds) {
+      // Fire-and-forget background fetch so we don't block the UI app startup
+      _getPrivacyPolicyCurrentVersion();
+    }
+
+    if (cachedVersion != null) {
+      return _compareDates(storedDate, cachedVersion) >= 0;
+    }
+
+    // Default to true if no cache is available so we don't popup incorrectly on network failure
+    return true;
   }
 
   /// 从 GitHub 获取隐私政策的版本日期，包含缓存机制
