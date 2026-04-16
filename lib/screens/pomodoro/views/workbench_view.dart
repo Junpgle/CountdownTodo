@@ -82,6 +82,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   // ── Todos ──
   List<TodoItem> _todos = [];
+  List<TodoGroup> _todoGroups = [];
   String _deviceId = '';
   String _userId = '';
   String _appVersion = 'unknown';
@@ -232,8 +233,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           return <TodoItem>[];
         });
         _todos = (todosRaw).where((t) => !t.isDeleted && !t.isDone).toList();
+        
+        final groupsRaw = await StorageService.getTodoGroups(widget.username)
+            .timeout(const Duration(seconds: 5), onTimeout: () => <TodoGroup>[]);
+        _todoGroups = groupsRaw.where((g) => !g.isDeleted).toList();
       } catch (e, st) {
         _todos = [];
+        _todoGroups = [];
       }
 
       PomodoroRunState? saved;
@@ -1781,40 +1787,43 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                       Navigator.pop(ctx);
                     },
                   ),
-                  ..._todos.map((t) => ListTile(
-                        leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primaryContainer,
-                                shape: BoxShape.circle),
-                            child: Icon(Icons.check,
-                                size: 20,
-                                color: Theme.of(context).colorScheme.primary)),
-                        title: Text(t.title,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w500)),
-                        subtitle: t.remark != null && t.remark!.isNotEmpty
-                            ? Text(t.remark!,
-                                maxLines: 1, overflow: TextOverflow.ellipsis)
-                            : null,
-                        selected: t.id == _boundTodo?.id,
-                        selectedTileColor: Theme.of(context)
-                            .colorScheme
-                            .primaryContainer
-                            .withValues(alpha: 0.3),
-                        onTap: () async {
-                          Navigator.pop(ctx);
-                          if (_phase == PomodoroPhase.focusing) {
-                            await _switchTask(t);
-                          } else {
-                            setState(() => _boundTodo = t);
-                            await _persistIdleBoundTodo(t);
-                            await _saveCurrentRunState();
-                          }
-                        },
-                      )),
+                  const Divider(height: 1),
+                  ...(() {
+                    final Map<String?, List<TodoItem>> grouped = {};
+                    for (var t in _todos) {
+                      grouped.putIfAbsent(t.groupId, () => []).add(t);
+                    }
+
+                    List<Widget> sections = [];
+                    // Process named groups
+                    for (var g in _todoGroups) {
+                      final tasks = grouped[g.id];
+                      if (tasks != null && tasks.isNotEmpty) {
+                        sections.add(_buildSectionHeader(g.name));
+                        sections.addAll(tasks.map((t) => _buildTodoTile(ctx, t, isSwitching)));
+                        grouped.remove(g.id);
+                      }
+                    }
+
+                    // Process unassigned tasks
+                    if (grouped.containsKey(null)) {
+                      final tasks = grouped[null]!;
+                      if (tasks.isNotEmpty) {
+                        sections.add(_buildSectionHeader('未分组'));
+                        sections.addAll(tasks.map((t) => _buildTodoTile(ctx, t, isSwitching)));
+                      }
+                    }
+                    
+                    // Safety for any other IDs
+                    grouped.forEach((id, tasks) {
+                      if (tasks.isNotEmpty) {
+                        sections.add(_buildSectionHeader('其他'));
+                        sections.addAll(tasks.map((t) => _buildTodoTile(ctx, t, isSwitching)));
+                      }
+                    });
+
+                    return sections;
+                  })(),
                   if (_todos.isEmpty)
                     const Padding(
                         padding: EdgeInsets.all(40),
@@ -1831,6 +1840,49 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTodoTile(BuildContext ctx, TodoItem t, bool isSwitching) {
+    return ListTile(
+      leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              shape: BoxShape.circle),
+          child: Icon(Icons.check,
+              size: 20, color: Theme.of(context).colorScheme.primary)),
+      title: Text(t.title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      subtitle: t.remark != null && t.remark!.isNotEmpty
+          ? Text(t.remark!, maxLines: 1, overflow: TextOverflow.ellipsis)
+          : null,
+      selected: t.id == _boundTodo?.id,
+      selectedTileColor:
+          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+      onTap: () async {
+        Navigator.pop(ctx);
+        if (_phase == PomodoroPhase.focusing) {
+          await _switchTask(t);
+        } else {
+          setState(() => _boundTodo = t);
+          await _persistIdleBoundTodo(t);
+          await _saveCurrentRunState();
+        }
+      },
     );
   }
 
