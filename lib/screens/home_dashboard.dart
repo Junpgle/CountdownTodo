@@ -1843,7 +1843,71 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
-  Future<void> _fetchBingWallpaper() async {
+  // --- Wallpaper Fallback Logic ---
+  int _wallpaperRetryCount = 0;
+  List<String> _randomWallpaperUrls = [];
+  bool _isWallpaperLoadingError = false;
+
+  void _handleWallpaperError() {
+    if (!mounted || _isWallpaperLoadingError) return;
+    debugPrint("[Wallpaper] Current URL failed: $_wallpaperUrl. Trying fallback...");
+
+    setState(() {
+      _wallpaperRetryCount++;
+    });
+
+    _triggerNextWallpaperFallback();
+  }
+
+  Future<void> _triggerNextWallpaperFallback() async {
+    // Priority: Manifest -> Bing -> Random List -> None
+    final prefs = await SharedPreferences.getInstance();
+    final provider = prefs.getString('wallpaper_provider') ?? 'bing';
+
+    if (_wallpaperRetryCount == 1) {
+      // If manifest failed (or was first), try provider
+      if (provider == 'bing') {
+        _fetchBingWallpaper(isFallback: true);
+      } else {
+        _fetchRandomWallpaper(isFallback: true);
+      }
+    } else if (_wallpaperRetryCount == 2) {
+      // If provider failed, try random (if not already tried)
+      if (provider == 'bing') {
+        _fetchRandomWallpaper(isFallback: true);
+      } else {
+        _tryAnotherRandomWallpaper();
+      }
+    } else if (_wallpaperRetryCount >= 3 && _wallpaperRetryCount < 6) {
+      // Keep trying randoms a few times
+      _tryAnotherRandomWallpaper();
+    } else {
+      // Total failure fallback
+      debugPrint("[Wallpaper] All fallbacks exhausted. Disabling wallpaper.");
+      if (mounted) {
+        setState(() {
+          _wallpaperShow = false;
+          _isWallpaperLoadingError = true;
+        });
+      }
+    }
+  }
+
+  void _tryAnotherRandomWallpaper() {
+    if (_randomWallpaperUrls.isNotEmpty) {
+      final nextUrl =
+          _randomWallpaperUrls[Random().nextInt(_randomWallpaperUrls.length)];
+      if (mounted) {
+        setState(() {
+          _wallpaperUrl = nextUrl;
+        });
+      }
+    } else {
+      _fetchRandomWallpaper(isFallback: true);
+    }
+  }
+
+  Future<void> _fetchBingWallpaper({bool isFallback = false}) async {
     final format = await StorageService.getWallpaperImageFormat();
     final index = await StorageService.getWallpaperIndex();
     final mkt = await StorageService.getWallpaperMkt();
@@ -1870,7 +1934,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
     } catch (e) {
       debugPrint("获取Bing壁纸失败: $e");
-      _fetchRandomWallpaper();
+      if (!isFallback) _fetchRandomWallpaper();
     }
   }
 
@@ -1883,6 +1947,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       setState(() {
         _wallpaperShow = true;
         _wallpaperUrl = manifestUrl;
+        _wallpaperRetryCount = 0;
+        _isWallpaperLoadingError = false;
       });
     } else {
       final provider = await StorageService.getWallpaperProvider();
@@ -1906,6 +1972,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           setState(() {
             _wallpaperShow = true;
             _wallpaperUrl = url;
+            _wallpaperRetryCount = 0; // Reset on manual/auto update
+            _isWallpaperLoadingError = false;
           });
         } else if (mounted) {
           StorageService.getWallpaperProvider().then((provider) {
@@ -1932,7 +2000,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     });
   }
 
-  Future<void> _fetchRandomWallpaper() async {
+  Future<void> _fetchRandomWallpaper({bool isFallback = false}) async {
     const String repoApiUrl =
         "https://api.github.com/repos/Junpgle/math_quiz_app/contents/wallpaper";
     try {
@@ -1945,11 +2013,13 @@ class _HomeDashboardState extends State<HomeDashboard>
                 f['name'].toString().toLowerCase().endsWith('.png'))
             .map((f) => f['download_url'].toString())
             .toList();
-        if (urls.isNotEmpty && mounted)
+        if (urls.isNotEmpty && mounted) {
+          _randomWallpaperUrls = urls;
           setState(() {
             _wallpaperShow = true;
             _wallpaperUrl = urls[Random().nextInt(urls.length)];
           });
+        }
       }
     } catch (e) {
       debugPrint("获取壁纸失败: $e");
@@ -2009,7 +2079,15 @@ class _HomeDashboardState extends State<HomeDashboard>
                     fit: BoxFit.cover,
                     fadeInDuration: const Duration(milliseconds: 800),
                     placeholder: (context, url) => Container(
-                        color: Theme.of(context).colorScheme.surface))),
+                        color: Theme.of(context).colorScheme.surface),
+                    errorWidget: (context, url, error) {
+                      // Trigger fallback on error
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _handleWallpaperError();
+                      });
+                      return Container(
+                          color: Theme.of(context).colorScheme.surface);
+                    })),
           if (showWallpaper)
             Positioned.fill(
                 child: Container(color: Colors.black.withOpacity(0.4))),

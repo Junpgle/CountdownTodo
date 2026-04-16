@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -1608,7 +1609,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     ),
                     child: Stack(
                       children: [
-                        // Background progress fill
                         if (!todo.isDone)
                           Positioned.fill(
                             child: TweenAnimationBuilder<double>(
@@ -1652,13 +1652,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             borderRadius: BorderRadius.circular(14),
                             onTap: () => _editTodo(todo, cardCtx),
                             child: Padding(
-                              // ✨ 核心：更小的内边距
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 9),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  // ── 复选框 ──
                                   SizedBox(
                                     width: 24,
                                     height: 24,
@@ -1717,14 +1715,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-
-                                  // ── 主内容区 ──
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        // 标题行
                                         Row(
                                           children: [
                                             Expanded(
@@ -1756,7 +1751,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                               recurrenceIcon,
                                             ],
                                             const SizedBox(width: 6),
-                                            // 时间徽章
                                             Container(
                                               padding:
                                                   const EdgeInsets.symmetric(
@@ -1785,8 +1779,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                             ),
                                           ],
                                         ),
-
-                                        // ── 时间信息行 ──
                                         const SizedBox(height: 3),
                                         Row(
                                           children: [
@@ -1828,8 +1820,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                             ),
                                           ],
                                         ),
-
-                                        // 备注（可选，单行截断）
                                         if (todo.remark != null &&
                                             todo.remark!.isNotEmpty) ...[
                                           const SizedBox(height: 2),
@@ -2268,100 +2258,122 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 }),
                 child: Container(
                   margin: const EdgeInsets.symmetric(vertical: 10),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: BoxDecoration(
-                    color: allTodayDone
+                    color: widget.isLight
                         ? (isDarkTheme
-                            ? Colors.green.withOpacity(0.15)
-                            : Colors.green.withOpacity(0.08))
-                        : (isDarkTheme
-                            ? Colors.white.withValues(alpha: 0.08)
-                            : Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.04)),
+                            ? Colors.grey[850]!.withOpacity(0.95)
+                            : Colors.white.withOpacity(0.95))
+                        : (allTodayDone
+                            ? (isDarkTheme
+                                ? Colors.green.withOpacity(0.15)
+                                : Colors.green.withOpacity(0.08))
+                            : (isDarkTheme
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: 0.04))),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: allTodayDone
                           ? Colors.green.withOpacity(0.4)
-                          : (isDarkTheme
-                              ? Colors.white.withOpacity(0.22)
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.25)),
+                          : (widget.isLight
+                              ? (isDarkTheme
+                                  ? Colors.white.withOpacity(0.15)
+                                  : Colors.black.withOpacity(0.1))
+                              : (isDarkTheme
+                                  ? Colors.white.withOpacity(0.22)
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withOpacity(0.25))),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
+                        color: Colors.black
+                            .withOpacity(widget.isLight ? 0.15 : 0.08),
                         blurRadius: 12,
                         offset: const Offset(0, 5),
                       ),
                     ],
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                            color: allTodayDone
-                                ? Colors.green.withOpacity(0.1)
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withOpacity(0.1),
-                            shape: BoxShape.circle),
-                        child: Icon(
-                            allTodayDone
-                                ? Icons.celebration_rounded
-                                : Icons.task_alt_rounded,
-                            size: 20,
-                            color: allTodayDone
-                                ? Colors.green
-                                : Theme.of(context).colorScheme.primary),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(allTodayDone ? "任务已全部达成！" : "今日事今日毕",
-                                style: TextStyle(
-                                    color: allTodayDone
-                                        ? (isDarkTheme
-                                            ? Colors.green.shade200
-                                            : Colors.green.shade900)
-                                        : (isDarkTheme
-                                            ? Colors.white.withOpacity(0.9)
-                                            : Colors.black.withOpacity(0.85)),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    letterSpacing: 0.2)),
-                            const SizedBox(height: 2),
-                            Text(
-                                allTodayDone
-                                    ? "今天也很努力呢，休息一下吧 ✨"
-                                    : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办等待完成",
-                                style: TextStyle(
-                                    color: (allTodayDone
-                                            ? (isDarkTheme
-                                                ? Colors.green[200]
-                                                : Colors.green[800])
-                                            : (isDarkTheme
-                                                ? Colors.white
-                                                : Colors.black))
-                                        ?.withOpacity(0.7),
-                                    fontSize: 12.5)),
-                          ],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 16),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                              color: allTodayDone
+                                  ? Colors.green.withOpacity(0.1)
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withOpacity(0.1),
+                              shape: BoxShape.circle),
+                          child: Icon(
+                              allTodayDone
+                                  ? Icons.celebration_rounded
+                                  : Icons.task_alt_rounded,
+                              size: 20,
+                              color: allTodayDone
+                                  ? Colors.green
+                                  : Theme.of(context).colorScheme.primary),
                         ),
-                      ),
-                      Icon(Icons.arrow_forward_ios_rounded,
-                          size: 14,
-                          color: (allTodayDone ? Colors.green : Colors.grey)
-                              .withOpacity(0.5)),
-                    ],
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(allTodayDone ? "任务已全部达成！" : "今日事今日毕",
+                                  style: TextStyle(
+                                      color: allTodayDone
+                                          ? (isDarkTheme
+                                              ? Colors.green.shade200
+                                              : Colors.green.shade900)
+                                          : (widget.isLight
+                                              ? (isDarkTheme
+                                                  ? Colors.white
+                                                  : Colors.black)
+                                              : (isDarkTheme
+                                                  ? Colors.white
+                                                      .withOpacity(0.9)
+                                                  : Colors.black
+                                                      .withOpacity(0.85))),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      letterSpacing: 0.2)),
+                              const SizedBox(height: 2),
+                              Text(
+                                  allTodayDone
+                                      ? "今天也很努力呢，休息一下吧 ✨"
+                                      : "今日还有 ${todayItems.where((t) => !t.isDone).length} 个待办等待完成",
+                                  style: TextStyle(
+                                      color: (allTodayDone
+                                          ? (isDarkTheme
+                                              ? Colors.green[200]
+                                              : Colors.green[800])
+                                          : (widget.isLight
+                                              ? (isDarkTheme
+                                                  ? Colors.white
+                                                      .withOpacity(0.7)
+                                                  : Colors.black
+                                                      .withOpacity(0.6))
+                                              : (isDarkTheme
+                                                  ? Colors.white
+                                                  : Colors.black))),
+                                      fontSize: 12.5)),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.arrow_forward_ios_rounded,
+                            size: 14,
+                            color: (allTodayDone ? Colors.green : Colors.grey)
+                                .withOpacity(0.5)),
+                      ],
+                    ),
                   ),
                 ),
               )
@@ -2478,33 +2490,44 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: useDarkUI
-                        ? [
-                            Colors.white.withOpacity(0.12),
-                            Colors.white.withOpacity(0.04)
-                          ]
-                        : [
-                            Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withOpacity(0.06),
-                            Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withOpacity(0.01)
-                          ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: widget.isLight
+                      ? (isDarkTheme
+                          ? Colors.grey[850]!.withOpacity(0.95)
+                          : Colors.white.withOpacity(0.95))
+                      : null,
+                  gradient: widget.isLight
+                      ? null
+                      : LinearGradient(
+                          colors: useDarkUI
+                              ? [
+                                  Colors.white.withOpacity(0.12),
+                                  Colors.white.withOpacity(0.04)
+                                ]
+                              : [
+                                  Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withOpacity(0.06),
+                                  Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withOpacity(0.01)
+                                ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                      color: useDarkUI
-                          ? Colors.white.withOpacity(0.1)
-                          : Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.08),
+                      color: widget.isLight
+                          ? (isDarkTheme
+                              ? Colors.white.withOpacity(0.15)
+                              : Colors.black.withOpacity(0.1))
+                          : (useDarkUI
+                              ? Colors.white.withOpacity(0.1)
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(0.08)),
                       width: 1),
                 ),
                 child: Row(
@@ -2530,7 +2553,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                   ? "全部任务已完成"
                                   : "目前还有 $undoneCount 个待办",
                               style: TextStyle(
-                                  color: useDarkUI ? Colors.white : null,
+                                  color: widget.isLight
+                                      ? (isDarkTheme
+                                          ? Colors.white
+                                          : Colors.black)
+                                      : (useDarkUI ? Colors.white : null),
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
                                   letterSpacing: 0.2)),
@@ -2540,8 +2567,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                   ? "今天做的不错！点击展开回顾"
                                   : "点击这里展开清单，继续加油吧 ✨",
                               style: TextStyle(
-                                  color:
-                                      (useDarkUI ? Colors.white : Colors.black)
+                                  color: widget.isLight
+                                      ? (isDarkTheme
+                                          ? Colors.white.withOpacity(0.6)
+                                          : Colors.black.withOpacity(0.55))
+                                      : (useDarkUI
+                                              ? Colors.white
+                                              : Colors.black)
                                           .withOpacity(0.5),
                                   fontSize: 12)),
                         ])),
