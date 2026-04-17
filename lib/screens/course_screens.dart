@@ -1660,49 +1660,62 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                   color: isDark ? Colors.white10 : Colors.black12),
                             ],
                             Expanded(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 500),
-                                transitionBuilder: (child, animation) {
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: ScaleTransition(
-                                      scale: Tween<double>(begin: 0.95, end: 1.0)
-                                          .animate(animation),
-                                      child: child,
-                                    ),
-                                  );
-                                },
-                                child: _isMonthView
-                                    ? CourseMonthView(
-                                        key: const ValueKey('MonthView'),
-                                        selectedMonth: _selectedMonth,
-                                        allCourses: _allCourses,
-                                        allTodos: _allTodos,
-                                        allTimeLogs: _allTimeLogs,
-                                        allPomodoroRecords: _allPomodoroRecords,
-                                        pomodoroTags: _pomodoroTags,
-                                        activeDataViews: _activeDataViews,
-                                        onMonthChanged: (m) =>
-                                            setState(() => _selectedMonth = m),
-                                        onDayTapped: (d) {},
-                                      )
-                                    : RepaintBoundary(
-                                        child: LayoutBuilder(
-                                          key: const ValueKey('WeekView'),
-                                          builder: (context, innerConstraints) {
-                                            double cellWidth =
-                                                (innerConstraints.maxWidth -
-                                                        timeColumnWidth) /
-                                                    7;
-                                            double minuteHeight =
-                                                innerConstraints.maxHeight /
-                                                    ((endHour - startHour) * 60);
-  
-                                            return _buildGrid(
-                                                cellWidth, minuteHeight);
-                                          },
+                              child: TweenAnimationBuilder<double>(
+                                duration: const Duration(milliseconds: 600),
+                                curve: Curves.easeInOutQuart,
+                                tween: Tween<double>(
+                                  begin: _isMonthView ? 1.0 : 0.0,
+                                  end: _isMonthView ? 1.0 : 0.0,
+                                ),
+                                builder: (context, t, _) {
+                                  return Stack(
+                                    children: [
+                                      // --- 月视图 (缩放进入/退出) ---
+                                      IgnorePointer(
+                                        ignoring: t < 0.5,
+                                        child: Opacity(
+                                          opacity: t.clamp(0.0, 1.0),
+                                          child: Transform.scale(
+                                            scale: 0.8 + (t * 0.2), // 从 0.8 放大到 1.0
+                                            child: CourseMonthView(
+                                              key: const ValueKey('MonthView'),
+                                              selectedMonth: _selectedMonth,
+                                              allCourses: _allCourses,
+                                              allTodos: _allTodos,
+                                              allTimeLogs: _allTimeLogs,
+                                              allPomodoroRecords: _allPomodoroRecords,
+                                              pomodoroTags: _pomodoroTags,
+                                              activeDataViews: _activeDataViews,
+                                              onMonthChanged: (m) =>
+                                                  setState(() => _selectedMonth = m),
+                                              onDayTapped: (d) {},
+                                            ),
+                                          ),
                                         ),
                                       ),
+                                      // --- 周视图 (缩放缩小/消失) ---
+                                      IgnorePointer(
+                                        ignoring: t > 0.5,
+                                        child: Opacity(
+                                          opacity: (1.0 - t).clamp(0.0, 1.0),
+                                          child: Transform.scale(
+                                            scale: 1.0 + (t * 0.2), // 从 1.0 放大到 1.2
+                                            child: RepaintBoundary(
+                                              child: LayoutBuilder(
+                                                key: const ValueKey('WeekView'),
+                                                builder: (context, innerConstraints) {
+                                                  double cellWidth = (innerConstraints.maxWidth - timeColumnWidth) / 7;
+                                                  double minuteHeight = innerConstraints.maxHeight / ((endHour - startHour) * 60);
+                                                  return _buildGrid(cellWidth, minuteHeight);
+                                                },
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
                             ),
                           ],
