@@ -53,7 +53,10 @@ class CourseMonthView extends StatelessWidget {
     return RepaintBoundary(
       child: Column(
         children: [
+          const SizedBox(height: 8), // 增加一点顶部间距，避免遮挡
+          // 星期表头
           _buildWeekdayHeader(context),
+          const SizedBox(height: 4),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -88,7 +91,9 @@ class CourseMonthView extends StatelessWidget {
                       cellHeight,
                       courseMap[dStr] ?? [],
                       activeDataViews.contains('todos') ? (todoMap[dStr] ?? []) : [],
-                      activeDataViews.contains('todos') ? (crossDayTodoMap[dStr] ?? []) : [],
+                      (activeDataViews.contains('todos') && !activeDataViews.contains('hideCrossDay')) 
+                          ? (crossDayTodoMap[dStr] ?? []) 
+                          : [],
                       activeDataViews.contains('timeLogs') ? (logMap[dStr] ?? []) : [],
                       activeDataViews.contains('pomodoros') ? (pomMap[dStr] ?? []) : [],
                     );
@@ -256,7 +261,6 @@ class CourseMonthView extends StatelessWidget {
         border: Border.all(color: color.withOpacity(0.5), width: 0.5),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 4,
@@ -363,23 +367,26 @@ class _DayDetailsBottomSheet extends StatelessWidget {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      dateStr,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      weekdayStr,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dateStr,
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        weekdayStr,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 Text(
                   '共 ${items.length} 个事项',
-                  style: TextStyle(color: Theme.of(context).colorScheme.primary),
+                  style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13),
                 ),
               ],
             ),

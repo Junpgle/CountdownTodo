@@ -1565,31 +1565,42 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       appBar: AppBar(
         title: Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back_ios, size: 16),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.arrow_back_ios, size: 13),
               onPressed: () => _isMonthView ? _changeMonth(-1) : _changeWeek(-1),
             ),
+            const SizedBox(width: 4),
             GestureDetector(
               onTap: _isMonthView ? null : _showWeekJumpDialog,
               child: Text(
                 _getWeekLabel(),
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ),
+            const SizedBox(width: 4),
             IconButton(
-              icon: const Icon(Icons.arrow_forward_ios, size: 16),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.arrow_forward_ios, size: 13),
               onPressed: () => _isMonthView ? _changeMonth(1) : _changeWeek(1),
             ),
           ],
         ),
+        centerTitle: false,
+        titleSpacing: 0,
         actions: [
           IconButton(
+            visualDensity: const VisualDensity(horizontal: -2),
             icon: Icon(_isMonthView ? Icons.view_week : Icons.calendar_month, size: 20),
             tooltip: _isMonthView ? '切换到周视图' : '切换到月视图',
             onPressed: () => _toggleView(!_isMonthView),
           ),
           IconButton(
+            visualDensity: const VisualDensity(horizontal: -2),
             icon: const Icon(Icons.edit_calendar, size: 20),
             tooltip: '记录时间日志',
             onPressed: () async {
@@ -1739,8 +1750,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                   end: _isMonthView ? 1.0 : 0.0,
                                 ),
                                 builder: (context, t, child) {
-                                  return Stack(
-                                    children: [
+                                  return ClipRect(
+                                    child: Stack(
+                                      children: [
                                       // --- 月视图 ---
                                       IgnorePointer(
                                         ignoring: t < 0.5,
@@ -1779,8 +1791,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                         ),
                                       ),
                                     ],
-                                  );
-                                },
+                                  ),
+                                );
+                              },
                                 // 提取为 child, 确保在 TweenAnimationBuilder 动画时周视图不会触发 build
                                 child: RepaintBoundary(
                                   child: LayoutBuilder(
@@ -1815,6 +1828,90 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 );
               },
             ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color baseColor = isDark ? Colors.white10 : Colors.black.withOpacity(0.05);
+
+    return FadeTransition(
+      opacity: _pulseAnimation,
+      child: Column(
+        children: [
+          // 头部骨架 (日期)
+          Container(
+            height: 60,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Container(width: timeColumnWidth),
+                for (int i = 0; i < 7; i++)
+                  Expanded(
+                    child: Center(
+                      child: Container(
+                        width: 30,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: baseColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // 网格骨架
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                double cellWidth = (constraints.maxWidth - timeColumnWidth) / 7;
+                return Row(
+                  children: [
+                    Container(width: timeColumnWidth),
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          // 纵向分割线
+                          for (int i = 0; i <= 7; i++)
+                            Positioned(
+                              left: i * cellWidth,
+                              top: 0,
+                              bottom: 0,
+                              child: Container(width: 0.5, color: baseColor),
+                            ),
+                          // 几个占位框，模拟课表布局
+                          _buildSkeletonBox(cellWidth, 120, 80, 1, baseColor),
+                          _buildSkeletonBox(cellWidth, 250, 60, 2, baseColor),
+                          _buildSkeletonBox(cellWidth, 150, 100, 4, baseColor),
+                          _buildSkeletonBox(cellWidth, 400, 90, 5, baseColor),
+                          _buildSkeletonBox(cellWidth, 200, 70, 0, baseColor),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonBox(double cellWidth, double top, double height, int dayIndex, Color color) {
+    return Positioned(
+      left: dayIndex * cellWidth + 4,
+      top: top,
+      width: cellWidth - 8,
+      height: height,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
     );
   }
 }
