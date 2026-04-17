@@ -284,6 +284,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     });
   }
 
+  void _toggleView(bool isMonth) {
+    if (_isMonthView == isMonth) return;
+    setState(() {
+      _isMonthView = isMonth;
+      _updateWeekTodos();
+    });
+  }
+
   void _changeMonth(int delta) {
     setState(() {
       _selectedMonth =
@@ -1508,11 +1516,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           IconButton(
             icon: Icon(_isMonthView ? Icons.view_week : Icons.calendar_month, size: 20),
             tooltip: _isMonthView ? '切换到周视图' : '切换到月视图',
-            onPressed: () {
-              setState(() {
-                _isMonthView = !_isMonthView;
-              });
-            },
+            onPressed: () => _toggleView(!_isMonthView),
           ),
           IconButton(
             icon: const Icon(Icons.edit_calendar, size: 20),
@@ -1637,15 +1641,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           _baseScale = _currentScale;
                         },
                         onScaleUpdate: (details) {
-                          setState(() {
-                            if (details.scale < 0.8 && !_isMonthView) {
-                              _isMonthView = true;
-                              HapticFeedback.mediumImpact();
-                            } else if (details.scale > 1.2 && _isMonthView) {
-                              _isMonthView = false;
-                              HapticFeedback.mediumImpact();
-                            }
-                          });
+                           if (details.scale < 0.8 && !_isMonthView) {
+                            _toggleView(true);
+                            HapticFeedback.mediumImpact();
+                          } else if (details.scale > 1.2 && _isMonthView) {
+                            _toggleView(false);
+                            HapticFeedback.mediumImpact();
+                          }
                         },
                         child: Column(
                           children: [

@@ -119,25 +119,33 @@ class CourseMonthView extends StatelessWidget {
     
     final dayStr = DateFormat('yyyy-MM-dd').format(day);
     List<dynamic> dayItems = [];
+    List<TodoItem> crossDayTodos = [];
     
     if (activeDataViews.contains('courses')) {
       dayItems.addAll(allCourses.where((c) => c.date == dayStr));
     }
     
     if (activeDataViews.contains('todos')) {
-      dayItems.addAll(allTodos.where((t) {
+      allTodos.where((t) {
         DateTime start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
         DateTime end = t.dueDate ?? start.add(const Duration(hours: 1));
-        
-        if (activeDataViews.contains('hideCrossDay')) {
-          bool isCrossDay = !(start.year == end.year && start.month == end.month && start.day == end.day);
-          if (isCrossDay) return false;
-        }
-
         DateTime dayStart = DateTime(day.year, day.month, day.day);
         DateTime dayEnd = dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
-        return start.isBefore(dayEnd) && end.isAfter(dayStart);
-      }));
+        
+        bool isInside = start.isBefore(dayEnd) && end.isAfter(dayStart);
+        if (!isInside) return false;
+
+        bool isAllDay = t.dueDate != null && start.hour == 0 && start.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
+        bool isAcross = !(start.year == end.year && start.month == end.month && start.day == end.day);
+        
+        if (isAllDay || isAcross) {
+          if (!activeDataViews.contains('hideCrossDay')) {
+            crossDayTodos.add(t);
+          }
+          return false;
+        }
+        return true;
+      }).forEach((t) => dayItems.add(t));
     }
     
     if (activeDataViews.contains('timeLogs')) {
@@ -151,7 +159,8 @@ class CourseMonthView extends StatelessWidget {
     }
 
     if (activeDataViews.contains('pomodoros')) {
-      for (var record in allPomodoroRecords) {
+       // ... existing pomodoro logic ...
+       for (var record in allPomodoroRecords) {
         if (record.startTime == 0) continue;
         DateTime start = DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true).toLocal();
         int endMs = record.endTime ?? (record.startTime + record.effectiveDuration * 1000);
@@ -173,7 +182,12 @@ class CourseMonthView extends StatelessWidget {
       return getPriority(a).compareTo(getPriority(b));
     });
 
-    // 动态计算能显示的条目数量 (每条约 14dp, 头部留 25dp, 底部留 15dp)
+    // 如果有跨天待办，将其总结为一个块并放在最前面
+    if (crossDayTodos.isNotEmpty) {
+      dayItems.insert(0, {'type': 'crossDaySummary', 'count': crossDayTodos.length, 'todos': crossDayTodos});
+    }
+
+    // 动态计算能显示的条目数量
     int maxItems = ((cellHeight - 40) / 14).floor().clamp(1, 10);
 
     return GestureDetector(
@@ -286,6 +300,9 @@ class CourseMonthView extends StatelessWidget {
   }
 
   Widget _buildCompactItem(BuildContext context, dynamic item) {
+    if (item is Map && item['type'] == 'crossDaySummary') {
+      return _buildEventDot(Colors.purple, '${item['count']}个跨天待办');
+    }
     if (item is CourseItem) {
       return _buildEventDot(_getCourseColor(item.courseName), item.courseName);
     } else if (item is TodoItem) {
@@ -438,6 +455,18 @@ class _DayDetailsBottomSheet extends StatelessWidget {
   }
 
   Widget _buildDetailItem(BuildContext context, dynamic item) {
+    if (item is Map && item['type'] == 'crossDaySummary') {
+      final List<TodoItem> todos = item['todos'];
+      return ExpansionTile(
+        title: Text('${item['count']}个跨天/全天待办', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
+        leading: const Icon(Icons.layers, color: Colors.purple),
+        children: todos.map((t) => ListTile(
+          title: Text(t.title, style: TextStyle(decoration: t.isDone ? TextDecoration.lineThrough : null)),
+          subtitle: Text(t.dueDate != null ? '截止: ${DateFormat('MM-dd HH:mm').format(t.dueDate!)}' : '无截止时间'),
+          dense: true,
+        )).toList(),
+      );
+    }
     if (item is CourseItem) {
       final color = _getCourseColor(item.courseName);
       return ListTile(
