@@ -1731,6 +1731,26 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             HapticFeedback.mediumImpact();
                           }
                         },
+                        onHorizontalDragEnd: (details) {
+                          // 🚀 核心改进：支持左右滑动切换周/月
+                          if (details.primaryVelocity! > 500) {
+                            // 向右滑动 -> 上一个
+                            if (_isMonthView) {
+                              _changeMonth(-1);
+                            } else {
+                              _changeWeek(-1);
+                            }
+                            HapticFeedback.lightImpact();
+                          } else if (details.primaryVelocity! < -500) {
+                            // 向左滑动 -> 下一个
+                            if (_isMonthView) {
+                              _changeMonth(1);
+                            } else {
+                              _changeWeek(1);
+                            }
+                            HapticFeedback.lightImpact();
+                          }
+                        },
                         child: Column(
                           children: [
                             if (!_isMonthView) ...[
