@@ -166,11 +166,73 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     _updateWeekTodos();
     _updateWeekTimeLogsAndPomodoros();
-
+    _groupDataForMonthView(); // 预分组月视图数据
     setState(() => _isLoading = false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _courseExpandCtrl.forward();
     });
+  }
+
+  // --- 🚀 性能优化: 预先按日期分组数据 (避免在动画期间重复计算) ---
+  Map<String, List<CourseItem>> _monthCourseMap = {};
+  Map<String, List<TodoItem>> _monthTodoMap = {};
+  Map<String, List<TodoItem>> _monthCrossDayTodoMap = {};
+  Map<String, List<TimeLogItem>> _monthLogMap = {};
+  Map<String, List<PomodoroRecord>> _monthPomMap = {};
+
+  void _groupDataForMonthView() {
+    _monthCourseMap = {};
+    for (var c in _allCourses) {
+      _monthCourseMap.putIfAbsent(c.date, () => []).add(c);
+    }
+
+    _monthTodoMap = {};
+    _monthCrossDayTodoMap = {};
+    for (var t in _allTodos) {
+      DateTime tStart = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
+      DateTime tEnd = t.dueDate ?? tStart.add(const Duration(hours: 1));
+      bool isAllDay = t.dueDate != null && tStart.hour == 0 && tStart.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
+      bool isAcross = !(tStart.year == tEnd.year && tStart.month == tEnd.month && tStart.day == tEnd.day);
+      DateTime cursor = DateTime(tStart.year, tStart.month, tStart.day);
+      DateTime endCursor = DateTime(tEnd.year, tEnd.month, tEnd.day);
+      while (!cursor.isAfter(endCursor)) {
+        String dStr = DateFormat('yyyy-MM-dd').format(cursor);
+        if (isAllDay || isAcross) {
+          _monthCrossDayTodoMap.putIfAbsent(dStr, () => []).add(t);
+        } else {
+          _monthTodoMap.putIfAbsent(dStr, () => []).add(t);
+        }
+        cursor = cursor.add(const Duration(days: 1));
+      }
+    }
+
+    _monthLogMap = {};
+    for (var l in _allTimeLogs) {
+      DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
+      DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime, isUtc: true).toLocal();
+      DateTime cursor = DateTime(lStart.year, lStart.month, lStart.day);
+      DateTime endCursor = DateTime(lEnd.year, lEnd.month, lEnd.day);
+      while (!cursor.isAfter(endCursor)) {
+        String dStr = DateFormat('yyyy-MM-dd').format(cursor);
+        _monthLogMap.putIfAbsent(dStr, () => []).add(l);
+        cursor = cursor.add(const Duration(days: 1));
+      }
+    }
+
+    _monthPomMap = {};
+    for (var p in _allPomodoroRecords) {
+      if (p.startTime == 0) continue;
+      DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true).toLocal();
+      int pEndMs = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
+      DateTime pEnd = DateTime.fromMillisecondsSinceEpoch(pEndMs, isUtc: true).toLocal();
+      DateTime cursor = DateTime(pStart.year, pStart.month, pStart.day);
+      DateTime endCursor = DateTime(pEnd.year, pEnd.month, pEnd.day);
+      while (!cursor.isAfter(endCursor)) {
+        String dStr = DateFormat('yyyy-MM-dd').format(cursor);
+        _monthPomMap.putIfAbsent(dStr, () => []).add(p);
+        cursor = cursor.add(const Duration(days: 1));
+      }
+    }
   }
 
   void _updateWeekTodos() {
@@ -1667,55 +1729,60 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                   begin: _isMonthView ? 1.0 : 0.0,
                                   end: _isMonthView ? 1.0 : 0.0,
                                 ),
-                                builder: (context, t, _) {
+                                builder: (context, t, child) {
                                   return Stack(
                                     children: [
-                                      // --- 月视图 (缩放进入/退出) ---
+                                      // --- 月视图 ---
                                       IgnorePointer(
                                         ignoring: t < 0.5,
                                         child: Opacity(
                                           opacity: t.clamp(0.0, 1.0),
                                           child: Transform.scale(
-                                            scale: 0.8 + (t * 0.2), // 从 0.8 放大到 1.0
+                                            scale: 0.8 + (t * 0.2),
                                             child: CourseMonthView(
                                               key: const ValueKey('MonthView'),
                                               selectedMonth: _selectedMonth,
-                                              allCourses: _allCourses,
-                                              allTodos: _allTodos,
-                                              allTimeLogs: _allTimeLogs,
-                                              allPomodoroRecords: _allPomodoroRecords,
+                                              courseMap: _monthCourseMap,
+                                              todoMap: _monthTodoMap,
+                                              crossDayTodoMap: _monthCrossDayTodoMap,
+                                              logMap: _monthLogMap,
+                                              pomMap: _monthPomMap,
                                               pomodoroTags: _pomodoroTags,
                                               activeDataViews: _activeDataViews,
-                                              onMonthChanged: (m) =>
-                                                  setState(() => _selectedMonth = m),
+                                              onMonthChanged: (m) {
+                                                setState(() => _selectedMonth = m);
+                                                _groupDataForMonthView(); 
+                                              },
                                               onDayTapped: (d) {},
                                             ),
                                           ),
                                         ),
                                       ),
-                                      // --- 周视图 (缩放缩小/消失) ---
+                                      // --- 周视图 (使用 child 避免重复 build) ---
                                       IgnorePointer(
                                         ignoring: t > 0.5,
                                         child: Opacity(
                                           opacity: (1.0 - t).clamp(0.0, 1.0),
                                           child: Transform.scale(
-                                            scale: 1.0 + (t * 0.2), // 从 1.0 放大到 1.2
-                                            child: RepaintBoundary(
-                                              child: LayoutBuilder(
-                                                key: const ValueKey('WeekView'),
-                                                builder: (context, innerConstraints) {
-                                                  double cellWidth = (innerConstraints.maxWidth - timeColumnWidth) / 7;
-                                                  double minuteHeight = innerConstraints.maxHeight / ((endHour - startHour) * 60);
-                                                  return _buildGrid(cellWidth, minuteHeight);
-                                                },
-                                              ),
-                                            ),
+                                            scale: 1.0 + (t * 0.2),
+                                            child: child,
                                           ),
                                         ),
                                       ),
                                     ],
                                   );
                                 },
+                                // 提取为 child, 确保在 TweenAnimationBuilder 动画时周视图不会触发 build
+                                child: RepaintBoundary(
+                                  child: LayoutBuilder(
+                                    key: const ValueKey('WeekView'),
+                                    builder: (context, innerConstraints) {
+                                      double cellWidth = (innerConstraints.maxWidth - timeColumnWidth) / 7;
+                                      double minuteHeight = innerConstraints.maxHeight / ((endHour - startHour) * 60);
+                                      return _buildGrid(cellWidth, minuteHeight);
+                                    },
+                                  ),
+                                ),
                               ),
                             ),
                           ],

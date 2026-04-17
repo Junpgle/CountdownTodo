@@ -8,10 +8,11 @@ import 'course_screens.dart';
 
 class CourseMonthView extends StatelessWidget {
   final DateTime selectedMonth;
-  final List<CourseItem> allCourses;
-  final List<TodoItem> allTodos;
-  final List<TimeLogItem> allTimeLogs;
-  final List<PomodoroRecord> allPomodoroRecords;
+  final Map<String, List<CourseItem>> courseMap;
+  final Map<String, List<TodoItem>> todoMap;
+  final Map<String, List<TodoItem>> crossDayTodoMap;
+  final Map<String, List<TimeLogItem>> logMap;
+  final Map<String, List<PomodoroRecord>> pomMap;
   final List<PomodoroTag> pomodoroTags;
   final Set<String> activeDataViews;
   final Function(DateTime) onMonthChanged;
@@ -20,10 +21,11 @@ class CourseMonthView extends StatelessWidget {
   const CourseMonthView({
     Key? key,
     required this.selectedMonth,
-    required this.allCourses,
-    required this.allTodos,
-    required this.allTimeLogs,
-    required this.allPomodoroRecords,
+    required this.courseMap,
+    required this.todoMap,
+    required this.crossDayTodoMap,
+    required this.logMap,
+    required this.pomMap,
     required this.pomodoroTags,
     required this.activeDataViews,
     required this.onMonthChanged,
@@ -47,77 +49,10 @@ class CourseMonthView extends StatelessWidget {
     final int rowCount = (totalNeededDays / 7).ceil();
     final totalDays = rowCount * 7;
     final days = List.generate(totalDays, (index) => startDate.add(Duration(days: index)));
-
-    // --- 🚀 性能优化: 预先按日期分组数据 (O(N) vs O(Days*N)) ---
-    final Map<String, List<CourseItem>> courseMap = {};
-    if (activeDataViews.contains('courses')) {
-      for (var c in allCourses) {
-        courseMap.putIfAbsent(c.date, () => []).add(c);
-      }
-    }
-
-    final Map<String, List<TodoItem>> todoMap = {};
-    final Map<String, List<TodoItem>> crossDayTodoMap = {};
-    if (activeDataViews.contains('todos')) {
-      for (var t in allTodos) {
-        DateTime tStart = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
-        DateTime tEnd = t.dueDate ?? tStart.add(const Duration(hours: 1));
-        
-        bool isAllDay = t.dueDate != null && tStart.hour == 0 && tStart.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
-        bool isAcross = !(tStart.year == tEnd.year && tStart.month == tEnd.month && tStart.day == tEnd.day);
-
-        // 对于待办，需要遍历受影响的所有日期
-        DateTime cursor = DateTime(tStart.year, tStart.month, tStart.day);
-        DateTime endCursor = DateTime(tEnd.year, tEnd.month, tEnd.day);
-        
-        while (!cursor.isAfter(endCursor)) {
-          String dStr = DateFormat('yyyy-MM-dd').format(cursor);
-          if (isAllDay || isAcross) {
-            crossDayTodoMap.putIfAbsent(dStr, () => []).add(t);
-          } else {
-            todoMap.putIfAbsent(dStr, () => []).add(t);
-          }
-          cursor = cursor.add(const Duration(days: 1));
-        }
-      }
-    }
-
-    final Map<String, List<TimeLogItem>> logMap = {};
-    if (activeDataViews.contains('timeLogs')) {
-      for (var l in allTimeLogs) {
-        DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
-        DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime, isUtc: true).toLocal();
-        DateTime cursor = DateTime(lStart.year, lStart.month, lStart.day);
-        DateTime endCursor = DateTime(lEnd.year, lEnd.month, lEnd.day);
-        while (!cursor.isAfter(endCursor)) {
-          String dStr = DateFormat('yyyy-MM-dd').format(cursor);
-          logMap.putIfAbsent(dStr, () => []).add(l);
-          cursor = cursor.add(const Duration(days: 1));
-        }
-      }
-    }
-
-    final Map<String, List<PomodoroRecord>> pomMap = {};
-    if (activeDataViews.contains('pomodoros')) {
-      for (var p in allPomodoroRecords) {
-        if (p.startTime == 0) continue;
-        DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true).toLocal();
-        int pEndMs = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-        DateTime pEnd = DateTime.fromMillisecondsSinceEpoch(pEndMs, isUtc: true).toLocal();
-        DateTime cursor = DateTime(pStart.year, pStart.month, pStart.day);
-        DateTime endCursor = DateTime(pEnd.year, pEnd.month, pEnd.day);
-        while (!cursor.isAfter(endCursor)) {
-          String dStr = DateFormat('yyyy-MM-dd').format(cursor);
-          pomMap.putIfAbsent(dStr, () => []).add(p);
-          cursor = cursor.add(const Duration(days: 1));
-        }
-      }
-    }
     
     return RepaintBoundary(
       child: Column(
         children: [
-          // 星期表头
           _buildWeekdayHeader(context),
           Expanded(
             child: LayoutBuilder(
@@ -146,18 +81,16 @@ class CourseMonthView extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final day = days[index];
                     final dStr = DateFormat('yyyy-MM-dd').format(day);
-                    
-                    // 从预计算的 Map 中取数
                     return _buildDayCell(
                       context, 
                       day, 
                       isDark, 
                       cellHeight,
                       courseMap[dStr] ?? [],
-                      todoMap[dStr] ?? [],
-                      crossDayTodoMap[dStr] ?? [],
-                      logMap[dStr] ?? [],
-                      pomMap[dStr] ?? [],
+                      activeDataViews.contains('todos') ? (todoMap[dStr] ?? []) : [],
+                      activeDataViews.contains('todos') ? (crossDayTodoMap[dStr] ?? []) : [],
+                      activeDataViews.contains('timeLogs') ? (logMap[dStr] ?? []) : [],
+                      activeDataViews.contains('pomodoros') ? (pomMap[dStr] ?? []) : [],
                     );
                   },
                 );
