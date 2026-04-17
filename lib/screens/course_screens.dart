@@ -166,8 +166,17 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     _updateWeekTodos();
     _updateWeekTimeLogsAndPomodoros();
-    _groupDataForMonthView(); // 预分组月视图数据
+    
+    // 🚀 性能优化：优先渲染周视图，将耗时的月视图全量分组逻辑推迟到下一帧
     setState(() => _isLoading = false);
+    
+    Future.microtask(() {
+      if (mounted) {
+        _groupDataForMonthView();
+        setState(() {}); // 更新月视图数据
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _courseExpandCtrl.forward();
     });
@@ -1690,7 +1699,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildSkeleton()
           : LayoutBuilder(
               builder: (context, constraints) {
                 final bool isWide = constraints.maxWidth > 900;
