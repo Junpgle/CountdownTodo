@@ -1686,20 +1686,22 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                             setState(() => _selectedMonth = m),
                                         onDayTapped: (d) {},
                                       )
-                                    : LayoutBuilder(
-                                        key: const ValueKey('WeekView'),
-                                        builder: (context, innerConstraints) {
-                                          double cellWidth =
-                                              (innerConstraints.maxWidth -
-                                                      timeColumnWidth) /
-                                                  7;
-                                          double minuteHeight =
-                                              innerConstraints.maxHeight /
-                                                  ((endHour - startHour) * 60);
-
-                                          return _buildGrid(
-                                              cellWidth, minuteHeight);
-                                        },
+                                    : RepaintBoundary(
+                                        child: LayoutBuilder(
+                                          key: const ValueKey('WeekView'),
+                                          builder: (context, innerConstraints) {
+                                            double cellWidth =
+                                                (innerConstraints.maxWidth -
+                                                        timeColumnWidth) /
+                                                    7;
+                                            double minuteHeight =
+                                                innerConstraints.maxHeight /
+                                                    ((endHour - startHour) * 60);
+  
+                                            return _buildGrid(
+                                                cellWidth, minuteHeight);
+                                          },
+                                        ),
                                       ),
                               ),
                             ),

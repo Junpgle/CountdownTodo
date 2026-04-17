@@ -40,55 +40,132 @@ class CourseMonthView extends StatelessWidget {
     
     // 计算月份数据
     final firstDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month, 1);
-    
-    // 计算网格开始日期 (补足上个月末尾的几天)
     final daysBefore = firstDayOfMonth.weekday - 1;
     final startDate = firstDayOfMonth.subtract(Duration(days: daysBefore));
-    
-    // 计算网格显示的总周数 (只展示包含本月日期的周)
     final lastDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month + 1, 0);
     final totalNeededDays = daysBefore + lastDayOfMonth.day;
     final int rowCount = (totalNeededDays / 7).ceil();
     final totalDays = rowCount * 7;
     final days = List.generate(totalDays, (index) => startDate.add(Duration(days: index)));
-    
-    return Column(
-      children: [
-        // 星期表头
-        _buildWeekdayHeader(context),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final int rows = rowCount;
-              const int cols = 7;
-              const double spacing = 4.0;
-              
-              final double gridWidth = constraints.maxWidth;
-              final double gridHeight = constraints.maxHeight;
-              
-              final double cellWidth = (gridWidth - (cols - 1) * spacing) / cols;
-              final double cellHeight = (gridHeight - (rows - 1) * spacing) / rows;
-              final double aspectRatio = cellWidth / cellHeight;
 
-              return GridView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: cols,
-                  childAspectRatio: aspectRatio > 0 ? aspectRatio : 0.65,
-                  mainAxisSpacing: spacing,
-                  crossAxisSpacing: spacing,
-                ),
-                itemCount: days.length,
-                itemBuilder: (context, index) {
-                  final day = days[index];
-                  return _buildDayCell(context, day, isDark, cellHeight);
-                },
-              );
-            },
+    // --- 🚀 性能优化: 预先按日期分组数据 (O(N) vs O(Days*N)) ---
+    final Map<String, List<CourseItem>> courseMap = {};
+    if (activeDataViews.contains('courses')) {
+      for (var c in allCourses) {
+        courseMap.putIfAbsent(c.date, () => []).add(c);
+      }
+    }
+
+    final Map<String, List<TodoItem>> todoMap = {};
+    final Map<String, List<TodoItem>> crossDayTodoMap = {};
+    if (activeDataViews.contains('todos')) {
+      for (var t in allTodos) {
+        DateTime tStart = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
+        DateTime tEnd = t.dueDate ?? tStart.add(const Duration(hours: 1));
+        
+        bool isAllDay = t.dueDate != null && tStart.hour == 0 && tStart.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
+        bool isAcross = !(tStart.year == tEnd.year && tStart.month == tEnd.month && tStart.day == tEnd.day);
+
+        // 对于待办，需要遍历受影响的所有日期
+        DateTime cursor = DateTime(tStart.year, tStart.month, tStart.day);
+        DateTime endCursor = DateTime(tEnd.year, tEnd.month, tEnd.day);
+        
+        while (!cursor.isAfter(endCursor)) {
+          String dStr = DateFormat('yyyy-MM-dd').format(cursor);
+          if (isAllDay || isAcross) {
+            crossDayTodoMap.putIfAbsent(dStr, () => []).add(t);
+          } else {
+            todoMap.putIfAbsent(dStr, () => []).add(t);
+          }
+          cursor = cursor.add(const Duration(days: 1));
+        }
+      }
+    }
+
+    final Map<String, List<TimeLogItem>> logMap = {};
+    if (activeDataViews.contains('timeLogs')) {
+      for (var l in allTimeLogs) {
+        DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
+        DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime, isUtc: true).toLocal();
+        DateTime cursor = DateTime(lStart.year, lStart.month, lStart.day);
+        DateTime endCursor = DateTime(lEnd.year, lEnd.month, lEnd.day);
+        while (!cursor.isAfter(endCursor)) {
+          String dStr = DateFormat('yyyy-MM-dd').format(cursor);
+          logMap.putIfAbsent(dStr, () => []).add(l);
+          cursor = cursor.add(const Duration(days: 1));
+        }
+      }
+    }
+
+    final Map<String, List<PomodoroRecord>> pomMap = {};
+    if (activeDataViews.contains('pomodoros')) {
+      for (var p in allPomodoroRecords) {
+        if (p.startTime == 0) continue;
+        DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true).toLocal();
+        int pEndMs = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
+        DateTime pEnd = DateTime.fromMillisecondsSinceEpoch(pEndMs, isUtc: true).toLocal();
+        DateTime cursor = DateTime(pStart.year, pStart.month, pStart.day);
+        DateTime endCursor = DateTime(pEnd.year, pEnd.month, pEnd.day);
+        while (!cursor.isAfter(endCursor)) {
+          String dStr = DateFormat('yyyy-MM-dd').format(cursor);
+          pomMap.putIfAbsent(dStr, () => []).add(p);
+          cursor = cursor.add(const Duration(days: 1));
+        }
+      }
+    }
+    
+    return RepaintBoundary(
+      child: Column(
+        children: [
+          // 星期表头
+          _buildWeekdayHeader(context),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final int rows = rowCount;
+                const int cols = 7;
+                const double spacing = 4.0;
+                
+                final double gridWidth = constraints.maxWidth;
+                final double gridHeight = constraints.maxHeight;
+                
+                final double cellWidth = (gridWidth - (cols - 1) * spacing) / cols;
+                final double cellHeight = (gridHeight - (rows - 1) * spacing) / rows;
+                final double aspectRatio = cellWidth / cellHeight;
+  
+                return GridView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols,
+                    childAspectRatio: aspectRatio > 0 ? aspectRatio : 0.65,
+                    mainAxisSpacing: spacing,
+                    crossAxisSpacing: spacing,
+                  ),
+                  itemCount: days.length,
+                  itemBuilder: (context, index) {
+                    final day = days[index];
+                    final dStr = DateFormat('yyyy-MM-dd').format(day);
+                    
+                    // 从预计算的 Map 中取数
+                    return _buildDayCell(
+                      context, 
+                      day, 
+                      isDark, 
+                      cellHeight,
+                      courseMap[dStr] ?? [],
+                      todoMap[dStr] ?? [],
+                      crossDayTodoMap[dStr] ?? [],
+                      logMap[dStr] ?? [],
+                      pomMap[dStr] ?? [],
+                    );
+                  },
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -113,63 +190,26 @@ class CourseMonthView extends StatelessWidget {
     );
   }
 
-  Widget _buildDayCell(BuildContext context, DateTime day, bool isDark, double cellHeight) {
+  Widget _buildDayCell(
+    BuildContext context, 
+    DateTime day, 
+    bool isDark, 
+    double cellHeight,
+    List<CourseItem> courses,
+    List<TodoItem> todos,
+    List<TodoItem> crossDayTodosInCell,
+    List<TimeLogItem> logs,
+    List<PomodoroRecord> pomodoros,
+  ) {
     bool isCurrentMonth = day.month == selectedMonth.month;
-    bool isToday = DateFormat('yyyy-MM-dd').format(day) == DateFormat('yyyy-MM-dd').format(DateTime.now());
-    
-    final dayStr = DateFormat('yyyy-MM-dd').format(day);
+    bool isToday = DateFormat('yyyy-MM-dd').format(day) ==
+        DateFormat('yyyy-MM-dd').format(DateTime.now());
+
     List<dynamic> dayItems = [];
-    List<TodoItem> crossDayTodos = [];
-    
-    if (activeDataViews.contains('courses')) {
-      dayItems.addAll(allCourses.where((c) => c.date == dayStr));
-    }
-    
-    if (activeDataViews.contains('todos')) {
-      allTodos.where((t) {
-        DateTime start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
-        DateTime end = t.dueDate ?? start.add(const Duration(hours: 1));
-        DateTime dayStart = DateTime(day.year, day.month, day.day);
-        DateTime dayEnd = dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
-        
-        bool isInside = start.isBefore(dayEnd) && end.isAfter(dayStart);
-        if (!isInside) return false;
-
-        bool isAllDay = t.dueDate != null && start.hour == 0 && start.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
-        bool isAcross = !(start.year == end.year && start.month == end.month && start.day == end.day);
-        
-        if (isAllDay || isAcross) {
-          if (!activeDataViews.contains('hideCrossDay')) {
-            crossDayTodos.add(t);
-          }
-          return false;
-        }
-        return true;
-      }).forEach((t) => dayItems.add(t));
-    }
-    
-    if (activeDataViews.contains('timeLogs')) {
-       dayItems.addAll(allTimeLogs.where((l) {
-         DateTime start = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
-         DateTime end = DateTime.fromMillisecondsSinceEpoch(l.endTime, isUtc: true).toLocal();
-         DateTime dayStart = DateTime(day.year, day.month, day.day);
-         DateTime dayEnd = dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
-         return start.isBefore(dayEnd) && end.isAfter(dayStart);
-       }));
-    }
-
-    if (activeDataViews.contains('pomodoros')) {
-       // ... existing pomodoro logic ...
-       for (var record in allPomodoroRecords) {
-        if (record.startTime == 0) continue;
-        DateTime start = DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true).toLocal();
-        int endMs = record.endTime ?? (record.startTime + record.effectiveDuration * 1000);
-        DateTime end = DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
-        if (_isSameDay(day, start) || _isSameDay(day, end) || (day.isAfter(start) && day.isBefore(end))) {
-          dayItems.add(record);
-        }
-      }
-    }
+    dayItems.addAll(courses);
+    dayItems.addAll(todos);
+    dayItems.addAll(logs);
+    dayItems.addAll(pomodoros);
 
     dayItems.sort((a, b) {
       int getPriority(dynamic item) {
@@ -179,12 +219,17 @@ class CourseMonthView extends StatelessWidget {
         if (item is PomodoroRecord) return 3;
         return 4;
       }
+
       return getPriority(a).compareTo(getPriority(b));
     });
 
     // 如果有跨天待办，将其总结为一个块并放在最前面
-    if (crossDayTodos.isNotEmpty) {
-      dayItems.insert(0, {'type': 'crossDaySummary', 'count': crossDayTodos.length, 'todos': crossDayTodos});
+    if (crossDayTodosInCell.isNotEmpty) {
+      dayItems.insert(0, {
+        'type': 'crossDaySummary',
+        'count': crossDayTodosInCell.length,
+        'todos': crossDayTodosInCell
+      });
     }
 
     // 动态计算能显示的条目数量
