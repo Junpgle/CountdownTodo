@@ -1535,6 +1535,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 } else {
                   _activeDataViews.add(value);
                 }
+                if (value == 'todos' || value == 'hideCrossDay') {
+                  _updateWeekTodos();
+                }
               });
             },
             itemBuilder: (context) {
@@ -1592,6 +1595,21 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               : Colors.transparent),
                       const SizedBox(width: 8),
                       const Text('番茄钟'),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'hideCrossDay',
+                  child: Row(
+                    children: [
+                      Icon(Icons.check,
+                          size: 16,
+                          color: _activeDataViews.contains('hideCrossDay')
+                              ? Colors.blue
+                              : Colors.transparent),
+                      const SizedBox(width: 8),
+                      const Text('隐藏跨天待办'),
                     ],
                   ),
                 ),
