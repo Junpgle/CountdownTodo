@@ -201,6 +201,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           start.day == end.day);
       bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
+      if (_activeDataViews.contains('hideCrossDay') && isCrossDay) {
+        continue;
+      }
+
       for (int i = 1; i <= 7; i++) {
         DateTime dayStart = currentWeekMondayStart.add(Duration(days: i - 1));
         DateTime dayEnd =
