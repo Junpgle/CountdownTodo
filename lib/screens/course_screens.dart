@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
@@ -6,6 +7,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
+import 'course_month_view.dart';
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
@@ -38,6 +40,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   Map<int, List<TimeLogItem>> _timeLogsPerDay = {};
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
   Set<String> _activeDataViews = {'courses', 'todos', 'timeLogs', 'pomodoros'};
+
+  // --- 🚀 月视图相关 ---
+  bool _isMonthView = false;
+  DateTime _selectedMonth = DateTime.now();
+  List<CourseItem> _allCourses = [];
+  double _baseScale = 1.0;
+  double _currentScale = 1.0;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -114,6 +123,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _allTimeLogs = allLogsRaw.where((l) => !l.isDeleted).toList();
     _allPomodoroRecords = await PomodoroService.getRecords();
     _pomodoroTags = await PomodoroService.getTags();
+
+    // 加载所有课程供月视图使用
+    _allCourses = await CourseService.getAllCourses();
 
     // 🚀 核心改进：优先从设置中读取开学日期，不要通过课程反推（课程周次索引在不同解析器间可能有 0/1 差异）
     DateTime? semStart = await StorageService.getSemesterStart();
@@ -251,6 +263,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
   }
 
+
   void _changeWeek(int delta) {
     int newWeek = _currentWeek + delta;
     setState(() {
@@ -267,7 +280,17 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     });
   }
 
+  void _changeMonth(int delta) {
+    setState(() {
+      _selectedMonth =
+          DateTime(_selectedMonth.year, _selectedMonth.month + delta, 1);
+    });
+  }
+
   String _getWeekLabel() {
+    if (_isMonthView) {
+      return DateFormat('yyyy年M月').format(_selectedMonth);
+    }
     if (_semesterMonday == null) return '第 $_currentWeek 周';
     DateTime monday =
         _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
@@ -1451,82 +1474,129 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    double timeColumnWidth = 50.0;
+    int startHour = 8;
+    int endHour = 22;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('课表与待办',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        centerTitle: false,
-        actions: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios, size: 16),
-                onPressed: () => _changeWeek(-1),
-              ),
-              Text(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_ios, size: 16),
+              onPressed: () => _isMonthView ? _changeMonth(-1) : _changeWeek(-1),
+            ),
+            GestureDetector(
+              onTap: _isMonthView ? null : _showWeekJumpDialog,
+              child: Text(
                 _getWeekLabel(),
-                style: const TextStyle(fontSize: 14),
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
-              IconButton(
-                icon: const Icon(Icons.arrow_forward_ios, size: 16),
-                onPressed: () => _changeWeek(1),
-              ),
-            ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.arrow_forward_ios, size: 16),
+              onPressed: () => _isMonthView ? _changeMonth(1) : _changeWeek(1),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(_isMonthView ? Icons.view_week : Icons.calendar_month, size: 20),
+            tooltip: _isMonthView ? '切换到周视图' : '切换到月视图',
+            onPressed: () {
+              setState(() {
+                _isMonthView = !_isMonthView;
+              });
+            },
           ),
-          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.edit_calendar, size: 20),
             tooltip: '记录时间日志',
             onPressed: () async {
-              await Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    TimeLogScreen(username: widget.username),
-                  ));
-              _loadData();
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TimeLogScreen(username: widget.username),
+                ),
+              );
+              if (result == true) {
+                _loadData();
+              }
             },
           ),
-          MenuAnchor(
-            builder: (context, controller, child) {
-              return InkWell(
-                onTap: () {
-                  if (controller.isOpen) {
-                    controller.close();
-                  } else {
-                    controller.open();
-                  }
-                },
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.filter_list, size: 20),
+            tooltip: '筛选显示内容',
+            onSelected: (value) {
+              setState(() {
+                if (_activeDataViews.contains(value)) {
+                  _activeDataViews.remove(value);
+                } else {
+                  _activeDataViews.add(value);
+                }
+              });
+            },
+            itemBuilder: (context) {
+              return [
+                PopupMenuItem(
+                  value: 'courses',
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.filter_list,
-                          size: 18,
-                          color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(width: 2),
-                      Text('视图',
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.bold)),
-                      Icon(Icons.arrow_drop_down,
-                          size: 20,
-                          color: Theme.of(context).colorScheme.primary),
+                      Icon(Icons.check,
+                          size: 16,
+                          color: _activeDataViews.contains('courses')
+                              ? Colors.blue
+                              : Colors.transparent),
+                      const SizedBox(width: 8),
+                      const Text('课表'),
                     ],
                   ),
                 ),
-              );
+                PopupMenuItem(
+                  value: 'todos',
+                  child: Row(
+                    children: [
+                      Icon(Icons.check,
+                          size: 16,
+                          color: _activeDataViews.contains('todos')
+                              ? Colors.blue
+                              : Colors.transparent),
+                      const SizedBox(width: 8),
+                      const Text('待办'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'timeLogs',
+                  child: Row(
+                    children: [
+                      Icon(Icons.check,
+                          size: 16,
+                          color: _activeDataViews.contains('timeLogs')
+                              ? Colors.blue
+                              : Colors.transparent),
+                      const SizedBox(width: 8),
+                      const Text('时间日志'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'pomodoros',
+                  child: Row(
+                    children: [
+                      Icon(Icons.check,
+                          size: 16,
+                          color: _activeDataViews.contains('pomodoros')
+                              ? Colors.blue
+                              : Colors.transparent),
+                      const SizedBox(width: 8),
+                      const Text('番茄钟'),
+                    ],
+                  ),
+                ),
+              ];
             },
-            menuChildren: [
-              _buildCheckableMenuItem('courses', '课表'),
-              _buildCheckableMenuItem('todos', '待办'),
-              _buildCheckableMenuItem('timeLogs', '时间日志'),
-              _buildCheckableMenuItem('pomodoros', '番茄钟'),
-            ],
           ),
           const SizedBox(width: 8),
         ],
@@ -1540,57 +1610,77 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 return Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        children: [
-                          _buildHeader(_getMondayOfCurrentWeek()),
-                          _buildAllDayHeaderRow(_getMondayOfCurrentWeek()),
-                          Divider(
-                              height: 1,
-                              thickness: 0.5,
-                              color: isDark ? Colors.white10 : Colors.black12),
-                          Expanded(
-                            child: LayoutBuilder(
-                              builder: (context, innerConstraints) {
-                                double cellWidth =
-                                    (innerConstraints.maxWidth -
-                                            timeColumnWidth) /
-                                        7;
-                                double minuteHeight =
-                                    innerConstraints.maxHeight /
-                                        ((endHour - startHour) * 60);
+                      child: GestureDetector(
+                        onScaleStart: (details) {
+                          _baseScale = _currentScale;
+                        },
+                        onScaleUpdate: (details) {
+                          setState(() {
+                            if (details.scale < 0.8 && !_isMonthView) {
+                              _isMonthView = true;
+                              HapticFeedback.mediumImpact();
+                            } else if (details.scale > 1.2 && _isMonthView) {
+                              _isMonthView = false;
+                              HapticFeedback.mediumImpact();
+                            }
+                          });
+                        },
+                        child: Column(
+                          children: [
+                            if (!_isMonthView) ...[
+                              _buildHeader(_getMondayOfCurrentWeek()),
+                              _buildAllDayHeaderRow(_getMondayOfCurrentWeek()),
+                              Divider(
+                                  height: 1,
+                                  thickness: 0.5,
+                                  color: isDark ? Colors.white10 : Colors.black12),
+                            ],
+                            Expanded(
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 500),
+                                transitionBuilder: (child, animation) {
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: ScaleTransition(
+                                      scale: Tween<double>(begin: 0.95, end: 1.0)
+                                          .animate(animation),
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: _isMonthView
+                                    ? CourseMonthView(
+                                        key: const ValueKey('MonthView'),
+                                        selectedMonth: _selectedMonth,
+                                        allCourses: _allCourses,
+                                        allTodos: _allTodos,
+                                        allTimeLogs: _allTimeLogs,
+                                        allPomodoroRecords: _allPomodoroRecords,
+                                        pomodoroTags: _pomodoroTags,
+                                        activeDataViews: _activeDataViews,
+                                        onMonthChanged: (m) =>
+                                            setState(() => _selectedMonth = m),
+                                        onDayTapped: (d) {},
+                                      )
+                                    : LayoutBuilder(
+                                        key: const ValueKey('WeekView'),
+                                        builder: (context, innerConstraints) {
+                                          double cellWidth =
+                                              (innerConstraints.maxWidth -
+                                                      timeColumnWidth) /
+                                                  7;
+                                          double minuteHeight =
+                                              innerConstraints.maxHeight /
+                                                  ((endHour - startHour) * 60);
 
-                                return AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  switchInCurve: Curves.easeInOut,
-                                  switchOutCurve: Curves.easeInOut,
-                                  transitionBuilder: (Widget child,
-                                      Animation<double> animation) {
-                                    return FadeTransition(
-                                      opacity: animation,
-                                      child: SlideTransition(
-                                        position: Tween<Offset>(
-                                          begin: const Offset(0.0, 0.05),
-                                          end: Offset.zero,
-                                        ).animate(CurvedAnimation(
-                                          parent: animation,
-                                          curve: Curves.easeInOut,
-                                        )),
-                                        child: child,
+                                          return _buildGrid(
+                                              cellWidth, minuteHeight);
+                                        },
                                       ),
-                                    );
-                                  },
-                                  child: SizedBox(
-                                    key: ValueKey<String>(
-                                        _activeDataViews.toString()),
-                                    width: innerConstraints.maxWidth,
-                                    height: innerConstraints.maxHeight,
-                                    child: _buildGrid(cellWidth, minuteHeight),
-                                  ),
-                                );
-                              },
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     if (isWide)
