@@ -47,6 +47,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   List<CourseItem> _allCourses = [];
   double _baseScale = 1.0;
   double _currentScale = 1.0;
+  bool _isNextSlide = true;
+  double _dragOffset = 0.0; // 实时跟踪滑动位移
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -340,7 +342,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
 
   void _changeWeek(int delta) {
-    int newWeek = _currentWeek + delta;
+    if (_currentWeek + delta >= 1) {
+      _isNextSlide = delta > 0;
+      _jumpToWeek(_currentWeek + delta);
+    }
+  }
+
+  void _jumpToWeek(int newWeek) {
     setState(() {
       _currentWeek = newWeek;
       _isLoading = true;
@@ -365,6 +373,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   void _changeMonth(int delta) {
     setState(() {
+      _isNextSlide = delta > 0;
       _selectedMonth =
           DateTime(_selectedMonth.year, _selectedMonth.month + delta, 1);
     });
@@ -463,21 +472,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         ],
       ),
     );
-  }
-
-  void _jumpToWeek(int week) {
-    setState(() {
-      _currentWeek = week;
-      _isLoading = true;
-    });
-    CourseService.getCoursesByWeek(week).then((courses) {
-      setState(() {
-        _weekCourses = courses;
-        _updateWeekTodos();
-        _updateWeekTimeLogsAndPomodoros();
-        _isLoading = false;
-      });
-    });
   }
 
   void _jumpToCurrentWeek() {
@@ -1731,25 +1725,31 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             HapticFeedback.mediumImpact();
                           }
                         },
+                        onHorizontalDragUpdate: (details) {
+                          // 让视图跟手移动
+                          setState(() {
+                            _dragOffset += details.delta.dx;
+                          });
+                        },
                         onHorizontalDragEnd: (details) {
-                          // 🚀 核心改进：支持左右滑动切换周/月
-                          if (details.primaryVelocity! > 500) {
-                            // 向右滑动 -> 上一个
-                            if (_isMonthView) {
-                              _changeMonth(-1);
+                          final screenWidth = MediaQuery.of(context).size.width;
+                          final threshold = screenWidth * 0.2; // 20% 宽度触发切换
+                          
+                          if (_dragOffset.abs() > threshold || details.primaryVelocity!.abs() > 300) {
+                            if (_dragOffset > 0 || (details.primaryVelocity ?? 0) > 300) {
+                              // 向右滑动 -> 上一个
+                              if (_isMonthView) _changeMonth(-1); else _changeWeek(-1);
                             } else {
-                              _changeWeek(-1);
-                            }
-                            HapticFeedback.lightImpact();
-                          } else if (details.primaryVelocity! < -500) {
-                            // 向左滑动 -> 下一个
-                            if (_isMonthView) {
-                              _changeMonth(1);
-                            } else {
-                              _changeWeek(1);
+                              // 向左滑动 -> 下一个
+                              if (_isMonthView) _changeMonth(1); else _changeWeek(1);
                             }
                             HapticFeedback.lightImpact();
                           }
+                          
+                          // 重置位移（AnimatedSwitcher 会处理新旧视图的平滑切换）
+                          setState(() {
+                            _dragOffset = 0;
+                          });
                         },
                         child: Column(
                           children: [
@@ -1780,21 +1780,37 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                           opacity: t.clamp(0.0, 1.0),
                                           child: Transform.scale(
                                             scale: 0.8 + (t * 0.2),
-                                            child: CourseMonthView(
-                                              key: const ValueKey('MonthView'),
-                                              selectedMonth: _selectedMonth,
-                                              courseMap: _monthCourseMap,
-                                              todoMap: _monthTodoMap,
-                                              crossDayTodoMap: _monthCrossDayTodoMap,
-                                              logMap: _monthLogMap,
-                                              pomMap: _monthPomMap,
-                                              pomodoroTags: _pomodoroTags,
-                                              activeDataViews: _activeDataViews,
-                                              onMonthChanged: (m) {
-                                                setState(() => _selectedMonth = m);
-                                                _groupDataForMonthView(); 
+                                            child: AnimatedSwitcher(
+                                              duration: const Duration(milliseconds: 400),
+                                              transitionBuilder: (child, animation) {
+                                                // 结合跟手位移和动画效果
+                                                return Transform.translate(
+                                                  offset: Offset(_dragOffset * (1.0 - animation.value), 0),
+                                                  child: SlideTransition(
+                                                    position: Tween<Offset>(
+                                                      begin: Offset(_isNextSlide ? 1.0 : -1.0, 0.0),
+                                                      end: Offset.zero,
+                                                    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                                                    child: FadeTransition(opacity: animation, child: child),
+                                                  ),
+                                                );
                                               },
-                                              onDayTapped: (d) {},
+                                              child: CourseMonthView(
+                                                key: ValueKey('MonthView_${_selectedMonth.year}_${_selectedMonth.month}'),
+                                                selectedMonth: _selectedMonth,
+                                                courseMap: _monthCourseMap,
+                                                todoMap: _monthTodoMap,
+                                                crossDayTodoMap: _monthCrossDayTodoMap,
+                                                logMap: _monthLogMap,
+                                                pomMap: _monthPomMap,
+                                                pomodoroTags: _pomodoroTags,
+                                                activeDataViews: _activeDataViews,
+                                                onMonthChanged: (m) {
+                                                  setState(() => _selectedMonth = m);
+                                                  _groupDataForMonthView(); 
+                                                },
+                                                onDayTapped: (d) {},
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -1815,14 +1831,29 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                 );
                               },
                                 // 提取为 child, 确保在 TweenAnimationBuilder 动画时周视图不会触发 build
-                                child: RepaintBoundary(
-                                  child: LayoutBuilder(
-                                    key: const ValueKey('WeekView'),
-                                    builder: (context, innerConstraints) {
-                                      double cellWidth = (innerConstraints.maxWidth - timeColumnWidth) / 7;
-                                      double minuteHeight = innerConstraints.maxHeight / ((endHour - startHour) * 60);
-                                      return _buildGrid(cellWidth, minuteHeight);
-                                    },
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 400),
+                                  transitionBuilder: (child, animation) {
+                                    return Transform.translate(
+                                      offset: Offset(_dragOffset * (1.0 - animation.value), 0),
+                                      child: SlideTransition(
+                                        position: Tween<Offset>(
+                                          begin: Offset(_isNextSlide ? 1.0 : -1.0, 0.0),
+                                          end: Offset.zero,
+                                        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                                        child: FadeTransition(opacity: animation, child: child),
+                                      ),
+                                    );
+                                  },
+                                  child: RepaintBoundary(
+                                    key: ValueKey('WeekView_$_currentWeek'),
+                                    child: LayoutBuilder(
+                                      builder: (context, innerConstraints) {
+                                        double cellWidth = (innerConstraints.maxWidth - timeColumnWidth) / 7;
+                                        double minuteHeight = innerConstraints.maxHeight / ((endHour - startHour) * 60);
+                                        return _buildGrid(cellWidth, minuteHeight);
+                                      },
+                                    ),
                                   ),
                                 ),
                               ),

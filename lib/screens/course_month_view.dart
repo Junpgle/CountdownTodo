@@ -89,7 +89,7 @@ class CourseMonthView extends StatelessWidget {
                       day, 
                       isDark, 
                       cellHeight,
-                      courseMap[dStr] ?? [],
+                      activeDataViews.contains('courses') ? (courseMap[dStr] ?? []) : [],
                       activeDataViews.contains('todos') ? (todoMap[dStr] ?? []) : [],
                       (activeDataViews.contains('todos') && !activeDataViews.contains('hideCrossDay')) 
                           ? (crossDayTodoMap[dStr] ?? []) 
