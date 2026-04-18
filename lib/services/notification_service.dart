@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 import '../models.dart';
 import '../storage_service.dart';
 
@@ -19,6 +21,8 @@ class NotificationService {
 
   static Future<void> init() async {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+
+    tz.initializeTimeZones();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -379,8 +383,45 @@ class NotificationService {
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
       {bool clearFirst = true}) async {
     if (!await StorageService.isReminderNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
     if (reminders.isEmpty && !clearFirst) return;
+
+    if (Platform.isWindows) {
+      if (clearFirst) {
+        await _plugin.cancelAll();
+        await StorageService.saveWindowsScheduledReminders([]);
+      }
+
+      final List<Map<String, dynamic>> scheduledOnWindows = [];
+
+      for (final r in reminders) {
+        final triggerAtMs = r['triggerAtMs'];
+        final triggerAt = DateTime.fromMillisecondsSinceEpoch(triggerAtMs);
+        if (triggerAt.isBefore(DateTime.now())) continue;
+
+        try {
+          await _plugin.zonedSchedule(
+            r['notifId'],
+            r['title'] ?? '',
+            r['text'] ?? '',
+            tz.TZDateTime.from(triggerAt, tz.local),
+            const NotificationDetails(windows: WindowsNotificationDetails()),
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          );
+          scheduledOnWindows.add(r);
+        } catch (e) {
+          debugPrint('Windows 预约提醒失败: $e');
+        }
+      }
+
+      if (scheduledOnWindows.isNotEmpty || clearFirst) {
+        await StorageService.saveWindowsScheduledReminders(scheduledOnWindows);
+      }
+      return;
+    }
+
     try {
       final payload = reminders.map((r) {
         final imagePath = r['analysisImagePath']?.toString();
@@ -402,7 +443,12 @@ class NotificationService {
   }
 
   static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return [];
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return [];
+
+    if (Platform.isWindows) {
+      return await StorageService.getWindowsScheduledReminders();
+    }
+
     try {
       final jsonStr =
           await _channel.invokeMethod<String>('getScheduledReminders');
@@ -417,7 +463,16 @@ class NotificationService {
   }
 
   static Future<void> cancelReminder(int notifId) async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+
+    if (Platform.isWindows) {
+      await _plugin.cancel(notifId);
+      final current = await StorageService.getWindowsScheduledReminders();
+      current.removeWhere((r) => r['notifId'] == notifId);
+      await StorageService.saveWindowsScheduledReminders(current);
+      return;
+    }
+
     try {
       await _channel.invokeMethod('cancelReminder', {'notifId': notifId});
     } catch (e) {}

@@ -6,7 +6,6 @@ import '../llm_config_page.dart';
 import '../wallpaper_settings_page.dart';
 
 class PreferenceSection extends StatelessWidget {
-  final VoidCallback onManageHomeSections;
   final int syncInterval;
   final ValueChanged<int?> onSyncIntervalChanged;
   final String serverChoice;
@@ -24,7 +23,6 @@ class PreferenceSection extends StatelessWidget {
 
   const PreferenceSection({
     Key? key,
-    required this.onManageHomeSections,
     required this.syncInterval,
     required this.onSyncIntervalChanged,
     required this.serverChoice,
@@ -60,13 +58,6 @@ class PreferenceSection extends StatelessWidget {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(
             children: [
-              ListTile(
-                leading: const Icon(Icons.dashboard_customize_outlined),
-                title: const Text('首页模块管理'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: onManageHomeSections,
-              ),
-              const Divider(height: 1, indent: 56),
               ListTile(
                 leading: const Icon(Icons.sync),
                 title: const Text('自动同步频率'),

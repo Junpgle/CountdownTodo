@@ -91,6 +91,8 @@ class StorageService {
   static const String KEY_LAST_COURSE_IMPORT_URL = "last_course_import_url";
   static const String KEY_CATEGORY_REMINDER_MINUTES =
       "category_reminder_minutes";
+  static const String KEY_WINDOWS_SCHEDULED_REMINDERS =
+      "windows_scheduled_reminders";
 
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -225,6 +227,27 @@ class StorageService {
       'max_num2': 50,
       'max_result': 100,
     };
+  }
+
+  static Future<void> saveWindowsScheduledReminders(
+      List<Map<String, dynamic>> reminders) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(
+        KEY_WINDOWS_SCHEDULED_REMINDERS, jsonEncode(reminders));
+  }
+
+  static Future<List<Map<String, dynamic>>>
+      getWindowsScheduledReminders() async {
+    final prefs = await StorageService.prefs;
+    String? jsonStr = prefs.getString(KEY_WINDOWS_SCHEDULED_REMINDERS);
+    if (jsonStr == null || jsonStr.isEmpty) return [];
+    try {
+      final List<dynamic> list = jsonDecode(jsonStr);
+      return list.map((item) => Map<String, dynamic>.from(item)).toList();
+    } catch (e) {
+      debugPrint("解析 Windows 预约提醒失败: $e");
+      return [];
+    }
   }
 
   static Future<void> savePomodoroTags(

@@ -1153,59 +1153,27 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _loadSectionPreferences() async {
     final prefs = await SharedPreferences.getInstance();
 
-    List<String>? leftOrder = prefs.getStringList('home_section_order_left');
-    List<String>? rightOrder = prefs.getStringList('home_section_order_right');
-    final List<String> defaultOrder = [
-      'courses',
-      'countdowns',
-      'todos',
-      'screenTime',
-      'math',
-      'pomodoro'
-    ];
+    // 均按照默认排序
+    // 首页: 重要日(countdowns), 课程(courses), 待办(todos)
+    // 专注页: 最近专注(pomodoro), 屏幕时间(screenTime), 测验(math)
+    
+    // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
+    _leftSections = ['countdowns', 'todos'];
+    _rightSections = ['courses', 'pomodoro', 'screenTime', 'math'];
 
-    if (leftOrder == null || rightOrder == null) {
-      List<String> oldOrder =
-          prefs.getStringList('home_section_order') ?? defaultOrder;
-      leftOrder = [];
-      rightOrder = [];
-      for (int i = 0; i < oldOrder.length; i++) {
-        if (i % 2 == 0)
-          leftOrder.add(oldOrder[i]);
-        else
-          rightOrder.add(oldOrder[i]);
-      }
-    } else {
-      List<String> combined = [...leftOrder, ...rightOrder];
-      for (var key in defaultOrder) {
-        if (!combined.contains(key)) {
-          leftOrder.insert(0, key);
-        }
-      }
-    }
-
-    String? savedVisibilityStr = prefs.getString('home_section_visibility');
-    if (savedVisibilityStr != null) {
-      if (mounted) {
-        setState(() {
-          Map<String, bool> savedMap =
-              Map<String, bool>.from(jsonDecode(savedVisibilityStr));
-          savedMap.putIfAbsent('courses', () => true);
-          savedMap.putIfAbsent('countdowns', () => true);
-          savedMap.putIfAbsent('todos', () => true);
-          savedMap.putIfAbsent('screenTime', () => true);
-          savedMap.putIfAbsent('math', () => true);
-          savedMap.putIfAbsent('pomodoro', () => true);
-          _sectionVisibility = savedMap;
-        });
-      }
-    }
+    // 忽略之前的可见性设置，全部强制显示
+    _sectionVisibility = {
+      'courses': true,
+      'countdowns': true,
+      'todos': true,
+      'screenTime': true,
+      'math': true,
+      'pomodoro': true,
+    };
 
     String? noCourseBehav = prefs.getString('no_course_behavior');
     if (mounted) {
       setState(() {
-        _leftSections = leftOrder!;
-        _rightSections = rightOrder!;
         if (noCourseBehav != null) _noCourseBehavior = noCourseBehav;
       });
     }
@@ -1218,6 +1186,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       _loadSectionPreferences();
       _loadSemesterSettings();
       _checkUpdatesSilently();
+      // 🚀 唤醒时重置壁纸重试计数，防止因最小化导致的短暂断网触发兜底
+      _wallpaperRetryCount = 0;
       // 从番茄钟页或任何前台切换回来时，刷新专注记录卡片
       if (mounted) setState(() => _pomodoroRefreshTrigger++);
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
@@ -1863,7 +1833,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _triggerNextWallpaperFallback() async {
-    // Priority: Manifest -> Bing -> Random List -> None
+    // Priority: Manifest -> Bing -> Random List -> Asset Fallback -> None
     final prefs = await SharedPreferences.getInstance();
     final provider = prefs.getString('wallpaper_provider') ?? 'bing';
 
@@ -1884,8 +1854,17 @@ class _HomeDashboardState extends State<HomeDashboard>
     } else if (_wallpaperRetryCount >= 3 && _wallpaperRetryCount < 6) {
       // Keep trying randoms a few times
       _tryAnotherRandomWallpaper();
+    } else if (_wallpaperRetryCount == 6) {
+      // 🚀 Final Fallback: Local Asset
+      debugPrint("[Wallpaper] Using local asset fallback.");
+      if (mounted) {
+        setState(() {
+          _wallpaperUrl = 'assets/images/default_wallpaper.png';
+          _isWallpaperLoadingError = false; // Reset to allow this to show
+        });
+      }
     } else {
-      // Total failure fallback
+      // Total failure
       debugPrint("[Wallpaper] All fallbacks exhausted. Disabling wallpaper.");
       if (mounted) {
         setState(() {
@@ -2079,22 +2058,44 @@ class _HomeDashboardState extends State<HomeDashboard>
         children: [
           if (showWallpaper)
             Positioned.fill(
-                child: CachedNetworkImage(
-                    imageUrl: _wallpaperUrl!,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 1080, // 限制内存缓存宽度，显著减少内存占用
-                    maxWidthDiskCache: 1920, // 限制磁盘缓存尺寸
-                    fadeInDuration: const Duration(milliseconds: 800),
-                    placeholder: (context, url) => Container(
-                        color: Theme.of(context).colorScheme.surface),
-                    errorWidget: (context, url, error) {
-                      // Trigger fallback on error
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _handleWallpaperError();
-                      });
-                      return Container(
-                          color: Theme.of(context).colorScheme.surface);
-                    })),
+              child: _wallpaperUrl!.startsWith('assets/')
+                  ? Image.asset(
+                      _wallpaperUrl!,
+                      fit: BoxFit.cover,
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: _wallpaperUrl!,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 1080,
+                      maxWidthDiskCache: 1920,
+                      fadeInDuration: const Duration(milliseconds: 800),
+                      imageBuilder: (context, imageProvider) {
+                        // 🚀 成功加载网络图片后，重置重试计数
+                        _wallpaperRetryCount = 0;
+                        return Container(
+                          decoration: BoxDecoration(
+                            image: DecorationImage(
+                              image: imageProvider,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        );
+                      },
+                      placeholder: (context, url) => Image.asset(
+                        'assets/images/default_wallpaper.png',
+                        fit: BoxFit.cover,
+                      ),
+                      errorWidget: (context, url, error) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _handleWallpaperError();
+                        });
+                        return Image.asset(
+                          'assets/images/default_wallpaper.png',
+                          fit: BoxFit.cover,
+                        );
+                      },
+                    ),
+            ),
           if (showWallpaper)
             Positioned.fill(
                 child: Container(color: Colors.black.withOpacity(0.4))),
@@ -2294,7 +2295,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                           (_dashboardCourseData['courses'] as List).isEmpty);
 
                       if (!isTablet) {
-                        List<String> tab1Order = ['courses', 'countdowns', 'todos'];
+                        List<String> tab1Order = ['countdowns', 'courses', 'todos'];
                         if (hasNoCourse) {
                           if (_noCourseBehavior == 'hide') {
                             tab1Order.remove('courses');
@@ -2325,7 +2326,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                         return IndexedStack(
                           index: _selectedTabIndex == 2 ? 1 : 0,
                           children: [
-                            // Tab 1: 最近课程、重要日、待办
+                            // Tab 1: 重要日、课程、待办
                             RepaintBoundary(
                               child: SingleChildScrollView(
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),

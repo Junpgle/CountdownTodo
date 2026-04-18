@@ -46,7 +46,6 @@ import 'settings/lan_sync_screen.dart';
 
 // 引入拆分的弹窗组件
 import 'settings/dialogs/change_password_dialog.dart';
-import 'settings/dialogs/home_section_manager_dialog.dart';
 import 'settings/dialogs/migration_dialog.dart';
 import 'settings/dialogs/island_priority_dialog.dart';
 
@@ -547,16 +546,6 @@ class _SettingsPageState extends State<SettingsPage> {
         onLogout: (force) => _handleLogout(force: force),
       ),
     );
-  }
-
-  void _showHomeSectionManager() async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => const HomeSectionManagerDialog(),
-    );
-    if (result == true) {
-      _loadSettings();
-    }
   }
 
   void _showIslandPriorityDialog() async {
@@ -1109,7 +1098,6 @@ class _SettingsPageState extends State<SettingsPage> {
           onToggle: () =>
               setState(() => _preferenceExpanded = !_preferenceExpanded),
           child: PreferenceSection(
-            onManageHomeSections: _showHomeSectionManager,
             syncInterval: _syncInterval,
             onSyncIntervalChanged: (val) {
               if (val != null) {
@@ -1478,7 +1466,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     PreferenceSection(
-                      onManageHomeSections: _showHomeSectionManager,
                       syncInterval: _syncInterval,
                       onSyncIntervalChanged: (val) {
                         if (val != null) {

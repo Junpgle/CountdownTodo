@@ -47,6 +47,7 @@ dependencies:
   webview_flutter: ^4.13.1
   webview_win_floating: ^3.0.2
   visibility_detector: ^0.4.0+2
+  timezone: ^0.10.1
 
 
 dev_dependencies:
@@ -61,3 +62,4 @@ flutter:
     - assets/splash/
     - assets/icon/
     - assets/icon/app_icon.ico
+    - assets/images/
