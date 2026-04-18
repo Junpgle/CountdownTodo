@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   CalendarDays, ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
-  User as UserIcon
+  User as UserIcon, Calendar, AlertCircle
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiService } from '../services/api';
@@ -176,57 +176,45 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
   const isHistorical = (t: TodoItem) => {
     if (!t.is_completed) return false;
-    const todayMs = getTodayStartMs();
-    const d = new Date(t.due_date ?? (t.created_date ?? t.created_at));
-    d.setHours(0, 0, 0, 0);
-    return d.getTime() < todayMs;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const d = t.due_date ? new Date(t.due_date) : new Date(t.created_date || t.created_at);
+    d.setHours(0,0,0,0);
+    return d.getTime() < today.getTime();
+  };
+
+  // 🚀 核心排序逻辑：模拟手机端紧急度计算
+  const calculateUrgency = (t: TodoItem) => {
+    if (t.is_completed) return -1;
+    const now = Date.now();
+    const start = t.created_date || t.created_at;
+    const end = t.due_date || (start + 86400000); // 默认 24 小时周期 (与手机端对齐)
+    const total = end - start;
+    if (total <= 0) return 0;
+    return Math.min(1, Math.max(0, (now - start) / total));
+  };
+
+  const todoSorter = (a: TodoItem, b: TodoItem) => {
+    // 1. 状态优先
+    if (a.is_completed !== b.is_completed) return a.is_completed ? 1 : -1;
+    if (a.is_completed) return (b.due_date || b.created_at) - (a.due_date || a.created_at);
+    
+    // 2. 紧急度（Progress）优先
+    const urgencyA = calculateUrgency(a);
+    const urgencyB = calculateUrgency(b);
+    if (Math.abs(urgencyA - urgencyB) > 0.001) return urgencyB - urgencyA;
+
+    // 3. 截止日期优先 (处理 NULL 情况)
+    if (a.due_date && b.due_date) return a.due_date - b.due_date;
+    if (a.due_date) return -1;
+    if (b.due_date) return 1;
+
+    // 4. 最后按创建时间
+    return (a.created_date || a.created_at) - (b.created_date || b.created_at);
   };
 
   const todayMs = getTodayStartMs();
-  const activeTodos = todos.filter(t => !isHistorical(t));
-
-  const pastTodos: TodoItem[] = [];
-  const todayTodos: TodoItem[] = [];
-  const futureTodos: TodoItem[] = [];
-
-  activeTodos.forEach(t => {
-    if (t.due_date) {
-      const d = new Date(t.due_date);
-      d.setHours(0, 0, 0, 0);
-      const dMs = d.getTime();
-      if (dMs < todayMs) pastTodos.push(t);
-      else if (dMs > todayMs) futureTodos.push(t);
-      else todayTodos.push(t);
-    } else {
-      todayTodos.push(t);
-    }
-  });
-
-  const sortedToday = [
-    ...todayTodos.filter(t => !t.is_completed).sort((a, b) => {
-      const sa = a.created_date ?? a.created_at;
-      const sb = b.created_date ?? b.created_at;
-      return sa - sb;
-    }),
-    ...todayTodos.filter(t => t.is_completed).sort((a, b) => {
-      const sa = a.created_date ?? a.created_at;
-      const sb = b.created_date ?? b.created_at;
-      return sa - sb;
-    })
-  ];
-
-  const sortedFuture = [
-    ...futureTodos.filter(t => !t.is_completed).sort((a, b) => {
-      const sa = a.created_date ?? a.created_at;
-      const sb = b.created_date ?? b.created_at;
-      return sa - sb;
-    }),
-    ...futureTodos.filter(t => t.is_completed).sort((a, b) => {
-      const sa = a.created_date ?? a.created_at;
-      const sb = b.created_date ?? b.created_at;
-      return sa - sb;
-    })
-  ];
+  const today = new Date();
 
   const handleTodoCompleted = (uuid: string) => {
     const all = SyncEngine.getLocalTodos(user.id);
@@ -437,20 +425,27 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     return Math.floor((d.getTime() - todayMs) / 86400000);
   };
 
-  const TodoCard = ({ todo, isPast, isFuture }: { todo: TodoItem, isPast: boolean, isFuture: boolean }) => {
+  const TodoCard = ({ todo, isPast, isFuture }: { todo: TodoItem, isPast?: boolean, isFuture?: boolean }) => {
     const progress = calcProgress(todo);
     const cDate = new Date(todo.created_date ?? todo.created_at);
 
     let dateStr: string;
     if (todo.due_date) {
       const dDate = new Date(todo.due_date);
-      if (isFuture) {
-        const days = Math.floor((new Date(dDate.getFullYear(), dDate.getMonth(), dDate.getDate()).getTime() - todayMs) / 86400000);
-        dateStr = `${formatDt(cDate)} 至 ${formatDt(dDate)} (${days}天后截止)`;
-      } else if (isPast) {
-        dateStr = `${formatDt(cDate)} 至 ${formatDt(dDate)} (已逾期)`;
+      const now = new Date();
+      now.setHours(0,0,0,0);
+      const target = new Date(dDate.getFullYear(), dDate.getMonth(), dDate.getDate());
+      const diffDays = Math.floor((target.getTime() - now.getTime()) / 86400000);
+
+      const mainDate = `${formatDt(cDate)} 至 ${formatDt(dDate)}`;
+      
+      if (todo.is_completed) {
+        dateStr = mainDate;
       } else {
-        dateStr = `${formatDt(cDate)} 至 ${formatDt(dDate)} (今天截止)`;
+        if (diffDays < 0) dateStr = `${mainDate} (已逾期)`;
+        else if (diffDays === 0) dateStr = `${mainDate} (今天截止)`;
+        else if (diffDays === 1) dateStr = `${mainDate} (明天截止)`;
+        else dateStr = `${mainDate} (${diffDays}天后截止)`;
       }
     } else {
       dateStr = `开始于 ${formatDt(cDate)}`;
@@ -603,130 +598,130 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
             </div>
 
             <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-4 min-h-0">
-              {/* 文件夹列表 */}
-              {todoGroups.map(group => {
-                const groupUuid = String(group.uuid || group.id).trim().toLowerCase();
-                const groupTodos = todos.filter(t => t.group_id && String(t.group_id).trim().toLowerCase() === groupUuid);
-                const undoneCount = groupTodos.filter(t => !t.is_completed).length;
-                
-                if (todoGroups.length > 0 && groupTodos.length === 0) {
-                    console.log(`[FolderDebug] Group "${group.name}" (${groupUuid}) matches 0 todos.`);
-                }
-
-                if (groupTodos.length === 0 && !group.is_expanded && !group.name) return null;
-
-                return (
-                  <div key={group.uuid} className="bg-slate-50/80 rounded-2xl border border-slate-100 overflow-hidden">
-                    <div className="flex items-center justify-between p-1 pr-3">
-                      <button 
-                        onClick={() => toggleGroupExpansion(group.uuid)}
-                        className="flex-1 flex items-center gap-2 px-3 py-2.5 text-slate-700 hover:bg-slate-100/50 rounded-xl transition group"
-                      >
-                        {group.is_expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        <span className="font-black text-sm">{group.name}</span>
-                        <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full font-bold">
-                          {undoneCount}/{groupTodos.length}
-                        </span>
-                      </button>
-                      <button onClick={() => deleteGroup(group.uuid)} className="p-1.5 text-slate-300 hover:text-red-500 transition">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                    {group.is_expanded && (
-                      <div className="p-2 pt-0 space-y-2">
-                        {groupTodos.length === 0 ? (
-                          <div className="text-center py-4 text-xs text-slate-400">文件夹内暂无任务</div>
-                        ) : (
-                          groupTodos.sort((a,b) => (a.is_completed ? 1 : -1) - (b.is_completed ? 1 : -1) || (a.created_date ?? a.created_at) - (b.created_date ?? b.created_at))
-                                    .map(t => <TodoCard key={t.uuid} todo={t} isPast={isHistorical(t)} isFuture={t.due_date ? new Date(t.due_date).getTime() > todayMs : false} />)
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* 未分类任务 - 按时间分组 */}
               {(() => {
+                // 1. 预处理文件夹数据，提取排序元数据
+                const processedGroups = todoGroups.map(g => {
+                  const gUuid = String(g.uuid || g.id).trim().toLowerCase();
+                  const gTodos = todos.filter(t => t.group_id && String(t.group_id).trim().toLowerCase() === gUuid);
+                  const isAllDone = gTodos.length > 0 && gTodos.every(t => t.is_completed);
+                  
+                  let minDate = 0;
+                  const undone = gTodos.filter(t => !t.is_completed);
+                  if (undone.length > 0) {
+                    const dates = undone.map(t => t.due_date || (t.created_date || t.created_at)).filter(d => d);
+                    minDate = Math.min(...dates);
+                  } else if (gTodos.length > 0) {
+                    const dates = gTodos.map(t => t.due_date || (t.created_date || t.created_at)).filter(d => d);
+                    minDate = Math.min(...dates);
+                  }
+                  // 寻找最高紧急度
+                  const maxUrgency = gTodos.length > 0 ? Math.max(...gTodos.map(t => calculateUrgency(t))) : -1;
+                  return { group: g, todos: gTodos, isAllDone: isAllDone || gTodos.length === 0, minDate, maxUrgency };
+                }).filter(g => g.todos.length > 0 || g.group.is_expanded);
+
+                // 2. 获取未分类待办
                 const unclassified = todos.filter(t => {
                   if (!t.group_id) return true;
                   const gId = String(t.group_id).trim().toLowerCase();
                   return !todoGroups.find(g => String(g.uuid || g.id).trim().toLowerCase() === gId);
                 });
-                const pTodos = unclassified.filter(t => {
-                  if (t.due_date) {
-                    const d = new Date(t.due_date);
-                    d.setHours(0,0,0,0);
-                    return d.getTime() < todayMs && !t.is_completed;
-                  }
-                  return false;
-                });
-                const tTodos = unclassified.filter(t => !isHistorical(t) && (!t.due_date || new Date(t.due_date).setHours(0,0,0,0) === todayMs));
-                const fTodos = unclassified.filter(t => t.due_date && new Date(t.due_date).setHours(0,0,0,0) > todayMs && !isHistorical(t));
 
-                const sToday = [
-                  ...tTodos.filter(t => !t.is_completed).sort((a,b) => (a.created_date ?? a.created_at) - (b.created_date ?? b.created_at)),
-                  ...tTodos.filter(t => t.is_completed).sort((a,b) => (a.created_date ?? a.created_at) - (b.created_date ?? b.created_at))
+                // 3. 定义项目的归类与混合逻辑
+                const getSection = (item: any) => {
+                  const date = item.minDate || item.due_date;
+                  if (!date) return 'today';
+                  const d = new Date(date);
+                  d.setHours(0,0,0,0);
+
+                  const isCompleted = item.isAllDone || item.is_completed;
+                  const isPast = d.getTime() < todayMs;
+
+                  if (isPast && isCompleted) return 'history';
+                  if (isPast && !isCompleted) return 'past';
+                  
+                  if (d.getFullYear() === today.getFullYear() && 
+                      d.getMonth() === today.getMonth() && 
+                      d.getDate() === today.getDate()) return 'today';
+                  
+                  return d.getTime() > todayMs ? 'future' : 'today';
+                };
+
+                const mixedItems = [
+                  ...unclassified.map(t => ({ type: 'todo', data: t, ...t, minDate: t.due_date || (t.created_date || t.created_at), maxUrgency: calculateUrgency(t), isAllDone: t.is_completed })),
+                  ...processedGroups.map(g => ({ type: 'group', data: g.group, ...g }))
                 ];
 
-                return (
-                  <>
-                    {unclassified.length > 0 && todoGroups.length > 0 && (
-                      <div className="flex items-center gap-2 px-2 py-1">
-                        <div className="h-px flex-1 bg-slate-100"></div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">未分类任务</span>
-                        <div className="h-px flex-1 bg-slate-100"></div>
-                      </div>
-                    )}
+                const pastItems = mixedItems.filter(i => getSection(i) === 'past');
+                const todayItems = mixedItems.filter(i => getSection(i) === 'today');
+                const futureItems = mixedItems.filter(i => getSection(i) === 'future');
 
-                    {pTodos.length > 0 && (
-                      <div className="bg-red-50/50 rounded-xl sm:rounded-2xl border border-red-100 p-1.5 sm:p-2">
-                        <button onClick={() => setIsPastExpanded(!isPastExpanded)} className="w-full flex items-center gap-2 p-1.5 sm:p-2 text-red-600 hover:bg-red-100/50 rounded-lg sm:rounded-xl transition text-left">
-                          {isPastExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                          <span className="font-bold text-sm">以往待办 ({pTodos.length})</span>
-                        </button>
-                        {isPastExpanded && (
-                          <div className="p-1 sm:p-2 space-y-2">
-                            {pTodos.map(t => <TodoCard key={t.uuid} todo={t} isPast={true} isFuture={false} />)}
+                const mixedSorter = (a: any, b: any) => {
+                  if (a.isAllDone !== b.isAllDone) return a.isAllDone ? 1 : -1;
+                  // 精确排序：进度高者（紧急度大）排在前面
+                  if (a.maxUrgency !== b.maxUrgency) return b.maxUrgency - a.maxUrgency;
+                  return (a.minDate || 0) - (b.minDate || 0);
+                };
+                const renderItem = (item: any) => {
+                  if (item.type === 'todo') {
+                    return <TodoCard key={item.data.uuid} todo={item.data} isPast={getSection(item) === 'past'} isFuture={getSection(item) === 'future'} />;
+                  } else {
+                    const group = item.data;
+                    const groupTodos = item.todos;
+                    const undoneCount = groupTodos.filter((t:any) => !t.is_completed).length;
+                    return (
+                      <div key={group.uuid || group.id} className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden transition-all hover:shadow-sm">
+                        <div onClick={() => toggleGroupExpansion(group.uuid || group.id)} className="flex items-center gap-3 p-3.5 cursor-pointer select-none">
+                          <div className={`p-2 rounded-xl ${item.isAllDone ? 'bg-green-100 text-green-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                            {item.isAllDone ? <CheckCircle2 className="w-4 h-4" /> : (group.is_expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />)}
                           </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="bg-slate-50 rounded-xl sm:rounded-2xl border border-slate-100 p-1.5 sm:p-2">
-                      <button onClick={() => setIsTodayExpanded(!isTodayExpanded)} className="w-full flex items-center gap-2 p-1.5 sm:p-2 text-slate-600 hover:bg-slate-200/50 rounded-lg sm:rounded-xl transition text-left">
-                        {isTodayExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        <span className="font-bold text-sm">今日待办 ({sToday.filter(t=>t.is_completed).length}/{sToday.length})</span>
-                      </button>
-                      {isTodayExpanded && (
-                        <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
-                          {sToday.length === 0 ? (
-                            <div className="text-center py-4 sm:py-6 text-sm font-medium text-slate-400">今日暂无待办</div>
-                          ) : (
-                            sToday.map(t => <TodoCard key={t.uuid} todo={t} isPast={false} isFuture={false} />)
-                          )}
+                          <div className="flex-1">
+                            <h4 className={`text-sm font-bold ${item.isAllDone ? 'text-green-700 line-through opacity-60' : 'text-slate-800'}`}>{group.name || '未命名文件夹'}</h4>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                              {item.isAllDone ? '全部完成' : `${undoneCount}/${groupTodos.length} 项待处理`}
+                            </p>
+                          </div>
                         </div>
-                      )}
-                    </div>
-
-                    {fTodos.length > 0 && (
-                      <div className="bg-blue-50/50 rounded-xl sm:rounded-2xl border border-blue-100 p-1.5 sm:p-2">
-                        <button onClick={() => setIsFutureExpanded(!isFutureExpanded)} className="w-full flex items-center justify-between p-1.5 sm:p-2 text-blue-600 hover:bg-blue-100/50 rounded-lg sm:rounded-xl transition">
-                          <div className="flex items-center gap-2">
-                            {isFutureExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                            <CalendarDays className="w-4 h-4" />
-                            <span className="font-bold text-sm">未来待办</span>
-                          </div>
-                          <span className="text-xs font-bold text-blue-400 mr-2">{fTodos.filter(t=>!t.is_completed).length} 未完成</span>
-                        </button>
-                        {isFutureExpanded && (
-                          <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
-                            {fTodos.map(t => <TodoCard key={t.uuid} todo={t} isPast={false} isFuture={true} />)}
+                        {group.is_expanded && groupTodos.length > 0 && (
+                          <div className="bg-white/50 border-t border-slate-100/80 p-2 space-y-2">
+                             {groupTodos.sort(todoSorter).map((t:any) => (
+                               <TodoCard key={t.uuid} todo={t} isPast={isHistorical(t)} />
+                             ))}
                           </div>
                         )}
                       </div>
+                    );
+                  }
+                };
+
+                return (
+                  <div className="space-y-8">
+                    {pastItems.length > 0 && (
+                      <div className="space-y-3">
+                         <div className="flex items-center gap-2 px-1 text-red-500 font-bold text-[10px] uppercase tracking-widest">
+                           <AlertCircle className="w-3.5 h-3.5" /> 逾期
+                         </div>
+                         <div className="space-y-3">{pastItems.sort(mixedSorter).map(renderItem)}</div>
+                      </div>
                     )}
-                  </>
+
+                    {todayItems.length > 0 && (
+                      <div className="space-y-3">
+                         <div className="flex items-center gap-2 px-1 text-blue-500 font-bold text-[10px] uppercase tracking-widest">
+                           <Calendar className="w-3.5 h-3.5" /> 今日
+                         </div>
+                         <div className="space-y-3">{todayItems.sort(mixedSorter).map(renderItem)}</div>
+                      </div>
+                    )}
+
+                    {futureItems.length > 0 && (
+                      <div className="space-y-3">
+                         <div className="flex items-center gap-2 px-1 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
+                           <Clock className="w-3.5 h-3.5" /> 将来
+                         </div>
+                         <div className="space-y-3">{futureItems.sort(mixedSorter).map(renderItem)}</div>
+                      </div>
+                    )}
+                  </div>
                 );
               })()}
 
