@@ -130,6 +130,7 @@ class TodoItem {
   String? originalText; // 📄 原始分析文本
   String? groupId; // 📁 所属分组 ID (null 表示未分组)
   int? reminderMinutes; // 🚀 新增：提前几分钟提醒
+  String? teamUuid; // 👥 协同团队 UUID
 
   TodoItem({
     String? id,
@@ -149,6 +150,7 @@ class TodoItem {
     this.originalText,
     this.groupId,
     this.reminderMinutes,
+    this.teamUuid,
   })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -185,6 +187,7 @@ class TodoItem {
         'original_text': originalText, // 📄 原始分析文本
         'group_id': groupId, // 📁 分组 ID
         'reminder_minutes': reminderMinutes, // 🚀 提醒提前量
+        'team_uuid': teamUuid, // 👥 团队 ID
       };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -234,6 +237,8 @@ class TodoItem {
       // 🚀 提醒提前量
       reminderMinutes:
           json['reminder_minutes'] as int? ?? json['reminderMinutes'] as int?,
+      // 👥 团队 ID
+      teamUuid: json['team_uuid'] ?? json['teamUuid'],
     );
   }
 
@@ -276,6 +281,7 @@ class CountdownItem {
   int version;
   int updatedAt;
   int createdAt;
+  String? teamUuid;
 
   CountdownItem({
     String? id,
@@ -285,6 +291,7 @@ class CountdownItem {
     this.version = 1,
     int? updatedAt,
     int? createdAt,
+    this.teamUuid,
   })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -304,6 +311,7 @@ class CountdownItem {
         'version': version,
         'updated_at': updatedAt, // UTC 毫秒时间戳
         'created_at': createdAt, // UTC 毫秒时间戳
+        'team_uuid': teamUuid,
       };
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) {
@@ -327,6 +335,7 @@ class CountdownItem {
       version: json['version'] ?? 1,
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
+      teamUuid: json['team_uuid'] ?? json['teamUuid'],
     );
   }
 }
@@ -343,6 +352,7 @@ class TodoGroup {
   int version;
   int updatedAt;
   int createdAt;
+  String? teamUuid;
 
   TodoGroup({
     String? id,
@@ -352,6 +362,7 @@ class TodoGroup {
     this.version = 1,
     int? updatedAt,
     int? createdAt,
+    this.teamUuid,
   })  : id = id ?? const Uuid().v4(),
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -370,6 +381,7 @@ class TodoGroup {
         'version': version,
         'updated_at': updatedAt,
         'created_at': createdAt,
+        'team_uuid': teamUuid,
       };
 
   factory TodoGroup.fromJson(Map<String, dynamic> json) {
@@ -383,42 +395,29 @@ class TodoGroup {
       version: json['version'] as int? ?? 1,
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['updatedAt']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
+      teamUuid: json['team_uuid']?.toString(),
     );
   }
 }
 
 // ============================================================
 // 🕐 统一时间规范（v3 - 最终版）
-//
-// 【规范】
-//   - 所有时间字段在存储、传输中统一使用 UTC 毫秒时间戳 (int)
-//   - DateTime.now().millisecondsSinceEpoch 与 JS Date.now()
-//     均为 UTC epoch，天然一致，无需 +8/-8 偏移
-//   - 显示给用户时：DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal()
-//
-// 【历史数据兼容】新数据统一 int ms；历史数据库中可能存有 ISO 字符串，兼容解析不再写入。
 // ============================================================
 
-/// 解析 UTC 毫秒时间戳，必填字段专用（null 返回当前时间）。
-/// 同时兼容 ISO 8601 字符串（历史数据库遗留格式）。
 int _parseTimestamp(dynamic val) {
   if (val == null) return DateTime.now().millisecondsSinceEpoch;
   if (val is int) return val;
   if (val is double) return val.toInt();
   if (val is String) {
     final trimmed = val.trim();
-    // 优先尝试纯数字（新格式）
     final n = int.tryParse(trimmed);
     if (n != null) return n;
-    // 兼容历史 ISO 8601 字符串（如 "2026-01-15T10:05:00.000Z"）
     final dt = DateTime.tryParse(trimmed);
     if (dt != null) return dt.toUtc().millisecondsSinceEpoch;
   }
   return DateTime.now().millisecondsSinceEpoch;
 }
 
-/// 解析可空 UTC 毫秒时间戳，返回本地时区 DateTime。
-/// null / 0 视为无效，返回 null。同时兼容历史 ISO 8601 字符串。
 DateTime? _parseDateField(dynamic val) {
   if (val == null) return null;
   int ms;
@@ -428,12 +427,10 @@ DateTime? _parseDateField(dynamic val) {
     ms = val.toInt();
   } else if (val is String) {
     final trimmed = val.trim();
-    // 优先尝试纯数字（新格式）
     final n = int.tryParse(trimmed);
     if (n != null) {
       ms = n;
     } else {
-      // 兼容历史 ISO 8601 字符串
       final dt = DateTime.tryParse(trimmed);
       if (dt != null)
         return dt.toUtc().millisecondsSinceEpoch > 0 ? dt.toLocal() : null;
@@ -443,24 +440,22 @@ DateTime? _parseDateField(dynamic val) {
     return null;
   }
   if (ms <= 0) return null;
-  // UTC 毫秒时间戳 → 本地时区 DateTime（+8 自动应用于显示）
   return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
 }
 
 class TimeLogItem {
-  String id; // 全局唯一标识
-  String title; // 日志标题（如：阅读《人月神话》）
-  List<String> tagUuids; // 🚀 核心：复用 pomodoro_tags 表的标签 ID
-  int startTime; // 开始时间 (UTC 毫秒时间戳)
-  int endTime; // 结束时间 (UTC 毫秒时间戳)
-  String? remark; // 可选备注
-
-  // --- Delta Sync 增量同步必需字段 ---
-  int version; // 并发版本号
-  int updatedAt; // 最后修改时间戳 (UTC 毫秒)
-  int createdAt; // 创建时间戳 (UTC 毫秒)
-  bool isDeleted; // 逻辑删除标记
-  String? deviceId; // 设备标识（防冲突）
+  String id;
+  String title;
+  List<String> tagUuids;
+  int startTime;
+  int endTime;
+  String? remark;
+  int version;
+  int updatedAt;
+  int createdAt;
+  bool isDeleted;
+  String? deviceId;
+  String? teamUuid;
 
   TimeLogItem({
     String? id,
@@ -474,11 +469,11 @@ class TimeLogItem {
     int? createdAt,
     this.isDeleted = false,
     this.deviceId,
+    this.teamUuid,
   })  : id = id ?? const Uuid().v4(),
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
-  // 🚀 数据变更时必须调用此方法
   void markAsChanged() {
     version++;
     updatedAt = DateTime.now().millisecondsSinceEpoch;
@@ -496,38 +491,23 @@ class TimeLogItem {
         'created_at': createdAt,
         'is_deleted': isDeleted ? 1 : 0,
         'device_id': deviceId,
+        'team_uuid': teamUuid,
       };
 
   factory TimeLogItem.fromJson(Map<String, dynamic> json) {
     return TimeLogItem(
-      // 兼容后端可能传回 id 或 uuid 的情况
-      id: json['id']?.toString() ??
-          json['uuid']?.toString() ??
-          const Uuid().v4(),
+      id: json['id']?.toString() ?? json['uuid']?.toString() ?? const Uuid().v4(),
       title: json['title']?.toString() ?? '',
-
-      // 安全解析 List
-      tagUuids: (json['tag_uuids'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
-
-      // 🚀 核心修复：使用 num 强转 toInt()，彻底避免 int/double 类型冲突
+      tagUuids: (json['tag_uuids'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       startTime: (json['start_time'] as num?)?.toInt() ?? 0,
       endTime: (json['end_time'] as num?)?.toInt() ?? 0,
-
       remark: json['remark']?.toString(),
-
-      // 其他数字与标识同样做安全转换
       version: (json['version'] as num?)?.toInt() ?? 1,
-      updatedAt: (json['updated_at'] as num?)?.toInt() ??
-          DateTime.now().millisecondsSinceEpoch,
-      createdAt: (json['created_at'] as num?)?.toInt() ??
-          DateTime.now().millisecondsSinceEpoch,
-
-      // 兼容 1/0 或者 true/false
+      updatedAt: (json['updated_at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+      createdAt: (json['created_at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
       deviceId: json['device_id']?.toString(),
+      teamUuid: json['team_uuid']?.toString(),
     );
   }
 }
@@ -537,6 +517,7 @@ class TimeLogItem {
 // ==========================================
 
 class CourseItem {
+  final String uuid;
   final String courseName;
   final String teacherName;
   final String date; // yyyy-MM-dd
@@ -546,8 +527,10 @@ class CourseItem {
   final int weekIndex;
   final String roomName;
   final String? lessonType;
+  String? teamUuid;
 
   CourseItem({
+    String? uuid,
     required this.courseName,
     required this.teacherName,
     required this.date,
@@ -557,41 +540,127 @@ class CourseItem {
     required this.weekIndex,
     required this.roomName,
     this.lessonType,
+    this.teamUuid,
+  }) : this.uuid = uuid ?? const Uuid().v4();
+
+  String get formattedStartTime => '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
+  String get formattedEndTime => '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
+
+  Map<String, dynamic> toJson() => {
+    'uuid': uuid,
+    'courseName': courseName,
+    'teacherName': teacherName,
+    'date': date,
+    'weekday': weekday,
+    'startTime': startTime,
+    'endTime': endTime,
+    'weekIndex': weekIndex,
+    'roomName': roomName,
+    'lessonType': lessonType,
+    'team_uuid': teamUuid,
+  };
+
+  factory CourseItem.fromJson(Map<String, dynamic> json) => CourseItem(
+    uuid: json['uuid'] ?? json['id'],
+    courseName: json['courseName'] ?? '未知课程',
+    teacherName: json['teacherName'] ?? '未知教师',
+    date: json['date'] ?? '',
+    weekday: json['weekday'] ?? 1,
+    startTime: json['startTime'] ?? 0,
+    endTime: json['endTime'] ?? 0,
+    weekIndex: json['weekIndex'] ?? 1,
+    roomName: json['roomName'] ?? '未知地点',
+    lessonType: json['lessonType'],
+    teamUuid: json['team_uuid'] ?? json['teamUuid'],
+  );
+}
+
+// ==========================================
+// 👥 4. 团队与协作模型 (Team Collaboration)
+// ==========================================
+
+enum TeamRole { admin, member }
+
+class TeamMember {
+  final int userId;
+  final String? username;
+  final String? email;
+  final TeamRole role;
+  final int joinedAt;
+
+  TeamMember({
+    required this.userId,
+    this.username,
+    this.email,
+    required this.role,
+    required this.joinedAt,
   });
 
-  // 格式化时间，如 800 -> 08:00
-  String get formattedStartTime =>
-      '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
-  String get formattedEndTime =>
-      '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
+  factory TeamMember.fromJson(Map<String, dynamic> json) => TeamMember(
+    userId: (json['user_id'] as num).toInt(),
+    username: json['username'] as String?,
+    email: json['email'] as String?,
+    role: (json['role'] == 0) ? TeamRole.admin : TeamRole.member,
+    joinedAt: _parseTimestamp(json['joined_at']),
+  );
+}
 
-  // 用于统一序列化存储
-  Map<String, dynamic> toJson() {
-    return {
-      'courseName': courseName,
-      'teacherName': teacherName,
-      'date': date,
-      'weekday': weekday,
-      'startTime': startTime,
-      'endTime': endTime,
-      'weekIndex': weekIndex,
-      'roomName': roomName,
-      'lessonType': lessonType,
-    };
-  }
+class Team {
+  final String uuid;
+  final String name;
+  final int creatorId;
+  final int createdAt;
+  final TeamRole userRole;
+  final int memberCount;
+  final String? inviteCode;
 
-  // 用于从统一存储中反序列化
-  factory CourseItem.fromJson(Map<String, dynamic> json) {
-    return CourseItem(
-      courseName: json['courseName'] ?? '未知课程',
-      teacherName: json['teacherName'] ?? '未知教师',
-      date: json['date'] ?? '',
-      weekday: json['weekday'] ?? 1,
-      startTime: json['startTime'] ?? 0,
-      endTime: json['endTime'] ?? 0,
-      weekIndex: json['weekIndex'] ?? 1,
-      roomName: json['roomName'] ?? '未知地点',
-      lessonType: json['lessonType'],
-    );
-  }
+  Team({
+    required this.uuid,
+    required this.name,
+    required this.creatorId,
+    required this.createdAt,
+    required this.userRole,
+    this.memberCount = 1,
+    this.inviteCode,
+  });
+
+  factory Team.fromJson(Map<String, dynamic> json) => Team(
+    uuid: json['uuid'] as String,
+    name: json['name'] as String,
+    creatorId: json['creator_id'] as int,
+    createdAt: _parseTimestamp(json['created_at']),
+    userRole: (json['role'] == 0 || json['user_role'] == 0) ? TeamRole.admin : TeamRole.member,
+    memberCount: json['member_count'] as int? ?? 1,
+    inviteCode: json['invite_code'] as String?,
+  );
+}
+
+class TeamInvitation {
+  final String code;
+  final String teamUuid;
+  final int expiresAt;
+
+  TeamInvitation({
+    required this.code,
+    required this.teamUuid,
+    required this.expiresAt,
+  });
+}
+
+class ConflictInfo {
+  final String type;
+  final Map<String, dynamic> item;
+  final Map<String, dynamic> conflictWith;
+
+  ConflictInfo({
+    required this.type,
+    required this.item,
+    required this.conflictWith,
+  });
+
+  factory ConflictInfo.fromJson(Map<String, dynamic> json) => ConflictInfo(
+    type: json['type'] as String,
+    item: json['item'] as Map<String, dynamic>,
+    conflictWith: json['conflict_with'] as Map<String, dynamic>,
+  );
 }

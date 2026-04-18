@@ -4,6 +4,8 @@ import 'dart:io'; // 🚀 新增：用于获取当前操作系统
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
+import '../models.dart';
+import 'api_service.dart';
 
 // ============================================================
 // 跨端专注感知：连接阿里云 WebSocket 服务器
@@ -12,7 +14,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 /// 从 WebSocket 收到的跨端状态（扩充了版本更新字段）
 class CrossDevicePomodoroState {
   final String
-      action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'|'UPDATE_AVAILABLE'|'FOCUS_DISCONNECTED'|'CLEAR_FOCUS'
+      action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'|'UPDATE_AVAILABLE'|'FOCUS_DISCONNECTED'|'CLEAR_FOCUS'|'CONFLICT_ALERT'|'TEAM_UPDATE'
   final String? sessionUuid;
   final String? todoUuid;
   final String? todoTitle;
@@ -35,6 +37,12 @@ class CrossDevicePomodoroState {
   final int? pausedAtMs;
   final int? accumulatedMs;
   final int? pauseStartMs;
+  final int? serverElapsedMs;
+
+  // 🚀 团队协作扩展
+  final List<ConflictInfo>? conflicts;
+  final String? teamUuid;
+  final dynamic delta;
 
   const CrossDevicePomodoroState({
     required this.action,
@@ -47,7 +55,6 @@ class CrossDevicePomodoroState {
     this.timestamp,
     this.tags = const [],
     this.mode,
-    // 🚀 新增
     this.latestVersion,
     this.downloadUrl,
     this.releaseNotes,
@@ -57,9 +64,10 @@ class CrossDevicePomodoroState {
     this.accumulatedMs,
     this.pauseStartMs,
     this.serverElapsedMs,
+    this.conflicts,
+    this.teamUuid,
+    this.delta,
   });
-
-  final int? serverElapsedMs;
 
   factory CrossDevicePomodoroState.fromJson(Map<String, dynamic> j) =>
       CrossDevicePomodoroState(
@@ -74,17 +82,20 @@ class CrossDevicePomodoroState {
         timestamp: _parseInt(j['timestamp']),
         tags: _parseStringList(j['tags']),
         mode: _parseInt(j['mode']),
-        // 🚀 新增解析
         latestVersion: j['latest_version']?.toString(),
         downloadUrl: j['download_url']?.toString(),
         releaseNotes: j['release_notes']?.toString(),
         manifestData: j['manifest'] as Map<String, dynamic>?,
-        // 🚀 新增暂停解析
         isPaused: j['isPaused'] as bool?,
         pausedAtMs: _parseInt(j['pausedAtMs']),
         accumulatedMs: _parseInt(j['accumulatedMs']),
         pauseStartMs: _parseInt(j['pauseStartMs']),
         serverElapsedMs: _parseInt(j['server_elapsed_ms'] ?? j['serverElapsedMs']),
+        conflicts: j['conflicts'] != null 
+          ? (j['conflicts'] as List).map((c) => ConflictInfo.fromJson(c)).toList() 
+          : null,
+        teamUuid: j['teamUuid']?.toString() ?? j['team_uuid']?.toString(),
+        delta: j['delta'],
       );
 
   static int? _parseInt(dynamic v) {
@@ -110,11 +121,9 @@ class CrossDevicePomodoroState {
         if (targetEndMs != null) 'target_end_ms': targetEndMs,
         if (tags.isNotEmpty) 'tags': tags,
         if (mode != null) 'mode': mode,
-        // 🚀 新增序列化
         if (latestVersion != null) 'latest_version': latestVersion,
         if (downloadUrl != null) 'download_url': downloadUrl,
         if (releaseNotes != null) 'release_notes': releaseNotes,
-        // 🚀 新增暂停序列化
         if (isPaused != null) 'isPaused': isPaused,
         if (pausedAtMs != null) 'pausedAtMs': pausedAtMs,
         if (accumulatedMs != null) 'accumulatedMs': accumulatedMs,
@@ -137,8 +146,8 @@ class PomodoroSyncService {
   // ── 连接参数 ──────────────────────────────────────────────
   String? _userId;
   String? _deviceId;
-  String? _authToken; // 🚀 新增：WebSocket 鉴权 Token
-  String? _appVersion; // 🚀 新增：保存当前 App 版本号
+  String? _authToken; 
+  String? _appVersion; 
 
   // ── 内部状态 ──────────────────────────────────────────────
   WebSocketChannel? _channel;
@@ -155,8 +164,6 @@ class PomodoroSyncService {
   Stream<CrossDevicePomodoroState> get onStateChanged => _stateCtrl.stream;
   Stream<SyncConnectionState> get onConnectionChanged => _connStateCtrl.stream;
 
-  /// 当收到 SYNC_FOCUS 且 sourceDevice 为当前设备时触发回调
-  /// 调用方应检查本地是否有对应状态，若无则调用 [sendClearFocusSignal]
   Function(CrossDevicePomodoroState state)? onStaleSyncFocus;
 
   void dispose() {
@@ -174,9 +181,6 @@ class PomodoroSyncService {
   String? get focusSourceDevice => _focusSourceDevice;
   bool get isFocusSource => _focusSourceDevice == _deviceId;
 
-  // ── 公开 API ─────────────────────────────────────────────
-
-  /// 🚀 传入版本号（建议使用 package_info_plus 获取后传入）
   Future<void> ensureConnected(String userId, String deviceId,
       {String? authToken, String? appVersion}) async {
     if (appVersion != null) _appVersion = appVersion;
@@ -194,7 +198,6 @@ class PomodoroSyncService {
     await _doConnect();
   }
 
-  /// 🚀 强制重连时也可更新版本号
   Future<void> forceReconnect(String userId, String deviceId,
       {String? authToken, String? appVersion}) async {
     if (appVersion != null) _appVersion = appVersion;
@@ -216,8 +219,6 @@ class PomodoroSyncService {
     await _doConnect();
   }
 
-  // ── 内部连接 ─────────────────────────────────────────────
-
   Future<void> _doConnect() async {
     if (_connecting) return;
     _connecting = true;
@@ -234,11 +235,9 @@ class PomodoroSyncService {
     _setConnState(SyncConnectionState.connecting);
 
     try {
-      // 🚀 获取当前平台类型 (Android, iOS, Windows, macOS, etc.)
       final platform = kIsWeb ? 'web' : Platform.operatingSystem;
       final versionParam = _appVersion ?? 'unknown';
 
-      // 🚀 核心改造：使用 token 鉴权（后端已合并 WebSocket 和 HTTP 到同一端口）
       final uri = Uri.parse(
         '$_wsUrl/?token=${Uri.encodeComponent(_authToken ?? '')}'
         '&deviceId=${Uri.encodeComponent(_deviceId!)}'
@@ -267,6 +266,7 @@ class PomodoroSyncService {
       );
 
       _startHeartbeat();
+      _subscribeToTeams(); 
     } catch (e) {
       debugPrint('[PomodoroSync] ❌ 连接失败: $e');
       _setConnState(SyncConnectionState.error);
@@ -294,8 +294,6 @@ class PomodoroSyncService {
         _focusSourceDevice = null;
       }
 
-      // 🍅 发起端重连后，服务端推送了历史状态回来
-      // 说明发起端本地可能已无状态，触发回调让调用方判断是否清除
       if (signal.action == 'SYNC_FOCUS' &&
           signal.sourceDevice == _deviceId &&
           onStaleSyncFocus != null) {
@@ -340,7 +338,6 @@ class PomodoroSyncService {
     if (!_connStateCtrl.isClosed) _connStateCtrl.add(s);
   }
 
-  // ── 发送信号 (保持原有不变) ──────────────────────────────────
   void sendStartSignal({
     required String sessionUuid,
     required String? todoUuid,
@@ -446,6 +443,23 @@ class PomodoroSyncService {
 
   void sendClearFocusSignal() {
     _send({'action': 'CLEAR_FOCUS'});
+  }
+
+  void _subscribeToTeams() async {
+    if (_connState != SyncConnectionState.connected) return;
+    try {
+      final teamsData = await ApiService.fetchTeams();
+      final teamUuids = teamsData.map((t) => t['uuid'].toString()).toList();
+      if (teamUuids.isNotEmpty) {
+        _send({
+          'type': 'subscribe',
+          'teamUuids': teamUuids,
+        });
+        debugPrint('[PomodoroSync] 👥 已发送团队房间订阅请求: $teamUuids');
+      }
+    } catch (e) {
+      debugPrint('[PomodoroSync] 团队订阅失败: $e');
+    }
   }
 
   void _send(Map<String, dynamic> payload) {

@@ -857,7 +857,7 @@ class StorageService {
     await prefs.remove('last_sync_time_$username'); // 兼容旧版本
   }
 
-  static Future<bool> syncData(
+  static Future<Map<String, dynamic>> syncData(
     String username, {
     bool syncTodos = true,
     bool syncCountdowns = true,
@@ -868,10 +868,11 @@ class StorageService {
   }) async {
     // 1. 状态锁：防止重复进入
     if (!syncTodos && !syncCountdowns && !syncTimeLogs && !syncPomodoro)
-      return false;
-    if (_isSyncing) return false;
+      return {'success': false, 'hasChanges': false};
+    if (_isSyncing) return {'success': false, 'hasChanges': false};
     _isSyncing = true;
     bool hasChanges = false;
+    List<ConflictInfo> conflicts = [];
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -960,6 +961,11 @@ class StorageService {
 
       if (response['success'] != true) {
         throw Exception("${response['message'] ?? '同步失败'}");
+      }
+      
+      // 解析服务器返回的实时冲突
+      if (response['conflicts'] != null) {
+        conflicts = (response['conflicts'] as List).map((c) => ConflictInfo.fromJson(c)).toList();
       }
 
       // 🛡️ 屏幕时间逻辑优化：上传成功后，务必清理“待上传”缓存
@@ -1106,10 +1112,10 @@ class StorageService {
         await saveScreenTimeCache(response['screen_time_results']);
       }
 
-      return hasChanges;
+      return {'success': true, 'hasChanges': hasChanges, 'conflicts': conflicts};
     } catch (e) {
       debugPrint("syncData error: $e");
-      return false;
+      return {'success': false, 'hasChanges': false, 'error': e.toString()};
     } finally {
       _isSyncing = false;
     }

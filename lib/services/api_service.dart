@@ -27,6 +27,9 @@ class ApiService {
     _authToken = token;
   }
 
+  static int currentUserId = 0;
+
+
   // 🚀 公开获取 token 的方法（供 WebSocket 等服务使用）
   static String? getToken() => _authToken;
 
@@ -113,10 +116,14 @@ class ApiService {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
+        if (data['user'] != null && data['user']['id'] != null) {
+          currentUserId = data['user']['id'];
+        }
         return {'success': true, 'user': data['user'], 'token': data['token']};
       } else {
         return {'success': false, 'message': data['error'] ?? '登录失败'};
       }
+
     } catch (e) {
       return {'success': false, 'message': "网络错误: $e"};
     }
@@ -257,8 +264,12 @@ class ApiService {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
+        // 解析冲突信息
+        final List<dynamic> rawConflicts = data['conflicts'] ?? [];
+
         return {
           'success': true,
+          'conflicts': rawConflicts,
           'server_todos': data['server_todos'] ?? [],
           'server_todo_groups': data['server_todo_groups'] ?? [],
           'server_countdowns': data['server_countdowns'] ?? [],
@@ -680,4 +691,124 @@ class ApiService {
   static Future<List<dynamic>> fetchPomodoroSessions(
           {int? fromMs, int? toMs}) =>
       fetchPomodoroRecords(null, fromMs, toMs);
+
+  // ==========================================
+  // 👥 10. 团队与协作 (Teams)
+  // ==========================================
+
+  static Future<List<dynamic>> fetchTeams() async {
+    try {
+      final response = await _client.get(Uri.parse('$_effectiveBaseUrl/api/teams'), headers: _getHeaders());
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['teams'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> createTeam(String name) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/create'),
+        headers: _getHeaders(),
+        body: jsonEncode({'name': name}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> generateInviteCode(String teamUuid) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/invite'),
+        headers: _getHeaders(),
+        body: jsonEncode({'team_uuid': teamUuid}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> addTeamMemberByEmail(String teamUuid, String email) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/members/add'),
+        headers: _getHeaders(),
+        body: jsonEncode({'team_uuid': teamUuid, 'email': email}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> joinTeamByCode(String code) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/join'),
+        headers: _getHeaders(),
+        body: jsonEncode({'code': code}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+  static Future<Map<String, dynamic>> deleteTeam(String teamUuid) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/delete'),
+        headers: _getHeaders(),
+        body: jsonEncode({'team_uuid': teamUuid}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> leaveTeam(String teamUuid) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/leave'),
+        headers: _getHeaders(),
+        body: jsonEncode({'team_uuid': teamUuid}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<List<dynamic>> fetchTeamMembers(String teamUuid) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/members?team_uuid=$teamUuid'),
+        headers: _getHeaders(),
+      );
+      final data = jsonDecode(response.body);
+      return data['members'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> removeTeamMember(String teamUuid, int targetUserId) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/members/remove'),
+        headers: _getHeaders(),
+        body: jsonEncode({'team_uuid': teamUuid, 'target_user_id': targetUserId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }

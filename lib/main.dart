@@ -13,6 +13,7 @@ import 'update_service.dart';
 import 'utils/page_transitions.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
+import 'screens/team_management_screen.dart';
 import 'screens/feature_guide_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
@@ -515,6 +516,7 @@ class _MyAppState extends State<MyApp> {
           routes: {
             '/login': (context) => const LoginScreen(),
             '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
+            '/teams': (context) => const TeamManagementScreen(),
             '/dev/island': (context) => const IslandDebugPage(),
           },
           builder: (context, child) {

@@ -46,6 +46,7 @@ import '../widgets/countdown_section_widget.dart';
 import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
+import '../widgets/conflict_alert_dialog.dart';
 import 'pomodoro_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
@@ -1660,13 +1661,20 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       // 🚀 2. 判断条件加入 syncTimeLogs
       if (syncTodos || syncCountdowns || syncTimeLogs) {
-        hasChanges = await StorageService.syncData(
+        final syncResult = await StorageService.syncData(
           widget.username,
           syncTodos: syncTodos,
           syncCountdowns: syncCountdowns,
           syncTimeLogs: syncTimeLogs, // 🚀 3. 将参数传给底层的增量同步引擎
           context: context,
         );
+        hasChanges = syncResult['hasChanges'] ?? false;
+        
+        // 🚀 新增：处理冲突信息
+        final List<ConflictInfo> conflicts = syncResult['conflicts'] ?? [];
+        if (conflicts.isNotEmpty && mounted) {
+           ConflictAlertDialog.show(context, conflicts);
+        }
       }
 
       if (syncPomodoro) {

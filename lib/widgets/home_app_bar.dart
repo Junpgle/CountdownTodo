@@ -237,6 +237,11 @@ class _HomeAppBarState extends State<HomeAppBar>
         ),
         _buildActionButton(
           context,
+          icon: Icons.people_rounded,
+          onPressed: () => Navigator.pushNamed(context, '/teams'),
+        ),
+        _buildActionButton(
+          context,
           icon: Icons.settings_rounded,
           onPressed: widget.onSettings,
           buttonKey: widget.settingsKey,

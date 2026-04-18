@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../screens/home_settings_screen.dart';
@@ -59,6 +60,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Map<String, int> _categoryReminderDefaults = {};
   String? _username;
+  List<Team> _teams = [];
+  String? _selectedTeamUuid;
 
   late AnimationController _dotsController;
 
@@ -78,6 +81,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         });
       }
     });
+    _loadTeams();
+  }
+
+  Future<void> _loadTeams() async {
+    final rawTeams = await ApiService.fetchTeams();
+    if (mounted) {
+      setState(() {
+        _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+      });
+    }
   }
 
   Future<void> _pickAttachmentImage() async {
@@ -389,6 +402,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       imagePath: persistentImagePath,
       groupId: _selectedGroupId,
       reminderMinutes: _reminderMinutes,
+      teamUuid: _selectedTeamUuid,
     );
 
     widget.onTodoAdded(todo);
@@ -756,6 +770,38 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   }
                 });
               },
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_teams.isNotEmpty) ...[
+            DropdownButtonFormField<String?>(
+              value: _selectedTeamUuid,
+              decoration: InputDecoration(
+                labelText: "同步到协作团队 (可选)",
+                prefixIcon: const Icon(Icons.people_outline),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text("个人私有 (不同步)"),
+                ),
+                ..._teams.map((t) => DropdownMenuItem<String?>(
+                      value: t.uuid,
+                      child: Row(
+                        children: [
+                          Icon(Icons.group,
+                              size: 18,
+                              color: Colors.blue.withOpacity(0.7)),
+                          const SizedBox(width: 8),
+                          Text(t.name),
+                        ],
+                      ),
+                    )),
+              ],
+              onChanged: (val) => setState(() => _selectedTeamUuid = val),
             ),
             const SizedBox(height: 12),
           ],
