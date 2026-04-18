@@ -401,13 +401,12 @@ class NotificationService {
 
         try {
           await _plugin.zonedSchedule(
-            r['notifId'],
-            r['title'] ?? '',
-            r['text'] ?? '',
-            tz.TZDateTime.from(triggerAt, tz.local),
-            const NotificationDetails(windows: WindowsNotificationDetails()),
-            uiLocalNotificationDateInterpretation:
-                UILocalNotificationDateInterpretation.absoluteTime,
+            id: r['notifId'],
+            title: r['title'] ?? '',
+            body: r['text'] ?? '',
+            scheduledDate: tz.TZDateTime.from(triggerAt, tz.local),
+            notificationDetails: const NotificationDetails(
+                windows: WindowsNotificationDetails()),
             androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           );
           scheduledOnWindows.add(r);
@@ -466,7 +465,7 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     if (Platform.isWindows) {
-      await _plugin.cancel(notifId);
+      await _plugin.cancel(id: notifId);
       final current = await StorageService.getWindowsScheduledReminders();
       current.removeWhere((r) => r['notifId'] == notifId);
       await StorageService.saveWindowsScheduledReminders(current);
