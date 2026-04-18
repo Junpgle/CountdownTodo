@@ -2576,22 +2576,22 @@ class _HomeDashboardState extends State<HomeDashboard>
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
-      height: 60 + (bottomPadding > 0 ? bottomPadding * 0.6 : 10), // 动态适配安全区域，缩短高度
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8), // 减小底部边距
+      height: 54 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6), // 进一步压缩高度
+      margin: const EdgeInsets.fromLTRB(40, 0, 40, 12), // 增加左右间距以减小宽度
       decoration: BoxDecoration(
         color: isDarkMode ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(40), // 更圆润的边缘
         border: Border.all(
           color: isDarkMode ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.2),
           width: 0.5,
         ),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(40),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -2613,21 +2613,21 @@ class _HomeDashboardState extends State<HomeDashboard>
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
               color: isSelected ? primary : inactive,
-              size: 24,
+              size: 22, // 缩小图标
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 color: isSelected ? primary : inactive,
-                fontSize: 10,
+                fontSize: 9, // 缩小文字
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -2648,23 +2648,23 @@ class _HomeDashboardState extends State<HomeDashboard>
         );
       },
       child: Container(
-        width: 56,
-        height: 56,
+        width: 48, // 缩小中键按钮
+        height: 48,
         decoration: BoxDecoration(
           color: primary,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: primary.withOpacity(0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+              color: primary.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
         child: const Icon(
           Icons.calendar_today_rounded,
           color: Colors.white,
-          size: 26,
+          size: 22,
         ),
       ),
     );
