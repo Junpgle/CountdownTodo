@@ -1493,32 +1493,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             }
           }
         },
-        child: AnimatedBuilder(
-          animation: Listenable.merge([
-            _animatedTodoIds.contains(todo.id)
-                ? AlwaysStoppedAnimation(1.0)
-                : AlwaysStoppedAnimation(0.0)
-          ]),
-          builder: (context, child) {
-            final bool hasStartAnimation = _animatedTodoIds.contains(todo.id);
-            return TweenAnimationBuilder<double>(
-              duration: const Duration(milliseconds: 1000),
-              curve: Curves.easeOutQuart,
-              tween:
-                  Tween<double>(begin: 0.0, end: hasStartAnimation ? 1.0 : 0.0),
-              builder: (context, value, child) {
-                return Opacity(
-                  opacity: value,
-                  child: Transform.translate(
-                    offset: Offset(0, 20 * (1.0 - value)),
-                    child: child,
-                  ),
-                );
-              },
-              child: child,
-            );
-          },
-          child: Dismissible(
+        child: Dismissible(
             key: key ?? _getTodoDismissKey('dismiss', todo.id),
             direction: DismissDirection.endToStart,
             background: Container(
@@ -1851,15 +1826,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 ),
               ),
             ),
-          ),
         ),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────
-  // 排序
-  // ─────────────────────────────────────────────
   List<TodoItem> _sortTodayTodos(List<TodoItem> list, DateTime now) {
     int startMs(TodoItem t) => t.createdDate ?? t.createdAt;
     final undone = list.where((t) => !t.isDone).toList()
