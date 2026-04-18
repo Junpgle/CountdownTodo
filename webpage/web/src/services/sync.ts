@@ -51,9 +51,9 @@ export const SyncEngine = {
 
       if (response.success) {
         console.log(`[Sync] Success. Server returned:`, { 
-          todos: response.server_todos?.length, 
-          groups: response.server_todo_groups?.length, 
-          pom: response.server_pomodoro_records?.length 
+          todos: (response.server_todos as any[])?.length, 
+          groups: (response.server_todo_groups as any[])?.length, 
+          pom: (response.server_pomodoro_records as any[])?.length 
         });
 
         // --- 合并 Todos ---

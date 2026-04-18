@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
-  CalendarDays, ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
+  ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
   User as UserIcon, Calendar, AlertCircle
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
@@ -46,9 +46,6 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncCountToday, setSyncCountToday] = useState(0);
 
-  const [isPastExpanded, setIsPastExpanded] = useState(false);
-  const [isTodayExpanded, setIsTodayExpanded] = useState(true);
-  const [isFutureExpanded, setIsFutureExpanded] = useState(true);
   const [nowMs, setNowMs] = useState(Date.now());
   const [mobileTab, setMobileTab] = useState<'home' | 'settings'>('home');
 
@@ -670,16 +667,19 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                     const undoneCount = groupTodos.filter((t:any) => !t.is_completed).length;
                     return (
                       <div key={group.uuid || group.id} className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden transition-all hover:shadow-sm">
-                        <div onClick={() => toggleGroupExpansion(group.uuid || group.id)} className="flex items-center gap-3 p-3.5 cursor-pointer select-none">
-                          <div className={`p-2 rounded-xl ${item.isAllDone ? 'bg-green-100 text-green-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                        <div className="flex items-center gap-3 p-3.5 select-none">
+                          <div onClick={() => toggleGroupExpansion(group.uuid || group.id)} className={`p-2 rounded-xl cursor-pointer ${item.isAllDone ? 'bg-green-100 text-green-600' : 'bg-indigo-100 text-indigo-600'}`}>
                             {item.isAllDone ? <CheckCircle2 className="w-4 h-4" /> : (group.is_expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />)}
                           </div>
-                          <div className="flex-1">
+                          <div onClick={() => toggleGroupExpansion(group.uuid || group.id)} className="flex-1 cursor-pointer">
                             <h4 className={`text-sm font-bold ${item.isAllDone ? 'text-green-700 line-through opacity-60' : 'text-slate-800'}`}>{group.name || '未命名文件夹'}</h4>
                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                               {item.isAllDone ? '全部完成' : `${undoneCount}/${groupTodos.length} 项待处理`}
                             </p>
                           </div>
+                          <button onClick={() => deleteGroup(group.uuid || group.id)} className="p-1.5 text-slate-300 hover:text-red-500 transition">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                         {group.is_expanded && groupTodos.length > 0 && (
                           <div className="bg-white/50 border-t border-slate-100/80 p-2 space-y-2">
