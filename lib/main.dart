@@ -350,22 +350,36 @@ class _MyAppState extends State<MyApp> {
           final j = t.toJson();
           j['is_completed'] = 0;
           j['content'] = t.title;
-          if (t.dueDate != null)
+          if (t.dueDate != null) {
             j['due_date'] = t.dueDate!.millisecondsSinceEpoch;
+          }
           if (t.createdDate != null) j['created_date'] = t.createdDate!;
           if (t.remark != null && t.remark!.isNotEmpty) j['remark'] = t.remark;
           return j;
         }).toList();
+
       case 'course':
-        return [];
+        final courses = await CourseService.getAllCourses();
+        return courses.map((c) => c.toJson()).toList();
+
       case 'countdown':
-        return [];
+        final countdowns = await StorageService.getCountdowns(user);
+        return countdowns
+            .where((c) => !c.isDeleted)
+            .map((c) => c.toJson())
+            .toList();
+
       case 'pomodoro':
-        return [];
+        final records = await PomodoroService.getRecords();
+        // 仅提供最近 30 条记录供手环查看，避免数据量过大
+        return records.take(30).map((r) => r.toJson()).toList();
+
       default:
         return [];
     }
   }
+
+
 
   Future<void> _handleBandPomodoroAction(String action) async {
     debugPrint('[Band] _handleBandPomodoroAction called: $action');
