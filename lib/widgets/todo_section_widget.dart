@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
+import '../services/api_service.dart';
 import '../storage_service.dart';
 import '../screens/historical_todos_screen.dart';
 import '../services/todo_parser_service.dart';
@@ -2792,9 +2793,11 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
   DateTime? _recurrenceEndDate;
   late bool _isAllDay;
   String? _selectedGroupId;
-  late int _reminderMinutes; // 🚀 新增提醒设置
+  late int _reminderMinutes;
   Map<String, int> _categoryReminderDefaults = {};
   String? _username;
+  List<Team> _teams = [];
+  String? _selectedTeamUuid;
 
   @override
   void initState() {
@@ -2819,7 +2822,18 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
         _dueDate!.minute == 59;
     _selectedGroupId = t.groupId;
     _reminderMinutes = t.reminderMinutes ?? 5;
+    _selectedTeamUuid = t.teamUuid;
     _loadCategoryDefaults();
+    _loadTeams();
+  }
+
+  Future<void> _loadTeams() async {
+    final rawTeams = await ApiService.fetchTeams();
+    if (mounted) {
+      setState(() {
+        _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+      });
+    }
   }
 
   Future<void> _loadCategoryDefaults() async {
@@ -2855,6 +2869,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
         _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim();
     todo.groupId = _selectedGroupId;
     todo.reminderMinutes = _reminderMinutes;
+    todo.teamUuid = _selectedTeamUuid;
     todo.markAsChanged();
     widget.onTodosChanged(List<TodoItem>.from(widget.todos));
     if (mounted) Navigator.pop(context);
@@ -2956,6 +2971,38 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
             },
           ),
           const SizedBox(height: 12),
+          if (_teams.isNotEmpty) ...[
+            DropdownButtonFormField<String?>(
+              value: _selectedTeamUuid,
+              decoration: InputDecoration(
+                labelText: "同步到协作团队 (可选)",
+                prefixIcon: const Icon(Icons.people_outline),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text("个人私有 (不同步)"),
+                ),
+                ..._teams.map((t) => DropdownMenuItem<String?>(
+                      value: t.uuid,
+                      child: Row(
+                        children: [
+                          Icon(Icons.group,
+                              size: 18,
+                              color: Colors.blue.withOpacity(0.7)),
+                          const SizedBox(width: 8),
+                          Text(t.name),
+                        ],
+                      ),
+                    )),
+              ],
+              onChanged: (val) => setState(() => _selectedTeamUuid = val),
+            ),
+            const SizedBox(height: 12),
+          ],
           SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('全天事件',
