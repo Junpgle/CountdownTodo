@@ -3,7 +3,7 @@ import { ApiService } from '../services/api';
 // --------------------------------------------------------
 // 常量与工具函数
 // --------------------------------------------------------
-export const CURRENT_WEB_VERSION = "2.1.0"; // 当前网页版的硬编码版本号
+export const CURRENT_WEB_VERSION = "3.6.0"; // 当前网页版的硬编码版本号
 
 export const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
 export const formatDt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
