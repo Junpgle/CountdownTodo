@@ -1,6 +1,7 @@
 var storage = require('@system.storage')
 var interconnect = require('@system.interconnect')
 var app = require('@system.app')
+var router = require('@system.router')
 
 var SYNC_KEY_PREFIX = 'sync_'
 var connect = null
@@ -13,6 +14,7 @@ var appVersion = '...'
 var appVersionCode = 0
 var onVersionReady = null
 var onSyncDataReceived = null
+var onAlertReceived = null
 
 function getConnect() {
   if (!connect) {
@@ -131,6 +133,27 @@ function replacePhoneData(type, phoneData) {
   if (onSyncDataReceived) onSyncDataReceived(type, validItems)
 }
 
+/**
+ * 处理接收到的特殊待办通知
+ */
+function handleSpecialTodoNotification(alertData) {
+  if (!alertData) return
+  
+  // 保存到待处理提醒
+  storage.set({
+    key: 'sync_pending_alert',
+    value: JSON.stringify(alertData),
+    success: function() {
+      logDebug('Saved special todo alert to storage')
+    }
+  })
+  
+  // 如果有回调，通知 UI 跳转
+  if (onAlertReceived) {
+    onAlertReceived(alertData)
+  }
+}
+
 function handleReceivedData(data) {
   try {
     var parsedData = null
@@ -149,6 +172,13 @@ function handleReceivedData(data) {
     if (!parsedData || !parsedData.type) { return }
 
     var type = parsedData.type
+    
+    // 🚀 特殊处理：待办实时提醒
+    if (type === 'special_todo_notification') {
+      handleSpecialTodoNotification(parsedData.data)
+      return
+    }
+
     var batchData = parsedData.data
     var batchNum = parsedData.batchNum || 1
     var totalBatches = parsedData.totalBatches || 1
@@ -243,10 +273,13 @@ function requestSyncFromPhone(type, onResult) {
 }
 
 function init(opts) {
+  if (opts && opts.onVersionReady) onVersionReady = opts.onVersionReady
+  if (opts && opts.onAlertReceived) onAlertReceived = opts.onAlertReceived
+  if (opts && opts.onSyncDataReceived) onSyncDataReceived = opts.onSyncDataReceived
+
   if (isInitialized && connect) {
     return
   }
-  if (opts && opts.onVersionReady) onVersionReady = opts.onVersionReady
 
   try {
     app.getInfo({
@@ -323,6 +356,20 @@ function destroy() {
   connect = null
   isConnected = false
   isInitialized = false
+}
+
+function clearPendingAlert() {
+  return new Promise(function(resolve) {
+    storage.delete({
+      key: 'sync_pending_alert',
+      success: function() {
+        resolve(true)
+      },
+      fail: function() {
+        resolve(false)
+      }
+    })
+  })
 }
 
 function sendPomodoroAction(action, sessionUuid) {
@@ -440,5 +487,6 @@ module.exports = {
   syncPomodoro: syncPomodoro,
   getDiagMsg: getDiagMsg,
   getVersion: getVersion,
+  clearPendingAlert: clearPendingAlert,
   setOnSyncDataReceived: function(cb) { onSyncDataReceived = cb }
 }

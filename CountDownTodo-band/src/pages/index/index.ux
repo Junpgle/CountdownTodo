@@ -125,6 +125,21 @@ export default {
     SyncService.init({
       onVersionReady: function(ver) {
         self.bandVersion = 'v' + ver
+      },
+      onAlertReceived: function(alertData) {
+        // 实时跳转到提醒页面
+        if (alertData && alertData.title) {
+          router.push({
+            uri: '/pages/alert',
+            params: {
+              title: alertData.title,
+              content: alertData.content || '',
+              todoType: alertData.todoType || 'default',
+              notificationId: String(alertData.notificationId || 0),
+              timestamp: String(alertData.timestamp || Date.now())
+            }
+          })
+        }
       }
     })
     this.setCurrentDate()
