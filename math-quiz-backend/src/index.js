@@ -543,9 +543,59 @@ export default {
 
             const existing = await DB.prepare("SELECT uuid, version, updated_at FROM todo_groups WHERE uuid = ? AND user_id = ?").bind(gUuid, authUserId).first();
             if (!existing) {
-              batchStatements.push(DB.prepare(`INSERT INTO todo_groups (uuid, user_id, name, is_expanded, is_deleted, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(gUuid, authUserId, gName, gIsExpanded, gIsDeleted, gVersion, gCreatedAt, now));
+              batchStatements.push(DB.prepare(`INSERT OR REPLACE INTO todo_groups (uuid, user_id, name, is_expanded, is_deleted, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(gUuid, authUserId, gName, gIsExpanded, gIsDeleted, gVersion, gCreatedAt, now));
             } else if (gVersion > (existing.version || 0) || gUpdatedAtClient > normalizeToMs(existing.updated_at)) {
               batchStatements.push(DB.prepare(`UPDATE todo_groups SET name=?, is_expanded=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?`).bind(gName, gIsExpanded, gIsDeleted, gVersion, now, gUuid, authUserId));
+            }
+          }
+        }
+
+        // 2.6 处理 Pomodoro Tags
+        const pomRecordsPayload = payload.pomodoro_records || payload.pomodoro_records_changes || [];
+        const pomTagsPayload = payload.pomodoro_tags || payload.pomodoro_tags_changes || [];
+
+        if (Array.isArray(pomTagsPayload)) {
+          for (const tag of pomTagsPayload) {
+            const uuid = String(tag.uuid ?? '');
+            if (!uuid) continue;
+            const name = String(tag.name ?? '');
+            const color = String(tag.color ?? '#607D8B');
+            const isDeleted = (tag.is_deleted ?? tag.isDeleted) ? 1 : 0;
+            const version = parseInt(tag.version ?? 1, 10);
+            const createdAt = normalizeToMs(tag.created_at ?? tag.createdAt) || now;
+            const updatedAt = normalizeToMs(tag.updated_at ?? tag.updatedAt) || now;
+
+            const existing = await DB.prepare("SELECT version, updated_at FROM pomodoro_tags WHERE uuid = ? AND user_id = ?").bind(uuid, authUserId).first();
+            if (!existing) {
+              batchStatements.push(DB.prepare("INSERT OR REPLACE INTO pomodoro_tags (uuid, user_id, name, color, is_deleted, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)").bind(uuid, authUserId, name, color, isDeleted, version, createdAt, updatedAt));
+            } else if (version > (existing.version || 0) || updatedAt > normalizeToMs(existing.updated_at)) {
+              batchStatements.push(DB.prepare("UPDATE pomodoro_tags SET name=?, color=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?").bind(name, color, isDeleted, version, updatedAt, uuid, authUserId));
+            }
+          }
+        }
+
+        // 2.7 处理 Pomodoro Records
+        if (Array.isArray(pomRecordsPayload)) {
+          for (const r of pomRecordsPayload) {
+            const uuid = String(r.uuid ?? '');
+            if (!uuid) continue;
+            const todoUuid = r.todo_uuid ? String(r.todo_uuid) : null;
+            const startTime = normalizeToMs(r.start_time) || now;
+            const endTime = r.end_time != null ? (normalizeToMs(r.end_time) || null) : null;
+            const plannedDuration = typeof r.planned_duration === 'number' ? r.planned_duration : parseInt(r.planned_duration || 25*60, 10);
+            const actualDuration = r.actual_duration != null ? parseInt(r.actual_duration, 10) : null;
+            const status = ['completed','interrupted','switched'].includes(r.status) ? r.status : 'completed';
+            const deviceId = r.device_id ? String(r.device_id) : null;
+            const isDeleted = (r.is_deleted ?? r.isDeleted) ? 1 : 0;
+            const version = parseInt(r.version ?? 1, 10);
+            const createdAt = normalizeToMs(r.created_at ?? r.createdAt) || now;
+            const updatedAt = normalizeToMs(r.updated_at ?? r.updatedAt) || now;
+
+            const existing = await DB.prepare("SELECT version, updated_at FROM pomodoro_records WHERE uuid = ? AND user_id = ?").bind(uuid, authUserId).first();
+            if (!existing) {
+              batchStatements.push(DB.prepare(`INSERT OR REPLACE INTO pomodoro_records (uuid, user_id, todo_uuid, start_time, end_time, planned_duration, actual_duration, status, device_id, is_deleted, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(uuid, authUserId, todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, createdAt, updatedAt));
+            } else if (version > (existing.version || 0) || updatedAt > normalizeToMs(existing.updated_at)) {
+              batchStatements.push(DB.prepare(`UPDATE pomodoro_records SET todo_uuid=?, start_time=?, end_time=?, planned_duration=?, actual_duration=?, status=?, device_id=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?`).bind(todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, updatedAt, uuid, authUserId));
             }
           }
         }
@@ -614,9 +664,9 @@ export default {
         const normalizeTimestamp = (val) => normalizeToMs(val);
         const nullableTimestamp = (val) => { const ms = normalizeToMs(val); return ms > 0 ? ms : null; };
 
-        const filteredTodos = serverTodosRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
-        const filteredCountdowns = serverCountdownsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
-        const filteredTimeLogs = serverTimeLogsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time);
+        const filteredTodos = serverTodosRaw.results.filter(row => last_sync_time === 0 || normalizeToMs(row.updated_at) >= last_sync_time);
+        const filteredCountdowns = serverCountdownsRaw.results.filter(row => last_sync_time === 0 || normalizeToMs(row.updated_at) >= last_sync_time);
+        const filteredTimeLogs = serverTimeLogsRaw.results.filter(row => last_sync_time === 0 || normalizeToMs(row.updated_at) >= last_sync_time);
 
         const mappedTodos = filteredTodos.map(row => {
             const idStr = row.uuid || String(row.id);
@@ -626,10 +676,10 @@ export default {
             };
         });
 
-        const mappedTodoGroups = serverTodoGroupsRaw.results.filter(row => normalizeToMs(row.updated_at) > last_sync_time).map(row => {
+        const mappedTodoGroups = serverTodoGroupsRaw.results.filter(row => last_sync_time === 0 || normalizeToMs(row.updated_at) >= last_sync_time).map(row => {
             const idStr = row.uuid || String(row.id);
             return {
-              id: idStr, uuid: idStr, name: row.name, is_expanded: row.is_expanded === 1, is_deleted: row.is_deleted === 1, version: row.version,
+              id: idStr, uuid: idStr, name: row.name, is_expanded: row.is_expanded === 1 || row.is_expanded === true, is_deleted: row.is_deleted === 1 || row.is_deleted === true, version: row.version,
               created_at: normalizeTimestamp(row.created_at), updated_at: normalizeTimestamp(row.updated_at)
             };
         });
@@ -657,6 +707,12 @@ export default {
           server_todo_groups: mappedTodoGroups,
           server_countdowns: mappedCountdowns,
           server_time_logs: mappedTimeLogs,
+          server_pomodoro_tags: (await DB.prepare("SELECT * FROM pomodoro_tags WHERE user_id = ?").bind(authUserId).all()).results.filter(row => last_sync_time === 0 || normalizeToMs(row.updated_at) >= last_sync_time).map(row => ({
+            uuid: row.uuid, name: row.name, color: row.color, is_deleted: row.is_deleted === 1 || row.is_deleted === true, version: row.version, created_at: normalizeToMs(row.created_at), updated_at: normalizeToMs(row.updated_at)
+          })),
+          server_pomodoro_records: (await DB.prepare("SELECT * FROM pomodoro_records WHERE user_id = ?").bind(authUserId).all()).results.filter(row => last_sync_time === 0 || normalizeToMs(row.updated_at) >= last_sync_time).map(row => ({
+            uuid: row.uuid, todo_uuid: row.todo_uuid, start_time: normalizeToMs(row.start_time), end_time: normalizeToMs(row.end_time), planned_duration: row.planned_duration, actual_duration: row.actual_duration, status: row.status, device_id: row.device_id, is_deleted: row.is_deleted === 1 || row.is_deleted === true, version: row.version, created_at: normalizeToMs(row.created_at), updated_at: normalizeToMs(row.updated_at)
+          })),
           new_sync_time: now,
           status: { tier, sync_count: record ? record.sync_count : 1, sync_limit: syncLimit }
         });
@@ -887,6 +943,29 @@ export default {
         let syncedRecords = 0;
         const userIdMap = {}; // 核心映射表：阿里云 user_id -> Cloudflare user_id
 
+        // 0. 安全加固：确保所有核心表和唯一索引在 D1 中已正确初始化
+        // 这一步能解决 "ON CONFLICT clause does not match" 或 "no column named xxx" 报错
+        await DB.prepare("CREATE TABLE IF NOT EXISTS todo_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT, user_id INTEGER, name TEXT, is_expanded INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at INTEGER, created_at INTEGER)").run();
+        await DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_todo_groups_uuid ON todo_groups(uuid)").run();
+        await DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_todos_uuid ON todos(uuid)").run();
+
+        // 补齐 pomodoro_settings 可能缺失的 timer_mode 字段
+        const pSettingsCols = await DB.prepare("PRAGMA table_info(pomodoro_settings)").all();
+        const pColNames = new Set(pSettingsCols.results.map(r => r.name));
+        if (!pColNames.has('timer_mode')) {
+          try { await DB.prepare("ALTER TABLE pomodoro_settings ADD COLUMN timer_mode INTEGER DEFAULT 0").run(); } catch(e) {}
+        }
+
+        // 补齐 todos 可能缺失的字段
+        const todosCols = await DB.prepare("PRAGMA table_info(todos)").all();
+        const tColNames = new Set(todosCols.results.map(r => r.name));
+        if (!tColNames.has('remark')) {
+          try { await DB.prepare("ALTER TABLE todos ADD COLUMN remark TEXT").run(); } catch(e) {}
+        }
+        if (!tColNames.has('group_id')) {
+          try { await DB.prepare("ALTER TABLE todos ADD COLUMN group_id TEXT").run(); } catch(e) {}
+        }
+
         // 1. 智能合并 Users 表 (依据 Email 进行精准身份对齐)
         if (body.users && body.users.length > 0) {
           for (const u of body.users) {
@@ -912,17 +991,33 @@ export default {
         // 用于将外键自动转换到云端合法 ID 上的工具函数
         const getMappedUserId = (oldId) => userIdMap[oldId] || oldId;
 
-        // 2. 合并 Todos (利用 ON CONFLICT DO UPDATE 搭配 WHERE LWW最后写入者胜)
+        // 2. 合并 Todo Groups (新增)
+        if (body.todo_groups && body.todo_groups.length > 0) {
+          body.todo_groups.forEach(g => {
+            if (!g.uuid) return;
+            batchStatements.push(DB.prepare(`
+              INSERT INTO todo_groups (uuid, user_id, name, is_expanded, is_deleted, version, created_at, updated_at)
+              VALUES (?,?,?,?,?,?,?,?)
+              ON CONFLICT(uuid) DO UPDATE SET
+                name=excluded.name, is_expanded=excluded.is_expanded, is_deleted=excluded.is_deleted, version=excluded.version, updated_at=excluded.updated_at
+              WHERE excluded.updated_at > todo_groups.updated_at OR (excluded.updated_at = todo_groups.updated_at AND excluded.version > todo_groups.version)
+            `).bind(g.uuid, getMappedUserId(g.user_id), g.name, g.is_expanded, g.is_deleted, g.version, g.created_at, g.updated_at));
+          });
+        }
+
+        // 3. 合并 Todos (补全 group_id 并增加补全特权)
         if (body.todos && body.todos.length > 0) {
           body.todos.forEach(t => {
             if (!t.uuid) return;
             batchStatements.push(DB.prepare(`
-              INSERT INTO todos (uuid, user_id, content, is_completed, is_deleted, version, device_id, created_at, updated_at, due_date, created_date, recurrence, custom_interval_days, recurrence_end_date, remark)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              INSERT INTO todos (uuid, user_id, content, is_completed, is_deleted, version, device_id, created_at, updated_at, due_date, created_date, recurrence, custom_interval_days, recurrence_end_date, remark, group_id)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(uuid) DO UPDATE SET
-                content=excluded.content, is_completed=excluded.is_completed, is_deleted=excluded.is_deleted, version=excluded.version, device_id=excluded.device_id, updated_at=excluded.updated_at, due_date=excluded.due_date, created_date=excluded.created_date, recurrence=excluded.recurrence, custom_interval_days=excluded.custom_interval_days, recurrence_end_date=excluded.recurrence_end_date, remark=excluded.remark
-              WHERE excluded.updated_at > todos.updated_at OR (excluded.updated_at = todos.updated_at AND excluded.version > todos.version)
-            `).bind(t.uuid, getMappedUserId(t.user_id), t.content, t.is_completed, t.is_deleted, t.version, t.device_id, t.created_at, t.updated_at, t.due_date, t.created_date, t.recurrence, t.custom_interval_days, t.recurrence_end_date, t.remark));
+                content=excluded.content, is_completed=excluded.is_completed, is_deleted=excluded.is_deleted, version=excluded.version, device_id=excluded.device_id, updated_at=excluded.updated_at, due_date=excluded.due_date, created_date=excluded.created_date, recurrence=excluded.recurrence, custom_interval_days=excluded.custom_interval_days, recurrence_end_date=excluded.recurrence_end_date, remark=excluded.remark, group_id=excluded.group_id
+              WHERE excluded.updated_at > todos.updated_at 
+                 OR (excluded.updated_at = todos.updated_at AND excluded.version > todos.version)
+                 OR (todos.group_id IS NULL AND excluded.group_id IS NOT NULL)
+            `).bind(t.uuid, getMappedUserId(t.user_id), t.content, t.is_completed, t.is_deleted, t.version, t.device_id, t.created_at, t.updated_at, t.due_date, t.created_date, t.recurrence, t.custom_interval_days, t.recurrence_end_date, t.remark, t.group_id));
           });
         }
 
@@ -1070,7 +1165,7 @@ export default {
             batchStatements.push(DB.prepare(`
               INSERT INTO todo_groups (uuid, user_id, name, is_expanded, is_deleted, version, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(user_id, uuid) DO UPDATE SET
+              ON CONFLICT(uuid) DO UPDATE SET
                 name=excluded.name, is_expanded=excluded.is_expanded, is_deleted=excluded.is_deleted, version=excluded.version, updated_at=excluded.updated_at
               WHERE excluded.updated_at > todo_groups.updated_at OR (excluded.updated_at = todo_groups.updated_at AND excluded.version > todo_groups.version)
             `).bind(g.uuid, getMappedUserId(g.user_id), g.name, g.is_expanded, g.is_deleted, g.version, g.created_at, g.updated_at));

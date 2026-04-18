@@ -27,6 +27,18 @@ export interface TodoItem {
   custom_interval_days?: number | null;
   recurrence_end_date?: number | null;
   remark?: string | null;
+  group_id?: string | null;
+}
+
+export interface TodoGroup {
+  id: string;
+  uuid: string;
+  name: string;
+  is_expanded: boolean;
+  is_deleted: boolean;
+  version: number;
+  updated_at: number;
+  created_at: number;
 }
 
 export interface CountdownItem {
@@ -40,3 +52,20 @@ export interface CountdownItem {
   created_at: number;
   device_id: string;
 }
+
+export interface PomodoroRecord {
+  uuid: string;
+  todo_uuid: string | null;
+  start_time: number;
+  end_time: number | null;
+  planned_duration: number;
+  actual_duration: number | null;
+  status: 'completed' | 'interrupted' | 'switched';
+  tag_uuids: string[];
+  device_id?: string | null;
+  version: number;
+  created_at: number;
+  updated_at: number;
+  is_deleted: boolean | number;
+}
+

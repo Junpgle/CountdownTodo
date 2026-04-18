@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiService } from '../services/api';
-import type { TodoItem, CountdownItem, User } from '../types';
+import type { TodoItem, CountdownItem, User, TodoGroup } from '../types';
 
 import {
   CURRENT_WEB_VERSION,
@@ -26,8 +26,9 @@ import { PomodoroFocusView } from './PomodoroFocusView';
 export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: User, onLogout: () => void }) => {
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'screentime' | 'pomodoro' | 'focus'>('dashboard');
   const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [todoGroups, setTodoGroups] = useState<TodoGroup[]>([]);
   const [countdowns, setCountdowns] = useState<CountdownItem[]>([]);
-  const [showAddModal, setShowAddModal] = useState<'todo' | 'countdown' | null>(null);
+  const [showAddModal, setShowAddModal] = useState<'todo' | 'countdown' | 'group' | null>(null);
 
   // 编辑待办
   const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
@@ -35,11 +36,13 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   const [editRemark, setEditRemark] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
+  const [editGroupId, setEditGroupId] = useState<string | null>(null);
 
   const [newItemTitle, setNewItemTitle] = useState('');
   const [newRemark, setNewRemark] = useState('');
   const [newStartDate, setNewStartDate] = useState(toDatetimeLocal(Date.now()));
   const [newDueDate, setNewDueDate] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncCountToday, setSyncCountToday] = useState(0);
 
@@ -82,6 +85,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
   const loadLocalData = () => {
     setTodos(SyncEngine.getLocalTodos(user.id).filter(t => !t.is_deleted));
+    setTodoGroups(SyncEngine.getLocalTodoGroups(user.id).filter(g => !g.is_deleted));
     setCountdowns(SyncEngine.getLocalCountdowns(user.id).filter(c => !c.is_deleted));
   };
 
@@ -252,6 +256,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       due_date: newDueDate ? new Date(newDueDate).getTime() : null,
       device_id: ApiService.getDeviceId(),
       remark: newRemark.trim() || null,
+      group_id: selectedGroupId || null,
     };
 
     const all = SyncEngine.getLocalTodos(user.id);
@@ -286,11 +291,34 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     handleSync();
   };
 
+  const handleAddGroup = () => {
+    if (!newItemTitle.trim()) return;
+    const now = Date.now();
+    const newG: TodoGroup = {
+      id: generateUUID(),
+      uuid: generateUUID(),
+      name: newItemTitle.trim(),
+      is_expanded: true,
+      is_deleted: false,
+      version: 1,
+      updated_at: now,
+      created_at: now,
+    };
+    const all = SyncEngine.getLocalTodoGroups(user.id);
+    all.unshift(newG);
+    SyncEngine.setLocalTodoGroups(user.id, all);
+    loadLocalData();
+    setShowAddModal(null);
+    resetForm();
+    handleSync();
+  };
+
   const resetForm = () => {
     setNewItemTitle('');
     setNewRemark('');
     setNewStartDate(toDatetimeLocal(Date.now()));
     setNewDueDate('');
+    setSelectedGroupId(null);
   };
 
   const openEditModal = (todo: TodoItem) => {
@@ -299,6 +327,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     setEditRemark(todo.remark ?? '');
     setEditStartDate(toDatetimeLocal(todo.created_date ?? todo.created_at));
     setEditDueDate(todo.due_date ? toDatetimeLocal(todo.due_date) : '');
+    setEditGroupId(todo.group_id ?? null);
   };
 
   const handleSaveTodoEdit = () => {
@@ -310,6 +339,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       target.remark = editRemark.trim() || null;
       target.created_date = new Date(editStartDate).getTime();
       target.due_date = editDueDate ? new Date(editDueDate).getTime() : null;
+      target.group_id = editGroupId;
       target.version++;
       target.updated_at = Date.now();
       SyncEngine.setLocalTodos(user.id, all);
@@ -354,6 +384,49 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       target.updated_at = Date.now();
       SyncEngine.setLocalCountdowns(user.id, all);
       loadLocalData();
+      handleSync();
+    }
+  };
+
+  const deleteGroup = (uuid: string) => {
+    if (!window.confirm("确定要删除这个文件夹吗？文件夹内的任务将变为未分类。")) return;
+    
+    // 1. 删除文件夹
+    const groups = SyncEngine.getLocalTodoGroups(user.id);
+    const targetG = groups.find(g => g.uuid === uuid);
+    if (targetG) {
+      targetG.is_deleted = true;
+      targetG.version++;
+      targetG.updated_at = Date.now();
+      SyncEngine.setLocalTodoGroups(user.id, groups);
+    }
+
+    // 2. 解散文件夹内的任务
+    const allTodos = SyncEngine.getLocalTodos(user.id);
+    let changed = false;
+    allTodos.forEach(t => {
+      if (t.group_id === uuid) {
+        t.group_id = null;
+        t.version++;
+        t.updated_at = Date.now();
+        changed = true;
+      }
+    });
+    if (changed) SyncEngine.setLocalTodos(user.id, allTodos);
+
+    loadLocalData();
+    handleSync();
+  };
+
+  const toggleGroupExpansion = (uuid: string) => {
+    const groups = SyncEngine.getLocalTodoGroups(user.id);
+    const target = groups.find(g => g.uuid === uuid);
+    if (target) {
+      target.is_expanded = !target.is_expanded;
+      target.version++;
+      target.updated_at = Date.now();
+      SyncEngine.setLocalTodoGroups(user.id, groups);
+      setTodoGroups(groups.filter(g => !g.is_deleted));
       handleSync();
     }
   };
@@ -519,74 +592,155 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                 <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                 待办清单
               </h2>
-              <button onClick={() => { resetForm(); setShowAddModal('todo'); }} className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold transition active:scale-95 shadow-md shadow-slate-900/10">
-                <Plus className="w-4 h-4" /> 新增
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { resetForm(); setShowAddModal('group'); }} className="p-2 text-slate-400 hover:text-indigo-600 transition" title="新建文件夹">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></svg>
+                </button>
+                <button onClick={() => { resetForm(); setShowAddModal('todo'); }} className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold transition active:scale-95 shadow-md shadow-slate-900/10">
+                  <Plus className="w-4 h-4" /> 新增
+                </button>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-2 sm:space-y-4 min-h-0">
-              {pastTodos.length > 0 && (
-                  <div className="bg-red-50/50 rounded-xl sm:rounded-2xl border border-red-100 p-1.5 sm:p-2">
-                    <button onClick={() => setIsPastExpanded(!isPastExpanded)} className="w-full flex items-center gap-2 p-1.5 sm:p-2 text-red-600 hover:bg-red-100/50 rounded-lg sm:rounded-xl transition">
-                      {isPastExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      <span className="font-bold text-sm">以往待办 ({pastTodos.length})</span>
-                    </button>
-                    {isPastExpanded && (
-                        <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
-                          {pastTodos.map(t => <TodoCard key={t.uuid} todo={t} isPast={true} isFuture={false} />)}
-                        </div>
+            <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-4 min-h-0">
+              {/* 文件夹列表 */}
+              {todoGroups.map(group => {
+                const groupUuid = String(group.uuid || group.id).trim().toLowerCase();
+                const groupTodos = todos.filter(t => t.group_id && String(t.group_id).trim().toLowerCase() === groupUuid);
+                const undoneCount = groupTodos.filter(t => !t.is_completed).length;
+                
+                if (todoGroups.length > 0 && groupTodos.length === 0) {
+                    console.log(`[FolderDebug] Group "${group.name}" (${groupUuid}) matches 0 todos.`);
+                }
+
+                if (groupTodos.length === 0 && !group.is_expanded && !group.name) return null;
+
+                return (
+                  <div key={group.uuid} className="bg-slate-50/80 rounded-2xl border border-slate-100 overflow-hidden">
+                    <div className="flex items-center justify-between p-1 pr-3">
+                      <button 
+                        onClick={() => toggleGroupExpansion(group.uuid)}
+                        className="flex-1 flex items-center gap-2 px-3 py-2.5 text-slate-700 hover:bg-slate-100/50 rounded-xl transition group"
+                      >
+                        {group.is_expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        <span className="font-black text-sm">{group.name}</span>
+                        <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full font-bold">
+                          {undoneCount}/{groupTodos.length}
+                        </span>
+                      </button>
+                      <button onClick={() => deleteGroup(group.uuid)} className="p-1.5 text-slate-300 hover:text-red-500 transition">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {group.is_expanded && (
+                      <div className="p-2 pt-0 space-y-2">
+                        {groupTodos.length === 0 ? (
+                          <div className="text-center py-4 text-xs text-slate-400">文件夹内暂无任务</div>
+                        ) : (
+                          groupTodos.sort((a,b) => (a.is_completed ? 1 : -1) - (b.is_completed ? 1 : -1) || (a.created_date ?? a.created_at) - (b.created_date ?? b.created_at))
+                                    .map(t => <TodoCard key={t.uuid} todo={t} isPast={isHistorical(t)} isFuture={t.due_date ? new Date(t.due_date).getTime() > todayMs : false} />)
+                        )}
+                      </div>
                     )}
                   </div>
-              )}
+                );
+              })}
 
-              <div className="bg-slate-50 rounded-xl sm:rounded-2xl border border-slate-100 p-1.5 sm:p-2">
-                <button onClick={() => setIsTodayExpanded(!isTodayExpanded)} className="w-full flex items-center gap-2 p-1.5 sm:p-2 text-slate-600 hover:bg-slate-200/50 rounded-lg sm:rounded-xl transition">
-                  {isTodayExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <span className="font-bold text-sm">
-                  今日待办 ({todayTodos.filter(t=>t.is_completed).length}/{todayTodos.length})
-                </span>
-                </button>
-                {isTodayExpanded && (
-                    <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
-                      {sortedToday.length === 0 ? (
-                          <div className="text-center py-4 sm:py-6 text-sm font-medium text-slate-400">今日暂无待办</div>
-                      ) : (
-                          sortedToday.map(t => <TodoCard key={t.uuid} todo={t} isPast={false} isFuture={false} />)
+              {/* 未分类任务 - 按时间分组 */}
+              {(() => {
+                const unclassified = todos.filter(t => {
+                  if (!t.group_id) return true;
+                  const gId = String(t.group_id).trim().toLowerCase();
+                  return !todoGroups.find(g => String(g.uuid || g.id).trim().toLowerCase() === gId);
+                });
+                const pTodos = unclassified.filter(t => {
+                  if (t.due_date) {
+                    const d = new Date(t.due_date);
+                    d.setHours(0,0,0,0);
+                    return d.getTime() < todayMs && !t.is_completed;
+                  }
+                  return false;
+                });
+                const tTodos = unclassified.filter(t => !isHistorical(t) && (!t.due_date || new Date(t.due_date).setHours(0,0,0,0) === todayMs));
+                const fTodos = unclassified.filter(t => t.due_date && new Date(t.due_date).setHours(0,0,0,0) > todayMs && !isHistorical(t));
+
+                const sToday = [
+                  ...tTodos.filter(t => !t.is_completed).sort((a,b) => (a.created_date ?? a.created_at) - (b.created_date ?? b.created_at)),
+                  ...tTodos.filter(t => t.is_completed).sort((a,b) => (a.created_date ?? a.created_at) - (b.created_date ?? b.created_at))
+                ];
+
+                return (
+                  <>
+                    {unclassified.length > 0 && todoGroups.length > 0 && (
+                      <div className="flex items-center gap-2 px-2 py-1">
+                        <div className="h-px flex-1 bg-slate-100"></div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">未分类任务</span>
+                        <div className="h-px flex-1 bg-slate-100"></div>
+                      </div>
+                    )}
+
+                    {pTodos.length > 0 && (
+                      <div className="bg-red-50/50 rounded-xl sm:rounded-2xl border border-red-100 p-1.5 sm:p-2">
+                        <button onClick={() => setIsPastExpanded(!isPastExpanded)} className="w-full flex items-center gap-2 p-1.5 sm:p-2 text-red-600 hover:bg-red-100/50 rounded-lg sm:rounded-xl transition text-left">
+                          {isPastExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <span className="font-bold text-sm">以往待办 ({pTodos.length})</span>
+                        </button>
+                        {isPastExpanded && (
+                          <div className="p-1 sm:p-2 space-y-2">
+                            {pTodos.map(t => <TodoCard key={t.uuid} todo={t} isPast={true} isFuture={false} />)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="bg-slate-50 rounded-xl sm:rounded-2xl border border-slate-100 p-1.5 sm:p-2">
+                      <button onClick={() => setIsTodayExpanded(!isTodayExpanded)} className="w-full flex items-center gap-2 p-1.5 sm:p-2 text-slate-600 hover:bg-slate-200/50 rounded-lg sm:rounded-xl transition text-left">
+                        {isTodayExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        <span className="font-bold text-sm">今日待办 ({sToday.filter(t=>t.is_completed).length}/{sToday.length})</span>
+                      </button>
+                      {isTodayExpanded && (
+                        <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
+                          {sToday.length === 0 ? (
+                            <div className="text-center py-4 sm:py-6 text-sm font-medium text-slate-400">今日暂无待办</div>
+                          ) : (
+                            sToday.map(t => <TodoCard key={t.uuid} todo={t} isPast={false} isFuture={false} />)
+                          )}
+                        </div>
                       )}
                     </div>
-                )}
-              </div>
 
-              {sortedFuture.length > 0 && (
-                  <div className="bg-blue-50/50 rounded-xl sm:rounded-2xl border border-blue-100 p-1.5 sm:p-2 flex flex-col min-h-0 shrink-0">
-                    <button onClick={() => setIsFutureExpanded(!isFutureExpanded)} className="w-full flex items-center justify-between p-1.5 sm:p-2 text-blue-600 hover:bg-blue-100/50 rounded-lg sm:rounded-xl transition">
-                      <div className="flex items-center gap-2">
-                        {isFutureExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        <CalendarDays className="w-4 h-4" />
-                        <span className="font-bold text-sm">未来待办</span>
+                    {fTodos.length > 0 && (
+                      <div className="bg-blue-50/50 rounded-xl sm:rounded-2xl border border-blue-100 p-1.5 sm:p-2">
+                        <button onClick={() => setIsFutureExpanded(!isFutureExpanded)} className="w-full flex items-center justify-between p-1.5 sm:p-2 text-blue-600 hover:bg-blue-100/50 rounded-lg sm:rounded-xl transition">
+                          <div className="flex items-center gap-2">
+                            {isFutureExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                            <CalendarDays className="w-4 h-4" />
+                            <span className="font-bold text-sm">未来待办</span>
+                          </div>
+                          <span className="text-xs font-bold text-blue-400 mr-2">{fTodos.filter(t=>!t.is_completed).length} 未完成</span>
+                        </button>
+                        {isFutureExpanded && (
+                          <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
+                            {fTodos.map(t => <TodoCard key={t.uuid} todo={t} isPast={false} isFuture={true} />)}
+                          </div>
+                        )}
                       </div>
-                      <span className="text-xs font-bold text-blue-400 mr-2">
-                    {sortedFuture.filter(t=>!t.is_completed).length} 未完成
-                  </span>
-                    </button>
-                    {isFutureExpanded && (
-                        <div className="p-1 sm:p-2 space-y-1 sm:space-y-2">
-                          {sortedFuture.map(t => <TodoCard key={t.uuid} todo={t} isPast={false} isFuture={true} />)}
-                        </div>
                     )}
-                  </div>
-              )}
+                  </>
+                );
+              })()}
 
-              {activeTodos.length === 0 && countdowns.length === 0 && (
-                  <div className="text-center py-16">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-100 rounded-full mb-4">
-                      <CheckCircle2 className="w-8 h-8 text-slate-300" />
-                    </div>
-                    <h3 className="text-xl font-black text-slate-800 mb-1">干得漂亮！</h3>
-                    <p className="text-slate-500 text-sm">当前没有任何未完成的任务</p>
+              {todos.length === 0 && countdowns.length === 0 && (
+                <div className="text-center py-16">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-100 rounded-full mb-4">
+                    <CheckCircle2 className="w-8 h-8 text-slate-300" />
                   </div>
+                  <h3 className="text-xl font-black text-slate-800 mb-1">干得漂亮！</h3>
+                  <p className="text-slate-500 text-sm">当前没有任何未完成的任务</p>
+                </div>
               )}
             </div>
+
           </div>
         </div>
       </div>
@@ -783,7 +937,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
               <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
                 <div className="flex justify-between items-center mb-8">
                   <h4 className="font-black text-2xl text-slate-800">
-                    添加{showAddModal === 'todo' ? '待办事项' : '重要倒计时'}
+                    {showAddModal === 'todo' ? '添加待办事项' : showAddModal === 'countdown' ? '添加重要倒计时' : '创建新文件夹'}
                   </h4>
                   <button onClick={() => setShowAddModal(null)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition">
                     <X className="w-5 h-5" />
@@ -792,18 +946,31 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
                 <div className="space-y-6 mb-8">
                   <div>
-                    <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">标题内容</label>
+                    <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">{showAddModal === 'group' ? '文件夹名称' : '标题内容'}</label>
                     <input
                         type="text"
+                        placeholder={showAddModal === 'group' ? '例如：学习、生活、工作' : '请输入标题'}
                         value={newItemTitle}
                         onChange={e => setNewItemTitle(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition text-lg font-medium"
-                        placeholder="输入内容..."
-                        autoFocus
                     />
                   </div>
 
                   {showAddModal === 'todo' && (
+                    <>
+                      <div>
+                        <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">所属文件夹 (可选)</label>
+                        <select 
+                          value={selectedGroupId || ''} 
+                          onChange={e => setSelectedGroupId(e.target.value || null)}
+                          className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
+                        >
+                          <option value="">未分类</option>
+                          {todoGroups.map(g => (
+                            <option key={g.uuid} value={g.uuid}>{g.name}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div>
                         <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">开始时间 (必填)</label>
                         <input
@@ -813,9 +980,6 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                             className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
                         />
                       </div>
-                  )}
-
-                  {showAddModal === 'todo' && (
                       <div>
                         <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">备注 (可选)</label>
                         <textarea
@@ -826,26 +990,31 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                             placeholder="添加备注信息..."
                         />
                       </div>
+                    </>
                   )}
 
-                  <div>
-                    <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">
-                      {showAddModal === 'todo' ? '截止时间 (可选)' : '目标日期 (必填)'}
-                    </label>
-                    <input
-                        type={showAddModal === 'todo' ? 'datetime-local' : 'date'}
-                        value={newDueDate}
-                        onChange={e => setNewDueDate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
-                    />
-                  </div>
+                  {showAddModal === 'countdown' && (
+                      <div>
+                        <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">目标日期 (必填)</label>
+                        <input
+                            type="date"
+                            value={newDueDate}
+                            onChange={e => setNewDueDate(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
+                        />
+                      </div>
+                  )}
                 </div>
 
                 <button
-                    onClick={showAddModal === 'todo' ? handleAddTodo : handleAddCountdown}
-                    className="w-full bg-indigo-600 text-white font-black text-lg py-4 rounded-2xl hover:bg-indigo-700 transition shadow-xl shadow-indigo-500/30 active:scale-[0.98]"
+                    onClick={() => {
+                      if (showAddModal === 'todo') handleAddTodo();
+                      else if (showAddModal === 'countdown') handleAddCountdown();
+                      else if (showAddModal === 'group') handleAddGroup();
+                    }}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-5 rounded-[2rem] transition shadow-lg shadow-indigo-200 active:scale-[0.98]"
                 >
-                  保存并同步
+                  确定添加
                 </button>
               </div>
             </div>
@@ -884,6 +1053,20 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                         className="w-full bg-slate-50 border border-slate-200 px-5 py-3 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium resize-none text-sm placeholder:text-slate-400"
                         placeholder="添加备注信息..."
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">所属文件夹</label>
+                    <select 
+                      value={editGroupId || ''} 
+                      onChange={e => setEditGroupId(e.target.value || null)}
+                      className="w-full bg-slate-50 border border-slate-200 px-5 py-3 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
+                    >
+                      <option value="">未分类</option>
+                      {todoGroups.map(g => (
+                        <option key={g.uuid} value={g.uuid}>{g.name}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>

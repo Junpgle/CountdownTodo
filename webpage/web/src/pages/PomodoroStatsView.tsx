@@ -3,11 +3,12 @@ import {
   RefreshCw, Clock, CheckCircle2
 } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { SyncEngine } from '../services/sync';
 import type { TodoItem } from '../types';
 import type { PomodoroTag, PomodoroRecord } from './webapp-utils';
 import {
   formatDt, formatHM,
-  getLocalPomRecords, syncPomodoroRecords
+  getLocalPomRecords
 } from './webapp-utils';
 
 // --------------------------------------------------------
@@ -34,11 +35,11 @@ export const PomodoroStatsView = ({ userId, todos }: { userId: number, todos: To
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Delta sync records (uploads dirty + pulls server changes)
-      await syncPomodoroRecords(userId);
+      // 使用统一的增量同步引擎，同步番茄钟记录、文件夹等所有数据
+      await SyncEngine.syncData(userId);
       setRecords(getLocalPomRecords(userId).filter(r => !r.is_deleted));
 
-      // Tags are small, always pull fresh
+      // 标签较小，保持单独获取，后续也可并入 SyncEngine
       const tagsData = await ApiService.request('/api/pomodoro/tags', { method: 'GET' });
       setTags((Array.isArray(tagsData) ? tagsData : []) as PomodoroTag[]);
     } catch (e) {
