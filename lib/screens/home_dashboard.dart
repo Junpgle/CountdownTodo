@@ -2082,6 +2082,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                 child: CachedNetworkImage(
                     imageUrl: _wallpaperUrl!,
                     fit: BoxFit.cover,
+                    memCacheWidth: 1080, // 限制内存缓存宽度，显著减少内存占用
+                    maxWidthDiskCache: 1920, // 限制磁盘缓存尺寸
                     fadeInDuration: const Duration(milliseconds: 800),
                     placeholder: (context, url) => Container(
                         color: Theme.of(context).colorScheme.surface),
@@ -2324,29 +2326,33 @@ class _HomeDashboardState extends State<HomeDashboard>
                           index: _selectedTabIndex == 2 ? 1 : 0,
                           children: [
                             // Tab 1: 最近课程、重要日、待办
-                            SingleChildScrollView(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  ...tab1Widgets,
-                                  if (_wallpaperCopyright != null && _wallpaperCopyright!.isNotEmpty)
-                                    _buildWallpaperCopyright(isLight),
-                                  const SizedBox(height: 100), // 为悬浮底栏留出空间
-                                ],
+                            RepaintBoundary(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    ...tab1Widgets,
+                                    if (_wallpaperCopyright != null && _wallpaperCopyright!.isNotEmpty)
+                                      _buildWallpaperCopyright(isLight),
+                                    const SizedBox(height: 100), // 为悬浮底栏留出空间
+                                  ],
+                                ),
                               ),
                             ),
                             // Tab 2 (mapped to index 2 in bottom bar): 今日专注、屏幕时间
-                            SingleChildScrollView(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  ...tab3Widgets,
-                                  if (_wallpaperCopyright != null && _wallpaperCopyright!.isNotEmpty)
-                                    _buildWallpaperCopyright(isLight),
-                                  const SizedBox(height: 100), // 为悬浮底栏留出空间
-                                ],
+                            RepaintBoundary(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    ...tab3Widgets,
+                                    if (_wallpaperCopyright != null && _wallpaperCopyright!.isNotEmpty)
+                                      _buildWallpaperCopyright(isLight),
+                                    const SizedBox(height: 100), // 为悬浮底栏留出空间
+                                  ],
+                                ),
                               ),
                             ),
                           ],
