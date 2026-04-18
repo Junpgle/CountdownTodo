@@ -26,6 +26,7 @@ import 'services/pomodoro_service.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
 import 'services/splash_service.dart';
+import 'services/course_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 

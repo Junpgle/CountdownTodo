@@ -56,6 +56,7 @@ class CourseImportHandler {
                   ),
                   _buildSchoolTile(context, 'hf', '合肥工业大学', '支持 聚在工大JSON/教务网页HTML 格式', Icons.engineering_rounded, Colors.orange),
                   _buildSchoolTile(context, 'xm', '厦门大学', '支持 MHTML/HTML 导出文件', Icons.account_balance_rounded, Colors.blue),
+                  _buildSchoolTile(context, 'xj', '厦门大学嘉庚学院', '支持教务网页 HTML 格式', Icons.school_rounded, Colors.redAccent),
                   _buildSchoolTile(context, 'xd', '西安电子科技大学', '支持 .ics 日历文件', Icons.wifi_protected_setup_rounded, Colors.indigo),
                   _buildSchoolTile(context, 'zf', '通用正方教务系统', '支持大多数学校的教务导出', Icons.grid_view_rounded, Colors.teal),
                   _buildSchoolTile(context, 'hl', '河南财经政法大学', '支持教务html/mhtml格式', Icons.gavel_rounded, Colors.green),
@@ -124,6 +125,11 @@ class CourseImportHandler {
           if (semesterStart == null) throw Exception("请先设置开学日期");
           success = await CourseService.importXmuScheduleFromHtml(content, semesterStart!);
           break;
+        case 'xj':
+          sourceName = "厦门大学嘉庚学院";
+          if (semesterStart == null) throw Exception("请先设置开学日期");
+          success = await CourseService.importXujcScheduleFromHtml(content, semesterStart!);
+          break;
         default:
           throw Exception("未知的导入方式");
       }
@@ -165,6 +171,7 @@ class CourseImportHandler {
     final Map<String, String> schoolUrls = {
       '合肥工业大学': 'https://one.hfut.edu.cn/',
       '厦门大学': 'https://jw.xmu.edu.cn/gsapp/sys/wdkbapp/*default/index.do',
+      '厦大嘉庚': 'http://jw.xujc.com/student/index.php',
       '河南财经政法大学': 'https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html',
     };
 
@@ -297,8 +304,11 @@ class CourseImportHandler {
           return;
         }
 
-        // Check if it's likely XMU
-        if (htmlContent.contains('XMUSTUDENT') || htmlContent.toLowerCase().contains('<html')) {
+        // Check if it's likely XMU or XUJC
+        if (htmlContent.contains('厦门大学嘉庚学院') || htmlContent.contains('jw.xujc.com')) {
+          sourceName = "厦门大学嘉庚学院";
+          success = await CourseService.importXujcScheduleFromHtml(htmlContent, semesterStart!);
+        } else if (htmlContent.contains('XMUSTUDENT') || htmlContent.toLowerCase().contains('<html')) {
           sourceName = "智能网页解析";
           success = await CourseService.importXmuScheduleFromHtml(htmlContent, semesterStart!);
         }

@@ -519,6 +519,16 @@ class _SettingsPageState extends State<SettingsPage> {
               StorageService.KEY_SEMESTER_END, picked.toIso8601String());
         }
       });
+
+      // 🚀 核心修复：更新日期后必须同步更新导入处理器的状态，否则它持有的仍是旧的 null 值
+      _courseImportHandler = CourseImportHandler(
+        context: context,
+        semesterStart: _semesterStart,
+        onRescheduleReminders: _rescheduleReminders,
+        showMessage: (msg) => ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg))),
+      );
+
       if (_userId != null) {
         final startMs = _semesterStart != null
             ? DateTime(_semesterStart!.year, _semesterStart!.month,

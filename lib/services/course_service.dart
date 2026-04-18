@@ -10,6 +10,7 @@ import '../course_import/parsers/hfut_parser.dart';
 import '../course_import/parsers/xmu_parser.dart';
 import '../course_import/parsers/xidian_parser.dart'; 
 import '../course_import/parsers/zfsoft_parser.dart'; 
+import '../course_import/parsers/xujc_parser.dart'; 
 
 import '../models.dart';
 
@@ -48,7 +49,7 @@ class CourseService {
     }
   }
 
-  // 2. 导入厦大（正方教务系统）课表
+  // 2. 导入厦大（本部）课表
   static Future<bool> importXmuScheduleFromHtml(String htmlString, DateTime semesterStart) async {
     try {
       List<CourseItem> parsedCourses = XmuScheduleParser.parseHtml(htmlString, semesterStart);
@@ -59,6 +60,21 @@ class CourseService {
       return true;
     } catch (e) {
       print("解析厦大课表出错: $e");
+      return false;
+    }
+  }
+
+  // 🚀 2.1 导入厦大嘉庚学院课表
+  static Future<bool> importXujcScheduleFromHtml(String htmlString, DateTime semesterStart) async {
+    try {
+      List<CourseItem> parsedCourses = XujcScheduleParser.parseHtml(htmlString, semesterStart);
+      if (parsedCourses.isEmpty) return false;
+
+      // 保存标准格式
+      await saveCourses(parsedCourses);
+      return true;
+    } catch (e) {
+      print("解析嘉庚课表出错: $e");
       return false;
     }
   }
