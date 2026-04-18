@@ -185,41 +185,43 @@ class CourseImportHandler {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 12),
-                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-                  child: Row(
-                    children: [
-                      Icon(Icons.public, color: Colors.blueAccent),
-                      SizedBox(width: 12),
-                      Text('选择教务入口', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                    child: Row(
+                      children: [
+                        Icon(Icons.public, color: Colors.blueAccent),
+                        SizedBox(width: 12),
+                        Text('选择教务入口', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
                   ),
-                ),
-                ...schoolUrls.entries.map((e) => ListTile(
-                  leading: const Icon(Icons.language_rounded, color: Colors.blueAccent),
-                  title: Text(e.key),
-                  subtitle: Text(e.value, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  onTap: () => Navigator.pop(context, e.value),
-                )).toList(),
-                if (lastUrl != null && !schoolUrls.values.contains(lastUrl))
+                  ...schoolUrls.entries.map((e) => ListTile(
+                    leading: const Icon(Icons.language_rounded, color: Colors.blueAccent),
+                    title: Text(e.key),
+                    subtitle: Text(e.value, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onTap: () => Navigator.pop(context, e.value),
+                  )).toList(),
+                  if (lastUrl != null && !schoolUrls.values.contains(lastUrl))
+                    ListTile(
+                      leading: const Icon(Icons.history_rounded, color: Colors.orangeAccent),
+                      title: const Text('上次抓取的链接'),
+                      subtitle: Text(lastUrl, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      onTap: () => Navigator.pop(context, lastUrl),
+                    ),
                   ListTile(
-                    leading: const Icon(Icons.history_rounded, color: Colors.orangeAccent),
-                    title: const Text('上次抓取的链接'),
-                    subtitle: Text(lastUrl, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    onTap: () => Navigator.pop(context, lastUrl),
+                    leading: const Icon(Icons.input_rounded, color: Colors.grey),
+                    title: const Text('手动输入'),
+                    onTap: () => Navigator.pop(context, 'https://www.bing.com'),
                   ),
-                ListTile(
-                  leading: const Icon(Icons.input_rounded, color: Colors.grey),
-                  title: const Text('手动输入'),
-                  onTap: () => Navigator.pop(context, 'https://www.bing.com'),
-                ),
-                const SizedBox(height: 20),
-              ],
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         );
