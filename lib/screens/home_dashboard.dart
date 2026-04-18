@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
+import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
 import '../utils/page_transitions.dart';
 
@@ -113,6 +114,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _courseButtonKey = GlobalKey();
   // 每次自增触发首页专注记录卡片刷新
   int _pomodoroRefreshTrigger = 0;
+
+  int _selectedTabIndex = 0;
 
   // 待确认的待办数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
@@ -2065,8 +2068,10 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
     bool isLight = showWallpaper;
+    final bool isTablet = MediaQuery.of(context).size.width >= 768;
 
     return Scaffold(
+      extendBody: true,
       backgroundColor: showWallpaper
           ? Colors.transparent
           : Theme.of(context).colorScheme.surface,
@@ -2096,38 +2101,44 @@ class _HomeDashboardState extends State<HomeDashboard>
               children: [
                 _buildSemesterProgressBar(isLight),
 
-                HomeAppBar(
-                  username: widget.username,
-                  timeSalutation: _timeSalutation,
-                  currentGreeting: _currentGreeting,
-                  isLight: isLight,
-                  isSyncing: _isSyncing,
-                  onSync: _showSyncOptionsDialog,
-                  settingsKey: _settingsButtonKey,
-                  courseKey: _courseButtonKey,
-                  onSettings: () async {
-                    await PageTransitions.pushFromRect(
-                      context: context,
-                      page: const SettingsPage(),
-                      sourceKey: _settingsButtonKey,
-                    );
-                    _loadSectionPreferences();
-                    _loadSemesterSettings();
-                    _loadAllData();
-                  },
-                ),
+                if (_selectedTabIndex != 1 || isTablet)
+                  HomeAppBar(
+                    username: widget.username,
+                    timeSalutation: _timeSalutation,
+                    currentGreeting: _currentGreeting,
+                    isLight: isLight,
+                    isSyncing: _isSyncing,
+                    onSync: _showSyncOptionsDialog,
+                    settingsKey: _settingsButtonKey,
+                    courseKey: _courseButtonKey,
+                    showCourseButton: isTablet,
+                    onSettings: () async {
+                      await PageTransitions.pushFromRect(
+                        context: context,
+                        page: const SettingsPage(),
+                        sourceKey: _settingsButtonKey,
+                      );
+                      _loadSectionPreferences();
+                      _loadSemesterSettings();
+                      _loadAllData();
+                    },
+                  ),
 
                 // 🚀 统一处理本地与远程专注 Banner
-                _buildFocusBanner(isLight),
+                if (_selectedTabIndex != 1 || isTablet)
+                  _buildFocusBanner(isLight),
 
                 // 待确认待办入口卡片（从图片识别来）
-                _buildPendingTodoConfirmCard(isLight),
+                if (_selectedTabIndex != 1 || isTablet)
+                  _buildPendingTodoConfirmCard(isLight),
 
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final bool isTablet = constraints.maxWidth >= 768;
+                  child: Stack(
+                    children: [
+                      LayoutBuilder(
+                        builder: (context, constraints) {
 
+                      // ... (rest of section definitions)
                       Widget courseSection = CourseSectionWidget(
                           dashboardCourseData: _dashboardCourseData,
                           isLight: isLight);
@@ -2157,7 +2168,6 @@ class _HomeDashboardState extends State<HomeDashboard>
                         },
                         onTodosChanged: (newTodos) async {
                           setState(() => _todos = newTodos);
-                          // 🚀 这里只修改当前展示的待办，存回数据库前要和隐藏的老数据合并
                           final allTodos =
                               await StorageService.getTodos(widget.username);
                           for (var newT in _todos) {
@@ -2170,20 +2180,16 @@ class _HomeDashboardState extends State<HomeDashboard>
                           }
                           await StorageService.saveTodos(
                               widget.username, allTodos);
-                          // 将待办数据写入共享文件供 Island 读取
                           await _saveTodosToSharedFile(allTodos);
-                          // 通知 Island 检查提醒并刷新槽位缓存
                           FloatWindowService.triggerReminderCheck();
                           FloatWindowService.invalidateSlotCache();
                           FloatWindowService.update();
                           _syncTodoNotification();
                           _rescheduleAlarms();
                           await WidgetService.updateTodoWidget(_todos);
-                          // _loadAllData(); // 🚀 关键修复：不再立即 reload，由 setState 驱动 UI 更新
                         },
                         onRefreshRequested: _loadAllData,
                         onLLMResultsParsed: (results, imagePath, originalText) {
-                          // 导航到 TodoConfirmScreen
                           _navigateToTodoConfirm(
                               results, imagePath, originalText);
                         },
@@ -2284,6 +2290,70 @@ class _HomeDashboardState extends State<HomeDashboard>
                       bool hasNoCourse = (_dashboardCourseData['courses'] ==
                               null ||
                           (_dashboardCourseData['courses'] as List).isEmpty);
+
+                      if (!isTablet) {
+                        List<String> tab1Order = ['courses', 'countdowns', 'todos'];
+                        if (hasNoCourse) {
+                          if (_noCourseBehavior == 'hide') {
+                            tab1Order.remove('courses');
+                          } else if (_noCourseBehavior == 'bottom') {
+                            tab1Order.remove('courses');
+                            tab1Order.add('courses');
+                          }
+                        }
+
+                        List<Widget> tab1Widgets = tab1Order
+                            .where((key) =>
+                                (_sectionVisibility[key] ?? true) &&
+                                sectionsMap.containsKey(key))
+                            .map((key) => Padding(
+                                padding: const EdgeInsets.only(bottom: 24.0),
+                                child: sectionsMap[key]!))
+                            .toList();
+
+                        List<Widget> tab3Widgets = ['pomodoro', 'screenTime', 'math']
+                            .where((key) =>
+                                (_sectionVisibility[key] ?? true) &&
+                                sectionsMap.containsKey(key))
+                            .map((key) => Padding(
+                                padding: const EdgeInsets.only(bottom: 24.0),
+                                child: sectionsMap[key]!))
+                            .toList();
+
+                        return IndexedStack(
+                          index: _selectedTabIndex == 2 ? 1 : 0,
+                          children: [
+                            // Tab 1: 最近课程、重要日、待办
+                            SingleChildScrollView(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ...tab1Widgets,
+                                  if (_wallpaperCopyright != null && _wallpaperCopyright!.isNotEmpty)
+                                    _buildWallpaperCopyright(isLight),
+                                  const SizedBox(height: 100), // 为悬浮底栏留出空间
+                                ],
+                              ),
+                            ),
+                            // Tab 2 (mapped to index 2 in bottom bar): 今日专注、屏幕时间
+                            SingleChildScrollView(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ...tab3Widgets,
+                                  if (_wallpaperCopyright != null && _wallpaperCopyright!.isNotEmpty)
+                                    _buildWallpaperCopyright(isLight),
+                                  const SizedBox(height: 100), // 为悬浮底栏留出空间
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      // Tablet Layout
                       List<String> currentLeft = List.from(_leftSections);
                       List<String> currentRight = List.from(_rightSections);
 
@@ -2381,7 +2451,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                           ),
                         ),
                       );
-                    },
+                        },
+                      ),
+                      // 🚀 移动端底部悬浮胶囊底栏 (放在 Stack 中以彻底透明)
+                      if (!isTablet)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0, // 减小到底部的距离
+                          child: _buildCustomBottomBar(isDarkMode, isLight),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -2389,6 +2469,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           ),
         ],
       ),
+      bottomNavigationBar: null,
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -2464,7 +2545,127 @@ class _HomeDashboardState extends State<HomeDashboard>
             icon: const Icon(Icons.add_task),
             label: const Text("记待办"),
           ),
+          const SizedBox(height: 100), // 🚀 关键：将 FAB 抬高，避开下方的悬浮底栏
         ],
+      ),
+    );
+  }
+
+  Widget _buildWallpaperCopyright(bool isLight) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 16.0, bottom: 32.0),
+        child: Text(
+          _wallpaperCopyright!,
+          style: TextStyle(
+            fontSize: 12,
+            color: isLight
+                ? Colors.white.withOpacity(0.7)
+                : Colors.grey[600],
+            fontStyle: FontStyle.italic,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
+    final Color primaryColor = Theme.of(context).colorScheme.primary;
+    final Color inactiveColor = (isLight || !isDarkMode) ? Colors.black45 : Colors.white54;
+    final double bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      height: 60 + (bottomPadding > 0 ? bottomPadding * 0.6 : 10), // 动态适配安全区域，缩短高度
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8), // 减小底部边距
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(
+          color: isDarkMode ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.2),
+          width: 0.5,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildTabItem(0, Icons.dashboard_rounded, '首页', primaryColor, inactiveColor),
+                _buildCourseCenterButton(primaryColor),
+                _buildTabItem(2, Icons.adjust_rounded, '专注', primaryColor, inactiveColor),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabItem(int index, IconData icon, String label, Color primary, Color inactive) {
+    bool isSelected = _selectedTabIndex == index;
+    return InkWell(
+      onTap: () => setState(() => _selectedTabIndex = index),
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? primary : inactive,
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? primary : inactive,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCourseCenterButton(Color primary) {
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          PageTransitions.slideUp(
+            WeeklyCourseScreen(username: widget.username),
+          ),
+        );
+      },
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: primary,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: primary.withOpacity(0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.calendar_today_rounded,
+          color: Colors.white,
+          size: 26,
+        ),
       ),
     );
   }

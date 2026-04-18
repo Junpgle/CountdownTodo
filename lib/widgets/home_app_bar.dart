@@ -97,7 +97,10 @@ class HomeAppBar extends StatefulWidget {
     required this.onSettings,
     this.settingsKey,
     this.courseKey,
+    this.showCourseButton = true,
   });
+
+  final bool showCourseButton;
 
   @override
   State<HomeAppBar> createState() => _HomeAppBarState();
@@ -213,18 +216,19 @@ class _HomeAppBarState extends State<HomeAppBar>
         ],
       ),
       actions: [
-        _buildActionButton(
-          context,
-          icon: Icons.calendar_month_rounded,
-          onPressed: () async {
-            await PageTransitions.pushFromRect(
-              context: context,
-              page: WeeklyCourseScreen(username: widget.username),
-              sourceKey: widget.courseKey ?? GlobalKey(),
-            );
-          },
-          buttonKey: widget.courseKey,
-        ),
+        if (widget.showCourseButton)
+          _buildActionButton(
+            context,
+            icon: Icons.calendar_month_rounded,
+            onPressed: () async {
+              await PageTransitions.pushFromRect(
+                context: context,
+                page: WeeklyCourseScreen(username: widget.username),
+                sourceKey: widget.courseKey ?? GlobalKey(),
+              );
+            },
+            buttonKey: widget.courseKey,
+          ),
         _buildActionButton(
           context,
           icon: Icons.cloud_sync_rounded,

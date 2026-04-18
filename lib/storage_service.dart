@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
+import 'services/pomodoro_service.dart';
 
 class StorageService {
   static SharedPreferences? _prefs;
@@ -840,9 +841,11 @@ class StorageService {
     bool forceFullSync = false,
     BuildContext? context,
     bool syncTimeLogs = true,
+    bool syncPomodoro = true,
   }) async {
     // 1. 状态锁：防止重复进入
-    if (!syncTodos && !syncCountdowns && !syncTimeLogs) return false;
+    if (!syncTodos && !syncCountdowns && !syncTimeLogs && !syncPomodoro)
+      return false;
     if (_isSyncing) return false;
     _isSyncing = true;
     bool hasChanges = false;
@@ -1045,6 +1048,20 @@ class StorageService {
             allLocalTimeLogs.add(sItem);
             hasChanges = true;
           }
+        }
+      }
+      
+      // 合并 Pomodoro (Tags & Records)
+      if (syncPomodoro) {
+        try {
+          // 顺序：拉取标签 -> 上传标签 -> 上传记录 -> 拉取记录
+          await PomodoroService.syncTagsFromCloud();
+          await PomodoroService.syncTagsToCloud();
+          await PomodoroService.syncRecordsToCloud();
+          bool pomodoroChanged = await PomodoroService.syncRecordsFromCloud();
+          if (pomodoroChanged) hasChanges = true;
+        } catch (pe) {
+          debugPrint("Pomodoro sync error: $pe");
         }
       }
 

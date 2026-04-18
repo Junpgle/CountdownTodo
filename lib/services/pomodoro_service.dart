@@ -608,10 +608,16 @@ class PomodoroService {
   /// 从云端增量拉取专注记录（LWW 合并），返回是否有新增/变更
   static Future<bool> syncRecordsFromCloud({int? fromMs}) async {
     try {
-      final todayStart = DateTime(
-          DateTime.now().year, DateTime.now().month, DateTime.now().day);
+      final prefs = await SharedPreferences.getInstance();
+      // 获取上次拉取的时间戳，默认从 0 开始（全量，或根据服务器策略返回）
+      // 这里为了稳妥，同步时可以往前多推 1 小时，防止临界点丢失
+      int lastDownload = prefs.getInt(_keyLastRecordDownload) ?? 0;
+      if (lastDownload > 0) {
+        lastDownload -= 3600 * 1000; // 往前推 1 小时
+      }
+
       final recordsRaw = await ApiService.fetchPomodoroSessions(
-        fromMs: todayStart.millisecondsSinceEpoch,
+        fromMs: lastDownload,
       );
       if (recordsRaw.isEmpty) return false;
 
@@ -620,7 +626,6 @@ class PomodoroService {
           .toList();
 
       // 读取本地全量（含已删除 tombstone）
-      final prefs = await SharedPreferences.getInstance();
       final s = prefs.getString(_keyRecords);
       final localAll = s == null
           ? <PomodoroRecord>[]
@@ -678,6 +683,17 @@ class PomodoroService {
           jsonEncode(merged.values.map((r) => r.toJson()).toList()),
         );
       }
+
+      // 更新最后拉取时间戳为当前服务器时间（或是本地当前时间，取决于业务场景）
+      // 这里用本次拉取到的最新记录的 updatedAt 作为下次请求的起点
+      int latestTs = 0;
+      for (final r in remoteRecords) {
+        if (r.updatedAt > latestTs) latestTs = r.updatedAt;
+      }
+      if (latestTs > 0) {
+        await prefs.setInt(_keyLastRecordDownload, latestTs);
+      }
+
       return hasChange;
     } catch (e) {
       debugPrint('[PomodoroService] syncRecordsFromCloud error: $e');
@@ -686,6 +702,7 @@ class PomodoroService {
   }
 
   static const _keyLastRecordUpload = 'pomodoro_last_record_upload';
+  static const _keyLastRecordDownload = 'pomodoro_last_record_download';
 
   static Future<void> syncRecordsToCloud() async {
     try {
