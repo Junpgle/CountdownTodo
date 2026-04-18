@@ -49,6 +49,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   double _currentScale = 1.0;
   bool _isNextSlide = true;
   double _dragOffset = 0.0; // 实时跟踪滑动位移
+  DateTime? _selectedMonthDay; // 平板模式下月视图选中的日期
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -481,6 +482,174 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     int week = (daysDiff ~/ 7) + 1;
     if (week < 1) week = 1;
     _jumpToWeek(week);
+  }
+
+  Widget _buildMonthDaySidebar(DateTime day) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final String dateStr = DateFormat('yyyy年M月d日').format(day);
+    final String weekdayStr = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][day.weekday - 1];
+    
+    final dStr = DateFormat('yyyy-MM-dd').format(day);
+    final List<dynamic> items = [];
+    
+    // 根据筛选条件收集数据
+    if (_activeDataViews.contains('courses')) {
+      items.addAll(_monthCourseMap[dStr] ?? []);
+    }
+    
+    if (_activeDataViews.contains('todos')) {
+      items.addAll(_monthTodoMap[dStr] ?? []);
+      if (!_activeDataViews.contains('hideCrossDay')) {
+        items.addAll(_monthCrossDayTodoMap[dStr] ?? []);
+      }
+    }
+    
+    if (_activeDataViews.contains('timeLogs')) {
+      items.addAll(_monthLogMap[dStr] ?? []);
+    }
+    
+    if (_activeDataViews.contains('pomodoros')) {
+      items.addAll(_monthPomMap[dStr] ?? []);
+    }
+
+    items.sort((a, b) {
+      int getPriority(dynamic item) {
+        if (item is CourseItem) return 0;
+        if (item is TodoItem) return 1;
+        if (item is TimeLogItem) return 2;
+        if (item is PomodoroRecord) return 3;
+        return 4;
+      }
+      return getPriority(a).compareTo(getPriority(b));
+    });
+
+    return Container(
+      width: double.infinity,
+      color: isDark ? Colors.black.withOpacity(0.1) : Colors.grey[50],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        weekdayStr,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        dateStr,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDark ? Colors.white54 : Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => setState(() => _selectedMonthDay = null),
+                  tooltip: '关闭详情',
+                ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Divider(),
+          ),
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.event_available,
+                            size: 64, color: isDark ? Colors.white10 : Colors.black12),
+                        const SizedBox(height: 16),
+                        Text('该日无安排',
+                            style: TextStyle(
+                                color: isDark ? Colors.white24 : Colors.black26)),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) => _buildDetailSidebarItem(context, items[index]),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailSidebarItem(BuildContext context, dynamic item) {
+    if (item is CourseItem) {
+      final color = _getCourseColor(item.courseName);
+      return ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+          child: Icon(Icons.class_, color: color, size: 20),
+        ),
+        title: Text(item.courseName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Text('${item.formattedStartTime}-${item.formattedEndTime} @ ${item.roomName}', style: const TextStyle(fontSize: 12)),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailScreen(course: item))),
+      );
+    } else if (item is TodoItem) {
+      return ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: (item.isDone ? Colors.green : Colors.amber).withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(item.isDone ? Icons.check_circle : Icons.task_alt,
+              color: item.isDone ? Colors.green : Colors.amber, size: 20),
+        ),
+        title: Text(item.title, style: TextStyle(
+          fontSize: 15,
+          decoration: item.isDone ? TextDecoration.lineThrough : null,
+          color: item.isDone ? Colors.grey : null,
+        )),
+        subtitle: Text(item.dueDate != null ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}' : '无截止时间', style: const TextStyle(fontSize: 12)),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: item))),
+      );
+    } else if (item is TimeLogItem) {
+      const color = Colors.blue;
+      return ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+          child: const Icon(Icons.edit_calendar, color: color, size: 20),
+        ),
+        title: Text(item.title.isNotEmpty ? item.title : '时间日志', style: const TextStyle(fontSize: 15)),
+        subtitle: Text('${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}', style: const TextStyle(fontSize: 12)),
+      );
+    } else if (item is PomodoroRecord) {
+      const color = Colors.redAccent;
+      return ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+          child: const Icon(Icons.timer, color: color, size: 20),
+        ),
+        title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
+        subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟', style: const TextStyle(fontSize: 12)),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildCheckableMenuItem(String key, String label) {
@@ -1407,6 +1576,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       return a.isDone ? 1 : -1;
     });
 
+    // 🚀 平板适配：如果是在月视图且选中了日期，展示该日的详情
+    if (_isMonthView && _selectedMonthDay != null) {
+      return _buildMonthDaySidebar(_selectedMonthDay!);
+    }
+
     return Container(
       width: double.infinity,
       color: isDark ? Colors.grey[900] : Colors.grey[50],
@@ -1809,7 +1983,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                                   setState(() => _selectedMonth = m);
                                                   _groupDataForMonthView(); 
                                                 },
-                                                onDayTapped: (d) {},
+                                                onDayTapped: (d) {
+                                                  setState(() => _selectedMonthDay = d);
+                                                },
                                               ),
                                             ),
                                           ),

@@ -174,7 +174,13 @@ class CourseMonthView extends StatelessWidget {
     int maxItems = ((cellHeight - 40) / 14).floor().clamp(1, 10);
 
     return GestureDetector(
-      onTap: () => _showDayDetails(context, day, dayItems),
+      onTap: () {
+        onDayTapped(day);
+        final bool isWide = MediaQuery.of(context).size.width > 900;
+        if (!isWide) {
+          _showDayDetails(context, day, dayItems);
+        }
+      },
       child: Container(
         decoration: BoxDecoration(
           color: isToday 
