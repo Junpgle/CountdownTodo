@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "3.5.6",
+  "version_name": "3.6.10",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 3.5.6",
-    "description":"【优化】网络环境较差的时候启动加载速度\n【新增】进度条动画\n【新增】文件夹内待办支持滑动删除\n【新增】编辑界面新增删除功能\n【新增】文件夹内待办新增背景填充进度条\n【优化】折叠待办时的显示\n【新增】番茄钟选择任务支持待办分类查找\n【新增】新增待办支持添加图片\n【新增】设置界面常驻公告\n【优化】更新日志、公告缓存机制",
+    "title": "版本更新 3.6.10",
+    "description":"【新增】月视图\n【优化】月视图支持展示更多事项\n【优化】月视图支持隐藏跨天待办\n【优化】跨天待办置顶展示\n【优化】月视图和周视图切换的流畅性\n【优化】初次打开课程界面的流畅度\n【优化】月视图右侧箭头重合遮挡\n【优化】周视图和月视图支持滑动切换上下界面\n【修复】番茄钟的增量同步逻辑\n【优化】宽屏设备下月视图的详情展示\n【优化】Tab栏占用空间更小更美观\n【优化】壁纸加载内存控制\n【优化】渲染层级隔离\n【优化】减少 Widget 树深度\n【优化】取消待办渐显效果，保留进度条动画\n【优化】Windows端壁纸fall back优化\n【新增】Windows新增定时闹钟提醒，对齐Android使用体验",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "android_arch_packages": {
@@ -45,6 +45,28 @@
   },
   "changelog_history": [
     {
+      "version_name": "3.6.10",
+      "date": "2026-04-18",
+      "items": [
+        "【新增】月视图",
+        "【优化】月视图支持展示更多事项",
+        "【优化】月视图支持隐藏跨天待办",
+        "【优化】跨天待办置顶展示",
+        "【优化】月视图和周视图切换的流畅性",
+        "【优化】初次打开课程界面的流畅度",
+        "【优化】月视图右侧箭头重合遮挡",
+        "【优化】周视图和月视图支持滑动切换上下界面",
+        "【修复】番茄钟的增量同步逻辑",
+        "【优化】宽屏设备下月视图的详情展示",
+        "【优化】Tab栏占用空间更小更美观",
+        "【优化】壁纸加载内存控制",
+        "【优化】渲染层级隔离",
+        "【优化】减少 Widget 树深度",
+        "【优化】取消待办渐显效果，保留进度条动画",
+        "【优化】Windows端壁纸fall back优化",
+        "【新增】Windows新增定时闹钟提醒，对齐Android使用体验"
+      ]
+    },{
       "version_name": "3.5.6",
       "date": "2026-04-16",
       "items": [
