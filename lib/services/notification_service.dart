@@ -402,12 +402,12 @@ class NotificationService {
         try {
           await _plugin.zonedSchedule(
             id: r['notifId'],
-            title: r['title'] ?? '',
-            body: r['text'] ?? '',
             scheduledDate: tz.TZDateTime.from(triggerAt, tz.local),
             notificationDetails: const NotificationDetails(
                 windows: WindowsNotificationDetails()),
             androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            title: r['title'] ?? '',
+            body: r['text'] ?? '',
           );
           scheduledOnWindows.add(r);
         } catch (e) {
