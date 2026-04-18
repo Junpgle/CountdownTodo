@@ -130,7 +130,9 @@ class TodoItem {
   String? originalText; // 📄 原始分析文本
   String? groupId; // 📁 所属分组 ID (null 表示未分组)
   int? reminderMinutes; // 🚀 新增：提前几分钟提醒
-  String? teamUuid; // 👥 协同团队 UUID
+  String? teamUuid; // 👥 团队 ID
+  String? creatorName; // 👤 创建者姓名 (由后端同步)
+  String? teamName; // 🏢 团队名称 (由后端同步)
 
   TodoItem({
     String? id,
@@ -151,6 +153,8 @@ class TodoItem {
     this.groupId,
     this.reminderMinutes,
     this.teamUuid,
+    this.creatorName,
+    this.teamName,
   })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -188,6 +192,8 @@ class TodoItem {
         'group_id': groupId, // 📁 分组 ID
         'reminder_minutes': reminderMinutes, // 🚀 提醒提前量
         'team_uuid': teamUuid, // 👥 团队 ID
+        'creator_name': creatorName,
+        'team_name': teamName,
       };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -239,6 +245,8 @@ class TodoItem {
           json['reminder_minutes'] as int? ?? json['reminderMinutes'] as int?,
       // 👥 团队 ID
       teamUuid: json['team_uuid'] ?? json['teamUuid'],
+      creatorName: json['creator_name'] ?? json['creatorName'],
+      teamName: json['team_name'] ?? json['teamName'],
     );
   }
 

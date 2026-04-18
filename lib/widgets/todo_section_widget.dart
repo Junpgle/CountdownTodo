@@ -1705,17 +1705,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                 overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
                                                   decoration: todo.isDone
-                                                      ? TextDecoration
-                                                          .lineThrough
+                                                      ? TextDecoration.lineThrough
                                                       : null,
-                                                  decorationColor: colorScheme
-                                                      .onSurface
-                                                      .withOpacity(0.3),
+                                                  decorationColor: colorScheme.onSurface.withOpacity(0.3),
                                                   color: titleColor,
                                                   fontSize: 14.5,
-                                                  fontWeight: todo.isDone ||
-                                                          isPast ||
-                                                          isFuture
+                                                  fontWeight: todo.isDone || isPast || isFuture
                                                       ? FontWeight.w500
                                                       : FontWeight.w600,
                                                   height: 1.2,
@@ -1728,34 +1723,38 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                             ],
                                             const SizedBox(width: 6),
                                             Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 7,
-                                                vertical: 2,
-                                              ),
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                               decoration: BoxDecoration(
-                                                color: todo.isDone
-                                                    ? colorScheme.onSurface
-                                                        .withOpacity(0.06)
-                                                    : badgeBg,
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
+                                                color: todo.isDone ? colorScheme.onSurface.withOpacity(0.06) : badgeBg,
+                                                borderRadius: BorderRadius.circular(6),
                                               ),
                                               child: Text(
                                                 badge,
                                                 style: TextStyle(
                                                   fontSize: 10.5,
                                                   fontWeight: FontWeight.w600,
-                                                  color: todo.isDone
-                                                      ? colorScheme.onSurface
-                                                          .withOpacity(0.3)
-                                                      : badgeColor,
+                                                  color: todo.isDone ? colorScheme.onSurface.withOpacity(0.3) : badgeColor,
                                                 ),
                                               ),
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 3),
+                                        if (todo.teamUuid != null) ...[
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Icon(Icons.groups_outlined, size: 11, color: colorScheme.primary.withOpacity(0.7)),
+                                              const SizedBox(width: 4),
+                                              Expanded(
+                                                child: Text(
+                                                  '${todo.teamName ?? "团队待办"} · ${todo.creatorName ?? "匿名"}',
+                                                  maxLines: 1,
+                                                  style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.w400),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                         Row(
                                           children: [
                                             Icon(
@@ -1813,23 +1812,23 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                             ),
                                           ),
                                         ],
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-        ),
-      ),
-    );
+          ),
+        );
   }
 
   List<TodoItem> _sortTodayTodos(List<TodoItem> list, DateTime now) {
