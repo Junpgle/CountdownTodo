@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/api_service.dart';
+import '../services/pomodoro_sync_service.dart';
 
 enum SyncPathStatus { online, connecting, offline, serverError }
 
@@ -19,16 +20,29 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   bool _isExpanded = false;
   Timer? _heartbeatTimer;
 
+  // 监听 WS 连接状态变化
+  StreamSubscription<SyncConnectionState>? _wsConnSub;
+
   @override
   void initState() {
     super.initState();
+    // 订阅 WS 状态变化流，实时响应断线/重连
+    _wsConnSub = PomodoroSyncService.instance.onConnectionChanged.listen(_onWsStateChanged);
     _startHeartbeat();
   }
 
   @override
   void dispose() {
     _heartbeatTimer?.cancel();
+    _wsConnSub?.cancel();
     super.dispose();
+  }
+
+  /// WS 状态变化时立即触发一次综合检查
+  void _onWsStateChanged(SyncConnectionState wsState) {
+    if (!mounted) return;
+    // WS 状态一变化就立即重新评估，不等下次 heartbeat
+    _evaluateStatus(wsState);
   }
 
   void _startHeartbeat() {
@@ -39,16 +53,39 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   }
 
   Future<void> _checkRealStatus() async {
+    // 先取当前 WS 状态（同步读取，无需 await）
+    final wsState = PomodoroSyncService.instance.connectionState;
     try {
       // 🚀 核心逻辑：发起一个轻量级的健康检查
-      final isAlive = await ApiService.ping(); 
+      final isAlive = await ApiService.ping();
+      if (!mounted) return;
       if (isAlive) {
-        updateStatus(SyncPathStatus.online, message: "数据已实时同步");
+        // HTTP 通了再看 WS 是否也连上了
+        _evaluateStatus(wsState);
       } else {
         updateStatus(SyncPathStatus.serverError, message: "同步服务器响应异常");
       }
     } catch (e) {
+      if (!mounted) return;
       updateStatus(SyncPathStatus.offline, message: "网络连接已断开，进入离线模式");
+    }
+  }
+
+  /// 🚀 双维度评估：HTTP 可达 + WS 连接状态
+  void _evaluateStatus(SyncConnectionState wsState) {
+    switch (wsState) {
+      case SyncConnectionState.connected:
+        updateStatus(SyncPathStatus.online, message: "数据已实时同步");
+        break;
+      case SyncConnectionState.connecting:
+        updateStatus(SyncPathStatus.connecting, message: "正在建立实时同步通道...");
+        break;
+      case SyncConnectionState.disconnected:
+        updateStatus(SyncPathStatus.connecting, message: "实时通道已断开，正在重连...");
+        break;
+      case SyncConnectionState.error:
+        updateStatus(SyncPathStatus.serverError, message: "实时同步通道连接失败");
+        break;
     }
   }
 

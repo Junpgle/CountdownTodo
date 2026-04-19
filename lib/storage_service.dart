@@ -364,7 +364,7 @@ class StorageService {
   // 倒计时 (Countdowns)
   // ==========================================
   static Future<void> saveCountdowns(String username, List<CountdownItem> items,
-      {bool sync = true}) async {
+      {bool sync = true, bool isSyncSource = false}) async {
     final prefs = await SharedPreferences.getInstance();
     Map<String, CountdownItem> dedupeMap = {};
     for (var item in items) {
@@ -375,10 +375,10 @@ class StorageService {
     }
 
     final db = await DatabaseHelper.instance.database;
-    await db.transaction((txn) async {
-      for (var item in dedupeMap.values) {
-        // 1. 记录 Oplog
-        await txn.insert('op_logs', {
+    final batch = db.batch();
+    for (var item in dedupeMap.values) {
+      if (!isSyncSource) {
+        batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'countdowns',
           'target_uuid': item.id,
@@ -386,23 +386,23 @@ class StorageService {
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'is_synced': 0
         });
-
-        // 2. 更新主表
-        await txn.insert('countdowns', {
-          'uuid': item.id,
-          'team_uuid': item.teamUuid,
-          'team_name': item.teamName,
-          'creator_id': item.creatorId,
-          'creator_name': item.creatorName,
-          'title': item.title,
-          'target_time': item.targetDate.millisecondsSinceEpoch,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
-    });
+
+      batch.insert('countdowns', {
+        'uuid': item.id,
+        'team_uuid': item.teamUuid,
+        'team_name': item.teamName,
+        'creator_id': item.creatorId,
+        'creator_name': item.creatorName,
+        'title': item.title,
+        'target_time': item.targetDate.millisecondsSinceEpoch,
+        'is_deleted': item.isDeleted ? 1 : 0,
+        'version': item.version,
+        'updated_at': item.updatedAt,
+        'created_at': item.createdAt
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
 
     List<String> jsonList =
         dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
@@ -489,11 +489,11 @@ class StorageService {
   // 待办事项 (Todos)
   // ==========================================
   static Future<void> saveTodos(String username, List<TodoItem> items,
-      {bool sync = true}) async {
+      {bool sync = true, bool isSyncSource = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final Map<String, TodoItem> dedupeMap = {};
 
-    _recurrenceCheckCache.clear(); // 🚀 关键：清理静态缓存，强制重新计算
+    _recurrenceCheckCache.clear();
     for (var item in items) {
       final existing = dedupeMap[item.id];
       if (existing == null || item.updatedAt > existing.updatedAt) {
@@ -501,18 +501,18 @@ class StorageService {
       }
     }
 
-    List<TodoItem> result = dedupeMap.values.toList()
+    List<TodoItem> dedupeList = dedupeMap.values.toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     List<String> jsonList =
-        dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
+        dedupeList.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
 
-    // 🚀 Uni-Sync 4.0 拦截：使用事务进行高性能批量写入
+    // 🚀 Batch 极速批量写入，彻底解决数据库锁死
     final db = await DatabaseHelper.instance.database;
-    await db.transaction((txn) async {
-      for (var item in items) {
-        // 记录 Oplog
-        await txn.insert('op_logs', {
+    final batch = db.batch();
+    for (var item in items) {
+      if (!isSyncSource) {
+        batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'todos',
           'target_uuid': item.id,
@@ -520,27 +520,26 @@ class StorageService {
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'is_synced': 0
         });
-        
-        // 更新主表
-        await txn.insert('todos', {
-          'uuid': item.id,
-          'content': item.title,
-          'remark': item.remark,
-          'team_uuid': item.teamUuid,
-          'team_name': item.teamName,
-          'creator_id': item.creatorId,
-          'creator_name': item.creatorName,
-          'is_completed': item.isDone ? 1 : 0,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'due_date': item.dueDate?.millisecondsSinceEpoch,
-          'group_id': item.groupId,
-          'created_date': item.createdDate ?? item.createdAt, // 🚀 必填字段加固
-          'created_at': item.createdAt,
-          'updated_at': item.updatedAt
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
-    });
+      batch.insert('todos', {
+        'uuid': item.id,
+        'content': item.title,
+        'remark': item.remark,
+        'team_uuid': item.teamUuid,
+        'team_name': item.teamName,
+        'creator_id': item.creatorId,
+        'creator_name': item.creatorName,
+        'is_completed': item.isDone ? 1 : 0,
+        'is_deleted': item.isDeleted ? 1 : 0,
+        'version': item.version,
+        'due_date': item.dueDate?.millisecondsSinceEpoch,
+        'group_id': item.groupId,
+        'created_date': item.createdDate ?? item.createdAt,
+        'created_at': item.createdAt,
+        'updated_at': item.updatedAt
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
 
     if (sync) Future.microtask(() => syncData(username));
     Future.microtask(() => _syncTodosToBand(items));
@@ -753,7 +752,7 @@ class StorageService {
   // 📁 待办组 (Todo Groups)
   // ==========================================
   static Future<void> saveTodoGroups(String username, List<TodoGroup> items,
-      {bool sync = true}) async {
+      {bool sync = true, bool isSyncSource = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final Map<String, TodoGroup> dedupeMap = {};
 
@@ -765,10 +764,10 @@ class StorageService {
     }
 
     final db = await DatabaseHelper.instance.database;
-    await db.transaction((txn) async {
-      for (var item in dedupeMap.values) {
-        // 1. 记录 Oplog
-        await txn.insert('op_logs', {
+    final batch = db.batch();
+    for (var item in dedupeMap.values) {
+      if (!isSyncSource) {
+        batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'todo_groups',
           'target_uuid': item.id,
@@ -776,23 +775,23 @@ class StorageService {
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'is_synced': 0
         });
-
-        // 2. 更新主表
-        await txn.insert('todo_groups', {
-          'uuid': item.id,
-          'team_uuid': item.teamUuid,
-          'team_name': item.teamName,
-          'creator_id': item.creatorId,
-          'creator_name': item.creatorName,
-          'name': item.name,
-          'is_expanded': item.isExpanded ? 1 : 0,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
-    });
+
+      batch.insert('todo_groups', {
+        'uuid': item.id,
+        'team_uuid': item.teamUuid,
+        'team_name': item.teamName,
+        'creator_id': item.creatorId,
+        'creator_name': item.creatorName,
+        'name': item.name,
+        'is_expanded': item.isExpanded ? 1 : 0,
+        'is_deleted': item.isDeleted ? 1 : 0,
+        'version': item.version,
+        'updated_at': item.updatedAt,
+        'created_at': item.createdAt
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
 
     List<String> jsonList =
         dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
@@ -1372,9 +1371,9 @@ class StorageService {
 
       // 7. 持久化数据
       if (hasChanges) {
-        await saveTodos(username, allLocalTodos, sync: false);
-        await saveTodoGroups(username, allLocalGroups, sync: false);
-        await saveCountdowns(username, allLocalCountdowns, sync: false);
+        await saveTodos(username, allLocalTodos, sync: false, isSyncSource: true);
+        await saveTodoGroups(username, allLocalGroups, sync: false, isSyncSource: true);
+        await saveCountdowns(username, allLocalCountdowns, sync: false, isSyncSource: true);
         await saveTimeLogs(username, allLocalTimeLogs, sync: false);
       }
 
