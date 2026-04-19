@@ -77,7 +77,7 @@ class _MigrationDialogState extends State<MigrationDialog> {
                 await MigrationService.runMigration(
                     context: context,
                     oldUrl: ApiService.cloudflareUrl,  // D1 URL
-                    newUrl: ApiService.aliyunUrl, // ECS URL
+                    newUrl: ApiService.aliyunProdUrl, // ECS URL
                     email: emailCtrl.text,
                     password: passCtrl.text,
                     onProgress: (msg) {

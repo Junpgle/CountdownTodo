@@ -1133,8 +1133,7 @@ class StorageService {
       // 2. 环境信息准备
       final String deviceId = await _getUniqueDeviceId(username);
       final String friendlyName = await _getDetailedDeviceName();
-      final String serverKey =
-          ApiService.baseUrl == ApiService.aliyunUrl ? "aliyun" : "cf";
+      final String serverKey = ApiService.baseUrl == ApiService.aliyunProdUrl ? "aliyun" : "cf";
       final int lastSyncTime = forceFullSync
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
