@@ -410,7 +410,8 @@ class StorageService {
     if (sync) Future.microtask(() => syncData(username));
   }
 
-  static Future<List<CountdownItem>> getCountdowns(String username) async {
+  static Future<List<CountdownItem>> getCountdowns(String username,
+      {bool includeDeleted = false}) async {
     final prefs = await SharedPreferences.getInstance();
     try {
       final dbHelper = DatabaseHelper.instance;
@@ -432,8 +433,8 @@ class StorageService {
       }
 
       // 2. 从 SQL 读取
-      final List<Map<String, dynamic>> maps =
-          await db.query('countdowns', where: 'is_deleted = 0');
+      final List<Map<String, dynamic>> maps = await db.query('countdowns',
+          where: includeDeleted ? null : 'is_deleted = 0');
       if (maps.isNotEmpty) {
         return maps
             .map((m) => CountdownItem(
@@ -587,7 +588,8 @@ class StorageService {
     if (sync) Future.microtask(() => syncData(username));
   }
 
-  static Future<List<TodoItem>> getTodos(String username) async {
+  static Future<List<TodoItem>> getTodos(String username,
+      {bool includeDeleted = false}) async {
     final prefs = await StorageService.prefs;
     // 🚀 Uni-Sync 安全方案：双轨读取 + 逃生通道
     try {
@@ -604,9 +606,9 @@ class StorageService {
         }
       }
 
-      final List<Map<String, dynamic>> maps = await db.query('todos', 
-        where: 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
-      );
+      final List<Map<String, dynamic>> maps = await db.query('todos',
+          where: includeDeleted ? null : 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
+          );
       if (maps.isNotEmpty) {
         List<TodoItem> todos = maps.map((m) => TodoItem(
           id: m['uuid'],
@@ -798,7 +800,8 @@ class StorageService {
     if (sync) Future.microtask(() => syncData(username));
   }
 
-  static Future<List<TodoGroup>> getTodoGroups(String username) async {
+  static Future<List<TodoGroup>> getTodoGroups(String username,
+      {bool includeDeleted = false}) async {
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.database;
@@ -820,8 +823,8 @@ class StorageService {
       }
 
       // 2. 从 SQL 读取 (排除逻辑删除)
-      final List<Map<String, dynamic>> maps =
-          await db.query('todo_groups', where: 'is_deleted = 0');
+      final List<Map<String, dynamic>> maps = await db.query('todo_groups',
+          where: includeDeleted ? null : 'is_deleted = 0');
       if (maps.isNotEmpty) {
         return maps
             .map((m) => TodoGroup(
@@ -1144,32 +1147,42 @@ class StorageService {
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
 
-      // 3. 准备增量数据包 (Todos, Countdowns, TimeLogs)
-      List<TodoItem> allLocalTodos = await getTodos(username);
-      List<TodoGroup> allLocalGroups = await getTodoGroups(username);
-      List<CountdownItem> allLocalCountdowns = await getCountdowns(username);
+      // 3. 🛡️ 核心修复：基于 op_logs 识别脏数据，不再依赖不可靠的时间戳对比
+      final db = await DatabaseHelper.instance.database;
+      List<Map<String, dynamic>> dirtyTodos = [];
+      List<Map<String, dynamic>> dirtyGroups = [];
+      List<Map<String, dynamic>> dirtyCountdowns = [];
+      List<Map<String, dynamic>> dirtyTimeLogs = [];
+
+      List<TodoItem> allLocalTodos =
+          await getTodos(username, includeDeleted: true);
+      List<TodoGroup> allLocalGroups =
+          await getTodoGroups(username, includeDeleted: true);
+      List<CountdownItem> allLocalCountdowns =
+          await getCountdowns(username, includeDeleted: true);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
 
-      List<Map<String, dynamic>> dirtyTodos =
-          allLocalTodos.where((t) => t.updatedAt > lastSyncTime).map((t) {
-        final payload = t.toJson();
-        // 图片附件仅本地可用，不参与多设备同步。
-        payload.remove('image_path');
-        payload.remove('imagePath');
-        return payload;
-      }).toList();
-      List<Map<String, dynamic>> dirtyGroups = allLocalGroups
-          .where((g) => g.updatedAt > lastSyncTime)
-          .map((g) => g.toJson())
-          .toList();
-      List<Map<String, dynamic>> dirtyCountdowns = allLocalCountdowns
-          .where((c) => c.updatedAt > lastSyncTime)
-          .map((c) => c.toJson())
-          .toList();
-      List<Map<String, dynamic>> dirtyTimeLogs = allLocalTimeLogs
-          .where((t) => t.updatedAt > lastSyncTime)
-          .map((t) => t.toJson())
-          .toList();
+      final List<Map<String, dynamic>> pendingOps = await db.query('op_logs', where: 'is_synced = 0');
+      debugPrint('🔍 [同步流水] 发现 ${pendingOps.length} 条待同步操作');
+
+      for (var op in pendingOps) {
+        final table = op['target_table'];
+        final data = jsonDecode(op['data_json'] as String);
+        if (table == 'todos') {
+          data.remove('image_path');
+          data.remove('imagePath');
+          dirtyTodos.add(data);
+        } else if (table == 'todo_groups') {
+          dirtyGroups.add(data);
+        } else if (table == 'countdowns') {
+          dirtyCountdowns.add(data);
+        }
+      }
+
+      // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
+      dirtyTimeLogs = allLocalTimeLogs.where((t) => t.updatedAt > lastSyncTime).map((t) => t.toJson()).toList();
+
+      debugPrint('🔍 [同步判定] lastSyncTime: $lastSyncTime, 本地总任务数: ${allLocalTodos.length}');
 
       // 4. 读取本机待同步屏幕时间 (改为 Map 结构)
       Map<String, dynamic> localPackage = await getLocalScreenTimeMap();
@@ -1215,7 +1228,11 @@ class StorageService {
         screenTime: screenPayload,
       );
 
-      if (response['success'] != true) {
+      if (response['success'] == true) {
+        // 🚀 全部上报成功后，标记 op_logs 为已同步
+        await db.update('op_logs', {'is_synced': 1}, where: 'is_synced = 0');
+        debugPrint('✅ [同步流水] 已标记记录为已同步');
+      } else {
         throw Exception("${response['message'] ?? '同步失败'}");
       }
       
@@ -1241,13 +1258,16 @@ class StorageService {
         TodoItem sItem = TodoItem.fromJson(raw);
         if (todosIndexMap.containsKey(sItem.id)) {
           final idx = todosIndexMap[sItem.id]!;
+          final local = allLocalTodos[idx];
+          debugPrint('🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
+          
           if (sItem.isDeleted ||
-              sItem.version > allLocalTodos[idx].version ||
-              sItem.updatedAt > allLocalTodos[idx].updatedAt) {
+              sItem.version > local.version ||
+              sItem.updatedAt > local.updatedAt) {
             allLocalTodos[idx] = sItem;
             hasChanges = true;
-          } else if (sItem.groupId != allLocalTodos[idx].groupId &&
-              sItem.updatedAt >= allLocalTodos[idx].updatedAt) {
+          } else if (sItem.groupId != local.groupId &&
+              sItem.updatedAt >= local.updatedAt) {
             // Only accept group_id changes if server item is at least as new
             // as local item, preserving LWW semantics for folder assignments.
             allLocalTodos[idx].groupId = sItem.groupId;

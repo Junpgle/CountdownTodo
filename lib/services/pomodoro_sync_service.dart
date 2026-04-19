@@ -134,7 +134,6 @@ class CrossDevicePomodoroState {
 enum SyncConnectionState { disconnected, connecting, connected, error }
 
 class PomodoroSyncService {
-  static const String _wsUrl = 'ws://101.200.13.100:8082';
   static const Duration _reconnectDelay = Duration(seconds: 5);
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
@@ -238,12 +237,17 @@ class PomodoroSyncService {
       final platform = kIsWeb ? 'web' : Platform.operatingSystem;
       final versionParam = _appVersion ?? 'unknown';
 
+      // 🚀 核心修复：WebSocket 地址动态跟随 ApiService，消除 8082/8084 端口不匹配
+      String apiBase = ApiService.baseUrl;
+      String wsBase = apiBase.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
+
       final uri = Uri.parse(
-        '$_wsUrl/?token=${Uri.encodeComponent(_authToken ?? '')}'
+        '$wsBase/?token=${Uri.encodeComponent(_authToken ?? '')}'
         '&deviceId=${Uri.encodeComponent(_deviceId!)}'
         '&platform=${Uri.encodeComponent(platform)}'
         '&version=${Uri.encodeComponent(versionParam)}',
       );
+      debugPrint('[PomodoroSync] 🔌 正在尝试连接至: $uri');
 
       _channel = WebSocketChannel.connect(uri);
 
@@ -278,6 +282,7 @@ class PomodoroSyncService {
 
   void _onMessage(dynamic raw) {
     try {
+      debugPrint('📥 [WS接收] 原始数据: $raw');
       final data = jsonDecode(raw.toString()) as Map<String, dynamic>;
       final signal = CrossDevicePomodoroState.fromJson(data);
 
@@ -443,6 +448,14 @@ class PomodoroSyncService {
 
   void sendClearFocusSignal() {
     _send({'action': 'CLEAR_FOCUS'});
+  }
+
+  void sendTeamUpdateSignal(String? teamUuid) {
+    _send({
+      'action': 'TEAM_UPDATE',
+      'team_uuid': teamUuid,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   void _subscribeToTeams() async {

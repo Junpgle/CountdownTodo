@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../models.dart';
-import '../../storage_service.dart';
-import '../screens/historical_countdowns_screen.dart';
+import 'package:CountDownTodo/models.dart';
+import 'package:CountDownTodo/storage_service.dart';
+import 'package:CountDownTodo/services/api_service.dart'; 
+import 'package:CountDownTodo/screens/historical_countdowns_screen.dart';
+import '../services/pomodoro_sync_service.dart';
 import '../widgets/home_sections.dart';
 import '../utils/page_transitions.dart';
 
@@ -37,18 +39,17 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     super.dispose();
   }
 
-  void _addCountdown() {
-    TextEditingController titleCtrl = TextEditingController();
-    DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
-    String? selectedTeamUuid = _selectedTeamUuid;
-
-    // 获取现有团队
-    final existingTeams = <String, String>{};
-    for (var c in widget.countdowns) {
-      if (c.teamUuid != null && c.teamName != null) {
-        existingTeams[c.teamUuid!] = c.teamName!;
-      }
-    }
+    void _addCountdown() async { // 🚀 改为异步
+      // 🚀 直接抓取用户加入的所有真实团队，而不再是从现有的倒计时里“考古”
+      final teamData = await ApiService.fetchTeams();
+      final teams = teamData.map((t) => Team.fromJson(t)).toList();
+      
+      TextEditingController titleCtrl = TextEditingController();
+      DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
+      String? selectedTeamUuid = _selectedTeamUuid;
+      String? selectedTeamName = _selectedTeamUuid != null 
+          ? teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name 
+          : null;
 
     showDialog(
       context: context,
@@ -102,12 +103,19 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   ),
                   items: [
                     const DropdownMenuItem(value: null, child: Text("仅自己可见")),
-                    ...existingTeams.keys.map((uuid) => DropdownMenuItem(
-                          value: uuid,
-                          child: Text("已有团队"),
+                    ...teams.map((t) => DropdownMenuItem(
+                          value: t.uuid,
+                          child: Text(t.name),
                         )),
                   ],
-                  onChanged: (val) => setDialogState(() => selectedTeamUuid = val),
+                  onChanged: (val) {
+                    setDialogState(() {
+                      selectedTeamUuid = val;
+                      selectedTeamName = val != null 
+                          ? teams.where((t) => t.uuid == val).firstOrNull?.name 
+                          : null;
+                    });
+                  },
                 ),
               ],
             ),
@@ -122,16 +130,19 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 if (titleCtrl.text.isNotEmpty) {
                   List<CountdownItem> updatedList =
                       List.from(widget.countdowns);
-                  final selectedTeamName = selectedTeamUuid != null ? existingTeams[selectedTeamUuid] : null;
                   updatedList.add(CountdownItem(
                     title: titleCtrl.text,
                     targetDate: selectedDate,
                     teamUuid: selectedTeamUuid,
-                    teamName: (selectedTeamName != "关联团队" && selectedTeamName != null) ? selectedTeamName : null,
+                    teamName: selectedTeamName,
                     creatorName: widget.username,
                   ));
                   await StorageService.saveCountdowns(
                       widget.username, updatedList);
+                  // 🚀 核心修复：发送 WebSocket 信号引导其他成员同步
+                  if (selectedTeamUuid != null) {
+                    PomodoroSyncService.instance.sendTeamUpdateSignal(selectedTeamUuid);
+                  }
                   widget.onDataChanged();
                   if (mounted) Navigator.pop(ctx);
                 }

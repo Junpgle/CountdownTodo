@@ -604,6 +604,15 @@ class _HomeDashboardState extends State<HomeDashboard>
               hasUpdate: true);
         }
         break;
+      case 'TEAM_UPDATE':
+      case 'SYNC_DATA':
+        debugPrint('🚀 [协同] 收到团队更新信号 (${signal.action})，正在同步数据...');
+        await _handleManualSync(silent: true);
+        // 🚀 核心修复：协作信号驱动下，强制重新加载数据，不依赖 hasChanges 判断
+        if (mounted) {
+           _loadAllData();
+        }
+        break;
 
       case 'START':
       case 'SYNC_FOCUS':
@@ -2255,7 +2264,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                           _rescheduleAlarms();
                           await WidgetService.updateTodoWidget(_todos);
                         },
-                        onRefreshRequested: _loadAllData,
+                        onRefreshRequested: _handleManualSync, 
                         onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
                           _navigateToTodoConfirm(
                               results, imagePath, originalText, tUuid, tName);
@@ -2577,6 +2586,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                   final allTodos = await StorageService.getTodos(widget.username);
                   allTodos.add(todo);
                   await StorageService.saveTodos(widget.username, allTodos);
+                  // 🚀 协作实时化：发送更新信号
+                  if (todo.teamUuid != null) {
+                    PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid);
+                  }
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
                   FloatWindowService.invalidateSlotCache();
@@ -2593,6 +2606,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                   final allTodos = await StorageService.getTodos(widget.username);
                   allTodos.addAll(todos);
                   await StorageService.saveTodos(widget.username, allTodos);
+                  // 🚀 协作实时化：发送更新信号
+                  final updatedTeamUuid = todos.firstWhere((t) => t.teamUuid != null, orElse: () => todos.first).teamUuid;
+                  if (updatedTeamUuid != null) {
+                    PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+                  }
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
                   FloatWindowService.invalidateSlotCache();
