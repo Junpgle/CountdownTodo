@@ -419,6 +419,28 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                           ),
                         ],
                       ),
+                      if (item.teamUuid != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.groups_rounded, 
+                                size: 10, 
+                                color: accentColor.withOpacity(0.6)),
+                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text(
+                                "${item.teamName ?? '团队'} · ${item.creatorName ?? '成员'}",
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  color: subTextColor.withOpacity(0.8),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       const Spacer(),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,

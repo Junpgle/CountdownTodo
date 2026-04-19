@@ -1389,14 +1389,20 @@ class _HomeDashboardState extends State<HomeDashboard>
       _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
     });
 
-    // 所有的待办都需要连同隐藏的逻辑删除数据一起存
-    final allTodos = await StorageService.getTodos(widget.username);
-    int idx = allTodos.indexWhere((x) => x.id == currentTodo!.id);
-    if (idx != -1) allTodos[idx] = currentTodo!;
-    await StorageService.saveTodos(widget.username, allTodos);
+    setState(() {
+      currentTodo!.isDone = true;
+      currentTodo!.markAsChanged();
+      _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+    });
 
-    // 将待办数据写入共享文件
-    await _saveTodosToSharedFile(allTodos);
+    // 🚀 Uni-Sync 4.0 优化：改用单条原子化更新，性能提升显著
+    await StorageService.updateSingleTodo(widget.username, currentTodo!);
+
+    // 注意：共享文件的更新逻辑可保持异步，不阻塞主线程交互
+    Future.microtask(() async {
+      final allTodos = await StorageService.getTodos(widget.username);
+      await _saveTodosToSharedFile(allTodos);
+    });
 
     // 通知 Island 检查提醒并刷新槽位缓存
     FloatWindowService.triggerReminderCheck();

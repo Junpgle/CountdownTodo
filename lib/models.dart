@@ -130,11 +130,12 @@ class TodoItem {
   String? originalText; // 📄 原始分析文本
   String? groupId; // 📁 所属分组 ID (null 表示未分组)
   int? reminderMinutes; // 🚀 新增：提前几分钟提醒
-  String? teamUuid; // 👥 团队 ID
-  String? creatorName; // 👤 创建者姓名 (由后端同步)
-  String? teamName; // 🏢 团队名称 (由后端同步)
-  bool hasConflict; // 🚀 Uni-Sync 4.0: 是否存在同一字段冲突
-  Map<String, dynamic>? serverVersionData; // 🚀 存储服务器端的冲突快照供对比
+  String? creatorId; 
+  String? teamUuid;
+  String? creatorName;
+  String? teamName;
+  bool hasConflict; 
+  Map<String, dynamic>? serverVersionData; 
 
   TodoItem({
     String? id,
@@ -155,6 +156,7 @@ class TodoItem {
     this.groupId,
     this.reminderMinutes,
     this.teamUuid,
+    this.creatorId,
     this.creatorName,
     this.teamName,
     this.hasConflict = false,
@@ -196,6 +198,7 @@ class TodoItem {
         'group_id': groupId, // 📁 分组 ID
         'reminder_minutes': reminderMinutes, // 🚀 提醒提前量
         'team_uuid': teamUuid, // 👥 团队 ID
+        'creator_id': creatorId,
         'creator_name': creatorName,
         'team_name': teamName,
       };
@@ -249,6 +252,7 @@ class TodoItem {
           json['reminder_minutes'] as int? ?? json['reminderMinutes'] as int?,
       // 👥 团队 ID
       teamUuid: json['team_uuid'] ?? json['teamUuid'],
+      creatorId: json['creator_id'] ?? json['creatorId'],
       creatorName: json['creator_name'] ?? json['creatorName'],
       teamName: json['team_name'] ?? json['teamName'],
     );
@@ -294,6 +298,9 @@ class CountdownItem {
   int updatedAt;
   int createdAt;
   String? teamUuid;
+  String? teamName;
+  String? creatorId;
+  String? creatorName;
 
   CountdownItem({
     String? id,
@@ -304,6 +311,9 @@ class CountdownItem {
     int? updatedAt,
     int? createdAt,
     this.teamUuid,
+    this.teamName,
+    this.creatorId,
+    this.creatorName,
   })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -324,6 +334,9 @@ class CountdownItem {
         'updated_at': updatedAt, // UTC 毫秒时间戳
         'created_at': createdAt, // UTC 毫秒时间戳
         'team_uuid': teamUuid,
+        'team_name': teamName,
+        'creator_id': creatorId,
+        'creator_name': creatorName,
       };
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) {
@@ -348,6 +361,9 @@ class CountdownItem {
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
       teamUuid: json['team_uuid'] ?? json['teamUuid'],
+      teamName: json['team_name'] ?? json['teamName'],
+      creatorId: json['creator_id'] ?? json['creatorId'],
+      creatorName: json['creator_name'] ?? json['creatorName'],
     );
   }
 }
@@ -365,6 +381,9 @@ class TodoGroup {
   int updatedAt;
   int createdAt;
   String? teamUuid;
+  String? teamName;
+  String? creatorId;
+  String? creatorName;
 
   TodoGroup({
     String? id,
@@ -375,6 +394,9 @@ class TodoGroup {
     int? updatedAt,
     int? createdAt,
     this.teamUuid,
+    this.teamName,
+    this.creatorId,
+    this.creatorName,
   })  : id = id ?? const Uuid().v4(),
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -394,6 +416,9 @@ class TodoGroup {
         'updated_at': updatedAt,
         'created_at': createdAt,
         'team_uuid': teamUuid,
+        'team_name': teamName,
+        'creator_id': creatorId,
+        'creator_name': creatorName,
       };
 
   factory TodoGroup.fromJson(Map<String, dynamic> json) {
@@ -408,6 +433,9 @@ class TodoGroup {
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['updatedAt']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
       teamUuid: json['team_uuid']?.toString(),
+      teamName: json['team_name']?.toString(),
+      creatorId: json['creator_id']?.toString(),
+      creatorName: json['creator_name']?.toString(),
     );
   }
 }

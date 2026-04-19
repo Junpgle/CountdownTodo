@@ -22,18 +22,35 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2, // 🚀 升级版本
+      version: 3, // 🚀 升级版本至协作纪元
       onCreate: _createDB,
       onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          // 🚀 Uni-Sync 安全升级：手动增加缺失字段，不破坏现有数据
-          try {
-            await db.execute("ALTER TABLE todos ADD COLUMN team_uuid TEXT;");
-            await db.execute("ALTER TABLE todos ADD COLUMN team_name TEXT;");
-          } catch (_) { /* 忽略重复添加错误 */ }
+        if (oldVersion < 3) {
+          // 🚀 Uni-Sync 安全升级：为核心业务表补全协作元数据
+          final tables = ['todos', 'countdowns', 'todo_groups'];
+          final columns = ['creator_id', 'creator_name', 'team_name'];
           
+          for (final table in tables) {
+            for (final col in columns) {
+              try {
+                // 检查列是否存在，防止重复添加
+                final info = await db.rawQuery('PRAGMA table_info($table)');
+                final exists = info.any((row) => row['name'] == col);
+                if (!exists) {
+                  await db.execute("ALTER TABLE $table ADD COLUMN $col TEXT;");
+                }
+              } catch (_) { /* 容错处理 */ }
+            }
+          }
+          
+          // 同时也为 todo_groups 增加之前漏下的 team_uuid (如果旧版没有)
+          try {
+            await db.execute("ALTER TABLE todo_groups ADD COLUMN team_uuid TEXT;");
+          } catch (_) {}
+
+          // 重新同步 FTS 虚表
           await db.execute('DROP TABLE IF EXISTS todos_fts');
-          await _createDB(db, newVersion); // 重新创建触发器和虚表
+          await _createDB(db, newVersion); 
         }
       }
     );
@@ -75,6 +92,8 @@ class DatabaseHelper {
         content $textType,
         remark $jsonType,
         team_name $jsonType, 
+        creator_id $jsonType,
+        creator_name $jsonType,
         is_completed $boolType DEFAULT 0,
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
@@ -90,6 +109,9 @@ class DatabaseHelper {
         id $idType,
         uuid $textType UNIQUE,
         team_uuid $jsonType,
+        team_name $jsonType,
+        creator_id $jsonType,
+        creator_name $jsonType,
         title $textType,
         target_time $integerType,
         is_deleted $boolType DEFAULT 0,
@@ -105,6 +127,9 @@ class DatabaseHelper {
         id $idType,
         uuid $textType UNIQUE,
         team_uuid $jsonType,
+        team_name $jsonType,
+        creator_id $jsonType,
+        creator_name $jsonType,
         name $textType,
         is_expanded $boolType DEFAULT 0,
         is_deleted $boolType DEFAULT 0,
@@ -127,7 +152,15 @@ class DatabaseHelper {
       )
     ''');
 
-    // 5. 🚀 Uni-Sync 核心：FTS5 全文搜索虚表
+    // 5. 🚀 Uni-Sync 核心：持久化索引
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_todos_team ON todos(team_uuid)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_todos_uuid ON todos(uuid)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_countdowns_team ON countdowns(team_uuid)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_countdowns_uuid ON countdowns(uuid)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_todo_groups_team ON todo_groups(team_uuid)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_todo_groups_uuid ON todo_groups(uuid)');
+
+    // 6. 🚀 Uni-Sync 核心：FTS5 全文搜索虚表
     await db.execute('''
       CREATE VIRTUAL TABLE IF NOT EXISTS todos_fts USING fts5(
         uuid UNINDEXED,
@@ -137,6 +170,8 @@ class DatabaseHelper {
         tokenize='unicode61' 
       )
     ''');
+    
+    // ... 原有的 Trigger 逻辑 ...
 
     // 4. 触发器：自动同步 FTS 索引 (保持搜索实时性)
     await db.execute('''

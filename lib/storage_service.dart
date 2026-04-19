@@ -10,6 +10,8 @@ import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'models.dart';
+
+
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
@@ -389,6 +391,9 @@ class StorageService {
         await txn.insert('countdowns', {
           'uuid': item.id,
           'team_uuid': item.teamUuid,
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
           'title': item.title,
           'target_time': item.targetDate.millisecondsSinceEpoch,
           'is_deleted': item.isDeleted ? 1 : 0,
@@ -435,13 +440,15 @@ class StorageService {
                   id: m['uuid'],
                   title: m['title'] ?? '',
                   targetDate: DateTime.fromMillisecondsSinceEpoch(
-                      m['target_time'],
-                      isUtc: true),
+                      m['target_time']),
                   isDeleted: m['is_deleted'] == 1,
                   version: m['version'] ?? 1,
                   updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
                   createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
                   teamUuid: m['team_uuid'],
+                  teamName: m['team_name'],
+                  creatorId: m['creator_id'],
+                  creatorName: m['creator_name'],
                 ))
             .toList();
       }
@@ -518,7 +525,9 @@ class StorageService {
           'content': item.title,
           'remark': item.remark,
           'team_uuid': item.teamUuid,
-          'team_name': item.teamName, // 🚀 补齐：关联团队名称入库
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
           'is_completed': item.isDone ? 1 : 0,
           'is_deleted': item.isDeleted ? 1 : 0,
           'version': item.version,
@@ -539,6 +548,39 @@ class StorageService {
           items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
       await BandSyncService.syncTodos(activeTodos);
     } catch (_) {}
+  }
+
+  /// 🚀 Uni-Sync 4.0 增强：原子化更新单条待办，避免全量读写性能开销
+  static Future<void> updateSingleTodo(String username, TodoItem item, {bool sync = true}) async {
+    final db = await DatabaseHelper.instance.database;
+    
+    // 1. 同步更新 SQLite
+    await db.insert('todos', {
+      'uuid': item.id,
+      'content': item.title,
+      'remark': item.remark,
+      'team_uuid': item.teamUuid,
+      'team_name': item.teamName,
+      'creator_id': item.creatorId,
+      'creator_name': item.creatorName,
+      'is_completed': item.isDone ? 1 : 0,
+      'is_deleted': item.isDeleted ? 1 : 0,
+      'version': item.version,
+      'updated_at': item.updatedAt,
+      'created_at': item.createdAt
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    // 2. 补齐 Oplog，确保离线更新能被同步
+    await db.insert('op_logs', {
+      'op_type': 'UPSERT',
+      'target_table': 'todos',
+      'target_uuid': item.id,
+      'data_json': jsonEncode(item.toJson()),
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'is_synced': 0
+    });
+
+    if (sync) Future.microtask(() => syncData(username));
   }
 
   static Future<List<TodoItem>> getTodos(String username) async {
@@ -571,6 +613,8 @@ class StorageService {
           createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
           teamUuid: m['team_uuid'],
           teamName: m['team_name'],
+          creatorId: m['creator_id'],
+          creatorName: m['creator_name'],
         )).toList();
         return await _handleRecurrenceLogic(username, todos);
       }
@@ -723,6 +767,9 @@ class StorageService {
         await txn.insert('todo_groups', {
           'uuid': item.id,
           'team_uuid': item.teamUuid,
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
           'name': item.name,
           'is_expanded': item.isExpanded ? 1 : 0,
           'is_deleted': item.isDeleted ? 1 : 0,
@@ -774,6 +821,9 @@ class StorageService {
                   updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
                   createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
                   teamUuid: m['team_uuid'],
+                  teamName: m['team_name'],
+                  creatorId: m['creator_id'],
+                  creatorName: m['creator_name'],
                 ))
             .toList();
       }

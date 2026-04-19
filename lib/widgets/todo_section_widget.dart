@@ -1760,7 +1760,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                           children: [
                                                             Icon(Icons.groups_rounded, size: 10, color: colorScheme.primary),
                                                             const SizedBox(width: 3),
-                                                              Text(todo.teamName ?? "团队", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorScheme.primary)),
+                                                              Text("${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorScheme.primary)),
                                                           ],
                                                         ),
                                                       ),
@@ -1954,12 +1954,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     for (var g in widget.todoGroups) {
       if (g.isDeleted) continue;
       
-      // 🚀 核心加固：视口过滤 - 分类文件夹必须归属于当前选中的团队
-      if (_selectedSubTeamUuid != null) {
-        if (g.teamUuid != _selectedSubTeamUuid) continue;
-      } else {
-        // 个人视口仅显示未关联团队的文件夹
-        if (g.teamUuid != null) continue;
+      // 🚀 核心修正：视口过滤
+      // 只有在选定特定团队时才进行截流；如果是“全部”(null)，则允许所有文件夹通过
+      if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid) {
+        continue;
       }
       final gTodos = groupTodosMap[g.id] ?? [];
       if (gTodos.isEmpty && !g.isExpanded) continue;
@@ -2091,12 +2089,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       if (t.isDeleted) continue;
       if (t.groupId != null && t.groupId!.isNotEmpty) continue;
       
-      // 🚀 核心加固：视口过滤 - 无文件夹任务也必须归属于当前选中的团队
-      if (_selectedSubTeamUuid != null) {
-        if (t.teamUuid != _selectedSubTeamUuid) continue;
-      } else {
-        // 个人视口仅显示个人任务
-        if (t.teamUuid != null) continue;
+      // 🚀 核心修正：视口过滤
+      // 只有在选定特定团队时才进行截流；如果是“全部”(null)，则允许所有散装待办通过
+      if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid) {
+        continue;
       }
 
       double todoProgress = 0.0;
