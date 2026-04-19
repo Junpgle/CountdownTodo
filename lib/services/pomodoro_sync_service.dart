@@ -155,6 +155,7 @@ class PomodoroSyncService {
   Timer? _heartbeatTimer;
   bool _connecting = false;
   String? _focusSourceDevice;
+  DateTime _lastMessageTime = DateTime.now(); // 🚀 新增：记录最后一次收到消息的时间
 
   // ── 公开广播流 ─────────────────────────────────────────────
   final _stateCtrl = StreamController<CrossDevicePomodoroState>.broadcast();
@@ -257,6 +258,7 @@ class PomodoroSyncService {
       );
 
       _setConnState(SyncConnectionState.connected);
+      _lastMessageTime = DateTime.now(); // 重置心跳计时
 
       _wsSub = _channel!.stream.listen(
         _onMessage,
@@ -302,13 +304,14 @@ class PomodoroSyncService {
       if (signal.action == 'SYNC_FOCUS' &&
           signal.sourceDevice == _deviceId &&
           onStaleSyncFocus != null) {
-        debugPrint('[PomodoroSync] 🍅 检测到服务端残留状态回推，触发本地状态校验');
+        debugPrint('[PomodoroSync] 🍅 检测ato服务端残留状态回推，触发本地状态校验');
         onStaleSyncFocus!(signal);
       }
 
+      _lastMessageTime = DateTime.now(); // 🚀 每次收到有效消息都刷新时间
       if (!_stateCtrl.isClosed) _stateCtrl.add(signal);
     } catch (e) {
-      debugPrint('[PomodoroSync] 消息解析失败: $e');
+        debugPrint('[PomodoroSync] 消息解析失败: $e');
     }
   }
 
@@ -332,6 +335,13 @@ class PomodoroSyncService {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
       if (_connState == SyncConnectionState.connected) {
+        // 🚀 核心逻辑：如果超过 2 个心跳周期（60s）没收到任何消息，判定为“僵尸活跃”，强制重连
+        final silentDuration = DateTime.now().difference(_lastMessageTime);
+        if (silentDuration > (_heartbeatInterval * 2.5)) {
+           debugPrint('[PomodoroSync] ⚠️ 心跳超时 (已静默 ${silentDuration.inSeconds}s)，强制重新连接...');
+           _onDisconnected();
+           return;
+        }
         _send({'action': 'HEARTBEAT'});
       }
     });
@@ -479,7 +489,10 @@ class PomodoroSyncService {
     if (_connState != SyncConnectionState.connected || _channel == null) return;
     try {
       _channel!.sink.add(jsonEncode(payload));
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PomodoroSync] ❌ WS发送失败: $e');
+      _onDisconnected(); // 发送失败直接触发重连
+    }
   }
 
   Future<void> forceDisconnect() async {

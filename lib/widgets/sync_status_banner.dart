@@ -118,60 +118,74 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
 
   @override
   Widget build(BuildContext context) {
-    bool isUrgent = _status != SyncPathStatus.online;
+    // 🚀 核心改动：仅在非在线状态（即：连接中、断线、错误）时显示横幅
+    bool shouldShow = _status != SyncPathStatus.online;
+    bool isUrgent = _status == SyncPathStatus.offline || _status == SyncPathStatus.serverError;
     
-    return RepaintBoundary(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.fastOutSlowIn,
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: _getStatusColor().withOpacity(0.15),
-          border: Border(bottom: BorderSide(color: _getStatusColor().withOpacity(0.3), width: 0.5)),
-        ),
-        child: InkWell(
-          onTap: () => setState(() => _isExpanded = !_isExpanded),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Icon(_getStatusIcon(), size: 16, color: _getStatusColor()),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _detailMessage + (ApiService.baseUrl.contains(':8084') ? ' 🚀[TEST:8084]' : ''),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _getStatusColor().withOpacity(0.9),
-                      ),
-                    ),
-                  ),
-                  if (isUrgent)
-                    TextButton(
-                      onPressed: widget.onDiagnosticRequested,
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(50, 24),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text("链路诊断", style: TextStyle(fontSize: 11, color: _getStatusColor())),
-                    ),
-                ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return SizeTransition(
+          sizeFactor: animation,
+          axisAlignment: -1.0,
+          child: FadeTransition(opacity: animation, child: child),
+        );
+      },
+      child: !shouldShow 
+        ? const SizedBox.shrink()
+        : RepaintBoundary(
+            key: ValueKey(_status), // 状态变化时触发连贯动画
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _getStatusColor().withOpacity(0.15),
+                border: Border(bottom: BorderSide(color: _getStatusColor().withOpacity(0.3), width: 0.5)),
               ),
-              if (_isExpanded && isUrgent)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    "Uni-Sync 正在通过 Cloudflare Tunnel 尝试连接您的私有服务器。若长时间失败，请检查 Zero Trust 客户端状态。",
-                    style: TextStyle(fontSize: 10, color: _getStatusColor().withOpacity(0.7)),
-                  ),
-                )
-            ],
+              child: InkWell(
+                onTap: () => setState(() => _isExpanded = !_isExpanded),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(_getStatusIcon(), size: 16, color: _getStatusColor()),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _detailMessage + (ApiService.baseUrl.contains(':8084') ? ' 🚀[TEST]' : ''),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _getStatusColor().withOpacity(0.9),
+                            ),
+                          ),
+                        ),
+                        if (isUrgent || _status == SyncPathStatus.connecting)
+                          TextButton(
+                            onPressed: widget.onDiagnosticRequested,
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(50, 24),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: Text("链路诊断", style: TextStyle(fontSize: 11, color: _getStatusColor())),
+                          ),
+                      ],
+                    ),
+                    if (_isExpanded && (isUrgent || _status == SyncPathStatus.connecting))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          "Uni-Sync 正在检测您的实时同步通道。若长时间处于连接中，请尝试切换网络或检查服务器防火墙设置。",
+                          style: TextStyle(fontSize: 10, color: _getStatusColor().withOpacity(0.7)),
+                        ),
+                      )
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
     );
   }
 }
