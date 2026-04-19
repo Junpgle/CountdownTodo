@@ -139,7 +139,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
   int _todoUpdateSignal = 0; // 🚀 强制组件重绘信号量
-  String? _currentSelectedTeamUuid; // 🚀 新增：跟随 TodoSectionWidget 的视口状态
+  String? _currentSelectedTeamUuid; // 🚀 选中的团队 ID
+  String? _currentSelectedTeamName; // 🚀 选中的团队名称
   Timer? _localPomodoroTicker;
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
@@ -2213,8 +2214,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                         todoGroups: _todoGroups,
                         username: widget.username,
                         isLight: isLight,
-                        onTeamChanged: (teamUuid) {
-                          _currentSelectedTeamUuid = teamUuid;
+                        onTeamChanged: (teamUuid, teamName) {
+                          setState(() {
+                            _currentSelectedTeamUuid = teamUuid;
+                            _currentSelectedTeamName = teamName;
+                          });
                         },
                         onGroupsChanged: (newGroups) async {
                           setState(() => _todoGroups = newGroups.where((g) => !g.isDeleted).toList());
@@ -2568,6 +2572,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               page: AddTodoScreen(
                 todoGroups: _todoGroups,
                 initialTeamUuid: _currentSelectedTeamUuid, // 🚀 关键修复：将当前选中的团队 Tab 传给创建页
+                initialTeamName: _currentSelectedTeamName,
                 onTodoAdded: (todo) async {
                   final allTodos = await StorageService.getTodos(widget.username);
                   allTodos.add(todo);

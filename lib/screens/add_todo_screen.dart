@@ -21,6 +21,7 @@ class AddTodoScreen extends StatefulWidget {
   final List<TodoGroup> todoGroups;
   final String? initialGroupId;
   final String? initialTeamUuid; // 🚀 新增：初始关联团队 ID
+  final String? initialTeamName; // 🚀 新增：初始关联团队名称
 
   const AddTodoScreen({
     super.key,
@@ -30,6 +31,7 @@ class AddTodoScreen extends StatefulWidget {
     this.todoGroups = const [],
     this.initialGroupId,
     this.initialTeamUuid,
+    this.initialTeamName,
   });
 
   @override
@@ -64,6 +66,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   String? _username;
   List<Team> _teams = [];
   String? _selectedTeamUuid;
+  String? _selectedTeamName; // 🚀 记录团队名
 
   late AnimationController _dotsController;
 
@@ -71,7 +74,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   void initState() {
     super.initState();
     _selectedGroupId = widget.initialGroupId;
-    _selectedTeamUuid = widget.initialTeamUuid; // 🚀 关键：自动预设当前身处的团队上下文
+    _selectedTeamUuid = widget.initialTeamUuid;
+    _selectedTeamName = widget.initialTeamName; // 🚀 关键：立即同步首页背景
     _dotsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -396,6 +400,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
     final persistentImagePath = await _persistAttachmentImageIfNeeded();
 
+    final selectedTeam = _selectedTeamUuid != null ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull : null;
+
     final todo = TodoItem(
       title: _titleCtrl.text,
       recurrence: _recurrence,
@@ -409,6 +415,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       groupId: _selectedGroupId,
       reminderMinutes: _reminderMinutes,
       teamUuid: _selectedTeamUuid,
+      teamName: selectedTeam?.name, // 🚀 补全团队名称
+      creatorName: _username, // 🚀 补全创建者名称
     );
 
     widget.onTodoAdded(todo);
@@ -420,6 +428,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (_parsedResults.isEmpty) return;
 
     final persistentImagePath = await _persistAttachmentImageIfNeeded();
+
+    final selectedTeam = _selectedTeamUuid != null ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull : null;
 
     final List<TodoItem> todos = _parsedResults.map((r) {
       return TodoItem(
@@ -434,6 +444,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         imagePath: persistentImagePath,
         reminderMinutes: r.reminderMinutes ?? _reminderMinutes,
         teamUuid: _selectedTeamUuid, // 🚀 批量添加时也要带上团队属性
+        teamName: selectedTeam?.name, // 🚀 补全团队名称
+        creatorName: _username, // 🚀 补全创建者名称
       );
     }).toList();
 
@@ -808,7 +820,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       ),
                     )),
               ],
-              onChanged: (val) => setState(() => _selectedTeamUuid = val),
+              onChanged: (val) {
+                setState(() {
+                  _selectedTeamUuid = val;
+                  _selectedTeamName = val != null ? _teams.where((t) => t.uuid == val).firstOrNull?.name : null;
+                });
+              },
             ),
             const SizedBox(height: 12),
           ],

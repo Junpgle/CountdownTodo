@@ -34,7 +34,7 @@ class TodoSectionWidget extends StatefulWidget {
   final Function(List<Map<String, dynamic>>, String?, String?, String?, String?)?
       onLLMResultsParsed; // 🚀 参数：Results, imagePath, originalText, teamUuid, teamName
 
-  final Function(String?)? onTeamChanged; // 🚀 新增：通知父组件当前选中的团队 ID
+  final Function(String?, String?)? onTeamChanged; // 🚀 传参：ID, Name
 
   const TodoSectionWidget({
     super.key,
@@ -1761,26 +1761,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                         child: Row(
                                                           mainAxisSize: MainAxisSize.min,
                                                           children: [
-                                                            Icon(Icons.groups_rounded, size: 10, color: colorScheme.primary),
+                                                            Icon(_selectedSubTeamUuid == null ? Icons.groups_rounded : Icons.person_outline_rounded, size: 10, color: colorScheme.primary),
                                                             const SizedBox(width: 3),
-                                                              Text("${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorScheme.primary)),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 6),
-                                                      Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                        decoration: BoxDecoration(
-                                                            color: Colors.blue.withOpacity(0.15),
-                                                          borderRadius: BorderRadius.circular(4),
-                                                            border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
-                                                        ),
-                                                        child: Row(
-                                                          mainAxisSize: MainAxisSize.min,
-                                                          children: [
-                                                            Icon(Icons.person_outline_rounded, size: 10, color: Colors.blue.shade700),
-                                                            const SizedBox(width: 3),
-                                                              Text(todo.creatorName ?? "匿名", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+                                                            Text(
+                                                              _selectedSubTeamUuid == null 
+                                                                ? "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}"
+                                                                : "创建者：${todo.creatorName ?? '成员'}", 
+                                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorScheme.primary)
+                                                            ),
                                                           ],
                                                         ),
                                                       ),
@@ -2602,7 +2590,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               isSelected: _selectedSubTeamUuid == null,
               onTap: () {
                 setState(() => _selectedSubTeamUuid = null);
-                widget.onTeamChanged?.call(null);
+                widget.onTeamChanged?.call(null, null);
               },
               useDarkUI: useDarkUI,
             ),
@@ -2616,7 +2604,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   isSelected: _selectedSubTeamUuid == entry.key,
                   onTap: () {
                     setState(() => _selectedSubTeamUuid = entry.key);
-                    widget.onTeamChanged?.call(entry.key);
+                    widget.onTeamChanged?.call(entry.key, entry.value);
                   },
                   useDarkUI: useDarkUI,
                 ),

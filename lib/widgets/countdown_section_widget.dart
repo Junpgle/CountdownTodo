@@ -45,8 +45,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     // 获取现有团队
     final existingTeams = <String, String>{};
     for (var c in widget.countdowns) {
-      if (c.teamUuid != null) {
-        existingTeams[c.teamUuid!] = "关联团队"; // 后续读取
+      if (c.teamUuid != null && c.teamName != null) {
+        existingTeams[c.teamUuid!] = c.teamName!;
       }
     }
 
@@ -122,10 +122,13 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 if (titleCtrl.text.isNotEmpty) {
                   List<CountdownItem> updatedList =
                       List.from(widget.countdowns);
+                  final selectedTeamName = selectedTeamUuid != null ? existingTeams[selectedTeamUuid] : null;
                   updatedList.add(CountdownItem(
                     title: titleCtrl.text,
                     targetDate: selectedDate,
                     teamUuid: selectedTeamUuid,
+                    teamName: (selectedTeamName != "关联团队" && selectedTeamName != null) ? selectedTeamName : null,
+                    creatorName: widget.username,
                   ));
                   await StorageService.saveCountdowns(
                       widget.username, updatedList);
@@ -217,7 +220,10 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             child: Row(
               children: [
                 _buildTeamTab("全部", null, useDarkUI),
-                ...teams.map((uuid) => _buildTeamTab("团队任务", uuid, useDarkUI)),
+                ...teams.map((uuid) {
+                  final name = widget.countdowns.firstWhere((c) => c.teamUuid == uuid).teamName ?? "团队项目";
+                  return _buildTeamTab(name, uuid, useDarkUI);
+                }),
               ],
             ),
           ),
