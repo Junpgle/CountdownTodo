@@ -1360,6 +1360,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool isLight = widget.isLight;
+    final bool isDark = !isLight;
 
     // ── 颜色层 ──
     final Color cardBg = todo.isDone
@@ -1479,7 +1480,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             borderRadius: BorderRadius.circular(14),
           ),
           child: Text(todo.title,
-              style: TextStyle(color: titleColor, fontSize: 14.5)),
+              style: TextStyle(color: titleColor.withOpacity(0.95), fontSize: 14.5)),
         ),
       ),
       child: VisibilityDetector(
@@ -1566,8 +1567,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     decoration: BoxDecoration(
                       color: todo.teamUuid != null
                           ? (isLight
-                              ? colorScheme.primary.withOpacity(0.04)
-                              : colorScheme.primary.withOpacity(0.08))
+                              ? colorScheme.surface.withOpacity(0.92)
+                              : colorScheme.surfaceContainerHighest.withOpacity(0.4))
                           : cardBg,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
@@ -1699,7 +1700,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                         style: TextStyle(
                                                           decoration: todo.isDone ? TextDecoration.lineThrough : null,
                                                           decorationColor: colorScheme.onSurface.withOpacity(0.3),
-                                                          color: titleColor,
+                                                          color: titleColor.withOpacity(0.95),
                                                           fontSize: 14.5,
                                                           fontWeight: todo.isDone || isPast || isFuture ? FontWeight.w500 : FontWeight.w600,
                                                           height: 1.2,
@@ -1731,16 +1732,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                       Container(
                                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                         decoration: BoxDecoration(
-                                                          color: colorScheme.primary.withOpacity(0.08),
+                                                            color: colorScheme.primary.withOpacity(0.18),
                                                           borderRadius: BorderRadius.circular(4),
-                                                          border: Border.all(color: colorScheme.primary.withOpacity(0.12), width: 0.5),
+                                                            border: Border.all(color: colorScheme.primary.withOpacity(0.4), width: 0.8),
                                                         ),
                                                         child: Row(
                                                           mainAxisSize: MainAxisSize.min,
                                                           children: [
                                                             Icon(Icons.groups_rounded, size: 10, color: colorScheme.primary),
                                                             const SizedBox(width: 3),
-                                                            Text(todo.teamName ?? "团队", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: colorScheme.primary.withOpacity(0.8))),
+                                                              Text(todo.teamName ?? "团队", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorScheme.primary)),
                                                           ],
                                                         ),
                                                       ),
@@ -1748,16 +1749,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                       Container(
                                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                         decoration: BoxDecoration(
-                                                          color: Colors.blue.withOpacity(0.08),
+                                                            color: Colors.blue.withOpacity(0.15),
                                                           borderRadius: BorderRadius.circular(4),
-                                                          border: Border.all(color: Colors.blue.withOpacity(0.12), width: 0.5),
+                                                            border: Border.all(color: Colors.blue.withOpacity(0.4), width: 0.8),
                                                         ),
                                                         child: Row(
                                                           mainAxisSize: MainAxisSize.min,
                                                           children: [
                                                             Icon(Icons.person_outline_rounded, size: 10, color: Colors.blue.shade700),
                                                             const SizedBox(width: 3),
-                                                            Text(todo.creatorName ?? "匿名", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: Colors.blue.shade800)),
+                                                              Text(todo.creatorName ?? "匿名", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
                                                           ],
                                                         ),
                                                       ),
@@ -1767,9 +1768,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                 const SizedBox(height: 3),
                                                 Row(
                                                   children: [
-                                                    Icon(Icons.schedule_rounded, size: 11, color: colorScheme.onSurface.withOpacity(todo.isDone ? 0.25 : (isPast ? 0.55 : 0.4))),
+                                                    Icon(Icons.schedule_rounded, size: 11, color: colorScheme.onSurface.withOpacity(todo.isDone ? 0.65 : (isPast ? 0.75 : 0.65))),
                                                     const SizedBox(width: 3),
-                                                    Expanded(child: Text(_buildTimeLabel(todo, cDate, isPast, isFuture, now), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(todo.isDone ? 0.25 : isPast ? 0.6 : 0.45), height: 1.2))),
+                                                    Expanded(child: Text(_buildTimeLabel(todo, cDate, isPast, isFuture, now), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(todo.isDone ? 0.4 : isPast ? 0.75 : 0.65), height: 1.2))),
                                                   ],
                                                 ),
                                                 if (todo.remark != null && todo.remark!.isNotEmpty) ...[

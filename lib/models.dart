@@ -133,6 +133,8 @@ class TodoItem {
   String? teamUuid; // 👥 团队 ID
   String? creatorName; // 👤 创建者姓名 (由后端同步)
   String? teamName; // 🏢 团队名称 (由后端同步)
+  bool hasConflict; // 🚀 Uni-Sync 4.0: 是否存在同一字段冲突
+  Map<String, dynamic>? serverVersionData; // 🚀 存储服务器端的冲突快照供对比
 
   TodoItem({
     String? id,
@@ -155,6 +157,8 @@ class TodoItem {
     this.teamUuid,
     this.creatorName,
     this.teamName,
+    this.hasConflict = false,
+    this.serverVersionData,
   })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -671,4 +675,45 @@ class ConflictInfo {
     item: json['item'] as Map<String, dynamic>,
     conflictWith: json['conflict_with'] as Map<String, dynamic>,
   );
+}
+class TeamAnnouncement {
+  final String id;
+  final String teamUuid;
+  final String content;
+  final String? creatorName;
+  final int timestamp;
+  final bool isPriority; // 是否强制置顶且需确认
+  bool isRead; // 本地状态：当前用户是否已读
+
+  TeamAnnouncement({
+    required this.id,
+    required this.teamUuid,
+    required this.content,
+    this.creatorName,
+    required this.timestamp,
+    this.isPriority = false,
+    this.isRead = false,
+  });
+
+  factory TeamAnnouncement.fromJson(Map<String, dynamic> json) {
+    return TeamAnnouncement(
+      id: json['id']?.toString() ?? '',
+      teamUuid: json['team_uuid']?.toString() ?? '',
+      content: json['content']?.toString() ?? '',
+      creatorName: json['creator_name'],
+      timestamp: json['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
+      isPriority: json['is_priority'] == 1 || json['is_priority'] == true,
+      isRead: json['is_read'] == 1 || json['is_read'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'team_uuid': teamUuid,
+    'content': content,
+    'creator_name': creatorName,
+    'timestamp': timestamp,
+    'is_priority': isPriority ? 1 : 0,
+    'is_read': isRead ? 1 : 0,
+  };
 }

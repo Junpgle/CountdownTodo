@@ -47,7 +47,11 @@ import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
 import '../widgets/conflict_alert_dialog.dart';
+import '../widgets/sync_status_banner.dart'; // 🚀 引入
+import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
 import 'pomodoro_screen.dart';
+import 'unified_waterfall_screen.dart'; // 🚀 引入
+import 'conflict_inbox_screen.dart'; // 🚀 引入
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -130,6 +134,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   final _syncService = PomodoroSyncService();
   String _deviceId = '';
   bool _hasShownUpdate = false;
+  TeamAnnouncement? _activeAnnouncement; // 🚀 新增：当前置顶公告
 
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
@@ -2133,6 +2138,31 @@ class _HomeDashboardState extends State<HomeDashboard>
                       _loadSemesterSettings();
                       _loadAllData();
                     },
+                    onWaterfall: () {
+                      Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(UnifiedWaterfallScreen(username: widget.username)),
+                      );
+                    },
+                    onConflict: () {
+                      Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(ConflictInboxScreen(username: widget.username)),
+                      );
+                    },
+                  ),
+
+                // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
+                if (_selectedTabIndex != 1 || isTablet)
+                  SyncStatusBanner(
+                    onDiagnosticRequested: () => _handleManualSync(silent: false),
+                  ),
+
+                // 🚀 Uni-Sync 4.0: 团队置顶公告
+                if (_activeAnnouncement != null && (_selectedTabIndex != 1 || isTablet))
+                  StickyAnnouncementBanner(
+                    announcement: _activeAnnouncement!,
+                    onAcknowledge: () => setState(() => _activeAnnouncement = null),
                   ),
 
                 // 🚀 统一处理本地与远程专注 Banner

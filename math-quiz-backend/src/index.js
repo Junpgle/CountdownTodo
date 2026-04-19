@@ -332,20 +332,28 @@ export default {
         const batchStatements = [];
 
         // 0. 容错建表与增量表架构更新
+        await DB.prepare(`CREATE TABLE IF NOT EXISTS teams (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT UNIQUE, name TEXT, creator_id INTEGER, created_at INTEGER)`).run();
+        await DB.prepare(`CREATE TABLE IF NOT EXISTS team_members (team_uuid TEXT, user_id INTEGER, role TEXT, joined_at INTEGER, PRIMARY KEY(team_uuid, user_id))`).run();
+        await DB.prepare(`CREATE TABLE IF NOT EXISTS team_invites (team_uuid TEXT PRIMARY KEY, code TEXT UNIQUE, created_at INTEGER)`).run();
         await DB.prepare(`CREATE TABLE IF NOT EXISTS todo_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT, user_id INTEGER, name TEXT, is_expanded INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, version INTEGER DEFAULT 1, updated_at INTEGER, created_at INTEGER, UNIQUE(user_id, uuid))`).run();
 
         const todoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
         let todoColNames = new Set(todoColumns.results.map(r => r.name));
 
-        if (!todoColNames.has('group_id')) {
-            try {
-                await DB.prepare("ALTER TABLE todos ADD COLUMN group_id TEXT").run();
-                // 刷新列名集合
-                const refreshedTodoColumns = await DB.prepare("PRAGMA table_info(todos)").all();
-                todoColNames = new Set(refreshedTodoColumns.results.map(r => r.name));
-            } catch(e) {
-                console.error("Failed to add group_id column:", e.message);
-            }
+        const migrationStmts = [];
+        if (!todoColNames.has('group_id')) migrationStmts.push("ALTER TABLE todos ADD COLUMN group_id TEXT");
+        if (!todoColNames.has('team_uuid')) migrationStmts.push("ALTER TABLE todos ADD COLUMN team_uuid TEXT");
+        if (!todoColNames.has('team_name')) migrationStmts.push("ALTER TABLE todos ADD COLUMN team_name TEXT");
+        if (!todoColNames.has('creator_name')) migrationStmts.push("ALTER TABLE todos ADD COLUMN creator_name TEXT");
+
+        for (const sql of migrationStmts) {
+            try { await DB.prepare(sql).run(); } catch(e) { console.error("Migration failed:", e.message); }
+        }
+
+        // 刷新列名集合
+        if (migrationStmts.length > 0) {
+            const refreshed = await DB.prepare("PRAGMA table_info(todos)").all();
+            todoColNames = new Set(refreshed.results.map(r => r.name));
         }
 
         const hasRecurrence       = todoColNames.has('recurrence');
@@ -353,6 +361,9 @@ export default {
         const hasRecurrenceEnd    = todoColNames.has('recurrence_end_date');
         const hasRemark           = todoColNames.has('remark');
         const hasGroupId          = todoColNames.has('group_id');
+        const hasTeamUuid         = todoColNames.has('team_uuid');
+        const hasTeamName         = todoColNames.has('team_name');
+        const hasCreatorName      = todoColNames.has('creator_name');
 
         if (Array.isArray(todos)) {
           for (const t of todos) {
@@ -384,6 +395,9 @@ export default {
               hasRecurrenceEnd  ? 'recurrence_end_date'   : null,
               hasRemark         ? 'remark'                : null,
               hasGroupId        ? 'group_id'              : null,
+              hasTeamUuid       ? 'team_uuid'             : null,
+              hasTeamName       ? 'team_name'             : null,
+              hasCreatorName    ? 'creator_name'          : null,
             ].filter(Boolean);
             const extraColStr = extraCols.length > 0 ? ', ' + extraCols.join(', ') : '';
 
@@ -436,6 +450,9 @@ export default {
               if (hasRecurrenceEnd)  { insertCols += ', recurrence_end_date';   insertPlaceholders += ', ?'; insertValues.push(tRecurrenceEndDate); }
               if (hasRemark)         { insertCols += ', remark';                insertPlaceholders += ', ?'; insertValues.push(tRemark); }
               if (hasGroupId)        { insertCols += ', group_id';              insertPlaceholders += ', ?'; insertValues.push(tGroupId); }
+              if (hasTeamUuid)       { insertCols += ', team_uuid';             insertPlaceholders += ', ?'; insertValues.push(t.team_uuid ?? t.teamUuid ?? null); }
+              if (hasTeamName)       { insertCols += ', team_name';             insertPlaceholders += ', ?'; insertValues.push(t.team_name ?? t.teamName ?? null); }
+              if (hasCreatorName)    { insertCols += ', creator_name';          insertPlaceholders += ', ?'; insertValues.push(t.creator_name ?? t.creatorName ?? null); }
 
               let stmt = DB.prepare(`INSERT INTO todos (${insertCols}) VALUES (${insertPlaceholders})`);
               batchStatements.push(stmt.bind(...insertValues));
@@ -476,6 +493,18 @@ export default {
                 if (hasGroupId) {
                   setClauses.push('group_id = ?');
                   setValues.push(tGroupId);
+                }
+                if (hasTeamUuid) {
+                  setClauses.push('team_uuid = ?');
+                  setValues.push(t.team_uuid ?? t.teamUuid ?? (existing.team_uuid || null));
+                }
+                if (hasTeamName) {
+                    setClauses.push('team_name = ?');
+                    setValues.push(t.team_name ?? t.teamName ?? (existing.team_name || null));
+                }
+                if (hasCreatorName) {
+                    setClauses.push('creator_name = ?');
+                    setValues.push(t.creator_name ?? t.creatorName ?? (existing.creator_name || null));
                 }
 
                 setValues.push(existing.id);
@@ -649,14 +678,19 @@ export default {
         // 5. 拉取最终的增量数据
         let serverTodosRaw, serverCountdownsRaw, serverTimeLogsRaw, serverTodoGroupsRaw;
 
+        // --- 核心：提取用户所属的所有团队 UUID ---
+        const userTeamsResults = await DB.prepare("SELECT team_uuid FROM team_members WHERE user_id = ?").bind(authUserId).all();
+        const myTeamUuids = userTeamsResults.results.map(r => r.team_uuid).filter(Boolean);
+        const teamInClause = myTeamUuids.length > 0 ? `OR team_uuid IN (${myTeamUuids.map(u => `'${u}'`).join(',')})` : '';
+
         if (last_sync_time === 0) {
-          serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE user_id = ?`).bind(authUserId).all();
-          serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE user_id = ?`).bind(authUserId).all();
+          serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE user_id = ? ${teamInClause}`).bind(authUserId).all();
+          serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE user_id = ? ${teamInClause}`).bind(authUserId).all();
           serverTodoGroupsRaw = await DB.prepare(`SELECT * FROM todo_groups WHERE user_id = ?`).bind(authUserId).all();
           serverTimeLogsRaw = await DB.prepare(`SELECT * FROM time_logs WHERE user_id = ?`).bind(authUserId).all();
         } else {
-          serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
-          serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
+          serverTodosRaw = await DB.prepare(`SELECT * FROM todos WHERE (user_id = ? ${teamInClause}) AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
+          serverCountdownsRaw = await DB.prepare(`SELECT * FROM countdowns WHERE (user_id = ? ${teamInClause}) AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
           serverTodoGroupsRaw = await DB.prepare(`SELECT * FROM todo_groups WHERE user_id = ?`).bind(authUserId).all();
           serverTimeLogsRaw = await DB.prepare(`SELECT * FROM time_logs WHERE user_id = ? AND (device_id != ? OR device_id IS NULL)`).bind(authUserId, device_id).all();
         }
@@ -673,6 +707,7 @@ export default {
             return {
               id: idStr, uuid: idStr, content: row.content, is_completed: row.is_completed, is_deleted: row.is_deleted, version: row.version, device_id: row.device_id,
               created_at: normalizeTimestamp(row.created_at), updated_at: normalizeTimestamp(row.updated_at), created_date: nullableTimestamp(row.created_date), due_date: nullableTimestamp(row.due_date), recurrence: row.recurrence ?? 0, customIntervalDays: row.custom_interval_days ?? null, recurrenceEndDate: nullableTimestamp(row.recurrence_end_date), recurrence_end_date: nullableTimestamp(row.recurrence_end_date), remark: row.remark ?? null, group_id: row.group_id ?? null,
+              team_uuid: row.team_uuid ?? null, team_name: row.team_name ?? null, creator_name: row.creator_name ?? null,
             };
         });
 
@@ -1181,6 +1216,87 @@ export default {
         }
 
         return jsonResponse({ success: true, synced_records: syncedRecords, message: "Smart Merge Complete" });
+      }
+
+      // --------------------------
+      // 👥 模块 L: 团队 (Teams)
+      // --------------------------
+      if (url.pathname === "/api/teams" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { results } = await DB.prepare(`
+          SELECT t.* FROM teams t JOIN team_members tm ON t.uuid = tm.team_uuid WHERE tm.user_id = ?
+        `).bind(authUserId).all();
+        return jsonResponse({ success: true, teams: results });
+      }
+
+      if (url.pathname === "/api/teams/create" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { name } = await request.json();
+        const teamUuid = crypto.randomUUID();
+        const nowMs = Date.now();
+
+        await DB.batch([
+          DB.prepare("INSERT INTO teams (uuid, name, creator_id, created_at) VALUES (?, ?, ?, ?)").bind(teamUuid, name, authUserId, nowMs),
+          DB.prepare("INSERT INTO team_members (team_uuid, user_id, role, joined_at) VALUES (?, ?, 'admin', ?)").bind(teamUuid, authUserId, nowMs)
+        ]);
+
+        return jsonResponse({ success: true, team_uuid: teamUuid });
+      }
+
+      if (url.pathname === "/api/teams/invite" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { team_uuid } = await request.json();
+        const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        await DB.prepare("INSERT OR REPLACE INTO team_invites (team_uuid, code, created_at) VALUES (?, ?, ?)").bind(team_uuid, code, Date.now()).run();
+        return jsonResponse({ success: true, code });
+      }
+
+      if (url.pathname === "/api/teams/join" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { code } = await request.json();
+        const invite = await DB.prepare("SELECT team_uuid FROM team_invites WHERE code = ?").bind(code.toUpperCase()).first();
+        if (!invite) return errorResponse("无效的邀请码");
+
+        await DB.prepare("INSERT OR REPLACE INTO team_members (team_uuid, user_id, role, joined_at) VALUES (?, ?, 'member', ?)").bind(invite.team_uuid, authUserId, Date.now()).run();
+        return jsonResponse({ success: true, team_uuid: invite.team_uuid });
+      }
+
+      if (url.pathname === "/api/teams/members" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const teamUuid = url.searchParams.get("team_uuid");
+        const { results } = await DB.prepare(`
+          SELECT u.username, u.email, u.avatar_url, tm.role, tm.joined_at 
+          FROM users u JOIN team_members tm ON u.id = tm.user_id WHERE tm.team_uuid = ?
+        `).bind(teamUuid).all();
+        return jsonResponse({ success: true, members: results });
+      }
+
+      if (url.pathname === "/api/teams/members/add" && request.method === "POST") {
+          if (!authUserId) return errorResponse("未授权", 401);
+          const { team_uuid, email } = await request.json();
+          const targetUser = await DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+          if (!targetUser) return errorResponse("用户不存在");
+          await DB.prepare("INSERT OR REPLACE INTO team_members (team_uuid, user_id, role, joined_at) VALUES (?, ?, 'member', ?)").bind(team_uuid, targetUser.id, Date.now()).run();
+          return jsonResponse({ success: true });
+      }
+
+      if (url.pathname === "/api/teams/leave" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { team_uuid } = await request.json();
+        await DB.prepare("DELETE FROM team_members WHERE team_uuid = ? AND user_id = ?").bind(team_uuid, authUserId).run();
+        return jsonResponse({ success: true });
+      }
+
+      if (url.pathname === "/api/teams/delete" && request.method === "POST") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        const { team_uuid } = await request.json();
+        const team = await DB.prepare("SELECT creator_id FROM teams WHERE uuid = ?").bind(team_uuid).first();
+        if (team && team.creator_id !== authUserId) return errorResponse("仅创建者可解散团队", 403);
+        await DB.batch([
+          DB.prepare("DELETE FROM teams WHERE uuid = ?").bind(team_uuid),
+          DB.prepare("DELETE FROM team_members WHERE team_uuid = ?").bind(team_uuid)
+        ]);
+        return jsonResponse({ success: true });
       }
 
 	if (url.pathname === "/api/admin/s2s_export" && request.method === "GET") {

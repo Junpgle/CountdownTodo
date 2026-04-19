@@ -83,6 +83,8 @@ class HomeAppBar extends StatefulWidget {
   final bool isSyncing;
   final VoidCallback onSync;
   final VoidCallback onSettings;
+  final VoidCallback onWaterfall; // 🚀 新增
+  final VoidCallback onConflict; // 🚀 新增
   final GlobalKey? settingsKey;
   final GlobalKey? courseKey;
 
@@ -95,6 +97,8 @@ class HomeAppBar extends StatefulWidget {
     required this.isSyncing,
     required this.onSync,
     required this.onSettings,
+    required this.onWaterfall, // 🚀 必传
+    required this.onConflict, // 🚀 必传
     this.settingsKey,
     this.courseKey,
     this.showCourseButton = true,
@@ -239,6 +243,16 @@ class _HomeAppBarState extends State<HomeAppBar>
           context,
           icon: Icons.people_rounded,
           onPressed: () => Navigator.pushNamed(context, '/teams'),
+        ),
+        _buildActionButton(
+          context,
+          icon: Icons.waterfall_chart_rounded, // 🚀 全景流
+          onPressed: widget.onWaterfall,
+        ),
+        _buildActionButton(
+          context,
+          icon: Icons.verified_user_rounded, // 🚀 对齐中心
+          onPressed: widget.onConflict,
         ),
         _buildActionButton(
           context,

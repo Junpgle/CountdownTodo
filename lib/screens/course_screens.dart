@@ -618,12 +618,33 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           child: Icon(item.isDone ? Icons.check_circle : Icons.task_alt,
               color: item.isDone ? Colors.green : Colors.amber, size: 20),
         ),
-        title: Text(item.title, style: TextStyle(
-          fontSize: 15,
-          decoration: item.isDone ? TextDecoration.lineThrough : null,
-          color: item.isDone ? Colors.grey : null,
-        )),
-        subtitle: Text(item.dueDate != null ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}' : '无截止时间', style: const TextStyle(fontSize: 12)),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(item.title, style: TextStyle(
+                fontSize: 15,
+                decoration: item.isDone ? TextDecoration.lineThrough : null,
+                color: item.isDone ? Colors.grey : null,
+              )),
+            ),
+            if (item.teamUuid != null)
+              Container(
+                margin: const EdgeInsets.only(left: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: const Icon(Icons.group, size: 12, color: Colors.blue),
+              ),
+          ],
+        ),
+        subtitle: Text(
+          (item.teamUuid != null ? '${item.teamName ?? '团队'} · ' : '') + 
+          (item.dueDate != null ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}' : '无截止时间'), 
+          style: const TextStyle(fontSize: 12)
+        ),
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: item))),
       );
     } else if (item is TimeLogItem) {
@@ -765,8 +786,25 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                           decoration: todo.isDone
                                               ? TextDecoration.lineThrough
                                               : null)),
-                                  subtitle: Text(
-                                      "开始: ${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (todo.teamUuid != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 2),
+                                          child: Row(
+                                            children: [
+                                              const Icon(Icons.group, size: 12, color: Colors.blue),
+                                              const SizedBox(width: 4),
+                                              Text("${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}", 
+                                                style: const TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.bold)),
+                                            ],
+                                          ),
+                                        ),
+                                      Text(
+                                          "开始: ${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? DateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}"),
+                                    ],
+                                  ),
                                   onTap: () {
                                     Navigator.pop(ctx);
                                     Navigator.push(
@@ -823,17 +861,30 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                       : Colors.amber.shade500.withOpacity(0.85),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(
-                  text,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.white,
-                    decoration: allDone ? TextDecoration.lineThrough : null,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (dayTodos.any((t) => t.teamUuid != null))
+                        const Padding(
+                          padding: EdgeInsets.only(right: 2),
+                          child: Icon(Icons.group, size: 10, color: Colors.white),
+                        ),
+                      Flexible(
+                        child: Text(
+                          text,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            decoration: allDone ? TextDecoration.lineThrough : null,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                ),
               ),
             ),
           );
@@ -1050,6 +1101,28 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (todo.teamUuid != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2.0),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.group, size: 8, color: Colors.white),
+                                      const SizedBox(width: 1),
+                                      Text(
+                                        todo.teamName ?? '团队',
+                                        style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1074,7 +1147,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                             ? TextDecoration.lineThrough
                                             : null,
                                         height: 1.0),
-                                    maxLines: height < 30 ? 1 : 2,
+                                    maxLines: height < 35 ? 1 : 2,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -1680,24 +1753,41 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
-                                  child: Text(
-                                    todo.title,
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w500,
-                                      decoration: todo.isDone
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                      color: todo.isDone
-                                          ? (isDark
-                                              ? Colors.white38
-                                              : Colors.black38)
-                                          : (isDark
-                                              ? Colors.white
-                                              : Colors.black87),
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (todo.teamUuid != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 2),
+                                          child: Row(
+                                            children: [
+                                              const Icon(Icons.group, size: 10, color: Colors.blue),
+                                              const SizedBox(width: 4),
+                                              Text(todo.teamName ?? '团队', 
+                                                style: const TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold)),
+                                            ],
+                                          ),
+                                        ),
+                                      Text(
+                                        todo.title,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500,
+                                          decoration: todo.isDone
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                          color: todo.isDone
+                                              ? (isDark
+                                                  ? Colors.white38
+                                                  : Colors.black38)
+                                              : (isDark
+                                                  ? Colors.white
+                                                  : Colors.black87),
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],

@@ -257,7 +257,7 @@ class CourseMonthView extends StatelessWidget {
     return Color(int.parse(clean, radix: 16));
   }
 
-  Widget _buildEventDot(Color color, String label) {
+  Widget _buildEventDot(Color color, String label, {IconData? icon}) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -268,15 +268,12 @@ class CourseMonthView extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 4,
-            height: 4,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
+          Icon(icon ?? (label.contains('[T]') ? Icons.group : Icons.circle), 
+            size: 6, color: color),
           const SizedBox(width: 2),
           Expanded(
             child: Text(
-              label,
+              label.replaceAll('[T] ', ''),
               style: TextStyle(fontSize: 8, color: color, fontWeight: FontWeight.bold),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -294,7 +291,12 @@ class CourseMonthView extends StatelessWidget {
     if (item is CourseItem) {
       return _buildEventDot(_getCourseColor(item.courseName), item.courseName);
     } else if (item is TodoItem) {
-      return _buildEventDot(item.isDone ? Colors.green : Colors.amber, item.title);
+      final bool isTeam = item.teamUuid != null;
+      return _buildEventDot(
+        item.isDone ? Colors.green : Colors.amber, 
+        (isTeam ? '[T] ' : '') + item.title,
+        icon: isTeam ? Icons.group : null,
+      );
     } else if (item is TimeLogItem) {
       Color color = const Color(0xFF3B82F6);
       if (item.tagUuids.isNotEmpty) {
@@ -494,15 +496,38 @@ class _DayDetailsBottomSheet extends StatelessWidget {
           child: Icon(item.isDone ? Icons.check_circle : Icons.task_alt,
               color: item.isDone ? Colors.green : Colors.amber),
         ),
-        title: Text(item.title,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              decoration: item.isDone ? TextDecoration.lineThrough : null,
-              color: item.isDone ? Colors.grey : null,
-            )),
-        subtitle: Text(item.dueDate != null
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(item.title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    decoration: item.isDone ? TextDecoration.lineThrough : null,
+                    color: item.isDone ? Colors.grey : null,
+                  )),
+            ),
+            if (item.teamUuid != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.group, size: 10, color: Colors.blue),
+                    const SizedBox(width: 2),
+                    Text(item.teamName ?? '团队', style: const TextStyle(fontSize: 9, color: Colors.blue, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        subtitle: Text((item.teamUuid != null ? '创建者: ${item.creatorName ?? '成员'} · ' : '') + (item.dueDate != null
             ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}'
-            : '无截止时间'),
+            : '无截止时间')),
         onTap: () {
           Navigator.pop(context);
           Navigator.push(

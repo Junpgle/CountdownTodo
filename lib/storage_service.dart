@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +13,7 @@ import 'models.dart';
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
+import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 
 class StorageService {
   static SharedPreferences? _prefs;
@@ -425,6 +427,37 @@ class StorageService {
     List<String> jsonList =
         dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
+
+    // 🚀 Uni-Sync 4.0 拦截：使用事务进行高性能批量写入
+    final db = await DatabaseHelper.instance.database;
+    await db.transaction((txn) async {
+      for (var item in items) {
+        // 记录 Oplog
+        await txn.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'todos',
+          'target_uuid': item.id,
+          'data_json': jsonEncode(item.toJson()),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0
+        });
+        
+        // 更新主表
+        await txn.insert('todos', {
+          'uuid': item.id,
+          'content': item.title,
+          'remark': item.remark,
+          'team_uuid': item.teamUuid,
+          'team_name': item.teamName, // 🚀 补齐：关联团队名称入库
+          'is_completed': item.isDone ? 1 : 0,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'version': item.version,
+          'updated_at': item.updatedAt,
+          'created_at': item.createdAt
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+
     if (sync) Future.microtask(() => syncData(username));
     Future.microtask(() => _syncTodosToBand(items));
   }
@@ -440,17 +473,39 @@ class StorageService {
 
   static Future<List<TodoItem>> getTodos(String username) async {
     final prefs = await StorageService.prefs;
-    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
-    List<TodoItem> todos = [];
+    final dbHelper = DatabaseHelper.instance;
+    final db = await dbHelper.database;
 
-    for (var e in list) {
-      try {
-        todos.add(TodoItem.fromJson(jsonDecode(e)));
-      } catch (err) {
-        debugPrint("Parse Todo Error: $err");
+    // 1. 🚀 Uni-Sync 4.0: 检查是否需要从 Prefs 迁移
+    final List<Map<String, dynamic>> sqliteCount = await db.rawQuery('SELECT COUNT(*) as cnt FROM todos');
+    if (sqliteCount.first['cnt'] == 0) {
+      List<String> legacyJsonList = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+      if (legacyJsonList.isNotEmpty) {
+        debugPrint("🚀 Detected legacy data, starting SQL migration...");
+        List<Map<String, dynamic>> legacyData = legacyJsonList
+            .map((e) => jsonDecode(e) as Map<String, dynamic>)
+            .toList();
+        await dbHelper.migrateFromPrefs(username, legacyData);
       }
     }
 
+    // 2. 🚀 从单一事实来源 (SQLite) 读取
+    final List<Map<String, dynamic>> maps = await db.query('todos', where: 'is_deleted = 0');
+    List<TodoItem> todos = maps.map((m) {
+        // 将 SQL Map 转换为 TodoItem 模型
+        return TodoItem(
+            id: m['uuid'],
+            title: m['content'],
+            remark: m['remark'],
+            isDone: m['is_completed'] == 1,
+            isDeleted: m['is_deleted'] == 1,
+            version: m['version'],
+            updatedAt: m['updated_at'],
+            createdAt: m['created_at'],
+        );
+    }).toList();
+
+    // 3. 处理循环周期任务逻辑 (保持原有逻辑兼容)
     final today = DateTime.now();
     final todayKey = '${today.year}-${today.month}-${today.day}';
     if (_lastRecurrenceCheckDate != todayKey) {
