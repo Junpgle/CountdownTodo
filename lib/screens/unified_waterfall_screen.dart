@@ -16,6 +16,9 @@ class UnifiedWaterfallScreen extends StatefulWidget {
 class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   List<TodoItem> _allCombinedTodos = [];
   bool _isLoading = true;
+  int _viewDays = 30; // 默认月视图
+  double _lastScale = 1.0;
+  DateTime _lastScaleTime = DateTime.now();
 
   @override
   void initState() {
@@ -38,6 +41,85 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     }
   }
 
+  void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (DateTime.now().difference(_lastScaleTime).inMilliseconds < 300) return;
+    
+    final scale = details.scale;
+    if (scale > 1.3 && _viewDays > 7) {
+      // 放大 -> 显示更少天数
+      setState(() {
+        _viewDays = _viewDays == 30 ? 14 : 7;
+        _lastScaleTime = DateTime.now();
+      });
+    } else if (scale < 0.7 && _viewDays < 30) {
+      // 缩小 -> 显示更多天数
+      setState(() {
+        _viewDays = _viewDays == 7 ? 14 : 30;
+        _lastScaleTime = DateTime.now();
+      });
+    }
+  }
+
+  void _showTodoDetails(TodoItem todo) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(width: 4, height: 20, decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 8),
+                Text("任务明细", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(todo.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            if (todo.remark != null && todo.remark!.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.grey.withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
+                child: Text(todo.remark!, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+              ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                _buildDetailItem(Icons.calendar_today_rounded, "截止日期", todo.dueDate != null ? TimezoneUtils.getRelativeTime(todo.dueDate!.millisecondsSinceEpoch) : "未设置"),
+                const SizedBox(width: 24),
+                _buildDetailItem(Icons.group_rounded, "所属团队", todo.teamName ?? "个人任务"),
+              ],
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailItem(IconData icon, String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [Icon(icon, size: 14, color: Colors.grey), const SizedBox(width: 4), Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey))]),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
   /// 🚀 防止非法 UTF-16 代理对导致 Flutter ParagraphBuilder 崩溃
   String _safeStr(String? s) {
     if (s == null) return '';
@@ -52,39 +134,45 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
       backgroundColor: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF2F4F7),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(
-              slivers: [
-                SliverAppBar(
-                  floating: true,
-                  pinned: true,
-                  expandedHeight: 60,
-                  backgroundColor: isDark ? const Color(0xFF0F0F0F).withOpacity(0.9) : Colors.white.withOpacity(0.9),
-                  title: const Text('全景汇聚看板', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  centerTitle: false,
-                  actions: [
-                    IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadAllTeamData),
-                  ],
-                ),
-                
-                // 🚀 看板功能区 (热力图 & 甘特图)
-                SliverToBoxAdapter(
-                  child: Container(
-                    margin: const EdgeInsets.all(16),
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 8))],
-                    ),
-                    child: Column(
-                      children: [
-                        TeamHeatmapWidget(todos: _allCombinedTodos),
-                        const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(indent: 16, endIndent: 16)),
-                        TeamGanttWidget(todos: _allCombinedTodos),
-                      ],
+          : GestureDetector(
+              onScaleUpdate: _handleScaleUpdate,
+              child: CustomScrollView(
+                slivers: [
+                  SliverAppBar(
+                    floating: true,
+                    pinned: true,
+                    expandedHeight: 60,
+                    backgroundColor: isDark ? const Color(0xFF0F0F0F).withOpacity(0.9) : Colors.white.withOpacity(0.9),
+                    title: const Text('全景汇聚看板', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    centerTitle: false,
+                    actions: [
+                      IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadAllTeamData),
+                    ],
+                  ),
+                  
+                  // 🚀 看板功能区 (热力图 & 甘特图)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      margin: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 8))],
+                      ),
+                      child: Column(
+                        children: [
+                          TeamHeatmapWidget(todos: _allCombinedTodos, viewDays: _viewDays == 30 ? 35 : _viewDays),
+                          const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(indent: 16, endIndent: 16)),
+                          TeamGanttWidget(
+                            todos: _allCombinedTodos, 
+                            viewDays: _viewDays,
+                            onTodoTap: _showTodoDetails,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
 
                 // 数据指标行
                 SliverToBoxAdapter(
@@ -117,6 +205,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                 const SliverToBoxAdapter(child: SizedBox(height: 50)),
               ],
             ),
+          ),
     );
   }
 

@@ -8,6 +8,9 @@ import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
 import 'course_month_view.dart';
+import '../widgets/team_heatmap_widget.dart';
+import '../widgets/team_gantt_widget.dart';
+import '../utils/timezone_utils.dart';
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
@@ -41,8 +44,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
   Set<String> _activeDataViews = {'courses', 'todos', 'timeLogs', 'pomodoros'};
 
-  // --- 🚀 月视图相关 ---
-  bool _isMonthView = false;
+  // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
+  int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
   DateTime _selectedMonth = DateTime.now();
   List<CourseItem> _allCourses = [];
   double _baseScale = 1.0;
@@ -106,6 +109,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _pageController = PageController(initialPage: 0);
     _loadData();
   }
+
+  DateTime? _lastModeSwitch;
+  double _lastScale = 1.0;
 
   @override
   void dispose() {
@@ -364,11 +370,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     });
   }
 
-  void _toggleView(bool isMonth) {
-    if (_isMonthView == isMonth) return;
+  void _toggleViewMode(int mode) {
+    if (_viewMode == mode) return;
     setState(() {
-      _isMonthView = isMonth;
-      _updateWeekTodos();
+      _viewMode = mode;
+      if (mode == 0) {
+        _updateWeekTodos();
+      }
     });
   }
 
@@ -381,7 +389,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   String _getWeekLabel() {
-    if (_isMonthView) {
+    if (_viewMode == 2) {
       return DateFormat('yyyy年M月').format(_selectedMonth);
     }
     if (_semesterMonday == null) return '第 $_currentWeek 周';
@@ -1111,13 +1119,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                   child: Row(
-                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       const Icon(Icons.group, size: 8, color: Colors.white),
                                       const SizedBox(width: 1),
-                                      Text(
-                                        todo.teamName ?? '团队',
-                                        style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold),
+                                      Expanded( // 🚀 强制填满剩余空间并截断
+                                        child: Text(
+                                          todo.teamName ?? '团队',
+                                          style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -1650,7 +1661,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     });
 
     // 🚀 平板适配：如果是在月视图且选中了日期，展示该日的详情
-    if (_isMonthView && _selectedMonthDay != null) {
+    if (_viewMode == 2 && _selectedMonthDay != null) {
       return _buildMonthDaySidebar(_selectedMonthDay!);
     }
 
@@ -1829,13 +1840,22 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               icon: const Icon(Icons.arrow_back_ios, size: 13),
-              onPressed: () => _isMonthView ? _changeMonth(-1) : _changeWeek(-1),
+              onPressed: () {
+                if (_viewMode == 2) {
+                  _changeMonth(-1);
+                } else if (_viewMode == 1) {
+                  _changeWeek(-2);
+                } else {
+                  _changeWeek(-1);
+                }
+              },
             ),
             const SizedBox(width: 4),
             GestureDetector(
-              onTap: _isMonthView ? null : _showWeekJumpDialog,
+              onTap: _viewMode == 0 ? _showWeekJumpDialog : null,
               child: Text(
-                _getWeekLabel(),
+                _viewMode == 2 ? DateFormat('yyyy年M月').format(_selectedMonth) : 
+                (_viewMode == 1 ? "第$_currentWeek-${_currentWeek+1}周" : _getWeekLabel()),
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ),
@@ -1844,7 +1864,15 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               icon: const Icon(Icons.arrow_forward_ios, size: 13),
-              onPressed: () => _isMonthView ? _changeMonth(1) : _changeWeek(1),
+              onPressed: () {
+                if (_viewMode == 2) {
+                  _changeMonth(1);
+                } else if (_viewMode == 1) {
+                  _changeWeek(2);
+                } else {
+                  _changeWeek(1);
+                }
+              },
             ),
           ],
         ),
@@ -1853,9 +1881,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         actions: [
           IconButton(
             visualDensity: const VisualDensity(horizontal: -2),
-            icon: Icon(_isMonthView ? Icons.view_week : Icons.calendar_month, size: 20),
-            tooltip: _isMonthView ? '切换到周视图' : '切换到月视图',
-            onPressed: () => _toggleView(!_isMonthView),
+            icon: Icon(
+              _viewMode == 2 ? Icons.view_week : 
+              (_viewMode == 1 ? Icons.calendar_month : Icons.calendar_view_week),
+              size: 20
+            ),
+            tooltip: '切换试图模式',
+            onPressed: () => _toggleViewMode((_viewMode + 1) % 3),
           ),
           IconButton(
             visualDensity: const VisualDensity(horizontal: -2),
@@ -1977,17 +2009,23 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onScaleStart: (details) {
-                          _baseScale = _currentScale;
-                        },
                         onScaleUpdate: (details) {
-                           if (details.scale < 0.8 && !_isMonthView) {
-                            _toggleView(true);
-                            HapticFeedback.mediumImpact();
-                          } else if (details.scale > 1.2 && _isMonthView) {
-                            _toggleView(false);
-                            HapticFeedback.mediumImpact();
-                          }
+                           final now = DateTime.now();
+                           if (_lastModeSwitch != null && now.difference(_lastModeSwitch!).inMilliseconds < 800) return;
+                           
+                           if (details.scale < 0.7) {
+                             if (_viewMode < 2) {
+                               _toggleViewMode(_viewMode + 1);
+                               _lastModeSwitch = now;
+                               HapticFeedback.lightImpact();
+                             }
+                           } else if (details.scale > 1.5) {
+                             if (_viewMode > 0) {
+                               _toggleViewMode(_viewMode - 1);
+                               _lastModeSwitch = now;
+                               HapticFeedback.lightImpact();
+                             }
+                           }
                         },
                         onHorizontalDragUpdate: (details) {
                           // 让视图跟手移动
@@ -2002,10 +2040,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           if (_dragOffset.abs() > threshold || details.primaryVelocity!.abs() > 300) {
                             if (_dragOffset > 0 || (details.primaryVelocity ?? 0) > 300) {
                               // 向右滑动 -> 上一个
-                              if (_isMonthView) _changeMonth(-1); else _changeWeek(-1);
+                              if (_viewMode == 2) _changeMonth(-1); else _changeWeek(-1);
                             } else {
                               // 向左滑动 -> 下一个
-                              if (_isMonthView) _changeMonth(1); else _changeWeek(1);
+                              if (_viewMode == 2) _changeMonth(1); else _changeWeek(1);
                             }
                             HapticFeedback.lightImpact();
                           }
@@ -2017,7 +2055,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                         },
                         child: Column(
                           children: [
-                            if (!_isMonthView) ...[
+                            if (_viewMode == 0) ...[
                               _buildHeader(_getMondayOfCurrentWeek()),
                               _buildAllDayHeaderRow(_getMondayOfCurrentWeek()),
                               Divider(
@@ -2030,53 +2068,37 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                 duration: const Duration(milliseconds: 600),
                                 curve: Curves.easeInOutQuart,
                                 tween: Tween<double>(
-                                  begin: _isMonthView ? 1.0 : 0.0,
-                                  end: _isMonthView ? 1.0 : 0.0,
+                                  begin: _viewMode > 0 ? 1.0 : 0.0,
+                                  end: _viewMode > 0 ? 1.0 : 0.0,
                                 ),
                                 builder: (context, t, child) {
                                   return ClipRect(
                                     child: Stack(
                                       children: [
-                                      // --- 月视图 ---
+                                      // --- 🚀 二周/月视图 & 甘特图 ---
                                       IgnorePointer(
-                                        ignoring: t < 0.5,
-                                        child: Opacity(
-                                          opacity: t.clamp(0.0, 1.0),
+                                        ignoring: _viewMode == 0,
+                                        child: AnimatedOpacity(
+                                          duration: const Duration(milliseconds: 400),
+                                          opacity: _viewMode > 0 ? 1.0 : 0.0,
                                           child: Transform.scale(
-                                            scale: 0.8 + (t * 0.2),
-                                            child: AnimatedSwitcher(
-                                              duration: const Duration(milliseconds: 400),
-                                              transitionBuilder: (child, animation) {
-                                                // 结合跟手位移和动画效果
-                                                return Transform.translate(
-                                                  offset: Offset(_dragOffset * (1.0 - animation.value), 0),
-                                                  child: SlideTransition(
-                                                    position: Tween<Offset>(
-                                                      begin: Offset(_isNextSlide ? 1.0 : -1.0, 0.0),
-                                                      end: Offset.zero,
-                                                    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-                                                    child: FadeTransition(opacity: animation, child: child),
-                                                  ),
-                                                );
-                                              },
-                                              child: CourseMonthView(
-                                                key: ValueKey('MonthView_${_selectedMonth.year}_${_selectedMonth.month}'),
-                                                selectedMonth: _selectedMonth,
-                                                courseMap: _monthCourseMap,
-                                                todoMap: _monthTodoMap,
-                                                crossDayTodoMap: _monthCrossDayTodoMap,
-                                                logMap: _monthLogMap,
-                                                pomMap: _monthPomMap,
-                                                pomodoroTags: _pomodoroTags,
-                                                activeDataViews: _activeDataViews,
-                                                onMonthChanged: (m) {
-                                                  setState(() => _selectedMonth = m);
-                                                  _groupDataForMonthView(); 
-                                                },
-                                                onDayTapped: (d) {
-                                                  setState(() => _selectedMonthDay = d);
-                                                },
-                                              ),
+                                            scale: _viewMode > 0 ? 1.0 : 0.8,
+                                            child: CourseMonthView(
+                                              key: ValueKey('MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode'),
+                                              selectedMonth: _selectedMonth,
+                                              courseMap: _monthCourseMap,
+                                              todoMap: _monthTodoMap,
+                                              crossDayTodoMap: _monthCrossDayTodoMap,
+                                              logMap: _monthLogMap,
+                                              pomMap: _monthPomMap,
+                                              pomodoroTags: _pomodoroTags,
+                                              activeDataViews: _activeDataViews,
+                                              allTodos: _allTodos,
+                                              viewMode: _viewMode,
+                                              currentWeekMonday: _getMondayOfCurrentWeek(), // 🚀 动态透传起点
+                                              onMonthChanged: (m) => setState(() => _selectedMonth = m),
+                                              onDayTapped: (d) => setState(() => _selectedMonthDay = d),
+                                              onGanttTodoTap: _showTodoDetails,
                                             ),
                                           ),
                                         ),
@@ -2227,6 +2249,140 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+    );
+  }
+
+  String _safeStr(String? s) {
+    if (s == null) return '';
+    return s.replaceAll(RegExp(r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'), '');
+  }
+
+  void _showTodoDetails(TodoItem todo) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(width: 4, height: 20, decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 8),
+                Text("任务明细", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(_safeStr(todo.title), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            if (todo.remark != null && todo.remark!.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.grey.withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
+                child: Text(_safeStr(todo.remark!), style: const TextStyle(fontSize: 14, color: Colors.grey)),
+              ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                _buildDetailItem(Icons.calendar_today_rounded, "截止日期", todo.dueDate != null ? TimezoneUtils.getRelativeTime(todo.dueDate!.millisecondsSinceEpoch) : "未设置"),
+                const SizedBox(width: 24),
+                _buildDetailItem(Icons.group_rounded, "所属团队", todo.teamName ?? "个人任务"),
+              ],
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailItem(IconData icon, String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [Icon(icon, size: 14, color: Colors.grey), const SizedBox(width: 4), Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey))]),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  Widget _buildPanoramaContent() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      color: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF2F4F7),
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))],
+              ),
+              child: Column(
+                children: [
+                   TeamHeatmapWidget(todos: _allTodos, viewDays: 35),
+                   const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider(indent: 16, endIndent: 16)),
+                   TeamGanttWidget(
+                     todos: _allTodos, 
+                     viewDays: 30,
+                     onTodoTap: _showTodoDetails,
+                   ),
+                ],
+              ),
+            ),
+          ),
+          
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  _buildPanoStatStat("全量待办", "${_allTodos.length}", Colors.blue),
+                  const SizedBox(width: 12),
+                  _buildPanoStatStat("团队协作", "${_allTodos.where((t)=>t.teamUuid != null).length}", Colors.purple),
+                ],
+              ),
+            ),
+          ),
+          
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPanoStatStat(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+          ],
         ),
       ),
     );

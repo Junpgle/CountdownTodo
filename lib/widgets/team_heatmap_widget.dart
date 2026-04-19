@@ -4,7 +4,8 @@ import '../models.dart';
 
 class TeamHeatmapWidget extends StatelessWidget {
   final List<TodoItem> todos;
-  const TeamHeatmapWidget({super.key, required this.todos});
+  final int viewDays;
+  const TeamHeatmapWidget({super.key, required this.todos, this.viewDays = 35});
 
   Map<DateTime, int> _calcDensity() {
     final Map<DateTime, int> map = {};
@@ -24,13 +25,14 @@ class TeamHeatmapWidget extends StatelessWidget {
     final density = _calcDensity();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final weeks = (viewDays / 7).ceil();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text("全景任务热力分布 (Recent 35 Days)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text("全景任务热力分布 (${viewDays >= 30 ? '月视图' : viewDays >= 14 ? '双周' : '周视图'})", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -38,13 +40,13 @@ class TeamHeatmapWidget extends StatelessWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: 5, // 5 周
+            itemCount: weeks, // 动态周数
             itemBuilder: (context, weekIdx) {
               return Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: Column(
                   children: List.generate(7, (dayIdx) {
-                    final date = today.subtract(Duration(days: ((4 - weekIdx) * 7 + (6 - dayIdx)).toInt()));
+                    final date = today.subtract(Duration(days: ((weeks - 1 - weekIdx) * 7 + (6 - dayIdx)).toInt()));
                     final count = density[DateTime(date.year, date.month, date.day)] ?? 0;
                     int intensity = 0;
                     if (count > 0 && count <= 2) intensity = 1;
@@ -68,7 +70,7 @@ class TeamHeatmapWidget extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        _buildLegend(),
+        _buildLegend(isDark),
       ],
     );
   }
@@ -86,20 +88,20 @@ class TeamHeatmapWidget extends StatelessWidget {
     return levels[min(intensity - 1, 3)];
   }
 
-  Widget _buildLegend() {
+  Widget _buildLegend(bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          const Text("Less", style: TextStyle(fontSize: 9, color: Colors.grey)),
+          Text("Less", style: TextStyle(fontSize: 9, color: isDark ? Colors.white38 : Colors.black38)),
           const SizedBox(width: 4),
           ...List.generate(5, (i) => Container(
             width: 8, height: 8,
             margin: const EdgeInsets.symmetric(horizontal: 1),
-            decoration: BoxDecoration(color: _getHeatmapColor(i, false), borderRadius: BorderRadius.circular(1)),
+            decoration: BoxDecoration(color: _getHeatmapColor(i, isDark), borderRadius: BorderRadius.circular(1)),
           )),
           const SizedBox(width: 4),
-          const Text("More", style: TextStyle(fontSize: 9, color: Colors.grey)),
+          Text("More", style: TextStyle(fontSize: 9, color: isDark ? Colors.white38 : Colors.black38)),
         ],
       ),
     );

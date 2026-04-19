@@ -17,6 +17,10 @@ class CourseMonthView extends StatelessWidget {
   final Set<String> activeDataViews;
   final Function(DateTime) onMonthChanged;
   final Function(DateTime) onDayTapped;
+  final List<TodoItem> allTodos;
+  final int viewMode; 
+  final Function(TodoItem)? onGanttTodoTap;
+  final DateTime? currentWeekMonday;
 
   const CourseMonthView({
     Key? key,
@@ -30,6 +34,10 @@ class CourseMonthView extends StatelessWidget {
     required this.activeDataViews,
     required this.onMonthChanged,
     required this.onDayTapped,
+    this.allTodos = const [],
+    this.viewMode = 2,
+    this.onGanttTodoTap,
+    this.currentWeekMonday,
   }) : super(key: key);
 
   bool _isSameDay(DateTime a, DateTime b) {
@@ -40,21 +48,41 @@ class CourseMonthView extends StatelessWidget {
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // 计算月份数据
-    final firstDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month, 1);
-    final daysBefore = firstDayOfMonth.weekday - 1;
-    final startDate = firstDayOfMonth.subtract(Duration(days: daysBefore));
-    final lastDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month + 1, 0);
-    final totalNeededDays = daysBefore + lastDayOfMonth.day;
-    final int rowCount = (totalNeededDays / 7).ceil();
-    final totalDays = rowCount * 7;
+    // 🚀 动态计算起始日期
+    final DateTime startDate;
+    if (viewMode == 2) {
+      final firstDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month, 1);
+      final daysBefore = firstDayOfMonth.weekday - 1;
+      startDate = firstDayOfMonth.subtract(Duration(days: daysBefore));
+    } else {
+      startDate = currentWeekMonday ?? selectedMonth;
+    }
+    
+    // 🚀 根据 viewMode 决定显示天数
+    final int showDays = viewMode == 1 ? 14 : (selectedMonth.weekday - 1 + DateTime(selectedMonth.year, selectedMonth.month + 1, 0).day);
+    final int rowCount = (showDays / 7).ceil();
+    final int totalDays = rowCount * 7;
     final days = List.generate(totalDays, (index) => startDate.add(Duration(days: index)));
+
+    // 🚀 热力密度预计算
+    final Map<String, int> densityMap = {};
+    for (var t in allTodos) {
+       if (t.isDeleted) continue;
+       final dt = t.dueDate ?? DateTime.fromMillisecondsSinceEpoch(t.updatedAt);
+       final dStr = DateFormat('yyyy-MM-dd').format(dt);
+       densityMap[dStr] = (densityMap[dStr] ?? 0) + 1;
+    }
+
+    // 🚀 甘特任务识别 (仅跨天)
+    final List<TodoItem> spanningTodos = allTodos.where((t) {
+      if (t.isDeleted || t.dueDate == null) return false;
+      final start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
+      return !DateUtils.isSameDay(start, t.dueDate!);
+    }).toList();
     
     return RepaintBoundary(
       child: Column(
         children: [
-          const SizedBox(height: 8), // 增加一点顶部间距，避免遮挡
-          // 星期表头
           _buildWeekdayHeader(context),
           const SizedBox(height: 4),
           Expanded(
@@ -62,21 +90,18 @@ class CourseMonthView extends StatelessWidget {
               builder: (context, constraints) {
                 final int rows = rowCount;
                 const int cols = 7;
-                const double spacing = 4.0;
+                const double spacing = 1.0; 
                 
-                final double gridWidth = constraints.maxWidth;
-                final double gridHeight = constraints.maxHeight;
-                
-                final double cellWidth = (gridWidth - (cols - 1) * spacing) / cols;
-                final double cellHeight = (gridHeight - (rows - 1) * spacing) / rows;
-                final double aspectRatio = cellWidth / cellHeight;
+                final double cellWidth = (constraints.maxWidth - (cols - 1) * spacing) / cols;
+                final double cellHeight = (constraints.maxHeight - (rows - 1) * spacing) / rows;
+                final double aspectRatio = cellWidth / (cellHeight > 0 ? cellHeight : 80);
   
                 return GridView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  physics: const NeverScrollableScrollPhysics(),
+                  physics: const ClampingScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: cols,
-                    childAspectRatio: aspectRatio > 0 ? aspectRatio : 0.65,
+                    childAspectRatio: aspectRatio,
                     mainAxisSpacing: spacing,
                     crossAxisSpacing: spacing,
                   ),
@@ -84,11 +109,28 @@ class CourseMonthView extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final day = days[index];
                     final dStr = DateFormat('yyyy-MM-dd').format(day);
+                    
+                    int count = densityMap[dStr] ?? 0;
+                    Color? heatColor;
+                    if (count > 0) {
+                       double opacity = (count / 8).clamp(0.05, 0.4);
+                       heatColor = Colors.blue.withOpacity(opacity);
+                    }
+
+                    final List<TodoItem> currentSpanning = spanningTodos.where((t) {
+                       final start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
+                       final startDay = DateTime(start.year, start.month, start.day);
+                       final endDay = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+                       return !day.isBefore(startDay) && !day.isAfter(endDay);
+                    }).toList();
+
                     return _buildDayCell(
                       context, 
                       day, 
                       isDark, 
                       cellHeight,
+                      heatColor,
+                      currentSpanning,
                       activeDataViews.contains('courses') ? (courseMap[dStr] ?? []) : [],
                       activeDataViews.contains('todos') ? (todoMap[dStr] ?? []) : [],
                       (activeDataViews.contains('todos') && !activeDataViews.contains('hideCrossDay')) 
@@ -116,11 +158,7 @@ class CourseMonthView extends StatelessWidget {
           child: Center(
             child: Text(
               day,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
             ),
           ),
         )).toList(),
@@ -133,6 +171,8 @@ class CourseMonthView extends StatelessWidget {
     DateTime day, 
     bool isDark, 
     double cellHeight,
+    Color? heatColor,
+    List<TodoItem> spanningTodos,
     List<CourseItem> courses,
     List<TodoItem> todos,
     List<TodoItem> crossDayTodosInCell,
@@ -140,8 +180,7 @@ class CourseMonthView extends StatelessWidget {
     List<PomodoroRecord> pomodoros,
   ) {
     bool isCurrentMonth = day.month == selectedMonth.month;
-    bool isToday = DateFormat('yyyy-MM-dd').format(day) ==
-        DateFormat('yyyy-MM-dd').format(DateTime.now());
+    bool isToday = DateUtils.isSameDay(day, DateTime.now());
 
     List<dynamic> dayItems = [];
     dayItems.addAll(courses);
@@ -157,434 +196,108 @@ class CourseMonthView extends StatelessWidget {
         if (item is PomodoroRecord) return 3;
         return 4;
       }
-
       return getPriority(a).compareTo(getPriority(b));
     });
 
-    // 如果有跨天待办，将其总结为一个块并放在最前面
-    if (crossDayTodosInCell.isNotEmpty) {
-      dayItems.insert(0, {
-        'type': 'crossDaySummary',
-        'count': crossDayTodosInCell.length,
-        'todos': crossDayTodosInCell
-      });
-    }
-
-    // 动态计算能显示的条目数量
-    int maxItems = ((cellHeight - 40) / 14).floor().clamp(1, 10);
+    int maxItems = ((cellHeight - 30) / 12).floor().clamp(1, 8);
 
     return GestureDetector(
-      onTap: () {
-        onDayTapped(day);
-        final bool isWide = MediaQuery.of(context).size.width > 900;
-        if (!isWide) {
-          _showDayDetails(context, day, dayItems);
-        }
-      },
+      onTap: () => onDayTapped(day),
       child: Container(
         decoration: BoxDecoration(
-          color: isToday 
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.08) 
-              : (isCurrentMonth ? (isDark ? Colors.white.withOpacity(0.02) : Colors.white) : Colors.transparent),
-          borderRadius: BorderRadius.circular(4),
+          color: heatColor ?? (isCurrentMonth ? (isDark ? Colors.white.withOpacity(0.02) : Colors.white) : Colors.transparent),
+          borderRadius: BorderRadius.circular(2),
           border: Border.all(
-            color: isToday 
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.3) 
-                : (isDark ? Colors.white10 : Colors.black.withOpacity(0.04)),
-            width: 0.5,
+            color: isToday ? Theme.of(context).colorScheme.primary : (isDark ? Colors.white10 : Colors.black.withOpacity(0.03)),
+            width: isToday ? 1.5 : 0.5,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
-              child: Text(
-                '${day.day}',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                  color: isCurrentMonth 
-                      ? (isToday ? Theme.of(context).colorScheme.primary : (isDark ? Colors.white70 : Colors.black87))
-                      : (isDark ? Colors.white24 : Colors.black26),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+                  child: Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                      color: isCurrentMonth ? (isDark ? Colors.white70 : Colors.black87) : Colors.grey.withOpacity(0.3),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: dayItems.length > maxItems ? maxItems : dayItems.length,
-                itemBuilder: (context, idx) {
-                  final item = dayItems[idx];
-                  return _buildCompactItem(context, item);
-                },
-              ),
-            ),
-            if (dayItems.length > maxItems)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 2, right: 2),
-                child: Text(
-                  '+${dayItems.length - maxItems}',
-                  style: TextStyle(fontSize: 8, color: isDark ? Colors.white38 : Colors.black38),
-                  textAlign: TextAlign.right,
+                // 🚀 甘特融合层
+                if (spanningTodos.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Column(
+                      children: spanningTodos.take(3).map((t) {
+                         final created = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
+                         final bool isStart = DateUtils.isSameDay(day, created);
+                         final bool isEnd = DateUtils.isSameDay(day, t.dueDate!);
+                         final color = (t.isDone ? Colors.green : Colors.blue).withOpacity(0.8);
+                         
+                         return GestureDetector(
+                           onTap: () {
+                             if (onGanttTodoTap != null) onGanttTodoTap!(t);
+                           },
+                           child: Container(
+                             height: 16,
+                             width: double.infinity,
+                             margin: const EdgeInsets.only(bottom: 2),
+                             padding: const EdgeInsets.symmetric(horizontal: 4),
+                             alignment: Alignment.centerLeft,
+                             decoration: BoxDecoration(
+                               color: color,
+                               borderRadius: BorderRadius.horizontal(
+                                 left: isStart ? const Radius.circular(4) : Radius.zero,
+                                 right: isEnd ? const Radius.circular(4) : Radius.zero,
+                               ),
+                             ),
+                             child: isStart ? Text(
+                               t.title,
+                               style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold, overflow: TextOverflow.ellipsis),
+                             ) : const SizedBox.shrink(),
+                           ),
+                         );
+                      }).toList(),
+                    ),
+                  ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: dayItems.length > maxItems ? maxItems : dayItems.length,
+                    itemBuilder: (context, idx) => _buildCompactItem(context, dayItems[idx]),
+                  ),
                 ),
-              ),
+              ],
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Color _getCourseColor(String courseName) {
-    final List<Color> colors = [
-      Colors.blueAccent.shade200,
-      Colors.orangeAccent.shade200,
-      Colors.purpleAccent.shade200,
-      Colors.teal.shade300,
-      Colors.pinkAccent.shade200,
-      Colors.indigoAccent.shade200,
-      Colors.green.shade400,
-      Colors.deepOrange.shade300,
-    ];
-    int hash = courseName.hashCode;
-    return colors[hash.abs() % colors.length];
-  }
-
-  Color _hexToColor(String hex) {
-    String clean = hex.replaceAll('#', '');
-    if (clean.length == 6) clean = 'FF$clean';
-    return Color(int.parse(clean, radix: 16));
-  }
-
-  Widget _buildEventDot(Color color, String label, {IconData? icon}) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withOpacity(0.5), width: 0.5),
-      ),
-      child: Row(
-        children: [
-          Icon(icon ?? (label.contains('[T]') ? Icons.group : Icons.circle), 
-            size: 6, color: color),
-          const SizedBox(width: 2),
-          Expanded(
-            child: Text(
-              label.replaceAll('[T] ', ''),
-              style: TextStyle(fontSize: 8, color: color, fontWeight: FontWeight.bold),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
       ),
     );
   }
 
   Widget _buildCompactItem(BuildContext context, dynamic item) {
-    if (item is Map && item['type'] == 'crossDaySummary') {
-      return _buildEventDot(Colors.purple, '${item['count']}个跨天待办');
-    }
-    if (item is CourseItem) {
-      return _buildEventDot(_getCourseColor(item.courseName), item.courseName);
-    } else if (item is TodoItem) {
-      final bool isTeam = item.teamUuid != null;
-      return _buildEventDot(
-        item.isDone ? Colors.green : Colors.amber, 
-        (isTeam ? '[T] ' : '') + item.title,
-        icon: isTeam ? Icons.group : null,
-      );
-    } else if (item is TimeLogItem) {
-      Color color = const Color(0xFF3B82F6);
-      if (item.tagUuids.isNotEmpty) {
-        final tag = pomodoroTags.cast<PomodoroTag?>().firstWhere(
-            (t) => item.tagUuids.contains(t?.uuid),
-            orElse: () => null);
-        if (tag != null) color = _hexToColor(tag.color);
-      }
-      return _buildEventDot(color, item.title.isNotEmpty ? item.title : '日志');
-    } else if (item is PomodoroRecord) {
-      Color pomColor = Colors.redAccent;
-      String pomTitle = '专注';
-      if (item.tagUuids.isNotEmpty) {
-        final tag = pomodoroTags.cast<PomodoroTag?>().firstWhere(
-            (t) => item.tagUuids.contains(t?.uuid),
-            orElse: () => null);
-        if (tag != null) {
-          pomColor = _hexToColor(tag.color);
-          pomTitle = tag.name;
-        }
-      }
-      return _buildEventDot(pomColor, pomTitle);
-    }
-    return const SizedBox.shrink();
+    if (item is CourseItem) return _buildMiniDot(_getCourseColor(item.courseName));
+    if (item is TodoItem) return _buildMiniDot(item.isDone ? Colors.green : Colors.amber);
+    return _buildMiniDot(Colors.blueGrey);
   }
 
-  void _showDayDetails(BuildContext context, DateTime day, List<dynamic> items) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _DayDetailsBottomSheet(
-        day: day,
-        items: items,
-        pomodoroTags: pomodoroTags,
-      ),
-    );
-  }
-}
-
-class _DayDetailsBottomSheet extends StatelessWidget {
-  final DateTime day;
-  final List<dynamic> items;
-  final List<PomodoroTag> pomodoroTags;
-
-  const _DayDetailsBottomSheet({
-    Key? key,
-    required this.day,
-    required this.items,
-    required this.pomodoroTags,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final dateStr = DateFormat('yyyy年M月d日').format(day);
-    final weekdayStr = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][day.weekday - 1];
-
+  Widget _buildMiniDot(Color color) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        dateStr,
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        weekdayStr,
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '共 ${items.length} 个事项',
-                  style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: items.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.event_busy, size: 64, color: Colors.grey.withOpacity(0.2)),
-                        const SizedBox(height: 16),
-                        Text('今日无安排', style: TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return _buildDetailItem(context, item);
-                    },
-                  ),
-          ),
-        ],
-      ),
+      width: double.infinity,
+      height: 2,
+      margin: const EdgeInsets.symmetric(vertical: 1, horizontal: 1),
+      decoration: BoxDecoration(color: color.withOpacity(0.5), borderRadius: BorderRadius.circular(1)),
     );
   }
 
   Color _getCourseColor(String courseName) {
-    final List<Color> colors = [
-      Colors.blueAccent.shade200,
-      Colors.orangeAccent.shade200,
-      Colors.purpleAccent.shade200,
-      Colors.teal.shade300,
-      Colors.pinkAccent.shade200,
-      Colors.indigoAccent.shade200,
-      Colors.green.shade400,
-      Colors.deepOrange.shade300,
-    ];
-    int hash = courseName.hashCode;
-    return colors[hash.abs() % colors.length];
-  }
-
-  Color _hexToColor(String hex) {
-    String clean = hex.replaceAll('#', '');
-    if (clean.length == 6) clean = 'FF$clean';
-    return Color(int.parse(clean, radix: 16));
-  }
-
-  Widget _buildDetailItem(BuildContext context, dynamic item) {
-    if (item is Map && item['type'] == 'crossDaySummary') {
-      final List<TodoItem> todos = item['todos'];
-      return ExpansionTile(
-        title: Text('${item['count']}个跨天/全天待办', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
-        leading: const Icon(Icons.layers, color: Colors.purple),
-        children: todos.map((t) => ListTile(
-          title: Text(t.title, style: TextStyle(decoration: t.isDone ? TextDecoration.lineThrough : null)),
-          subtitle: Text(t.dueDate != null ? '截止: ${DateFormat('MM-dd HH:mm').format(t.dueDate!)}' : '无截止时间'),
-          dense: true,
-        )).toList(),
-      );
-    }
-    if (item is CourseItem) {
-      final color = _getCourseColor(item.courseName);
-      return ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.class_, color: color),
-        ),
-        title: Text(item.courseName,
-            style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(
-            '${item.formattedStartTime} - ${item.formattedEndTime} @ ${item.roomName}'),
-        onTap: () {
-          Navigator.pop(context);
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => CourseDetailScreen(course: item)));
-        },
-      );
-    } else if (item is TodoItem) {
-      return ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: (item.isDone ? Colors.green : Colors.amber).withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(item.isDone ? Icons.check_circle : Icons.task_alt,
-              color: item.isDone ? Colors.green : Colors.amber),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(item.title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    decoration: item.isDone ? TextDecoration.lineThrough : null,
-                    color: item.isDone ? Colors.grey : null,
-                  )),
-            ),
-            if (item.teamUuid != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.blue.withOpacity(0.2)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.group, size: 10, color: Colors.blue),
-                    const SizedBox(width: 2),
-                    Text(item.teamName ?? '团队', style: const TextStyle(fontSize: 9, color: Colors.blue, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-          ],
-        ),
-        subtitle: Text((item.teamUuid != null ? '创建者: ${item.creatorName ?? '成员'} · ' : '') + (item.dueDate != null
-            ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}'
-            : '无截止时间')),
-        onTap: () {
-          Navigator.pop(context);
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => TodoDetailScreen(todo: item)));
-        },
-      );
-    } else if (item is TimeLogItem) {
-      final color = const Color(0xFF3B82F6);
-      return ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.edit_calendar, color: color),
-        ),
-        title: Text(item.title.isNotEmpty ? item.title : '时间日志',
-            style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(
-            '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}'),
-        onTap: () {
-          Navigator.pop(context);
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) =>
-                      TimeLogDetailScreen(log: item, tags: pomodoroTags)));
-        },
-      );
-    } else if (item is PomodoroRecord) {
-      const color = Colors.redAccent;
-      return ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.timer, color: color),
-        ),
-        title: const Text('番茄专注', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟'),
-        onTap: () {
-          Navigator.pop(context);
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) =>
-                      PomodoroDetailScreen(record: item, tags: pomodoroTags)));
-        },
-      );
-    }
-    return const SizedBox.shrink();
+    final List<Color> colors = [Colors.blue, Colors.orange, Colors.purple, Colors.teal, Colors.pink];
+    return colors[courseName.hashCode.abs() % colors.length];
   }
 }
