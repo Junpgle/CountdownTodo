@@ -27,6 +27,7 @@ class CountdownSectionWidget extends StatefulWidget {
 class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     with TickerProviderStateMixin {
   final Map<String, AnimationController> _pulseControllers = {};
+  String? _selectedTeamUuid; // 🚀 选中的团队视口
 
   @override
   void dispose() {
@@ -39,46 +40,77 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
   void _addCountdown() {
     TextEditingController titleCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
+    String? selectedTeamUuid = _selectedTeamUuid;
+
+    // 获取现有团队
+    final existingTeams = <String, String>{};
+    for (var c in widget.countdowns) {
+      if (c.teamUuid != null) {
+        existingTeams[c.teamUuid!] = "关联团队"; // 后续读取
+      }
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text("添加倒计时"),
+          title: const Text("添加重要日"),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleCtrl,
-                decoration: const InputDecoration(
-                  labelText: "事项名称",
-                  border: OutlineInputBorder(),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(
+                    labelText: "事项名称",
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Theme.of(context).dividerColor),
+                const SizedBox(height: 16),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Theme.of(context).dividerColor),
+                  ),
+                  title: Text(
+                    "目标日期: ${DateFormat('yyyy-MM-dd').format(selectedDate)}",
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  trailing: const Icon(Icons.calendar_today, size: 20),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime(2100),
+                      initialDate: selectedDate,
+                    );
+                    if (picked != null)
+                      setDialogState(() => selectedDate = picked);
+                  },
                 ),
-                title: Text(
-                  "目标日期: ${DateFormat('yyyy-MM-dd').format(selectedDate)}",
-                  style: const TextStyle(fontSize: 14),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String?>(
+                  value: selectedTeamUuid,
+                  decoration: InputDecoration(
+                    labelText: '关联团队 (可选)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    prefixIcon: const Icon(Icons.groups_rounded),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text("仅自己可见")),
+                    ...existingTeams.keys.map((uuid) => DropdownMenuItem(
+                          value: uuid,
+                          child: Text("已有团队"),
+                        )),
+                  ],
+                  onChanged: (val) => setDialogState(() => selectedTeamUuid = val),
                 ),
-                trailing: const Icon(Icons.calendar_today, size: 20),
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    firstDate: DateTime.now(),
-                    lastDate: DateTime(2100),
-                    initialDate: selectedDate,
-                  );
-                  if (picked != null)
-                    setDialogState(() => selectedDate = picked);
-                },
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -86,17 +118,15 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               child: const Text("取消"),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
               onPressed: () async {
                 if (titleCtrl.text.isNotEmpty) {
                   List<CountdownItem> updatedList =
                       List.from(widget.countdowns);
                   updatedList.add(CountdownItem(
-                      title: titleCtrl.text, targetDate: selectedDate));
+                    title: titleCtrl.text,
+                    targetDate: selectedDate,
+                    teamUuid: selectedTeamUuid,
+                  ));
                   await StorageService.saveCountdowns(
                       widget.username, updatedList);
                   widget.onDataChanged();
@@ -149,6 +179,12 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
+    // 🚀 提取动态团队列表
+    final teams = <String>{};
+    for (var c in widget.countdowns) {
+      if (c.teamUuid != null) teams.add(c.teamUuid!);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -174,9 +210,45 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        if (teams.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildTeamTab("全部", null, useDarkUI),
+                ...teams.map((uuid) => _buildTeamTab("团队任务", uuid, useDarkUI)),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
         _buildList(),
       ],
+    );
+  }
+
+  Widget _buildTeamTab(String label, String? uuid, bool useDarkUI) {
+    bool isSelected = _selectedTeamUuid == uuid;
+    final theme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedTeamUuid = uuid),
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? theme.primary : (useDarkUI ? Colors.white10 : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? Colors.white : (useDarkUI ? Colors.white70 : Colors.black87),
+          ),
+        ),
+      ),
     );
   }
 
@@ -185,6 +257,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     final today = DateTime(now.year, now.month, now.day);
     final List<CountdownItem> activeCountdowns =
         widget.countdowns.where((item) {
+      if (_selectedTeamUuid != null && item.teamUuid != _selectedTeamUuid) return false;
       return item.targetDate.difference(today).inDays >= 0;
     }).toList()
           ..sort((a, b) => a.targetDate.compareTo(b.targetDate));

@@ -102,6 +102,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     // 无论如何，第一页永远是更新日志
     pages.add(_buildChangelogPage);
 
+    // 🚀 Uni-Sync 4.0 特别逻辑：针对老用户升级后的数据迁移提示
+    if (!isFirstLaunch && !widget.isManualReview) {
+      pages.add(_buildUniSyncMigrationPage);
+    }
+
     // 只有在首次启动，或者用户手动在设置中点击查看引导时，才展示完整特性引导
     if (isFirstLaunch || widget.isManualReview) {
       if (Platform.isWindows) {
@@ -1140,6 +1145,68 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 
   // ── 辅助 UI 工具 ────────────────────────────────────────
+
+  // ── 页面: Uni-Sync 4.0 迁移引导 (独立定义) ──────────────────
+
+  Widget _buildUniSyncMigrationPage() {
+    return _buildPageContainer(
+      content: Column(
+        children: [
+          const SizedBox(height: 24),
+          _buildStepHeader(
+            icon: Icons.storage_rounded,
+            iconColor: Colors.teal,
+            title: 'Uni-Sync 4.0 存储主权',
+            subtitle: '您的数据已平稳降落。我们已完成从传统 JSON 向工业级 SQLite 存储引擎的跨代迁移。',
+          ),
+          const SizedBox(height: 32),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.teal.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.teal.withValues(alpha: 0.2)),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.verified_user_rounded, color: Colors.teal, size: 48),
+                SizedBox(height: 16),
+                Text("本地数据迁移完成", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal)),
+                SizedBox(height: 8),
+                Text("单一事实来源 (SSoT) 架构已激活", style: TextStyle(fontSize: 12, color: Colors.teal)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 40),
+          _buildMigrationPoint(Icons.bolt_rounded, "极致搜索性能", "基于 FTS5 全文索引，即便万条待办，检索只需毫秒。"),
+          const SizedBox(height: 20),
+          _buildMigrationPoint(Icons.offline_pin_rounded, "离线操作拦截", "内置 Oplog 离线记录仪，断网改动自动入库，联网秒速对齐。"),
+          const SizedBox(height: 20),
+          _buildMigrationPoint(Icons.security_rounded, "核心数据双活", "本地 SQL 与 Prefs 互为备份，最大限度抵御外部文件损毁风险。"),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMigrationPoint(IconData icon, String title, String desc) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: Colors.teal, size: 24),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(desc, style: TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.4)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildPermissionTile({
     required String title,

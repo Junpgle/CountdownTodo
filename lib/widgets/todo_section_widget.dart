@@ -31,8 +31,8 @@ class TodoSectionWidget extends StatefulWidget {
   final Function(List<TodoGroup>) onGroupsChanged;
 
   /// 大模型识别成功后的回调，用于导航到确认页面
-  final Function(List<Map<String, dynamic>>, String?, String?)?
-      onLLMResultsParsed;
+  final Function(List<Map<String, dynamic>>, String?, String?, String?, String?)?
+      onLLMResultsParsed; // 🚀 参数：Results, imagePath, originalText, teamUuid, teamName
 
   const TodoSectionWidget({
     super.key,
@@ -67,6 +67,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   final Map<String, bool> _isCompleting = {};
   bool _inlineFolders = true;
   final Set<String> _animatedTodoIds = {};
+
+  String? _selectedSubTeamUuid; // 🚀 Uni-Sync 4.0: 当前首页视口所在的团队
 
   @override
   void initState() {
@@ -133,6 +135,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AddTodoScreen(
+          todoGroups: widget.todoGroups,
+          initialTeamUuid: _selectedSubTeamUuid, // 🚀 关键：穿透视口上下文，自动标记团队
           onTodoAdded: (todo) {
             final updatedList = List<TodoItem>.from(widget.todos)..add(todo);
             widget.onTodosChanged(updatedList);
@@ -152,7 +156,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     String? originalText,
   ]) {
     if (widget.onLLMResultsParsed != null) {
-      widget.onLLMResultsParsed!(llmResults, imagePath, originalText);
+      final existingTeams = <String, String>{};
+      for (var t in widget.todos) {
+        if (t.teamUuid != null && t.teamName != null) {
+          existingTeams[t.teamUuid!] = t.teamName!;
+        }
+      }
+      final currentTeamName = _selectedSubTeamUuid != null ? existingTeams[_selectedSubTeamUuid] : null;
+      widget.onLLMResultsParsed!(llmResults, imagePath, originalText, _selectedSubTeamUuid, currentTeamName);
     } else {
       // 如果没有回调，使用旧的对话框方式
       _showAddTodoDialogWithData(llmResults, imagePath);
@@ -858,8 +869,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                       // 如果有回调，关闭对话框并导航到确认页面
                                       if (widget.onLLMResultsParsed != null) {
                                         Navigator.pop(ctx);
+                                        final existingTeams = <String, String>{};
+                                        for (var t in widget.todos) {
+                                          if (t.teamUuid != null && t.teamName != null) {
+                                            existingTeams[t.teamUuid!] = t.teamName!;
+                                          }
+                                        }
+                                        final currentTeamName = _selectedSubTeamUuid != null ? existingTeams[_selectedSubTeamUuid] : null;
+
                                         widget.onLLMResultsParsed!(
-                                            results, null, aiInputCtrl.text);
+                                            results, imagePath, aiInputCtrl.text, _selectedSubTeamUuid, currentTeamName);
                                         return;
                                       }
 
@@ -1883,7 +1902,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
     final Iterable<TodoItem> activeTodos = widget.todos.where(
-      (t) => !t.isDeleted && !_isHistoricalTodo(t),
+      (t) {
+        if (t.isDeleted || _isHistoricalTodo(t)) return false;
+        // 🚀 视口过滤：如果当前选了某个团队 Tab，只看该团队的任务
+        if (_selectedSubTeamUuid != null) {
+          return t.teamUuid == _selectedSubTeamUuid;
+        }
+        return true;
+      },
     );
 
     if (activeTodos.isEmpty) {
@@ -1927,6 +1953,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     // 1. Process Folders
     for (var g in widget.todoGroups) {
       if (g.isDeleted) continue;
+      
+      // 🚀 核心加固：视口过滤 - 分类文件夹必须归属于当前选中的团队
+      if (_selectedSubTeamUuid != null) {
+        if (g.teamUuid != _selectedSubTeamUuid) continue;
+      } else {
+        // 个人视口仅显示未关联团队的文件夹
+        if (g.teamUuid != null) continue;
+      }
       final gTodos = groupTodosMap[g.id] ?? [];
       if (gTodos.isEmpty && !g.isExpanded) continue;
 
@@ -2056,6 +2090,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       if (_isHistoricalTodo(t)) continue;
       if (t.isDeleted) continue;
       if (t.groupId != null && t.groupId!.isNotEmpty) continue;
+      
+      // 🚀 核心加固：视口过滤 - 无文件夹任务也必须归属于当前选中的团队
+      if (_selectedSubTeamUuid != null) {
+        if (t.teamUuid != _selectedSubTeamUuid) continue;
+      } else {
+        // 个人视口仅显示个人任务
+        if (t.teamUuid != null) continue;
+      }
 
       double todoProgress = 0.0;
       {
@@ -2498,8 +2540,101 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           : Column(
               key: const ValueKey('expanded_list'),
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: sections,
+              children: [
+                _buildTeamFilterTabs(), // 🚀 注入团队分类切换
+                ...sections
+              ],
             ),
+    );
+  }
+
+  /// 🚀 Uni-Sync 4.0: 首页动态团队切换 Tab
+  Widget _buildTeamFilterTabs() {
+    // 1. 提取所有关联的团队信息 (去重)
+    final Map<String, String> teamMap = {};
+    for (var t in widget.todos) {
+      if (t.teamUuid != null && t.teamName != null) {
+        teamMap[t.teamUuid!] = t.teamName!;
+      }
+    }
+
+    if (teamMap.isEmpty) return const SizedBox.shrink();
+
+    final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    final bool useDarkUI = isDarkTheme || widget.isLight;
+
+    return Container(
+      height: 40,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            // "全部" 按钮
+            _buildFilterChip(
+              label: "全部",
+              isSelected: _selectedSubTeamUuid == null,
+              onTap: () => setState(() => _selectedSubTeamUuid = null),
+              useDarkUI: useDarkUI,
+            ),
+            const SizedBox(width: 8),
+            // 各个团队按钮
+            ...teamMap.entries.map((entry) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: _buildFilterChip(
+                  label: entry.value,
+                  isSelected: _selectedSubTeamUuid == entry.key,
+                  onTap: () => setState(() => _selectedSubTeamUuid = entry.key),
+                  useDarkUI: useDarkUI,
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required bool useDarkUI,
+  }) {
+    final theme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.primary
+              : (useDarkUI ? Colors.white10 : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: theme.primary.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  )
+                ]
+              : [],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected
+                ? Colors.white
+                : (useDarkUI ? Colors.white70 : Colors.black87),
+          ),
+        ),
+      ),
     );
   }
 

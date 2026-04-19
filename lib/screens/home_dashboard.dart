@@ -227,7 +227,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onTodoRecognized: (results, imagePath) {
           // 图片识别到待办，显示确认页面
-          _navigateToTodoConfirm(results, imagePath);
+          _navigateToTodoConfirm(results, imagePath, null);
         },
       );
 
@@ -282,7 +282,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   /// 导航到待办确认页面
   void _navigateToTodoConfirm(List<Map<String, dynamic>> results,
-      String? imagePath, [String? originalText]) {
+      String? imagePath, String? originalText, [String? teamUuid, String? teamName]) {
     if (!mounted || results.isEmpty) return;
 
     Navigator.push(
@@ -291,16 +291,18 @@ class _HomeDashboardState extends State<HomeDashboard>
         llmResults: results,
         imagePath: imagePath,
         originalText: originalText,
+        initialTeamUuid: teamUuid,
+        initialTeamName: teamName,
         onConfirm: (confirmedResults) {
           // 用户确认后，直接批量添加待办
-          _batchAddTodos(confirmedResults);
+          _batchAddTodos(confirmedResults, teamUuid, teamName);
         },
       )),
     );
   }
 
-  /// 批量添加待办
-  Future<void> _batchAddTodos(List<Map<String, dynamic>> todosData) async {
+  /// 批量添加待办 (支持团队上下文关联)
+  Future<void> _batchAddTodos(List<Map<String, dynamic>> todosData, [String? teamUuid, String? teamName]) async {
     if (todosData.isEmpty) return;
 
     final newTodos = todosData.map((data) {
@@ -323,8 +325,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         remark: data['remark'],
         dueDate: dueDate,
         createdDate: createdDate,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
         imagePath: data['imagePath'], // 📸 关联图片路径
         originalText: data['originalText'], // 📄 原始分析文本
+        teamUuid: data['team_uuid'] ?? teamUuid, // 🚀 关联团队
+        teamName: data['team_name'] ?? teamName, // 🚀 团队名称
       );
     }).toList();
 
@@ -482,7 +487,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final List<Map<String, dynamic>> typedResults =
         results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
-    _navigateToTodoConfirm(typedResults, imagePath);
+    _navigateToTodoConfirm(typedResults, imagePath, null);
 
     // 导航后清除待确认数据和入口
     setState(() {
@@ -2230,9 +2235,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                           await WidgetService.updateTodoWidget(_todos);
                         },
                         onRefreshRequested: _loadAllData,
-                        onLLMResultsParsed: (results, imagePath, originalText) {
+                        onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
                           _navigateToTodoConfirm(
-                              results, imagePath, originalText);
+                              results, imagePath, originalText, tUuid, tName);
                         },
                       );
                       Widget screenTimeSection = RepaintBoundary(
@@ -2546,42 +2551,32 @@ class _HomeDashboardState extends State<HomeDashboard>
               page: AddTodoScreen(
                 todoGroups: _todoGroups,
                 onTodoAdded: (todo) async {
-                  final allTodos =
-                      await StorageService.getTodos(widget.username);
+                  final allTodos = await StorageService.getTodos(widget.username);
                   allTodos.add(todo);
                   await StorageService.saveTodos(widget.username, allTodos);
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
                   FloatWindowService.invalidateSlotCache();
-                    _syncTodoNotification();
-                    _rescheduleAlarms();
-                    await WidgetService.updateTodoWidget(allTodos);
-                  if (mounted) {
-                    setState(() {
-                      _todos = List<TodoItem>.from(allTodos);
-                    });
-                  }
+                  _syncTodoNotification();
+                  _rescheduleAlarms();
+                  await WidgetService.updateTodoWidget(allTodos);
+                  if (mounted) await _loadAllData();
                 },
                 onTodosBatchAdded: (todos) async {
-                  final allTodos =
-                      await StorageService.getTodos(widget.username);
+                  final allTodos = await StorageService.getTodos(widget.username);
                   allTodos.addAll(todos);
                   await StorageService.saveTodos(widget.username, allTodos);
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
                   FloatWindowService.invalidateSlotCache();
-                    _syncTodoNotification();
-                    _rescheduleAlarms();
-                    await WidgetService.updateTodoWidget(allTodos);
-                  if (mounted) {
-                    setState(() {
-                      _todos = List<TodoItem>.from(allTodos);
-                    });
-                  }
+                  _syncTodoNotification();
+                  _rescheduleAlarms();
+                  await WidgetService.updateTodoWidget(allTodos);
+                  if (mounted) await _loadAllData();
                 },
-                onLLMResultsParsed: (results, imagePath, originalText) {
+                onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
                   Navigator.pop(context); // 关闭添加页面
-                  _navigateToTodoConfirm(results, imagePath, originalText);
+                  _navigateToTodoConfirm(results, imagePath, originalText, tUuid, tName);
                 },
               ),
               sourceKey: _fabTodoKey,

@@ -366,12 +366,39 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     Map<String, CountdownItem> dedupeMap = {};
     for (var item in items) {
-      String id = item.id.toString();
-      if (!dedupeMap.containsKey(id) ||
-          item.updatedAt > dedupeMap[id]!.updatedAt) {
-        dedupeMap[id] = item;
+      if (!dedupeMap.containsKey(item.id) ||
+          item.updatedAt > dedupeMap[item.id]!.updatedAt) {
+        dedupeMap[item.id] = item;
       }
     }
+
+    final db = await DatabaseHelper.instance.database;
+    await db.transaction((txn) async {
+      for (var item in dedupeMap.values) {
+        // 1. 记录 Oplog
+        await txn.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'countdowns',
+          'target_uuid': item.id,
+          'data_json': jsonEncode(item.toJson()),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0
+        });
+
+        // 2. 更新主表
+        await txn.insert('countdowns', {
+          'uuid': item.id,
+          'team_uuid': item.teamUuid,
+          'title': item.title,
+          'target_time': item.targetDate.millisecondsSinceEpoch,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'version': item.version,
+          'updated_at': item.updatedAt,
+          'created_at': item.createdAt
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+
     List<String> jsonList =
         dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
@@ -380,6 +407,49 @@ class StorageService {
 
   static Future<List<CountdownItem>> getCountdowns(String username) async {
     final prefs = await SharedPreferences.getInstance();
+    try {
+      final dbHelper = DatabaseHelper.instance;
+      final db = await dbHelper.database;
+
+      // 1. 迁移检查
+      final List<Map<String, dynamic>> sqliteCount =
+          await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
+      if (sqliteCount.first['cnt'] == 0) {
+        List<String> legacyJsonList =
+            prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
+        if (legacyJsonList.isNotEmpty) {
+          debugPrint("🚀 自动迁移倒数日老数据至 SQLite...");
+          List<CountdownItem> legacyData = legacyJsonList
+              .map((e) => CountdownItem.fromJson(jsonDecode(e)))
+              .toList();
+          await saveCountdowns(username, legacyData, sync: false);
+        }
+      }
+
+      // 2. 从 SQL 读取
+      final List<Map<String, dynamic>> maps =
+          await db.query('countdowns', where: 'is_deleted = 0');
+      if (maps.isNotEmpty) {
+        return maps
+            .map((m) => CountdownItem(
+                  id: m['uuid'],
+                  title: m['title'] ?? '',
+                  targetDate: DateTime.fromMillisecondsSinceEpoch(
+                      m['target_time'],
+                      isUtc: true),
+                  isDeleted: m['is_deleted'] == 1,
+                  version: m['version'] ?? 1,
+                  updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  teamUuid: m['team_uuid'],
+                ))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint("⚠️ Countdowns SQL 引擎异常: $e");
+    }
+
+    // 逃生通道
     List<String> list =
         prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
     List<CountdownItem> result = [];
@@ -630,11 +700,38 @@ class StorageService {
     final Map<String, TodoGroup> dedupeMap = {};
 
     for (var item in items) {
-      final existing = dedupeMap[item.id];
-      if (existing == null || item.updatedAt > existing.updatedAt) {
+      if (!dedupeMap.containsKey(item.id) ||
+          item.updatedAt > dedupeMap[item.id]!.updatedAt) {
         dedupeMap[item.id] = item;
       }
     }
+
+    final db = await DatabaseHelper.instance.database;
+    await db.transaction((txn) async {
+      for (var item in dedupeMap.values) {
+        // 1. 记录 Oplog
+        await txn.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'todo_groups',
+          'target_uuid': item.id,
+          'data_json': jsonEncode(item.toJson()),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0
+        });
+
+        // 2. 更新主表
+        await txn.insert('todo_groups', {
+          'uuid': item.id,
+          'team_uuid': item.teamUuid,
+          'name': item.name,
+          'is_expanded': item.isExpanded ? 1 : 0,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'version': item.version,
+          'updated_at': item.updatedAt,
+          'created_at': item.createdAt
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
 
     List<String> jsonList =
         dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
@@ -643,6 +740,48 @@ class StorageService {
   }
 
   static Future<List<TodoGroup>> getTodoGroups(String username) async {
+    try {
+      final dbHelper = DatabaseHelper.instance;
+      final db = await dbHelper.database;
+      final prefs = await SharedPreferences.getInstance();
+
+      // 1. 迁移检查
+      final List<Map<String, dynamic>> sqliteCount =
+          await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
+      if (sqliteCount.first['cnt'] == 0) {
+        List<String> legacyJsonList =
+            prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+        if (legacyJsonList.isNotEmpty) {
+          debugPrint("🚀 自动迁移待办组数据至 SQLite...");
+          List<TodoGroup> legacyData = legacyJsonList
+              .map((e) => TodoGroup.fromJson(jsonDecode(e)))
+              .toList();
+          await saveTodoGroups(username, legacyData, sync: false);
+        }
+      }
+
+      // 2. 从 SQL 读取 (排除逻辑删除)
+      final List<Map<String, dynamic>> maps =
+          await db.query('todo_groups', where: 'is_deleted = 0');
+      if (maps.isNotEmpty) {
+        return maps
+            .map((m) => TodoGroup(
+                  id: m['uuid'],
+                  name: m['name'] ?? '',
+                  isExpanded: m['is_expanded'] == 1,
+                  isDeleted: m['is_deleted'] == 1,
+                  version: m['version'] ?? 1,
+                  updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  teamUuid: m['team_uuid'],
+                ))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint("⚠️ TodoGroups SQL 引擎异常: $e");
+    }
+
+    // 逃生通道
     final prefs = await StorageService.prefs;
     List<String> list =
         prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];

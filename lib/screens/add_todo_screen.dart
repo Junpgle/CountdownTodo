@@ -16,10 +16,11 @@ import '../utils/page_transitions.dart';
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
   final Function(List<TodoItem>)? onTodosBatchAdded;
-  final Function(List<Map<String, dynamic>>, String?, String?)?
+  final Function(List<Map<String, dynamic>>, String?, String?, String?, String?)?
       onLLMResultsParsed;
   final List<TodoGroup> todoGroups;
   final String? initialGroupId;
+  final String? initialTeamUuid; // 🚀 新增：初始关联团队 ID
 
   const AddTodoScreen({
     super.key,
@@ -28,6 +29,7 @@ class AddTodoScreen extends StatefulWidget {
     this.onLLMResultsParsed,
     this.todoGroups = const [],
     this.initialGroupId,
+    this.initialTeamUuid,
   });
 
   @override
@@ -69,6 +71,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   void initState() {
     super.initState();
     _selectedGroupId = widget.initialGroupId;
+    _selectedTeamUuid = widget.initialTeamUuid; // 🚀 关键：自动预设当前身处的团队上下文
     _dotsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -264,7 +267,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       // 🚀 如果开启了确认回调且结果多于1个，直接去确认页面批量处理
       if (widget.onLLMResultsParsed != null && _parsedResults.length > 1) {
         final maps = _parsedResults.map((e) => e.toMap()).toList();
-        widget.onLLMResultsParsed!(maps, null, _aiInputCtrl.text);
+        final currentTeamName = _selectedTeamUuid != null ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name : null;
+        widget.onLLMResultsParsed!(maps, null, _aiInputCtrl.text, _selectedTeamUuid, currentTeamName);
         return;
       }
 
@@ -328,7 +332,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           _isParsing = false;
           _currentOriginalText = _aiInputCtrl.text;
         });
-        widget.onLLMResultsParsed!(results, null, _aiInputCtrl.text);
+        final currentTeamName = _selectedTeamUuid != null ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name : null;
+        widget.onLLMResultsParsed!(results, null, _aiInputCtrl.text, _selectedTeamUuid, currentTeamName);
+        return;
         return;
       }
 
@@ -427,6 +433,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         originalText: _currentOriginalText,
         imagePath: persistentImagePath,
         reminderMinutes: r.reminderMinutes ?? _reminderMinutes,
+        teamUuid: _selectedTeamUuid, // 🚀 批量添加时也要带上团队属性
       );
     }).toList();
 

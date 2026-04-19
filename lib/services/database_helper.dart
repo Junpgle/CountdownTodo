@@ -74,8 +74,7 @@ class DatabaseHelper {
         team_uuid $jsonType,
         content $textType,
         remark $jsonType,
-        team_uuid $jsonType,
-        team_name $jsonType, // 🚀 冗余字段方便 FTS
+        team_name $jsonType, 
         is_completed $boolType DEFAULT 0,
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
@@ -85,11 +84,41 @@ class DatabaseHelper {
       )
     ''');
 
-    // 2. 🚀 Uni-Sync 核心：离线操作日志表 (Oplog)
+    // 2. 倒数日表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS countdowns (
+        id $idType,
+        uuid $textType UNIQUE,
+        team_uuid $jsonType,
+        title $textType,
+        target_time $integerType,
+        is_deleted $boolType DEFAULT 0,
+        version $integerType DEFAULT 1,
+        created_at $integerType,
+        updated_at $integerType
+      )
+    ''');
+
+    // 3. 待办组表 (文件夹)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS todo_groups (
+        id $idType,
+        uuid $textType UNIQUE,
+        team_uuid $jsonType,
+        name $textType,
+        is_expanded $boolType DEFAULT 0,
+        is_deleted $boolType DEFAULT 0,
+        version $integerType DEFAULT 1,
+        created_at $integerType,
+        updated_at $integerType
+      )
+    ''');
+
+    // 4. 🚀 Uni-Sync 核心：离线操作日志表 (Oplog)
     await db.execute('''
       CREATE TABLE IF NOT EXISTS op_logs (
         id $idType,
-        op_type $textType, -- 'INSERT', 'UPDATE', 'DELETE'
+        op_type $textType, 
         target_table $textType,
         target_uuid $textType,
         data_json $jsonType,
@@ -98,13 +127,13 @@ class DatabaseHelper {
       )
     ''');
 
-    // 3. 🚀 Uni-Sync 核心：FTS5 全文搜索虚表
+    // 5. 🚀 Uni-Sync 核心：FTS5 全文搜索虚表
     await db.execute('''
       CREATE VIRTUAL TABLE IF NOT EXISTS todos_fts USING fts5(
         uuid UNINDEXED,
         content,
         remark,
-        team_name, // 🚀 支持按团队名搜索
+        team_name, 
         tokenize='unicode61' 
       )
     ''');

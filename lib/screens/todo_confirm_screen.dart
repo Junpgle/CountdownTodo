@@ -20,6 +20,9 @@ class ParsedTodoResult {
   final int? reminderMinutes;
   final String? groupId;
 
+  final String? teamUuid;
+  final String? teamName;
+
   ParsedTodoResult({
     required this.title,
     this.remark,
@@ -31,6 +34,8 @@ class ParsedTodoResult {
     this.originalText,
     this.reminderMinutes,
     this.groupId,
+    this.teamUuid,
+    this.teamName,
   });
 
   Map<String, dynamic> toMap() {
@@ -45,6 +50,8 @@ class ParsedTodoResult {
       'originalText': originalText,
       'reminderMinutes': reminderMinutes,
       'groupId': groupId,
+      'team_uuid': teamUuid,
+      'team_name': teamName,
     };
   }
 }
@@ -55,12 +62,17 @@ class TodoConfirmScreen extends StatefulWidget {
   final String? originalText;
   final Function(List<Map<String, dynamic>>)? onConfirm;
 
+  final String? initialTeamUuid;
+  final String? initialTeamName;
+
   const TodoConfirmScreen({
     Key? key,
     required this.llmResults,
     this.imagePath,
     this.originalText,
     this.onConfirm,
+    this.initialTeamUuid,
+    this.initialTeamName,
   }) : super(key: key);
 
   @override
@@ -115,6 +127,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         originalText: widget.originalText, // 📄 传入原始文本
         reminderMinutes: result['reminderMinutes'],
         groupId: result['groupId'],
+        teamUuid: widget.initialTeamUuid,
+        teamName: widget.initialTeamName,
       );
     }).toList();
   }
