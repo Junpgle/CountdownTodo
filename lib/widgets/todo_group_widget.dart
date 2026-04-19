@@ -528,21 +528,51 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     String timeStr = "";
     if (todo.dueDate != null) {
       if (isAllDay) {
-        timeStr =
-            "${DateFormat('MM/dd').format(start)} → ${DateFormat('MM/dd').format(todo.dueDate!)}";
+        timeStr = "${DateFormat('MM/dd').format(start)} → ${DateFormat('MM/dd').format(todo.dueDate!)}";
       } else {
-        timeStr =
-            "${DateFormat('MM/dd HH:mm').format(start)} → ${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}";
+        timeStr = "${DateFormat('MM/dd HH:mm').format(start)} → ${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}";
       }
     } else {
       timeStr = "开始 ${DateFormat('MM/dd HH:mm').format(start)}";
     }
 
+    final now = DateTime.now();
+    final isPast = todo.dueDate != null && todo.dueDate!.isBefore(now);
+    final isFuture = todo.dueDate != null && !isPast && !DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day).isAtSameMomentAs(DateTime(now.year, now.month, now.day));
+
+    // ── 徽章计算 (与主列表同步) ──
+    String badge = "";
+    Color? badgeColor;
+    Color? badgeBg;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    if (todo.dueDate != null) {
+      final DateTime d = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+      final DateTime today = DateTime(now.year, now.month, now.day);
+      if (isPast) {
+        badge = "已逾期";
+        badgeColor = Colors.redAccent.shade200;
+        badgeBg = Colors.redAccent.withOpacity(0.12);
+      } else if (d.isAtSameMomentAs(today)) {
+        badge = "今天截止";
+        badgeColor = Colors.orange.shade700;
+        badgeBg = Colors.orange.withOpacity(0.12);
+      } else {
+        int days = d.difference(today).inDays;
+        badge = "$days天后";
+        badgeColor = colorScheme.secondary;
+        badgeBg = colorScheme.secondaryContainer.withOpacity(0.5);
+      }
+    } else {
+      badge = DateFormat('MM/dd').format(start);
+      badgeColor = colorScheme.onSurface.withOpacity(0.45);
+      badgeBg = colorScheme.onSurface.withOpacity(0.06);
+    }
+
     // Deadline urgency color
     Color? deadlineColor;
     if (todo.dueDate != null && !todo.isDone) {
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
+      final DateTime today = DateTime(now.year, now.month, now.day);
       final dueDay =
           DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
       if (dueDay.isBefore(today)) {
@@ -554,7 +584,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
     // Progress calculation logic (Sync with TodoSectionWidget)
     double progress = 0.0;
-    final now = DateTime.now();
     final cDate = DateTime.fromMillisecondsSinceEpoch(
             todo.createdDate ?? todo.createdAt,
             isUtc: true)
@@ -565,7 +594,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     if (totalMin > 0 && now.isAfter(cDate)) {
       progress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
     }
-    final isPast = todo.dueDate != null && todo.dueDate!.isBefore(now);
     final fillBrush = isPast ? Colors.redAccent : Colors.blue;
 
     return Dismissible(
@@ -655,10 +683,20 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                   ),
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                      vertical: 12.0, horizontal: 8.0),
+                      vertical: 9.0, horizontal: 8.0),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      if (todo.teamUuid != null)
+                        Container(
+                          width: 3,
+                          height: 24,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: GestureDetector(
@@ -690,33 +728,81 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              todo.title,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: widget.isLight
-                                    ? Colors.black87
-                                    : Colors.white,
-                                decoration: todo.isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                height: 1.25,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    todo.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: widget.isLight
+                                          ? Colors.black87
+                                          : Colors.white,
+                                      decoration: todo.isDone
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ),
+                                if (badge.isNotEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: todo.isDone ? colorScheme.onSurface.withOpacity(0.06) : badgeBg,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      badge,
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: todo.isDone ? colorScheme.onSurface.withOpacity(0.3) : badgeColor),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                            const SizedBox(height: 5),
+                            if (todo.teamUuid != null) ...[
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.primary.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: colorScheme.primary.withOpacity(0.2), width: 0.5),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.groups_rounded, size: 9, color: colorScheme.primary),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}",
+                                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            const SizedBox(height: 3),
                             // Time row
                             Row(
                               children: [
                                 Icon(Icons.access_time_rounded,
-                                    size: 12,
+                                    size: 11,
                                     color: deadlineColor ?? Colors.grey[500]),
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Text(
                                     timeStr,
                                     style: TextStyle(
-                                      fontSize: 12.5,
+                                      fontSize: 11.5,
                                       color: deadlineColor ?? Colors.grey[500],
                                       fontWeight: deadlineColor != null
                                           ? FontWeight.w600
