@@ -77,6 +77,9 @@ android {
 
     buildTypes {
         getByName("debug") {
+            // 🚀 测试版包名增加 .debug 后缀，实现生产/测试环境共存
+            applicationIdSuffix = ".debug"
+
             // 调试模式引用正式签名
             signingConfig = signingConfigs.getByName("release")
 

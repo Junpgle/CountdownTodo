@@ -611,10 +611,16 @@ class StorageService {
           version: m['version'] ?? 1,
           updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
           createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          // 🚀 核心修复：处理从 TEXT 字段读取出的时间戳字符串
+          createdDate: m['created_date'] is String ? int.tryParse(m['created_date']) : m['created_date'] as int?,
+          dueDate: m['due_date'] != null 
+              ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['due_date'].toString()) ?? 0) 
+              : null,
           teamUuid: m['team_uuid'],
           teamName: m['team_name'],
           creatorId: m['creator_id'],
           creatorName: m['creator_name'],
+          groupId: m['group_id'], 
         )).toList();
         return await _handleRecurrenceLogic(username, todos);
       }

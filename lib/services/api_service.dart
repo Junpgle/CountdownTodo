@@ -6,7 +6,8 @@ import 'package:http/io_client.dart';
 class ApiService {
   static String baseUrl = "https://mathquiz.junpgle.me";
   static const String cloudflareUrl = 'https://mathquiz.junpgle.me';
-  static const String aliyunUrl = 'http://101.200.13.100:8082';
+  static const String aliyunProdUrl = 'http://101.200.13.100:8082';
+  static const String aliyunTestUrl = 'http://101.200.13.100:8084';
   static String? _baseUrlOverride;
 
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
@@ -36,7 +37,7 @@ class ApiService {
   // 初始化设置
   static void setServerChoice(String choice) {
     if (choice == 'aliyun') {
-      baseUrl = aliyunUrl;
+      baseUrl = aliyunProdUrl;
     } else {
       baseUrl = cloudflareUrl;
     }

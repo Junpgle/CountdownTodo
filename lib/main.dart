@@ -28,6 +28,7 @@ import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
 import 'services/splash_service.dart';
 import 'services/course_service.dart';
+import 'services/environment_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 
@@ -179,13 +180,11 @@ class _MyAppState extends State<MyApp> {
       // 0. 读取主题偏好
       await StorageService.initTheme();
 
-      // 0.5 初始化壁纸(从manifest获取)
-      UpdateService.initWallpaper();
-      unawaited(UpdateService.preloadManifestCache());
+      // 0.5 初始化环境与隔离服务 (基于包名自动识别)
+      await EnvironmentService.init();
 
-      // Initialize server choice
-      String serverChoice = await StorageService.getServerChoice();
-      ApiService.setServerChoice(serverChoice);
+      // 0.6 初始化壁纸(从manifest获取)
+      UpdateService.initWallpaper();
 
       // 1. 读取登录状态
       final user = await StorageService.getLoginSession();

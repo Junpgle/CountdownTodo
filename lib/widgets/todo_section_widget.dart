@@ -1912,7 +1912,17 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       },
     );
 
-    if (activeTodos.isEmpty) {
+    final Iterable<TodoGroup> activeGroups = widget.todoGroups.where(
+      (g) {
+        if (g.isDeleted) return false;
+        if (_selectedSubTeamUuid != null) {
+          return g.teamUuid == _selectedSubTeamUuid;
+        }
+        return true;
+      },
+    );
+
+    if (activeTodos.isEmpty && activeGroups.isEmpty) {
       return EmptyState(text: "暂无待办，去添加一个吧", isLight: widget.isLight);
     }
 
@@ -2546,11 +2556,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
   /// 🚀 Uni-Sync 4.0: 首页动态团队切换 Tab
   Widget _buildTeamFilterTabs() {
-    // 1. 提取所有关联的团队信息 (去重)
+    // 1. 提取所有关联的团队信息 (同时扫描任务和文件夹)
     final Map<String, String> teamMap = {};
     for (var t in widget.todos) {
       if (t.teamUuid != null && t.teamName != null) {
         teamMap[t.teamUuid!] = t.teamName!;
+      }
+    }
+    for (var g in widget.todoGroups) {
+      if (g.teamUuid != null && g.teamName != null) {
+        teamMap[g.teamUuid!] = g.teamName!;
       }
     }
 
