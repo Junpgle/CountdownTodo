@@ -2167,18 +2167,6 @@ class _HomeDashboardState extends State<HomeDashboard>
                       _loadSemesterSettings();
                       _loadAllData();
                     },
-                    onWaterfall: () {
-                      Navigator.push(
-                        context,
-                        PageTransitions.slideHorizontal(UnifiedWaterfallScreen(username: widget.username)),
-                      );
-                    },
-                    onConflict: () {
-                      Navigator.push(
-                        context,
-                        PageTransitions.slideHorizontal(ConflictInboxScreen(username: widget.username)),
-                      );
-                    },
                   ),
 
                 // 🚀 Uni-Sync 4.0: 全局链路诊断横幅

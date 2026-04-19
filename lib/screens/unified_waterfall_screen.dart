@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/timezone_utils.dart';
+import '../widgets/team_heatmap_widget.dart';
+import '../widgets/team_gantt_widget.dart';
 
 class UnifiedWaterfallScreen extends StatefulWidget {
   final String username;
@@ -36,36 +38,112 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     }
   }
 
+  /// 🚀 防止非法 UTF-16 代理对导致 Flutter ParagraphBuilder 崩溃
+  String _safeStr(String? s) {
+    if (s == null) return '';
+    return s.replaceAll(RegExp(r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'), '');
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF2F4F7),
-      appBar: AppBar(
-        title: const Text('全景汇聚时间轴', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.tune_rounded, size: 20),
-            onPressed: () {
-              // TODO: 过滤团队
-            },
-          )
-        ],
-      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _allCombinedTodos.isEmpty
-              ? const Center(child: Text("暂无活跃的全景任务"))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _allCombinedTodos.length,
-                  itemBuilder: (context, index) {
-                    return _buildWaterfallItem(_allCombinedTodos[index]);
-                  },
+          : CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  floating: true,
+                  pinned: true,
+                  expandedHeight: 60,
+                  backgroundColor: isDark ? const Color(0xFF0F0F0F).withOpacity(0.9) : Colors.white.withOpacity(0.9),
+                  title: const Text('全景汇聚看板', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  centerTitle: false,
+                  actions: [
+                    IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadAllTeamData),
+                  ],
                 ),
+                
+                // 🚀 看板功能区 (热力图 & 甘特图)
+                SliverToBoxAdapter(
+                  child: Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 8))],
+                    ),
+                    child: Column(
+                      children: [
+                        TeamHeatmapWidget(todos: _allCombinedTodos),
+                        const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(indent: 16, endIndent: 16)),
+                        TeamGanttWidget(todos: _allCombinedTodos),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // 数据指标行
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        _buildStatChip(context, "活跃任务", "${_allCombinedTodos.length}", Colors.blue),
+                        const SizedBox(width: 8),
+                        _buildStatChip(context, "团队关联", "${_allCombinedTodos.where((t)=>t.teamUuid!=null).length}", Colors.purple),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+                // 任务流
+                _allCombinedTodos.isEmpty
+                    ? const SliverFillRemaining(child: Center(child: Text("暂无活跃的全景任务")))
+                    : SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) => _buildWaterfallItem(_allCombinedTodos[index]),
+                            childCount: _allCombinedTodos.length,
+                          ),
+                        ),
+                      ),
+                const SliverToBoxAdapter(child: SizedBox(height: 50)),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildStatChip(BuildContext context, String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 80),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_safeStr(label), style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(_safeStr(value), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -108,23 +186,23 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(color: teamColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
                         child: Text(
-                          isTeamTask ? "@${todo.teamName ?? '未知团队'}" : "#个人私密",
+                          isTeamTask ? "@${_safeStr(todo.teamName ?? '未知团队')}" : "#个人私密",
                           style: TextStyle(fontSize: 9, color: teamColor, fontWeight: FontWeight.bold),
                         ),
                       ),
                       const Spacer(),
                       Text(
-                        TimezoneUtils.getRelativeTime(todo.dueDate?.millisecondsSinceEpoch ?? todo.updatedAt),
+                        _safeStr(TimezoneUtils.getRelativeTime(todo.dueDate?.millisecondsSinceEpoch ?? todo.updatedAt)),
                         style: const TextStyle(fontSize: 10, color: Colors.grey),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Text(todo.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text(_safeStr(todo.title), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   if (todo.remark != null && todo.remark!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
-                      child: Text(todo.remark!, style: const TextStyle(fontSize: 11, color: Colors.grey), maxLines: 2),
+                      child: Text(_safeStr(todo.remark!), style: const TextStyle(fontSize: 11, color: Colors.grey), maxLines: 2),
                     ),
                 ],
               ),

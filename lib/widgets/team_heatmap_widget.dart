@@ -1,45 +1,73 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import '../models.dart';
 
 class TeamHeatmapWidget extends StatelessWidget {
-  const TeamHeatmapWidget({super.key});
+  final List<TodoItem> todos;
+  const TeamHeatmapWidget({super.key, required this.todos});
+
+  Map<DateTime, int> _calcDensity() {
+    final Map<DateTime, int> map = {};
+    for (var t in todos) {
+      if (t.isDeleted) continue;
+      final dt = t.dueDate ?? DateTime.fromMillisecondsSinceEpoch(t.updatedAt);
+      final day = DateTime(dt.year, dt.month, dt.day);
+      map[day] = (map[day] ?? 0) + 1;
+    }
+    return map;
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
+    final density = _calcDensity();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text("团队协作热力分布 (30 Days)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          child: Text("全景任务热力分布 (Recent 35 Days)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
         ),
         const SizedBox(height: 12),
-        Container(
-          height: 100,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: GridView.builder(
+        SizedBox(
+          height: 90,
+          child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7, // 一周 7 天
-              mainAxisSpacing: 4,
-              crossAxisSpacing: 4,
-            ),
-            itemCount: 30, // 最近 30 天
-            itemBuilder: (context, index) {
-              // 模拟热力数据深度 (0-4)
-              int intensity = Random().nextInt(5); 
-              return Container(
-                decoration: BoxDecoration(
-                  color: _getHeatmapColor(intensity, isDark),
-                  borderRadius: BorderRadius.circular(2),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: 5, // 5 周
+            itemBuilder: (context, weekIdx) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Column(
+                  children: List.generate(7, (dayIdx) {
+                    final date = today.subtract(Duration(days: ((4 - weekIdx) * 7 + (6 - dayIdx)).toInt()));
+                    final count = density[DateTime(date.year, date.month, date.day)] ?? 0;
+                    int intensity = 0;
+                    if (count > 0 && count <= 2) intensity = 1;
+                    else if (count > 2 && count <= 5) intensity = 2;
+                    else if (count > 5 && count <= 9) intensity = 3;
+                    else if (count > 9) intensity = 4;
+
+                    return Container(
+                      width: 10,
+                      height: 10,
+                      margin: const EdgeInsets.only(bottom: 2),
+                      decoration: BoxDecoration(
+                        color: _getHeatmapColor(intensity, isDark),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    );
+                  }),
                 ),
               );
             },
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         _buildLegend(),
       ],
     );
