@@ -4,9 +4,12 @@ import 'dart:ui';
 import '../models.dart';
 import '../services/api_service.dart';
 import 'package:intl/intl.dart';
+import './unified_waterfall_screen.dart';
+import './conflict_inbox_screen.dart';
 
 class TeamManagementScreen extends StatefulWidget {
-  const TeamManagementScreen({Key? key}) : super(key: key);
+  final String username;
+  const TeamManagementScreen({Key? key, required this.username}) : super(key: key);
 
   @override
   _TeamManagementScreenState createState() => _TeamManagementScreenState();
@@ -174,49 +177,122 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
               ),
               if (_isLoading)
                 SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
-              else if (_teams.isEmpty)
-                SliverFillRemaining(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.group_off_outlined, size: 80, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text('尚未加入任何团队', style: TextStyle(color: Colors.grey, fontSize: 16)),
-                      SizedBox(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: _showCreateTeamDialog,
-                            icon: Icon(Icons.add),
-                            label: Text('创建团队'),
-                          ),
-                          SizedBox(width: 16),
-                          OutlinedButton.icon(
-                            onPressed: _showJoinTeamDialog,
-                            icon: Icon(Icons.link),
-                            label: Text('加入团队'),
-                          ),
-                        ],
-                      )
-                    ],
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: EdgeInsets.all(16),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => _buildTeamCard(_teams[index]),
-                      childCount: _teams.length,
+              else ...[
+                // 🚀 Uni-Sync 4.0: 协作功能中心 (全景时间轴 + 冲突解决)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Row(
+                      children: [
+                        _buildQuickActionCard(
+                          title: "全景汇聚",
+                          desc: "时间轴对齐",
+                          icon: Icons.waterfall_chart_rounded,
+                          color: Colors.blueAccent,
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedWaterfallScreen(username: widget.username))),
+                        ),
+                        const SizedBox(width: 12),
+                        _buildQuickActionCard(
+                          title: "冲突中心",
+                          desc: "数据对齐",
+                          icon: Icons.verified_user_rounded,
+                          color: Colors.orangeAccent,
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConflictInboxScreen(username: widget.username))),
+                        ),
+                      ],
                     ),
                   ),
                 ),
+
+                if (_teams.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.group_off_outlined, size: 80, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text('尚未加入任何团队', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                        SizedBox(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _showCreateTeamDialog,
+                              icon: Icon(Icons.add),
+                              label: Text('创建团队'),
+                            ),
+                            SizedBox(width: 16),
+                            OutlinedButton.icon(
+                              onPressed: _showJoinTeamDialog,
+                              icon: Icon(Icons.link),
+                              label: Text('加入团队'),
+                            ),
+                          ],
+                        )
+                      ],
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: EdgeInsets.all(16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _buildTeamCard(_teams[index]),
+                        childCount: _teams.length,
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
         ],
       ),
       floatingActionButton: _teams.isNotEmpty ? _buildSpeedDial(context) : null,
+    );
+  }
+
+  Widget _buildQuickActionCard({
+    required String title,
+    required String desc,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [color.withOpacity(0.15), color.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(height: 12),
+              Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+              const SizedBox(height: 4),
+              Text(desc, style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black54)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

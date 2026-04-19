@@ -515,7 +515,7 @@ class _MyAppState extends State<MyApp> {
           routes: {
             '/login': (context) => const LoginScreen(),
             '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
-            '/teams': (context) => const TeamManagementScreen(),
+            '/teams': (context) => TeamManagementScreen(username: _loggedInUser ?? ''),
             '/dev/island': (context) => const IslandDebugPage(),
           },
           builder: (context, child) {
