@@ -1977,7 +1977,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid) {
         continue;
       }
-      final gTodos = groupTodosMap[g.id] ?? [];
+      final allGTodos = groupTodosMap[g.id] ?? [];
+      // 🚀 核心过滤：如果选定了特定团队，则文件夹内的待办也要按团队过滤
+      final gTodos = _selectedSubTeamUuid == null 
+          ? allGTodos 
+          : allGTodos.where((t) => t.teamUuid == _selectedSubTeamUuid).toList();
+
       if (gTodos.isEmpty && !g.isExpanded) continue;
 
       bool isAllDone = gTodos.isNotEmpty && gTodos.every((t) => t.isDone);
