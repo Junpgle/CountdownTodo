@@ -68,7 +68,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   bool _inlineFolders = true;
   final Set<String> _animatedTodoIds = {};
 
-  String? _selectedSubTeamUuid; // 🚀 Uni-Sync 4.0: 当前首页视口所在的团队
+  String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
 
   @override
   void initState() {

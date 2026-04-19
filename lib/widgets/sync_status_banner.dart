@@ -14,11 +14,45 @@ class SyncStatusBanner extends StatefulWidget {
 }
 
 class _SyncStatusBannerState extends State<SyncStatusBanner> {
-  SyncPathStatus _status = SyncPathStatus.online;
-  String _detailMessage = "数据已实时同步";
+  SyncPathStatus _status = SyncPathStatus.connecting;
+  String _detailMessage = "正在确认同步链路...";
   bool _isExpanded = false;
+  Timer? _heartbeatTimer;
 
-  // 模拟心跳检测 (实际应对接 WebSocket 监听)
+  @override
+  void initState() {
+    super.initState();
+    _startHeartbeat();
+  }
+
+  @override
+  void dispose() {
+    _heartbeatTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startHeartbeat() {
+    // 立即执行一次
+    _checkRealStatus();
+    // 随后每 30 秒探测一次真实链路状况
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkRealStatus());
+  }
+
+  Future<void> _checkRealStatus() async {
+    try {
+      // 🚀 核心逻辑：发起一个轻量级的健康检查
+      final isAlive = await ApiService.ping(); 
+      if (isAlive) {
+        updateStatus(SyncPathStatus.online, message: "数据已实时同步");
+      } else {
+        updateStatus(SyncPathStatus.serverError, message: "同步服务器响应异常");
+      }
+    } catch (e) {
+      updateStatus(SyncPathStatus.offline, message: "网络连接已断开，进入离线模式");
+    }
+  }
+
+  // 🚀 供外部手动触发快速更新
   void updateStatus(SyncPathStatus status, {String? message}) {
     if (!mounted) return;
     setState(() {

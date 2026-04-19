@@ -63,6 +63,20 @@ class ApiService {
     };
   }
 
+  /// 🚀 链路健康检查：探测服务器是否在线
+  static Future<bool> ping() async {
+    try {
+      // 访问基础路径，只要有任何响应（即使是 404）也说明网络通畅且服务器在线
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/'),
+      ).timeout(const Duration(seconds: 5));
+      return true;
+    } catch (e) {
+      // 网络超时、Socket 错误等均视为离线
+      return false;
+    }
+  }
+
   // ==========================================
   // 1. 用户认证 (Auth)
   // ==========================================
