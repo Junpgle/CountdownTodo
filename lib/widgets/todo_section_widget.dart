@@ -1317,6 +1317,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           todos: widget.todos,
           onTodosChanged: widget.onTodosChanged,
           todoGroups: widget.todoGroups,
+          onGroupsChanged: widget.onGroupsChanged,
+          username: widget.username,
         ),
         sourceRect: rect,
         sourceColor: color,
@@ -2865,11 +2867,15 @@ class _TodoEditScreen extends StatefulWidget {
   final List<TodoItem> todos;
   final Function(List<TodoItem>) onTodosChanged;
   final List<TodoGroup> todoGroups;
+  final Function(List<TodoGroup>) onGroupsChanged;
+  final String username;
   const _TodoEditScreen(
       {required this.todo,
       required this.todos,
       required this.onTodosChanged,
-      required this.todoGroups});
+      required this.todoGroups,
+      required this.onGroupsChanged,
+      required this.username});
   @override
   State<_TodoEditScreen> createState() => _TodoEditScreenState();
 }
@@ -2890,6 +2896,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
   String? _username;
   List<Team> _teams = [];
   String? _selectedTeamUuid;
+  bool _syncFolderToTeam = false;
 
   @override
   void initState() {
@@ -2963,12 +2970,41 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     todo.reminderMinutes = _reminderMinutes;
     todo.teamUuid = _selectedTeamUuid;
     todo.markAsChanged();
+
+    // 🚀 核心逻辑处理：文件夹跟随同步
+    if (_syncFolderToTeam && _selectedGroupId != null && _selectedTeamUuid != null) {
+      final groups = List<TodoGroup>.from(widget.todoGroups);
+      final idx = groups.indexWhere((g) => g.id == _selectedGroupId);
+      if (idx != -1) {
+        groups[idx].teamUuid = _selectedTeamUuid;
+        // 同时根据团队 ID 获取团队名称（防御性写法）
+        final team = _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull;
+        if (team != null) groups[idx].teamName = team.name;
+        
+        groups[idx].markAsChanged();
+        StorageService.saveTodoGroups(widget.username, groups);
+        widget.onGroupsChanged(groups);
+      }
+    }
+
     widget.onTodosChanged(List<TodoItem>.from(widget.todos));
     if (mounted) Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
+    // 🛡️ 核心修复：防御性去重并检查文件夹是否存在
+    final uniqueFolderMap = <String, TodoGroup>{};
+    for (var g in widget.todoGroups) {
+      if (g.id.isNotEmpty) uniqueFolderMap[g.id] = g;
+    }
+    final availableGroups = uniqueFolderMap.values.toList();
+
+    // 如果当前选中的文件夹在列表中不存在，回退为 null 避免崩溃
+    final effectiveGroupId = (availableGroups.any((g) => g.id == _selectedGroupId))
+        ? _selectedGroupId
+        : null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('编辑待办'),
@@ -3034,7 +3070,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
               minLines: 1),
           const SizedBox(height: 12),
           DropdownButtonFormField<String?>(
-            value: _selectedGroupId,
+            value: effectiveGroupId,
             decoration: InputDecoration(
               labelText: '所属文件夹 (可选)',
               prefixIcon: const Icon(Icons.folder_outlined),
@@ -3046,7 +3082,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                 value: null,
                 child: Text('无计划 / 未分类'),
               ),
-              ...widget.todoGroups.map((g) => DropdownMenuItem<String?>(
+              ...availableGroups.map((g) => DropdownMenuItem<String?>(
                     value: g.id,
                     child: Text(g.name),
                   )),
@@ -3062,6 +3098,40 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
               });
             },
           ),
+          // 🚀 智能提示：如果任务选了团队，但文件夹是私有的，提示是否一并同步
+          if (_selectedTeamUuid != null && effectiveGroupId != null)
+            Builder(builder: (context) {
+              final folder = uniqueFolderMap[effectiveGroupId];
+              if (folder != null && folder.teamUuid != _selectedTeamUuid) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8.0, left: 4.0),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: Checkbox(
+                          value: _syncFolderToTeam,
+                          onChanged: (val) => setState(() => _syncFolderToTeam = val ?? false),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "将文件夹 '${folder.name}' 也同步到团队，方便队友查看分类",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.primary,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            }),
           const SizedBox(height: 12),
           if (_teams.isNotEmpty) ...[
             DropdownButtonFormField<String?>(
