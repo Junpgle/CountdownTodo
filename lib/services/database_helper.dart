@@ -93,7 +93,9 @@ class DatabaseHelper {
           'is_deleted': (json['is_deleted'] == 1 || json['is_deleted'] == true) ? 1 : 0,
           'version': json['version'] ?? 1,
           'updated_at': json['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          'created_at': json['created_at'] ?? json['created_date'] ?? DateTime.now().millisecondsSinceEpoch,
+          'created_at': json['created_at'] ?? json['createdDate'] ?? DateTime.now().millisecondsSinceEpoch,
+          'created_date': json['created_date'] ?? json['created_at'] ?? json['createdDate'] ?? DateTime.now().millisecondsSinceEpoch,
+          'due_date': json['due_date'] ?? json['dueDate'],
           // 🚀 补全协作元数据
           'team_uuid': json['team_uuid'] ?? json['teamUuid'],
           'creator_id': json['creator_id'] ?? json['creatorId'],

@@ -519,7 +519,12 @@ class WidgetService {
 
     // 批量并行写入 widget 数据
     await Future.wait(widgetWrites);
-    await HomeWidget.updateWidget(androidName: androidWidgetName);
+    try {
+      await HomeWidget.updateWidget(androidName: androidWidgetName);
+    } catch (e) {
+      // 🚀 调试版如果改了包名，这里会报找不到类的错误，静默处理不影响主程序
+      print('⚠️ [WidgetService] Android Widget update suppressed: $e');
+    }
   }
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {

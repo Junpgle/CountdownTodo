@@ -138,6 +138,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
+  int _todoUpdateSignal = 0; // 🚀 强制组件重绘信号量
+  String? _currentSelectedTeamUuid; // 🚀 新增：跟随 TodoSectionWidget 的视口状态
   Timer? _localPomodoroTicker;
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
@@ -1580,7 +1582,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         _todoGroups = allGroups.where((g) => !g.isDeleted).toList();
         _mathStats = stats;
         _dashboardCourseData = courseData;
+        _todoUpdateSignal++; // 🚀 触发重绘
       });
+      // 🧪 诊断打印：确认 UI 内存中的数据量
+      debugPrint('📊 [DashboardLoader] 总数: ${_todos.length}, 数据库读取: ${allTodos.length}');
+      for (var t in _todos.take(3)) {
+         debugPrint('   - Item: ${t.title} (UUID: ${t.id}, Team: ${t.teamUuid})');
+      }
       _syncTodoNotification();
       await WidgetService.updateTodoWidget(_todos);
 
@@ -2200,11 +2208,14 @@ class _HomeDashboardState extends State<HomeDashboard>
                           isLight: isLight,
                           onDataChanged: _loadAllData);
                       Widget todoSection = TodoSectionWidget(
-                        key: _todoSectionKey,
+                        key: ValueKey('todo_section_$_todoUpdateSignal'), // 🚀 动态 Key 强制重绘
                         todos: _todos,
                         todoGroups: _todoGroups,
                         username: widget.username,
                         isLight: isLight,
+                        onTeamChanged: (teamUuid) {
+                          _currentSelectedTeamUuid = teamUuid;
+                        },
                         onGroupsChanged: (newGroups) async {
                           setState(() => _todoGroups = newGroups.where((g) => !g.isDeleted).toList());
                           final allGroups = await StorageService.getTodoGroups(widget.username);
@@ -2556,6 +2567,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               context: context,
               page: AddTodoScreen(
                 todoGroups: _todoGroups,
+                initialTeamUuid: _currentSelectedTeamUuid, // 🚀 关键修复：将当前选中的团队 Tab 传给创建页
                 onTodoAdded: (todo) async {
                   final allTodos = await StorageService.getTodos(widget.username);
                   allTodos.add(todo);
@@ -2566,7 +2578,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                   _syncTodoNotification();
                   _rescheduleAlarms();
                   await WidgetService.updateTodoWidget(allTodos);
-                  if (mounted) await _loadAllData();
+                  if (mounted) {
+                    await _loadAllData();
+                    // 🧪 额外加固：确保 UI 刷新
+                    setState(() {}); 
+                  }
                 },
                 onTodosBatchAdded: (todos) async {
                   final allTodos = await StorageService.getTodos(widget.username);

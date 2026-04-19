@@ -34,6 +34,8 @@ class TodoSectionWidget extends StatefulWidget {
   final Function(List<Map<String, dynamic>>, String?, String?, String?, String?)?
       onLLMResultsParsed; // 🚀 参数：Results, imagePath, originalText, teamUuid, teamName
 
+  final Function(String?)? onTeamChanged; // 🚀 新增：通知父组件当前选中的团队 ID
+
   const TodoSectionWidget({
     super.key,
     required this.todos,
@@ -44,6 +46,7 @@ class TodoSectionWidget extends StatefulWidget {
     this.todoGroups = const [],
     this.onGroupsChanged = _defaultOnGroupsChanged,
     this.onLLMResultsParsed,
+    this.onTeamChanged,
   });
 
   static void _defaultOnGroupsChanged(List<TodoGroup> _) {}
@@ -1903,12 +1906,18 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
     final Iterable<TodoItem> activeTodos = widget.todos.where(
       (t) {
-        if (t.isDeleted || _isHistoricalTodo(t)) return false;
-        // 🚀 视口过滤：如果当前选了某个团队 Tab，只看该团队的任务
-        if (_selectedSubTeamUuid != null) {
-          return t.teamUuid == _selectedSubTeamUuid;
+        if (t.isDeleted) return false;
+        
+        // 🧪 诊断打印：仅在调试模式下打印为何任务被隐藏
+        final bool isHistorical = _isHistoricalTodo(t);
+        final bool matchesTeam = _selectedSubTeamUuid == null || t.teamUuid == _selectedSubTeamUuid;
+        
+        if (isHistorical || !matchesTeam) {
+            // debugPrint('👻 Todo [${t.title}] hidden: historical=$isHistorical, teamMatch=$matchesTeam');
         }
-        return true;
+
+        if (isHistorical) return false;
+        return matchesTeam;
       },
     );
 
@@ -1937,12 +1946,21 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     List<Widget> separateGroupWidgets = [];
 
     final groupTodosMap = <String, List<TodoItem>>{};
+    final List<TodoItem> orphanedTodos = []; // 🚀 孤儿任务容器
+
     for (var t in widget.todos) {
       if (t.isDeleted || _isHistoricalTodo(t)) continue;
+      
       final tid = (t.groupId == null || t.groupId!.isEmpty) ? null : t.groupId;
       if (tid != null) {
-        groupTodosMap.putIfAbsent(tid, () => []).add(t);
+        // 检查这个组在当前视角下是否存在
+        bool folderExists = widget.todoGroups.any((g) => g.id == tid);
+        if (folderExists) {
+            groupTodosMap.putIfAbsent(tid, () => []).add(t);
+            continue;
+        }
       }
+      orphanedTodos.add(t);
     }
 
     void placeItem(_SortedDisplayItem item) {
@@ -2093,12 +2111,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       }
     }
 
-    // 2. Process Standalone Todos
-    for (final t in widget.todos) {
-      if (_isHistoricalTodo(t)) continue;
-      if (t.isDeleted) continue;
-      if (t.groupId != null && t.groupId!.isNotEmpty) continue;
-      
+    // 2. Process Standalone/Orphaned Todos
+    for (final t in orphanedTodos) {
       // 🚀 核心修正：视口过滤
       // 只有在选定特定团队时才进行截流；如果是“全部”(null)，则允许所有散装待办通过
       if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid) {
@@ -2586,7 +2600,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             _buildFilterChip(
               label: "全部",
               isSelected: _selectedSubTeamUuid == null,
-              onTap: () => setState(() => _selectedSubTeamUuid = null),
+              onTap: () {
+                setState(() => _selectedSubTeamUuid = null);
+                widget.onTeamChanged?.call(null);
+              },
               useDarkUI: useDarkUI,
             ),
             const SizedBox(width: 8),
@@ -2597,7 +2614,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 child: _buildFilterChip(
                   label: entry.value,
                   isSelected: _selectedSubTeamUuid == entry.key,
-                  onTap: () => setState(() => _selectedSubTeamUuid = entry.key),
+                  onTap: () {
+                    setState(() => _selectedSubTeamUuid = entry.key);
+                    widget.onTeamChanged?.call(entry.key);
+                  },
                   useDarkUI: useDarkUI,
                 ),
               );

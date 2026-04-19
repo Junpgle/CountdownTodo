@@ -103,7 +103,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _detailMessage,
+                      _detailMessage + (ApiService.baseUrl.contains(':8084') ? ' 🚀[TEST:8084]' : ''),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,

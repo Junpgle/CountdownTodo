@@ -492,6 +492,7 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     final Map<String, TodoItem> dedupeMap = {};
 
+    _recurrenceCheckCache.clear(); // 🚀 关键：清理静态缓存，强制重新计算
     for (var item in items) {
       final existing = dedupeMap[item.id];
       if (existing == null || item.updatedAt > existing.updatedAt) {
@@ -531,8 +532,11 @@ class StorageService {
           'is_completed': item.isDone ? 1 : 0,
           'is_deleted': item.isDeleted ? 1 : 0,
           'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt
+          'due_date': item.dueDate?.millisecondsSinceEpoch,
+          'group_id': item.groupId,
+          'created_date': item.createdDate ?? item.createdAt, // 🚀 必填字段加固
+          'created_at': item.createdAt,
+          'updated_at': item.updatedAt
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
@@ -600,7 +604,9 @@ class StorageService {
         }
       }
 
-      final List<Map<String, dynamic>> maps = await db.query('todos', where: 'is_deleted = 0');
+      final List<Map<String, dynamic>> maps = await db.query('todos', 
+        where: 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
+      );
       if (maps.isNotEmpty) {
         List<TodoItem> todos = maps.map((m) => TodoItem(
           id: m['uuid'],

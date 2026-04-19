@@ -34,8 +34,18 @@ class ApiService {
   // 🚀 公开获取 token 的方法（供 WebSocket 等服务使用）
   static String? getToken() => _authToken;
 
+  static bool _isLocked = false;
+
+  // 🚀 强制锁定环境地址（在 EnvironmentService 中调用）
+  static void lockBaseUrl(String url) {
+    baseUrl = url;
+    _isLocked = true;
+  }
+
   // 初始化设置
   static void setServerChoice(String choice) {
+    if (_isLocked) return; // 🛡️ 如果环境已锁定（如测试版），禁止通过设置更改地址
+    
     if (choice == 'aliyun') {
       baseUrl = aliyunProdUrl;
     } else {
