@@ -473,74 +473,77 @@ class StorageService {
 
   static Future<List<TodoItem>> getTodos(String username) async {
     final prefs = await StorageService.prefs;
-    final dbHelper = DatabaseHelper.instance;
-    final db = await dbHelper.database;
+    // 🚀 Uni-Sync 安全方案：双轨读取 + 逃生通道
+    try {
+      final dbHelper = DatabaseHelper.instance;
+      final db = await dbHelper.database;
 
-    // 1. 🚀 Uni-Sync 4.0: 检查是否需要从 Prefs 迁移
-    final List<Map<String, dynamic>> sqliteCount = await db.rawQuery('SELECT COUNT(*) as cnt FROM todos');
-    if (sqliteCount.first['cnt'] == 0) {
-      List<String> legacyJsonList = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
-      if (legacyJsonList.isNotEmpty) {
-        debugPrint("🚀 Detected legacy data, starting SQL migration...");
-        List<Map<String, dynamic>> legacyData = legacyJsonList
-            .map((e) => jsonDecode(e) as Map<String, dynamic>)
-            .toList();
-        await dbHelper.migrateFromPrefs(username, legacyData);
+      final List<Map<String, dynamic>> sqliteCount = await db.rawQuery('SELECT COUNT(*) as cnt FROM todos');
+      if (sqliteCount.first['cnt'] == 0) {
+        List<String> legacyJsonList = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+        if (legacyJsonList.isNotEmpty) {
+          debugPrint("🚀 自动迁移老数据至 SQLite...");
+          List<Map<String, dynamic>> legacyData = legacyJsonList.map((e) => jsonDecode(e) as Map<String, dynamic>).toList();
+          await dbHelper.migrateFromPrefs(username, legacyData);
+        }
       }
+
+      final List<Map<String, dynamic>> maps = await db.query('todos', where: 'is_deleted = 0');
+      if (maps.isNotEmpty) {
+        List<TodoItem> todos = maps.map((m) => TodoItem(
+          id: m['uuid'],
+          title: m['content'] ?? '',
+          remark: m['remark'],
+          isDone: m['is_completed'] == 1,
+          isDeleted: m['is_deleted'] == 1,
+          version: m['version'] ?? 1,
+          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          teamUuid: m['team_uuid'],
+          teamName: m['team_name'],
+        )).toList();
+        return await _handleRecurrenceLogic(username, todos);
+      }
+    } catch (e) {
+      debugPrint("⚠️ SQL 引擎异常，启动逃生通道: $e");
     }
 
-    // 2. 🚀 从单一事实来源 (SQLite) 读取
-    final List<Map<String, dynamic>> maps = await db.query('todos', where: 'is_deleted = 0');
-    List<TodoItem> todos = maps.map((m) {
-        // 将 SQL Map 转换为 TodoItem 模型
-        return TodoItem(
-            id: m['uuid'],
-            title: m['content'],
-            remark: m['remark'],
-            isDone: m['is_completed'] == 1,
-            isDeleted: m['is_deleted'] == 1,
-            version: m['version'],
-            updatedAt: m['updated_at'],
-            createdAt: m['created_at'],
-        );
-    }).toList();
+    // 🚀 逃生通道：兜底读取 Prefs
+    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+    List<TodoItem> legacyTodos = [];
+    for (var e in list) {
+      try { legacyTodos.add(TodoItem.fromJson(jsonDecode(e))); } catch (_) {}
+    }
+    return await _handleRecurrenceLogic(username, legacyTodos);
+  }
 
-    // 3. 处理循环周期任务逻辑 (保持原有逻辑兼容)
+  static Future<List<TodoItem>> _handleRecurrenceLogic(String username, List<TodoItem> todos) async {
     final today = DateTime.now();
     final todayKey = '${today.year}-${today.month}-${today.day}';
+    
     if (_lastRecurrenceCheckDate != todayKey) {
       _lastRecurrenceCheckDate = todayKey;
       _recurrenceCheckCache.clear();
     }
 
     final cacheKey = 'recurrence_$username';
-    if (_recurrenceCheckCache.containsKey(cacheKey)) {
-      return todos;
-    }
+    if (_recurrenceCheckCache.containsKey(cacheKey)) return todos;
 
     bool needSave = false;
-
     for (var todo in todos) {
-      if (todo.isDeleted) continue;
-      if (todo.recurrence == RecurrenceType.none) continue;
-      if (todo.recurrenceEndDate != null &&
-          today.isAfter(todo.recurrenceEndDate!)) continue;
+      if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
+      if (todo.recurrenceEndDate != null && today.isAfter(todo.recurrenceEndDate!)) continue;
 
       final DateTime baseLocal = _getRecurrenceBaseDate(todo);
-      final DateTime baseDay =
-          DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
+      final DateTime baseDay = DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
       final DateTime todayDay = DateTime(today.year, today.month, today.day);
 
-      if (todo.recurrence == RecurrenceType.daily) {
-        if (todayDay.isAfter(baseDay)) {
-          todo.isDone = false;
-          _rollRecurrenceDateToToday(todo, today);
-          todo.markAsChanged();
-          needSave = true;
-        }
-      } else if (todo.recurrence == RecurrenceType.customDays &&
-          todo.customIntervalDays != null &&
-          todo.customIntervalDays! > 0) {
+      if (todo.recurrence == RecurrenceType.daily && todayDay.isAfter(baseDay)) {
+        todo.isDone = false;
+        _rollRecurrenceDateToToday(todo, today);
+        todo.markAsChanged();
+        needSave = true;
+      } else if (todo.recurrence == RecurrenceType.customDays && todo.customIntervalDays != null && todo.customIntervalDays! > 0) {
         int diffDays = todayDay.difference(baseDay).inDays;
         if (diffDays >= todo.customIntervalDays!) {
           todo.isDone = false;
@@ -555,9 +558,7 @@ class StorageService {
     if (needSave) {
       await saveTodos(username, todos, sync: true);
     }
-
     _recurrenceCheckCache[cacheKey] = true;
-
     return todos;
   }
 
