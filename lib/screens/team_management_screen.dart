@@ -37,7 +37,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
           state.action == 'NEW_JOIN_REQUEST' || 
           state.action == 'PENDING_COUNTS' ||
           state.action == 'JOIN_REQUEST_APPROVED' ||
-          state.action == 'TEAM_MEMBER_JOINED') {
+          state.action == 'TEAM_MEMBER_JOINED' ||
+          state.action == 'TEAM_REMOVED') {
         _loadTeams(isSilent: true); // 🚀 收到通知，静默刷新
       }
     });

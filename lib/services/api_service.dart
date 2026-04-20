@@ -799,6 +799,18 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> getTodoStatus(String todoUuid) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/todo_status?todo_uuid=$todoUuid'),
+        headers: _getHeaders(),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
   static Future<Map<String, dynamic>> leaveTeam(String teamUuid) async {
     try {
       final response = await _client.post(

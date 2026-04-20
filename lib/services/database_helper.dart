@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 5, // 🚀 升级版本至 5，补全缺失字段并动态修复 FTS
+      version: 7, // 🚀 升级版本至 7，新增 todo_completions
       onCreate: _createDB,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 3) {
@@ -75,6 +75,35 @@ class DatabaseHelper {
 
           // 2. 强制重建 FTS 架构（采用动态嗅探）
           await _setupFts(db);
+        }
+
+        if (oldVersion < 6) {
+           try {
+              final info = await db.rawQuery("PRAGMA table_info(todos)");
+              if (!info.any((row) => row['name'] == 'collab_type')) {
+                await db.execute("ALTER TABLE todos ADD COLUMN collab_type INTEGER DEFAULT 0;");
+                debugPrint("✅ Database: 修复字段 todos.collab_type");
+              }
+            } catch (e) {
+              debugPrint("⚠️ Database: 修复字段 todos.collab_type 失败: $e");
+            }
+        }
+
+        if (oldVersion < 7) {
+           try {
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS todo_completions (
+                  todo_uuid TEXT,
+                  user_id INTEGER,
+                  is_completed INTEGER,
+                  updated_at INTEGER,
+                  PRIMARY KEY(todo_uuid, user_id)
+                )
+              ''');
+              debugPrint("✅ Database: 创建 todo_completions 表");
+            } catch (e) {
+              debugPrint("⚠️ Database: 创建 todo_completions 表失败: $e");
+            }
         }
       }
     );
@@ -133,7 +162,8 @@ class DatabaseHelper {
         due_date $jsonType,
         created_date $integerType,
         created_at $integerType,
-        updated_at $integerType
+        updated_at $integerType,
+        collab_type $integerType DEFAULT 0
       )
     ''');
 
@@ -186,7 +216,18 @@ class DatabaseHelper {
       )
     ''');
 
-    // 5. 🚀 Uni-Sync 核心：持久化索引
+    // 5. 独立待办完成情况表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS todo_completions (
+        todo_uuid TEXT,
+        user_id INTEGER,
+        is_completed INTEGER,
+        updated_at INTEGER,
+        PRIMARY KEY(todo_uuid, user_id)
+      )
+    ''');
+
+    // 6. 🚀 Uni-Sync 核心：持久化索引
     await db.execute('CREATE INDEX IF NOT EXISTS idx_todos_team ON todos(team_uuid)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_todos_uuid ON todos(uuid)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_countdowns_team ON countdowns(team_uuid)');

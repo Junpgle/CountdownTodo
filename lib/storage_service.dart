@@ -101,6 +101,10 @@ class StorageService {
   static bool _isSyncing = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
+  /// 🚀 Uni-Sync: 全局数据刷新通知器
+  static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier(0);
+  static void triggerRefresh() => dataRefreshNotifier.value++;
+
   // ==========================================
   // 🛡️ 设备信息与标识管理 (解决未知设备问题)
   // ==========================================
@@ -536,7 +540,8 @@ class StorageService {
         'group_id': item.groupId,
         'created_date': item.createdDate ?? item.createdAt,
         'created_at': item.createdAt,
-        'updated_at': item.updatedAt
+        'updated_at': item.updatedAt,
+        'collab_type': item.collabType
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
@@ -571,7 +576,8 @@ class StorageService {
       'is_deleted': item.isDeleted ? 1 : 0,
       'version': item.version,
       'updated_at': item.updatedAt,
-      'created_at': item.createdAt
+      'created_at': item.createdAt,
+      'collab_type': item.collabType
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     // 2. 补齐 Oplog，确保离线更新能被同步
@@ -628,6 +634,7 @@ class StorageService {
           creatorId: m['creator_id'],
           creatorName: m['creator_name'],
           groupId: m['group_id'], 
+          collabType: m['collab_type'] ?? 0,
         )).toList();
         return await _handleRecurrenceLogic(username, todos);
       }
@@ -658,6 +665,7 @@ class StorageService {
 
     await batch.commit(noResult: true);
     debugPrint("🧹 已清理团队 $teamUuid 的本地数据");
+    triggerRefresh(); // 🚀 触发 UI 刷新
   }
 
   static Future<List<TodoItem>> _handleRecurrenceLogic(String username, List<TodoItem> todos) async {
@@ -1248,6 +1256,21 @@ class StorageService {
         await db.update('op_logs', {'is_synced': 1}, where: 'is_synced = 0');
         debugPrint('✅ [同步流水] 已标记记录为已同步');
 
+        // 🚀 处理独立待办完成情况
+        final List<dynamic>? indCompletions = response['independent_completions'];
+        if (indCompletions != null) {
+          final batch = db.batch();
+          for (var ic in indCompletions) {
+            batch.insert('todo_completions', {
+              'todo_uuid': ic['todo_uuid'],
+              'user_id': userId,
+              'is_completed': ic['is_completed'],
+              'updated_at': DateTime.now().millisecondsSinceEpoch,
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+          await batch.commit(noResult: true);
+        }
+
         // 🚀 核心修复：清理本地孤立的团队数据 (处理离线被移出团队的情况)
         final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
         if (joinedTeamUuids != null) {
@@ -1283,11 +1306,26 @@ class StorageService {
 
       // 合并 Todos
       List<dynamic> serverTodos = response['server_todos'] ?? [];
+
+      // 预先建立独立待办完成情况查找表
+      final Map<String, int> icLookup = {};
+      final List<dynamic>? serverIndCompletions = response['independent_completions'];
+      if (serverIndCompletions != null) {
+        for (var ic in serverIndCompletions) {
+          icLookup[ic['todo_uuid'].toString()] = ic['is_completed'] as int;
+        }
+      }
+
       final Map<String, int> todosIndexMap = {
         for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
       };
       for (var raw in serverTodos) {
         TodoItem sItem = TodoItem.fromJson(raw);
+
+        // 🌟 核心增强：如果任务是独立类型，强制应用服务器下发的个人完成状态
+        if (sItem.collabType == 1) {
+          sItem.isDone = icLookup[sItem.id] == 1; // 默认如果不在 icLookup 中，则为 false
+        }
         if (todosIndexMap.containsKey(sItem.id)) {
           final idx = todosIndexMap[sItem.id]!;
           final local = allLocalTodos[idx];
