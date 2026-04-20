@@ -61,6 +61,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     super.dispose();
   }
 
+  // 🚀 安全提取首字符工具函数（完美解决 Emoji 切割导致 UTF-16 崩溃的 Bug）
+  String _safeFirstChar(String? s) {
+    if (s == null || s.trim().isEmpty) return '?';
+    final str = s.trim();
+    if (str.runes.isEmpty) return '?';
+    return String.fromCharCode(str.runes.first).toUpperCase();
+  }
+
   Future<void> _checkClipboardForInvite() async {
     if (_isCheckingClipboard) return;
     _isCheckingClipboard = true;
@@ -519,10 +527,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
                   children: [
-                    Text(inv['team_name'] ?? '未知团队', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(inv['team_name'] ?? '未知团队', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 2),
-                    Text('来自 ${inv['inviter_name']} 的邀请', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                    Text('来自 ${inv['inviter_name']} 的邀请', style: TextStyle(fontSize: 12, color: Colors.grey.shade500), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
@@ -586,10 +595,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
                   children: [
-                    Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                    Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Text(desc, style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black54), overflow: TextOverflow.ellipsis),
+                    Text(desc, style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black54), maxLines: 2, overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
@@ -621,6 +631,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             // 头部：Avatar + 标题 + 角色
             Row(
@@ -630,10 +641,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
                     children: [
                       Row(
                         children: [
-                          Expanded(child: Text(team.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                          Expanded(child: Text(team.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis, maxLines: 1)),
                           if (team.userRole == TeamRole.admin)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -644,7 +656,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                       ),
                       const SizedBox(height: 4),
                       Text('创建于 ${DateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500), maxLines: 1, overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
@@ -772,7 +784,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
       ),
       child: Center(
         child: Text(
-          team.name.substring(0, 1).toUpperCase(),
+          _safeFirstChar(team.name), // 🚀 修复 UTF-16 切片奔溃 Bug
           style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold),
         ),
       ),
@@ -1056,7 +1068,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               leading: CircleAvatar(
                 backgroundColor: Colors.blueAccent.withOpacity(0.1),
                 foregroundColor: Colors.blueAccent,
-                child: Text(member.username?.substring(0, 1).toUpperCase() ?? '?'),
+                child: Text(_safeFirstChar(member.username)), // 🚀 修复 UTF-16 切片奔溃 Bug
               ),
               title: Text(member.username ?? '匿名用户', style: const TextStyle(fontWeight: FontWeight.w600)),
               subtitle: Text('加入于 ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(member.joinedAt))}', style: const TextStyle(fontSize: 12)),
@@ -1113,7 +1125,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                 border: Border.all(color: Colors.grey.withOpacity(0.1)),
               ),
               child: ListTile(
-                leading: CircleAvatar(backgroundColor: Colors.orangeAccent.withOpacity(0.1), foregroundColor: Colors.orangeAccent, child: Text(req['username']?.substring(0,1).toUpperCase() ?? '?')),
+                leading: CircleAvatar(
+                    backgroundColor: Colors.orangeAccent.withOpacity(0.1),
+                    foregroundColor: Colors.orangeAccent,
+                    child: Text(_safeFirstChar(req['username'])) // 🚀 修复 UTF-16 切片奔溃 Bug
+                ),
                 title: Text(req['username'] ?? '未知用户', style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(req['message'] != null && req['message'].isNotEmpty ? '留言: ${req['message']}' : '申请加入团队', style: const TextStyle(fontSize: 12)),
                 trailing: Row(
