@@ -292,6 +292,11 @@ class PomodoroSyncService {
         debugPrint('[PomodoroSync] 🎁 收到新版本推送: ${signal.latestVersion}');
       }
 
+      if (signal.action == 'TEAM_REMOVED' && signal.teamUuid != null) {
+        debugPrint('[PomodoroSync] 🧹 收到踢出团队广播，清理本地数据: ${signal.teamUuid}');
+        StorageService.clearTeamItems(signal.teamUuid!);
+      }
+
       if (signal.action == 'START' || signal.action == 'RECONNECT_SYNC') {
         _focusSourceDevice = signal.sourceDevice;
       } else if (signal.action == 'STOP' ||

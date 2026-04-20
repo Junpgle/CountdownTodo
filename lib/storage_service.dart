@@ -644,6 +644,22 @@ class StorageService {
     return await _handleRecurrenceLogic(username, legacyTodos);
   }
 
+  /// 🚀 Uni-Sync 4.0: 当被移出团队时，彻底清理本地缓存的相关数据
+  static Future<void> clearTeamItems(String teamUuid) async {
+    final db = await DatabaseHelper.instance.database;
+    final batch = db.batch();
+
+    // 1. 删除 Todos
+    batch.delete('todos', where: 'team_uuid = ?', whereArgs: [teamUuid]);
+    // 2. 删除 Todo Groups
+    batch.delete('todo_groups', where: 'team_uuid = ?', whereArgs: [teamUuid]);
+    // 3. 删除 Countdowns
+    batch.delete('countdowns', where: 'team_uuid = ?', whereArgs: [teamUuid]);
+
+    await batch.commit(noResult: true);
+    debugPrint("🧹 已清理团队 $teamUuid 的本地数据");
+  }
+
   static Future<List<TodoItem>> _handleRecurrenceLogic(String username, List<TodoItem> todos) async {
     final today = DateTime.now();
     final todayKey = '${today.year}-${today.month}-${today.day}';
@@ -1231,6 +1247,23 @@ class StorageService {
         // 🚀 全部上报成功后，标记 op_logs 为已同步
         await db.update('op_logs', {'is_synced': 1}, where: 'is_synced = 0');
         debugPrint('✅ [同步流水] 已标记记录为已同步');
+
+        // 🚀 核心修复：清理本地孤立的团队数据 (处理离线被移出团队的情况)
+        final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
+        if (joinedTeamUuids != null) {
+          final Set<String> currentTeams = joinedTeamUuids.map((e) => e.toString()).toSet();
+          
+          // 获取本地所有存在的 team_uuid
+          final localTeamRows = await db.rawQuery('SELECT DISTINCT team_uuid FROM todos WHERE team_uuid IS NOT NULL');
+          for (var row in localTeamRows) {
+            String? tUuid = row['team_uuid']?.toString();
+            if (tUuid != null && !currentTeams.contains(tUuid)) {
+               debugPrint("🧹 发现孤立团队数据: $tUuid, 正在清理...");
+               await clearTeamItems(tUuid);
+               hasChanges = true;
+            }
+          }
+        }
       } else {
         throw Exception("${response['message'] ?? '同步失败'}");
       }
