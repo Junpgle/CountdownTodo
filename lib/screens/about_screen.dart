@@ -238,7 +238,7 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              '版本 $_version (Build $_buildNumber)',
+              '版本 $_version',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Colors.grey,
                   ),
