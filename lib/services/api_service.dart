@@ -825,19 +825,6 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> resetTodoStatus(String todoUuid, String targetUserId) async {
-    try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/reset_todo_status'),
-        headers: _getHeaders(),
-        body: jsonEncode({'todo_uuid': todoUuid, 'target_user_id': targetUserId}),
-      );
-      return jsonDecode(response.body);
-    } catch (e) {
-      return {'success': false, 'error': e.toString()};
-    }
-  }
-
   static Future<Map<String, dynamic>> getTodoStatus(String todoUuid) async {
     try {
       final response = await _client.get(

@@ -3018,38 +3018,10 @@ class _IndependentStatusDialogState extends State<_IndependentStatusDialog> {
                             isDone ? "已完成" : "进行中",
                             style: TextStyle(fontSize: 12, color: isDone ? Colors.green : Colors.grey),
                           ),
-                          trailing: isDone 
-                            ? IconButton(
-                                icon: const Icon(Icons.undo, size: 20, color: Colors.orange),
-                                tooltip: "撤回任务完成 (变更回未完成)",
-                                onPressed: () async {
-                                  final confirm = await showDialog<bool>(
-                                    context: context,
-                                    builder: (c) => AlertDialog(
-                                      title: const Text("确认撤回"),
-                                      content: Text("确定要将成员 [${s['username']}] 的该任务变更回未完成吗？"),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("取消")),
-                                        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("撤回", style: TextStyle(color: Colors.orange))),
-                                      ],
-                                    ),
-                                  );
-                                  if (confirm == true) {
-                                    setState(() => _isLoading = true);
-                                    final res = await ApiService.resetTodoStatus(widget.todo.id, s['user_id'].toString());
-                                    if (res['success'] == true) {
-                                      _loadStatus(); // 刷新数据
-                                    } else {
-                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("重置失败: ${res['error']}")));
-                                      setState(() => _isLoading = false);
-                                    }
-                                  }
-                                },
-                              )
-                            : Icon(
-                                Icons.radio_button_unchecked,
-                                color: Colors.grey,
-                              ),
+                          trailing: Icon(
+                            isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                            color: isDone ? Colors.green : Colors.grey,
+                          ),
                         );
                       },
                     ))),
