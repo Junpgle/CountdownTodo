@@ -778,12 +778,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 if (widget.todoGroups.isNotEmpty)
                   Expanded(child: _buildPopupSquareTile<String?>(
                     title: "归属文件夹",
-                    subtitle: _selectedGroupId == null ? "收集箱" : widget.todoGroups.firstWhere((g) => g.id == _selectedGroupId, orElse: () => TodoGroup(id: '', name: '未知')).name,
+                    subtitle: _selectedGroupId == null ? "未分类" : (widget.todoGroups.where((g) => g.id == _selectedGroupId).firstOrNull?.name ?? '未知'),
                     icon: Icons.folder_rounded,
                     color: Colors.amber.shade600,
                     value: _selectedGroupId,
                     items: [
-                      const PopupMenuItem<String?>(value: null, child: Text("收集箱")),
+                      const PopupMenuItem<String?>(value: null, child: Text("未分类")),
                       ...widget.todoGroups.where((g) => !g.isDeleted).map((g) => PopupMenuItem(value: g.id, child: Text(g.name)))
                     ],
                     onSelected: (v) => setState(() {
@@ -797,7 +797,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 if (_teams.isNotEmpty)
                   Expanded(child: _buildPopupSquareTile<String?>(
                     title: "团队归属",
-                    subtitle: _selectedTeamUuid == null ? "个人私有" : _teams.firstWhere((t) => t.uuid == _selectedTeamUuid, orElse: () => Team(uuid: '', name: '未知')).name,
+                    subtitle: _selectedTeamUuid == null ? "个人私有" : (_teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name ?? '未知'),
                     icon: Icons.groups_rounded,
                     color: Colors.indigoAccent,
                     value: _selectedTeamUuid,
