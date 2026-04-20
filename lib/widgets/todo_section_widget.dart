@@ -3337,59 +3337,12 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
             }),
           const SizedBox(height: 12),
           if (_teams.isNotEmpty) ...[
-            DropdownButtonFormField<String?>(
-              value: _selectedTeamUuid,
-              decoration: InputDecoration(
-                labelText: "同步到协作团队 (可选)",
-                prefixIcon: const Icon(Icons.people_outline),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text("个人私有 (不同步)"),
-                ),
-                ..._teams.map((t) => DropdownMenuItem<String?>(
-                      value: t.uuid,
-                      child: Row(
-                        children: [
-                          Icon(Icons.group,
-                              size: 18,
-                              color: Colors.blue.withOpacity(0.7)),
-                          const SizedBox(width: 8),
-                          Text(t.name),
-                        ],
-                      ),
-                    )),
-              ],
-            onChanged: (val) => setState(() => _selectedTeamUuid = val),
-          ),
-          const SizedBox(height: 12),
-          if (_selectedTeamUuid != null) ...[
-            DropdownButtonFormField<int>(
-              value: _collabType,
-              decoration: InputDecoration(
-                labelText: "团队协作方式",
-                prefixIcon: const Icon(Icons.hub_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              items: const [
-                DropdownMenuItem(value: 0, child: Text("共同协作 (共享进度)")),
-                DropdownMenuItem(value: 1, child: Text("各自独立完成")),
-              ],
-              onChanged: (val) {
-                if (val != null) setState(() => _collabType = val);
-              },
-            ),
+            const SizedBox(height: 12),
+            _buildTeamCollabSection(),
             const SizedBox(height: 12),
           ],
-        ],
           SwitchListTile(
-              contentPadding: EdgeInsets.zero,
+            contentPadding: EdgeInsets.zero,
               title: const Text('全天事件',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
               value: _isAllDay,
@@ -3603,6 +3556,125 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
             ),
           ],
         ]),
+      ),
+    );
+  }
+
+  Widget _buildTeamCollabSection() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isTeamSelected = _selectedTeamUuid != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isTeamSelected ? colorScheme.primary.withOpacity(0.05) : colorScheme.surfaceVariant.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isTeamSelected ? colorScheme.primary.withOpacity(0.3) : colorScheme.outline.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 12, right: 12),
+            child: Row(
+              children: [
+                Icon(
+                  isTeamSelected ? Icons.groups_rounded : Icons.person_rounded,
+                  size: 20,
+                  color: isTeamSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isTeamSelected ? "团队协作任务" : "个人私有任务",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: isTeamSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: _selectedTeamUuid,
+                isExpanded: true,
+                hint: const Text("选择归属团队"),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text("仅自己可见 (个人)"),
+                  ),
+                  ..._teams.map((t) => DropdownMenuItem<String?>(
+                        value: t.uuid,
+                        child: Text(t.name),
+                      )),
+                ],
+                onChanged: (val) {
+                  setState(() {
+                    _selectedTeamUuid = val;
+                  });
+                },
+              ),
+            ),
+          ),
+          if (isTeamSelected) ...[
+            const Divider(height: 1, indent: 12, endIndent: 12),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "完成规则 (全队如何判定完成？)",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 0,
+                        icon: Icon(Icons.sync_rounded, size: 18),
+                        label: Text("全队同步"),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        icon: Icon(Icons.person_pin_rounded, size: 18),
+                        label: Text("成员独立"),
+                      ),
+                    ],
+                    selected: {_collabType},
+                    onSelectionChanged: (Set<int> selection) {
+                      setState(() => _collabType = selection.first);
+                    },
+                    style: SegmentedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _collabType == 0 
+                      ? "💡 一人勾选，全队该任务都标记为已完成。适用于共同目标或协作项目。"
+                      : "💡 每位成员需单独勾选。用于打卡、各自的任务，每个人进度互不干涉。",
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+        ],
       ),
     );
   }
