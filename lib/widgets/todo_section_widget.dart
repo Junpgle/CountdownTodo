@@ -1728,14 +1728,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                 updatedList.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
                                                 widget.onTodosChanged(updatedList);
 
-                                                // 🚀 新增：同步团队独立任务状态
-                                                if (todo.teamUuid != null && todo.collabType == 1) {
-                                                  if (val) {
-                                                    unawaited(ApiService.selfCompleteTodo(todo.id));
-                                                  } else {
-                                                    unawaited(ApiService.selfResetTodo(todo.id));
-                                                  }
-                                                }
 
                                                 if (val && !wasDone) {
                                                   // 播放动画后清理
@@ -3068,7 +3060,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
   String? _username;
   List<Team> _teams = [];
   String? _selectedTeamUuid;
-  int _collabType = 0; // 🚀 协同类型
+  int _collabType = 0;
   bool _syncFolderToTeam = false;
 
   @override
@@ -3095,7 +3087,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     _selectedGroupId = t.groupId;
     _reminderMinutes = t.reminderMinutes ?? 5;
     _selectedTeamUuid = t.teamUuid;
-    _collabType = t.collabType; // 🚀 初始化协作类型
+    _collabType = t.collabType;
     _loadCategoryDefaults();
     _loadTeams();
   }
@@ -3143,19 +3135,16 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     todo.groupId = _selectedGroupId;
     todo.reminderMinutes = _reminderMinutes;
     todo.teamUuid = _selectedTeamUuid;
-    todo.collabType = _collabType; // 🚀 保存协作类型
+    todo.collabType = _collabType;
     todo.markAsChanged();
 
-    // 🚀 核心逻辑处理：文件夹跟随同步
     if (_syncFolderToTeam && _selectedGroupId != null && _selectedTeamUuid != null) {
       final groups = List<TodoGroup>.from(widget.todoGroups);
       final idx = groups.indexWhere((g) => g.id == _selectedGroupId);
       if (idx != -1) {
         groups[idx].teamUuid = _selectedTeamUuid;
-        // 同时根据团队 ID 获取团队名称（防御性写法）
         final team = _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull;
         if (team != null) groups[idx].teamName = team.name;
-        
         groups[idx].markAsChanged();
         StorageService.saveTodoGroups(widget.username, groups);
         widget.onGroupsChanged(groups);
@@ -3168,21 +3157,26 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 🛡️ 核心修复：防御性去重并检查文件夹是否存在
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final bgColor = theme.brightness == Brightness.light ? const Color(0xFFF2F2F7) : theme.colorScheme.surface;
+
     final uniqueFolderMap = <String, TodoGroup>{};
     for (var g in widget.todoGroups) {
       if (g.id.isNotEmpty) uniqueFolderMap[g.id] = g;
     }
     final availableGroups = uniqueFolderMap.values.toList();
-
-    // 如果当前选中的文件夹在列表中不存在，回退为 null 避免崩溃
     final effectiveGroupId = (availableGroups.any((g) => g.id == _selectedGroupId))
         ? _selectedGroupId
         : null;
 
     return Scaffold(
+      backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text('编辑待办'),
+        backgroundColor: bgColor,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         actions: [
           IconButton(
             onPressed: () async {
@@ -3192,14 +3186,8 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                   title: const Text('删除待办'),
                   content: const Text('确定要删除这条待办吗？'),
                   actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('取消')),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child:
-                          const Text('删除', style: TextStyle(color: Colors.red)),
-                    ),
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除', style: TextStyle(color: Colors.red))),
                   ],
                 ),
               );
@@ -3210,443 +3198,409 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                 if (mounted) Navigator.pop(context);
               }
             },
-            icon: const Icon(Icons.delete_outline_rounded,
-                color: Colors.redAccent),
+            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
             tooltip: '删除待办',
           ),
           const SizedBox(width: 8),
-          FilledButton.icon(
-              onPressed: _save,
-              icon: const Icon(Icons.check, size: 18),
-              label: const Text('保存'),
-              style: FilledButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)))),
-          const SizedBox(width: 12),
+          TextButton(onPressed: _save, child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          TextField(
-              controller: _titleCtrl,
-              decoration: InputDecoration(
-                  labelText: '待办内容',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)))),
-          const SizedBox(height: 12),
-          TextField(
-              controller: _remarkCtrl,
-              decoration: InputDecoration(
-                  labelText: '备注 (可选)',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12))),
-              maxLines: 3,
-              minLines: 1),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            value: effectiveGroupId,
-            decoration: InputDecoration(
-              labelText: '所属文件夹 (可选)',
-              prefixIcon: const Icon(Icons.folder_outlined),
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)],
             ),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('无计划 / 未分类'),
-              ),
-              ...availableGroups.map((g) => DropdownMenuItem<String?>(
-                    value: g.id,
-                    child: Text(g.name),
-                  )),
-            ],
-            onChanged: (val) {
-              setState(() {
-                _selectedGroupId = val;
-                if (val != null && _categoryReminderDefaults.containsKey(val)) {
-                  _reminderMinutes = _categoryReminderDefaults[val]!;
-                } else if (val == null) {
-                  _reminderMinutes = 5;
-                }
-              });
-            },
-          ),
-          // 🚀 智能提示：如果任务选了团队，但文件夹是私有的，提示是否一并同步
-          if (_selectedTeamUuid != null && effectiveGroupId != null)
-            Builder(builder: (context) {
-              final folder = uniqueFolderMap[effectiveGroupId];
-              if (folder != null && folder.teamUuid != _selectedTeamUuid) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8.0, left: 4.0),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: Checkbox(
-                          value: _syncFolderToTeam,
-                          onChanged: (val) => setState(() => _syncFolderToTeam = val ?? false),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          "将文件夹 '${folder.name}' 也同步到团队，方便队友查看分类",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).colorScheme.primary,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-              return const SizedBox.shrink();
-            }),
-          const SizedBox(height: 12),
-          if (_teams.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _buildTeamCollabSection(),
-            const SizedBox(height: 12),
-          ],
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-              title: const Text('全天事件',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-              value: _isAllDay,
-              activeColor: Theme.of(context).colorScheme.primary,
-              onChanged: (val) {
-                setState(() {
-                  _isAllDay = val;
-                  if (_isAllDay) {
-                    _createdDate = DateTime(_createdDate.year,
-                        _createdDate.month, _createdDate.day, 0, 0);
-                    _dueDate = _dueDate != null
-                        ? DateTime(_dueDate!.year, _dueDate!.month,
-                            _dueDate!.day, 23, 59)
-                        : DateTime(_createdDate.year, _createdDate.month,
-                            _createdDate.day, 23, 59);
-                  }
-                });
-              }),
-          ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                  '开始时间: ${DateFormat(_isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(_createdDate)}'),
-              trailing: Icon(Icons.edit_calendar,
-                  size: 20, color: Theme.of(context).colorScheme.primary),
-              onTap: () async {
-                final pickedDate = await showDatePicker(
-                    context: context,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                    initialDate: _createdDate);
-                if (pickedDate != null) {
-                  if (_isAllDay)
-                    setState(() => _createdDate = DateTime(pickedDate.year,
-                        pickedDate.month, pickedDate.day, 0, 0));
-                  else {
-                    if (!mounted) return;
-                    final pickedTime = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay.fromDateTime(_createdDate));
-                    if (pickedTime != null)
-                      setState(() => _createdDate = DateTime(
-                          pickedDate.year,
-                          pickedDate.month,
-                          pickedDate.day,
-                          pickedTime.hour,
-                          pickedTime.minute));
-                  }
-                }
-              }),
-          ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(_dueDate == null
-                  ? '设置截止时间 (可选)'
-                  : '截止时间: ${DateFormat(_isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(_dueDate!)}'),
-              trailing: Icon(Icons.event,
-                  size: 20, color: Theme.of(context).colorScheme.primary),
-              onTap: () async {
-                final pickedDate = await showDatePicker(
-                    context: context,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                    initialDate: _dueDate ?? _createdDate);
-                if (pickedDate != null) {
-                  if (_isAllDay)
-                    setState(() => _dueDate = DateTime(pickedDate.year,
-                        pickedDate.month, pickedDate.day, 23, 59));
-                  else {
-                    if (!mounted) return;
-                    final pickedTime = await showTimePicker(
-                        context: context,
-                        initialTime:
-                            TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
-                    if (pickedTime != null)
-                      setState(() => _dueDate = DateTime(
-                          pickedDate.year,
-                          pickedDate.month,
-                          pickedDate.day,
-                          pickedTime.hour,
-                          pickedTime.minute));
-                  }
-                }
-              }),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<int>(
-            value: _reminderMinutes,
-            decoration: InputDecoration(
-              labelText: "温馨提醒 (提前量)",
-              prefixIcon: const Icon(Icons.notifications_active_outlined),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            items: const [
-              DropdownMenuItem(value: 0, child: Text("准时提醒")),
-              DropdownMenuItem(value: 5, child: Text("提前 5 分钟")),
-              DropdownMenuItem(value: 10, child: Text("提前 10 分钟")),
-              DropdownMenuItem(value: 15, child: Text("提前 15 分钟")),
-              DropdownMenuItem(value: 30, child: Text("提前 30 分钟")),
-              DropdownMenuItem(value: 45, child: Text("提前 45 分钟")),
-              DropdownMenuItem(value: 60, child: Text("提前 1 小时")),
-              DropdownMenuItem(value: 120, child: Text("提前 2 小时")),
-              DropdownMenuItem(value: 1440, child: Text("提前 1 天")),
-            ],
-            onChanged: (val) {
-              if (val != null) {
-                setState(() => _reminderMinutes = val);
-              }
-            },
-          ),
-          const Divider(),
-          DropdownButtonFormField<RecurrenceType>(
-              value: _recurrence,
-              decoration: InputDecoration(
-                  labelText: '循环设置 (可选)',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12))),
-              items: const [
-                DropdownMenuItem(
-                    value: RecurrenceType.none, child: Text('不重复')),
-                DropdownMenuItem(
-                    value: RecurrenceType.daily, child: Text('每天重复')),
-                DropdownMenuItem(
-                    value: RecurrenceType.weekly, child: Text('每周重复')),
-                DropdownMenuItem(
-                    value: RecurrenceType.monthly, child: Text('每月重复')),
-                DropdownMenuItem(
-                    value: RecurrenceType.yearly, child: Text('每年重复')),
-                DropdownMenuItem(
-                    value: RecurrenceType.weekdays, child: Text('工作日')),
-                DropdownMenuItem(
-                    value: RecurrenceType.customDays, child: Text('间隔几天')),
-              ],
-              onChanged: (val) => setState(() => _recurrence = val!)),
-          if (_recurrence == RecurrenceType.customDays)
-            Padding(
-                padding: const EdgeInsets.only(top: 12.0),
-                child: TextField(
-                    controller: _customDaysCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                        labelText: '间隔天数',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12))),
-                    onChanged: (val) =>
-                        setState(() => _customDays = int.tryParse(val)))),
-          if (_recurrence != RecurrenceType.none)
-            ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(_recurrenceEndDate == null
-                    ? '循环截止日期 (可选)'
-                    : '循环结束: ${DateFormat('yyyy-MM-dd').format(_recurrenceEndDate!)}'),
-                trailing: Icon(Icons.event_busy,
-                    size: 20, color: Theme.of(context).colorScheme.primary),
-                onTap: () async {
-                  final picked = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime(2100),
-                      initialDate: _recurrenceEndDate ??
-                          DateTime.now().add(const Duration(days: 30)));
-                  if (picked != null)
-                    setState(() => _recurrenceEndDate = picked);
-                }),
-          if (widget.todo.imagePath != null) ...[
-            const SizedBox(height: 20),
-            const Text('分析原始图片',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            GestureDetector(
-              onTap: () => _showFullImage(context, widget.todo.imagePath!),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(
-                  File(widget.todo.imagePath!),
-                  height: 200,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (ctx, _, __) => Container(
-                    height: 100,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Center(
-                        child: Text('图片已过期或被删除',
-                            style: TextStyle(color: Colors.grey))),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _titleCtrl,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  decoration: const InputDecoration(hintText: "待办内容", border: InputBorder.none),
+                ),
+                const Divider(height: 1),
+                TextField(
+                  controller: _remarkCtrl,
+                  maxLines: 3,
+                  minLines: 1,
+                  style: const TextStyle(fontSize: 15),
+                  decoration: InputDecoration(
+                    hintText: "备注 (可选)",
+                    hintStyle: TextStyle(color: Colors.grey.withOpacity(0.8)),
+                    border: InputBorder.none,
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
-          if (widget.todo.originalText != null &&
-              widget.todo.originalText!.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            const Text('分析原始文字',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("时间与提醒", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Row(
+                children: [
+                  const Text("全天事件", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    height: 24,
+                    child: Switch(
+                      value: _isAllDay,
+                      onChanged: (val) {
+                        setState(() {
+                          _isAllDay = val;
+                          if (_isAllDay) {
+                            _createdDate = DateTime(_createdDate.year, _createdDate.month, _createdDate.day, 0, 0);
+                            _dueDate = _dueDate != null
+                                ? DateTime(_dueDate!.year, _dueDate!.month, _dueDate!.day, 23, 59)
+                                : DateTime(_createdDate.year, _createdDate.month, _createdDate.day, 23, 59);
+                          }
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildSquareTile(
+                title: "开始时间",
+                subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm').format(_createdDate),
+                icon: Icons.play_circle_fill,
+                color: Colors.blueAccent,
+                onTap: () async {
+                  final pickedDate = await showDatePicker(context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: _createdDate);
+                  if (pickedDate != null) {
+                    if (_isAllDay) setState(() => _createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
+                    else {
+                      final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_createdDate));
+                      if (pickedTime != null) setState(() => _createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+                    }
+                  }
+                },
+              )),
+              const SizedBox(width: 12),
+              Expanded(child: _buildSquareTile(
+                title: "截止时间",
+                subtitle: _dueDate == null ? "未设置" : DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm').format(_dueDate!),
+                icon: Icons.stop_circle_rounded,
+                color: Colors.deepOrangeAccent,
+                onTap: () async {
+                  final pickedDate = await showDatePicker(context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: _dueDate ?? _createdDate);
+                  if (pickedDate != null) {
+                    if (_isAllDay) setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
+                    else {
+                      final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
+                      if (pickedTime != null) setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+                    }
+                  }
+                },
+              )),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildPopupSquareTile<int>(
+                title: "任务提醒",
+                subtitle: _getReminderText(_reminderMinutes),
+                icon: Icons.notifications_active_rounded,
+                color: Colors.purpleAccent,
+                value: _reminderMinutes,
+                items: [0, 5, 10, 15, 30, 45, 60, 120, 1440].map((m) => PopupMenuItem(value: m, child: Text(_getReminderText(m)))).toList(),
+                onSelected: (val) => setState(() => _reminderMinutes = val),
+              )),
+              const SizedBox(width: 12),
+              Expanded(child: _buildPopupSquareTile<RecurrenceType>(
+                title: "循环规则",
+                subtitle: _getRecurrenceLabel(_recurrence),
+                icon: Icons.replay_rounded,
+                color: Colors.teal,
+                value: _recurrence,
+                items: [RecurrenceType.none, RecurrenceType.daily, RecurrenceType.weekly, RecurrenceType.monthly, RecurrenceType.yearly, RecurrenceType.weekdays, RecurrenceType.customDays].map((r) => PopupMenuItem(value: r, child: Text(_getRecurrenceLabel(r)))).toList(),
+                onSelected: (val) => setState(() => _recurrence = val),
+              )),
+            ],
+          ),
+          if (_recurrence != RecurrenceType.none)
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey[300]!),
-              ),
-              child: SelectableText(
-                widget.todo.originalText!,
-                style: const TextStyle(fontSize: 14, color: Colors.black87),
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black.withOpacity(0.04))),
+              child: Column(
+                children: [
+                  if (_recurrence == RecurrenceType.customDays) ...[
+                    Row(
+                      children: [
+                        const Text("每隔"),
+                        const SizedBox(width: 12),
+                        Expanded(child: TextField(controller: _customDaysCtrl, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))), onChanged: (val) => setState(() => _customDays = int.tryParse(val)))),
+                        const SizedBox(width: 12),
+                        const Text("天重复"),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                  ],
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(context: context, firstDate: DateTime.now(), lastDate: DateTime(2100), initialDate: _recurrenceEndDate ?? DateTime.now().add(const Duration(days: 30)));
+                      if (picked != null) setState(() => _recurrenceEndDate = picked);
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("循环截止日期"),
+                        Row(children: [Text(_recurrenceEndDate == null ? "未指定" : DateFormat('yyyy-MM-dd').format(_recurrenceEndDate!), style: TextStyle(color: _recurrenceEndDate == null ? Colors.grey : colorScheme.primary)), const Icon(Icons.chevron_right, color: Colors.grey, size: 20)]),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
+          const SizedBox(height: 24),
+          if (availableGroups.isNotEmpty || _teams.isNotEmpty) ...[
+            const Text("组织与协作", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (availableGroups.isNotEmpty)
+                  Expanded(child: _buildPopupSquareTile<String>(
+                    title: "归属文件夹",
+                    subtitle: effectiveGroupId == null ? "未分类" : (availableGroups.where((g) => g.id == effectiveGroupId).firstOrNull?.name ?? '未知'),
+                    icon: Icons.folder_rounded,
+                    color: Colors.amber.shade600,
+                    value: effectiveGroupId ?? "__none__",
+                    items: [const PopupMenuItem<String>(value: "__none__", child: Text("未分类")), ...availableGroups.map((g) => PopupMenuItem(value: g.id, child: Text(g.name)))],
+                    onSelected: (v) => setState(() {
+                      _selectedGroupId = v == "__none__" ? null : v;
+                      if (_selectedGroupId != null && _categoryReminderDefaults.containsKey(_selectedGroupId)) _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
+                      else if (_selectedGroupId == null) _reminderMinutes = 5;
+                    }),
+                  )),
+                if (availableGroups.isNotEmpty && _teams.isNotEmpty) const SizedBox(width: 12),
+                if (_teams.isNotEmpty)
+                  Expanded(child: _buildPopupSquareTile<String>(
+                    title: "团队归属",
+                    subtitle: _selectedTeamUuid == null ? "个人私有" : (_teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name ?? '未知'),
+                    icon: Icons.groups_rounded,
+                    color: Colors.indigoAccent,
+                    value: _selectedTeamUuid ?? "__none__",
+                    items: [const PopupMenuItem<String>(value: "__none__", child: Text("个人私有 (仅自己可见)")), ..._teams.map((t) => PopupMenuItem(value: t.uuid, child: Text(t.name)))],
+                    onSelected: (v) => setState(() => _selectedTeamUuid = v == "__none__" ? null : v),
+                  )),
+              ],
+            ),
+            if (_selectedTeamUuid != null) _buildCompactTeamSection(),
+            const SizedBox(height: 12),
+            if (_selectedTeamUuid != null && effectiveGroupId != null)
+              Builder(builder: (context) {
+                final folder = uniqueFolderMap[effectiveGroupId];
+                if (folder != null && folder.teamUuid != _selectedTeamUuid) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8.0, left: 4.0),
+                    child: Row(
+                      children: [
+                        SizedBox(height: 24, width: 24, child: Checkbox(value: _syncFolderToTeam, onChanged: (val) => setState(() => _syncFolderToTeam = val ?? false))),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text("将文件夹 '${folder.name}' 也同步到团队，方便队友查看分类", style: TextStyle(fontSize: 12, color: colorScheme.primary, fontStyle: FontStyle.italic))),
+                      ],
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
+            const SizedBox(height: 24),
+          ],
+          if (widget.todo.imagePath != null || (widget.todo.originalText != null && widget.todo.originalText!.isNotEmpty)) ...[
+             const Text("原始分析来源", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+             const SizedBox(height: 12),
+             if (widget.todo.imagePath != null) 
+                GestureDetector(onTap: () => _showFullImage(context, widget.todo.imagePath!), child: Container(height: 160, width: double.infinity, decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), image: DecorationImage(image: FileImage(File(widget.todo.imagePath!)), fit: BoxFit.cover)))),
+             if (widget.todo.originalText != null && widget.todo.originalText!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black.withOpacity(0.04))), child: Text(widget.todo.originalText!, style: const TextStyle(fontSize: 13, color: Colors.grey))),
+             ],
+             const SizedBox(height: 24),
           ],
         ]),
       ),
     );
   }
 
-  Widget _buildTeamCollabSection() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isTeamSelected = _selectedTeamUuid != null;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isTeamSelected ? colorScheme.primary.withOpacity(0.05) : colorScheme.surfaceVariant.withOpacity(0.3),
+  Widget _buildSquareTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      elevation: 0,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isTeamSelected ? colorScheme.primary.withOpacity(0.3) : colorScheme.outline.withOpacity(0.1),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 12, top: 12, right: 12),
-            child: Row(
-              children: [
-                Icon(
-                  isTeamSelected ? Icons.groups_rounded : Icons.person_rounded,
-                  size: 20,
-                  color: isTeamSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isTeamSelected ? "团队协作任务" : "个人私有任务",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: isTeamSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+        child: Container(
+          height: 105,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.black.withOpacity(0.04)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.01),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              )
+            ],
           ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String?>(
-                value: _selectedTeamUuid,
-                isExpanded: true,
-                hint: const Text("选择归属团队"),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text("仅自己可见 (个人)"),
-                  ),
-                  ..._teams.map((t) => DropdownMenuItem<String?>(
-                        value: t.uuid,
-                        child: Text(t.name),
-                      )),
-                ],
-                onChanged: (val) {
-                  setState(() {
-                    _selectedTeamUuid = val;
-                  });
-                },
-              ),
-            ),
-          ),
-          if (isTeamSelected) ...[
-            const Divider(height: 1, indent: 12, endIndent: 12),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(icon, color: color, size: 26),
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "完成规则 (全队如何判定完成？)",
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 10),
-                  SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(
-                        value: 0,
-                        icon: Icon(Icons.sync_rounded, size: 18),
-                        label: Text("全队同步"),
-                      ),
-                      ButtonSegment(
-                        value: 1,
-                        icon: Icon(Icons.person_pin_rounded, size: 18),
-                        label: Text("成员独立"),
-                      ),
-                    ],
-                    selected: {_collabType},
-                    onSelectionChanged: (Set<int> selection) {
-                      setState(() => _collabType = selection.first);
-                    },
-                    style: SegmentedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
+                  Text(title, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  const SizedBox(height: 2),
                   Text(
-                    _collabType == 0 
-                      ? "💡 一人勾选，全队该任务都标记为已完成。适用于共同目标或协作项目。"
-                      : "💡 每位成员需单独勾选。用于打卡、各自的任务，每个人进度互不干涉。",
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
-                      fontStyle: FontStyle.italic,
-                    ),
+                    subtitle,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPopupSquareTile<T>({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required T value,
+    required List<PopupMenuEntry<T>> items,
+    required ValueChanged<T> onSelected,
+  }) {
+    return PopupMenuButton<T>(
+      initialValue: value,
+      onSelected: onSelected,
+      itemBuilder: (context) => items,
+      offset: const Offset(0, 45),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: _buildSquareTile(
+        title: title,
+        subtitle: subtitle,
+        icon: icon,
+        color: color,
+        onTap: null, // Let PopupMenu handle it
+      ),
+    );
+  }
+
+  String _getReminderText(int minutes) {
+    if (minutes == 0) return "准时提醒";
+    if (minutes < 60) return "提前 $minutes 分钟";
+    if (minutes < 1440) return "提前 ${minutes ~/ 60} 小时";
+    return "提前 ${minutes ~/ 1440} 天";
+  }
+
+  String _getRecurrenceLabel(RecurrenceType type) {
+    switch (type) {
+      case RecurrenceType.none: return "不重复";
+      case RecurrenceType.daily: return "每天";
+      case RecurrenceType.weekly: return "每周";
+      case RecurrenceType.monthly: return "每月";
+      case RecurrenceType.yearly: return "每年";
+      case RecurrenceType.weekdays: return "工作日";
+      case RecurrenceType.customDays: return "自定义";
+    }
+  }
+
+  Widget _buildCompactTeamSection() {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text("完成规则", style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500)),
+          SizedBox(
+            width: 140,
+            child: _buildCustomSegmentedControl(
+              labels: const ["全队同步", "各自独立"],
+              selectedIndex: _collabType,
+              onChanged: (idx) => setState(() => _collabType = idx),
             ),
-          ],
-          const SizedBox(height: 4),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCustomSegmentedControl({
+    required List<String> labels,
+    required int selectedIndex,
+    required ValueChanged<int> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
+    return Container(
+      height: 36,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: List.generate(labels.length, (index) {
+          final isSelected = selectedIndex == index;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(index),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.all(2),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isSelected ? colorScheme.surface : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: isSelected ? [
+                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 1))
+                  ] : [],
+                ),
+                child: Text(
+                  labels[index],
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }

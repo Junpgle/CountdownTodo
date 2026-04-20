@@ -83,15 +83,21 @@ class ReminderScheduleService {
     }
   }
 
+  static int _lastScheduleTime = 0;
+  static const int _debounceMs = 2000;
+
   /// 根据最新的待办 + 课程列表，重新调度所有未来提醒。
-  /// 在以下时机调用：
-  ///   1. App 启动完成
-  ///   2. 用户新增 / 修改 / 删除待办或课程
-  ///   3. 同步完成后
   static Future<void> scheduleAll({
     required List<TodoItem> todos,
     required List<CourseItem> courses,
+    bool force = false,
   }) async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (!force && (nowMs - _lastScheduleTime < _debounceMs)) {
+      return;
+    }
+    _lastScheduleTime = nowMs;
+
     final now = DateTime.now();
     final limit = now.add(const Duration(days: 7));
     final reminders = <Map<String, dynamic>>[];

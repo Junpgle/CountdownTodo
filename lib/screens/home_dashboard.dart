@@ -138,12 +138,14 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
-  int _todoUpdateSignal = 0; // 🚀 强制组件重绘信号量
+  bool _isDataLoading = false; // 🚀 加载锁，防止并发触发导致的数据库竞争
+  int _todoUpdateSignal = 0; // 🚀 协同更新信号
   String? _currentSelectedTeamUuid; // 🚀 选中的团队 ID
   String? _currentSelectedTeamName; // 🚀 选中的团队名称
   Timer? _localPomodoroTicker;
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
+  Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
 
   // === 初始化与生命周期 ===
   @override
@@ -262,6 +264,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _localPomodoroTicker?.cancel();
     ExternalShareHandler.dispose();
     _courseTimer?.cancel();
+    _collaborativeSyncDebouncer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -605,14 +608,14 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
         break;
       case 'TEAM_REMOVED':
+        debugPrint('🚀 [协同] 收到强制移除信号，立即执行同步与本地清理...');
+        await _handleManualSync(silent: true);
+        if (mounted) _loadAllData();
+        break;
+
       case 'TEAM_UPDATE':
       case 'SYNC_DATA':
-        debugPrint('🚀 [协同] 收到团队更新/移除信号 (${signal.action})，正在同步数据...');
-        await _handleManualSync(silent: true);
-        // 🚀 核心修复：协作信号驱动下，强制重新加载数据，不依赖 hasChanges 判断
-        if (mounted) {
-           _loadAllData();
-        }
+        _debounceCollaborativeSync();
         break;
 
       case 'START':
@@ -1578,44 +1581,72 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
+  void _debounceCollaborativeSync() {
+    _collaborativeSyncDebouncer?.cancel();
+    _collaborativeSyncDebouncer = Timer(const Duration(milliseconds: 1500), () async {
+      if (!mounted) return;
+      debugPrint('🔄 [协同] 防抖触发：执行批量同步与界面刷新...');
+      await _handleManualSync(silent: true);
+      // 🚀 核心修复：协作信号驱动下，强制重新加载数据，不依赖 hasChanges 判断
+      if (mounted) {
+        _loadAllData();
+      }
+    });
+  }
+
   // 🚀 核心重构：渲染主页时，绝对不能将 isDeleted 的数据加载到视图层！
   Future<void> _loadAllData() async {
-    final allCountdowns = await StorageService.getCountdowns(widget.username);
-    final allTodos = await StorageService.getTodos(widget.username);
-    final allGroups = await StorageService.getTodoGroups(widget.username);
-    final stats = await StorageService.getMathStats(widget.username);
-    final courseData = await CourseService.getDashboardCourses();
+    if (_isDataLoading) return;
+    _isDataLoading = true;
 
-    if (mounted) {
-      setState(() {
-        _countdowns = allCountdowns.where((c) => !c.isDeleted).toList();
-        _todos = allTodos.where((t) => !t.isDeleted).toList();
-        _todoGroups = allGroups.where((g) => !g.isDeleted).toList();
-        _mathStats = stats;
-        _dashboardCourseData = courseData;
-        _todoUpdateSignal++; // 🚀 触发重绘
-      });
-      // 🧪 诊断打印：确认 UI 内存中的数据量
-      debugPrint('📊 [DashboardLoader] 总数: ${_todos.length}, 数据库读取: ${allTodos.length}');
-      for (var t in _todos.take(3)) {
-         debugPrint('   - Item: ${t.title} (UUID: ${t.id}, Team: ${t.teamUuid})');
+    try {
+      debugPrint('📊 [DashboardLoader] 正在加载全量数据...');
+      final startTime = DateTime.now();
+
+      // 1. 读取基础数据 (并发执行，提升冷启速度)
+      final results = await Future.wait([
+        StorageService.getTodos(widget.username),
+        StorageService.getTodoGroups(widget.username),
+        StorageService.getCountdowns(widget.username),
+        StorageService.getMathStats(widget.username),
+        CourseService.getDashboardCourses(),
+      ]);
+
+      final List<TodoItem> allTodos = (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList();
+      final List<TodoGroup> allGroups = (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList();
+      final List<CountdownItem> allCountdowns = (results[2] as List<CountdownItem>).where((c) => !c.isDeleted).toList();
+      final Map<String, dynamic> mathStats = results[3] as Map<String, dynamic>;
+      final Map<String, dynamic> courseData = results[4] as Map<String, dynamic>;
+
+      if (mounted) {
+        setState(() {
+          _todos = allTodos;
+          _todoGroups = allGroups;
+          _countdowns = allCountdowns;
+          _mathStats = mathStats;
+          _dashboardCourseData = courseData;
+          _todoUpdateSignal++; // 🚀 触发重绘
+        });
+
+        // 2. 交互与同步逻辑 (异步执行)
+        _syncTodoNotification();
+        WidgetService.updateTodoWidget(allTodos);
+
+        final allCourses = await CourseService.getAllCourses();
+        unawaited(ReminderScheduleService.scheduleAll(
+          todos: allTodos,
+          courses: allCourses,
+        ));
       }
-      _syncTodoNotification();
-      await WidgetService.updateTodoWidget(_todos);
 
-      // 保活：重新调度未来 7 天内的提醒 Alarm（后台异步，不阻塞 UI）
-      final allCourses = await CourseService.getAllCourses();
-      unawaited(ReminderScheduleService.scheduleAll(
-        todos: _todos,
-        courses: allCourses,
-      ));
-
-      // 更新原生灵动岛 TopBar 数据（首次创建由 addPostFrameCallback 负责）
-      if (Platform.isWindows) {
-        FloatWindowService.invalidateSlotCache();
-      }
+      final duration = DateTime.now().difference(startTime);
+      debugPrint('✅ [DashboardLoader] 加载成功: ${allTodos.length} Todos, ${allCountdowns.length} Countdowns, 耗时: ${duration.inMilliseconds}ms');
+    } catch (e) {
+      debugPrint('❌ [DashboardLoader] 加载失败: $e');
+    } finally {
+      _isDataLoading = false;
+      _initManifestWallpaper(); // 🚀 保持原有的壁纸初始化
     }
-    _initManifestWallpaper();
   }
 
   Future<void> _rescheduleAlarms() async {

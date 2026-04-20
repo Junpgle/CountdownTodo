@@ -99,6 +99,8 @@ class StorageService {
       "windows_scheduled_reminders";
 
   static bool _isSyncing = false;
+  static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
+  static bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
   /// 🚀 Uni-Sync: 全局数据刷新通知器
@@ -497,7 +499,11 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     final Map<String, TodoItem> dedupeMap = {};
 
-    _recurrenceCheckCache.clear();
+    // 🚀 核心优化：只有在非同步源保存时才清理，防止 saveTodos -> getTodos 循环触发
+    if (sync && !isSyncSource) {
+      _recurrenceCheckCache.clear();
+    }
+
     for (var item in items) {
       final existing = dedupeMap[item.id];
       if (existing == null || item.updatedAt > existing.updatedAt) {
@@ -541,7 +547,11 @@ class StorageService {
         'created_date': item.createdDate ?? item.createdAt,
         'created_at': item.createdAt,
         'updated_at': item.updatedAt,
-        'collab_type': item.collabType
+        'collab_type': item.collabType,
+        'recurrence': item.recurrence.index,
+        'custom_interval_days': item.customIntervalDays,
+        'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch,
+        'reminder_minutes': item.reminderMinutes,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
@@ -577,7 +587,14 @@ class StorageService {
       'version': item.version,
       'updated_at': item.updatedAt,
       'created_at': item.createdAt,
-      'collab_type': item.collabType
+      'due_date': item.dueDate?.millisecondsSinceEpoch,
+      'group_id': item.groupId,
+      'created_date': item.createdDate,
+      'collab_type': item.collabType,
+      'recurrence': item.recurrence.index,
+      'custom_interval_days': item.customIntervalDays,
+      'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch,
+      'reminder_minutes': item.reminderMinutes,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     // 2. 补齐 Oplog，确保离线更新能被同步
@@ -635,6 +652,12 @@ class StorageService {
           creatorName: m['creator_name'],
           groupId: m['group_id'], 
           collabType: m['collab_type'] ?? 0,
+          recurrence: RecurrenceType.values[m['recurrence'] as int? ?? 0],
+          customIntervalDays: m['custom_interval_days'] as int?,
+          recurrenceEndDate: m['recurrence_end_date'] != null 
+              ? DateTime.fromMillisecondsSinceEpoch(m['recurrence_end_date'] as int) 
+              : null,
+          reminderMinutes: m['reminder_minutes'] as int?,
         )).toList();
         return await _handleRecurrenceLogic(username, todos);
       }
@@ -678,39 +701,49 @@ class StorageService {
     }
 
     final cacheKey = 'recurrence_$username';
-    if (_recurrenceCheckCache.containsKey(cacheKey)) return todos;
+    if (_recurrenceCheckCache.containsKey(cacheKey) || _isCheckingRecurrence) return todos;
+    
+    _isCheckingRecurrence = true;
 
-    bool needSave = false;
-    for (var todo in todos) {
-      if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
-      if (todo.recurrenceEndDate != null && today.isAfter(todo.recurrenceEndDate!)) continue;
+    try {
+      bool needSave = false;
+      for (var todo in todos) {
+        if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
+        if (todo.recurrenceEndDate != null && today.isAfter(todo.recurrenceEndDate!)) continue;
 
-      final DateTime baseLocal = _getRecurrenceBaseDate(todo);
-      final DateTime baseDay = DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
-      final DateTime todayDay = DateTime(today.year, today.month, today.day);
+        final DateTime baseLocal = _getRecurrenceBaseDate(todo);
+        final DateTime baseDay = DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
+        final DateTime todayDay = DateTime(today.year, today.month, today.day);
 
-      if (todo.recurrence == RecurrenceType.daily && todayDay.isAfter(baseDay)) {
-        todo.isDone = false;
-        _rollRecurrenceDateToToday(todo, today);
-        todo.markAsChanged();
-        needSave = true;
-      } else if (todo.recurrence == RecurrenceType.customDays && todo.customIntervalDays != null && todo.customIntervalDays! > 0) {
-        int diffDays = todayDay.difference(baseDay).inDays;
-        if (diffDays >= todo.customIntervalDays!) {
+        if (todo.recurrence == RecurrenceType.daily && todayDay.isAfter(baseDay)) {
           todo.isDone = false;
-          int periods = diffDays ~/ todo.customIntervalDays!;
-          _rollRecurrenceDateByDays(todo, periods * todo.customIntervalDays!);
+          _rollRecurrenceDateToToday(todo, today);
           todo.markAsChanged();
           needSave = true;
+        } else if (todo.recurrence == RecurrenceType.customDays && todo.customIntervalDays != null && todo.customIntervalDays! > 0) {
+          int diffDays = todayDay.difference(baseDay).inDays;
+          if (diffDays >= todo.customIntervalDays!) {
+            todo.isDone = false;
+            int periods = diffDays ~/ todo.customIntervalDays!;
+            _rollRecurrenceDateByDays(todo, periods * todo.customIntervalDays!);
+            todo.markAsChanged();
+            needSave = true;
+          }
         }
       }
-    }
 
-    if (needSave) {
-      await saveTodos(username, todos, sync: true);
+      if (needSave) {
+        debugPrint("🚀 [Recurrence] 发现重复任务需要滚动，正在保存...");
+        await saveTodos(username, todos, sync: true);
+      }
+      _recurrenceCheckCache[cacheKey] = true;
+      _isCheckingRecurrence = false;
+      return todos;
+    } catch (e) {
+      debugPrint("❌ [Recurrence] 逻辑异常: $e");
+      _isCheckingRecurrence = false;
+      return todos;
     }
-    _recurrenceCheckCache[cacheKey] = true;
-    return todos;
   }
 
   static bool _isSameDay(DateTime a, DateTime b) {
@@ -1307,25 +1340,12 @@ class StorageService {
       // 合并 Todos
       List<dynamic> serverTodos = response['server_todos'] ?? [];
 
-      // 预先建立独立待办完成情况查找表
-      final Map<String, int> icLookup = {};
-      final List<dynamic>? serverIndCompletions = response['independent_completions'];
-      if (serverIndCompletions != null) {
-        for (var ic in serverIndCompletions) {
-          icLookup[ic['todo_uuid'].toString()] = ic['is_completed'] as int;
-        }
-      }
 
       final Map<String, int> todosIndexMap = {
         for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
       };
       for (var raw in serverTodos) {
         TodoItem sItem = TodoItem.fromJson(raw);
-
-        // 🌟 核心增强：如果任务是独立类型，强制应用服务器下发的个人完成状态
-        if (sItem.collabType == 1) {
-          sItem.isDone = icLookup[sItem.id] == 1; // 默认如果不在 icLookup 中，则为 false
-        }
         if (todosIndexMap.containsKey(sItem.id)) {
           final idx = todosIndexMap[sItem.id]!;
           final local = allLocalTodos[idx];

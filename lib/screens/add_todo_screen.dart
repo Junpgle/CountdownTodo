@@ -418,6 +418,55 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     Navigator.pop(context);
   }
 
+  // ================= 自定义统一分段控制器 (替代容易崩溃的原生 SegmentedButton) =================
+  Widget _buildCustomSegmentedControl({
+    required List<String> labels,
+    required int selectedIndex,
+    required ValueChanged<int> onChanged,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: colorScheme.onSurface.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(labels.length, (index) {
+          final isSelected = selectedIndex == index;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(index),
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isSelected ? colorScheme.surface : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: isSelected ? [
+                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 1))
+                  ] : [],
+                ),
+                child: Text(
+                  labels[index],
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
   // ================= 网格化组件 (N*N Array UI Helpers) =================
 
   Widget _buildSquareTile({
@@ -552,16 +601,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        title: SegmentedButton<int>(
-          segments: const [
-            ButtonSegment(value: 0, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text("手动创建"))),
-            ButtonSegment(value: 1, label: Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text("AI 识别"))),
-          ],
-          selected: {_selectedTabIndex},
-          onSelectionChanged: (selection) => setState(() => _selectedTabIndex = selection.first),
-          style: SegmentedButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        title: SizedBox(
+          width: 200,
+          child: _buildCustomSegmentedControl(
+            labels: const ["手动创建", "AI 识别"],
+            selectedIndex: _selectedTabIndex,
+            onChanged: (idx) => setState(() => _selectedTabIndex = idx),
           ),
         ),
         actions: [
@@ -589,7 +634,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- 1. 核心标题区 ---
+          // --- 1. 核心标题与附件区 ---
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             decoration: BoxDecoration(
@@ -598,6 +643,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)],
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(
                   controller: _titleCtrl,
@@ -616,6 +662,62 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     border: InputBorder.none,
                   ),
                 ),
+                const SizedBox(height: 8),
+                // 🚀 将附件功能融合进输入卡片内部
+                if (_selectedImagePath == null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextButton.icon(
+                      onPressed: _pickAttachmentImage,
+                      icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
+                      label: const Text("添加图片"),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: Colors.grey.shade600,
+                      ),
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12, top: 4),
+                    child: Stack(
+                      children: [
+                        InkWell(
+                          onTap: _pickAttachmentImage,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              File(_selectedImagePath!),
+                              height: 140,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                height: 80,
+                                alignment: Alignment.center,
+                                color: Colors.grey.shade100,
+                                child: const Text('图片不可用，请重新选择'),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: IconButton.filled(
+                            onPressed: () => setState(() => _selectedImagePath = null),
+                            icon: const Icon(Icons.close, size: 16),
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black45,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(4),
+                              minimumSize: Size.zero,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
@@ -776,38 +878,43 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             Row(
               children: [
                 if (widget.todoGroups.isNotEmpty)
-                  Expanded(child: _buildPopupSquareTile<String?>(
+                  Expanded(child: _buildPopupSquareTile<String>(
                     title: "归属文件夹",
                     subtitle: _selectedGroupId == null ? "未分类" : (widget.todoGroups.where((g) => g.id == _selectedGroupId).firstOrNull?.name ?? '未知'),
                     icon: Icons.folder_rounded,
                     color: Colors.amber.shade600,
-                    value: _selectedGroupId,
+                    // 🚀 核心修复：使用 "__none__" 避免 Menu 返回 null 而被忽略
+                    value: _selectedGroupId ?? "__none__",
                     items: [
-                      const PopupMenuItem<String?>(value: null, child: Text("未分类")),
+                      const PopupMenuItem<String>(value: "__none__", child: Text("未分类")),
                       ...widget.todoGroups.where((g) => !g.isDeleted).map((g) => PopupMenuItem(value: g.id, child: Text(g.name)))
                     ],
                     onSelected: (v) => setState(() {
-                      _selectedGroupId = v;
-                      if (v != null && _categoryReminderDefaults.containsKey(v)) _reminderMinutes = _categoryReminderDefaults[v]!;
-                      else if (v == null) _reminderMinutes = 5;
+                      _selectedGroupId = v == "__none__" ? null : v;
+                      if (_selectedGroupId != null && _categoryReminderDefaults.containsKey(_selectedGroupId)) {
+                        _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
+                      } else if (_selectedGroupId == null) {
+                        _reminderMinutes = 5;
+                      }
                     }),
                   )),
                 if (widget.todoGroups.isNotEmpty && _teams.isNotEmpty)
                   const SizedBox(width: 12),
                 if (_teams.isNotEmpty)
-                  Expanded(child: _buildPopupSquareTile<String?>(
+                  Expanded(child: _buildPopupSquareTile<String>(
                     title: "团队归属",
                     subtitle: _selectedTeamUuid == null ? "个人私有" : (_teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name ?? '未知'),
                     icon: Icons.groups_rounded,
                     color: Colors.indigoAccent,
-                    value: _selectedTeamUuid,
+                    // 🚀 核心修复：使用 "__none__" 避免 Menu 返回 null 而被忽略
+                    value: _selectedTeamUuid ?? "__none__",
                     items: [
-                      const PopupMenuItem<String?>(value: null, child: Text("个人私有 (仅自己可见)")),
+                      const PopupMenuItem<String>(value: "__none__", child: Text("个人私有 (仅自己可见)")),
                       ..._teams.map((t) => PopupMenuItem(value: t.uuid, child: Text(t.name)))
                     ],
                     onSelected: (v) => setState(() {
-                      _selectedTeamUuid = v;
-                      _selectedTeamName = _teams.where((t) => t.uuid == v).firstOrNull?.name;
+                      _selectedTeamUuid = v == "__none__" ? null : v;
+                      _selectedTeamName = _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name;
                     }),
                   )),
               ],
@@ -817,40 +924,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             const SizedBox(height: 24),
           ],
 
-          // --- 4. 沉浸式图片附件 ---
-          const Text("附件", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: _pickAttachmentImage,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              height: _selectedImagePath == null ? 80 : 180,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.black.withOpacity(0.04)),
-                image: _selectedImagePath != null ? DecorationImage(
-                  image: FileImage(File(_selectedImagePath!)),
-                  fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.4), BlendMode.darken),
-                ) : null,
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.image_rounded, color: _selectedImagePath == null ? Colors.grey : Colors.white, size: 28),
-                    const SizedBox(height: 4),
-                    Text(
-                        _selectedImagePath == null ? "添加图片" : "点击更换图片",
-                        style: TextStyle(color: _selectedImagePath == null ? Colors.grey : Colors.white, fontWeight: FontWeight.bold)
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
           const SizedBox(height: 60),
         ],
       ),
@@ -870,16 +943,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text("完成规则", style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500)),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text("全队同步")),
-              ButtonSegment(value: 1, label: Text("各自独立")),
-            ],
-            selected: {_collabType},
-            onSelectionChanged: (val) => setState(() => _collabType = val.first),
-            style: SegmentedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          SizedBox(
+            width: 160,
+            child: _buildCustomSegmentedControl(
+              labels: const ["全队同步", "各自独立"],
+              selectedIndex: _collabType,
+              onChanged: (idx) => setState(() => _collabType = idx),
             ),
           ),
         ],

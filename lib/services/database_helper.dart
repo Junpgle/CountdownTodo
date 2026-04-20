@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 7, // 🚀 升级版本至 7，新增 todo_completions
+      version: 8, // 🚀 升级版本至 8，补全循环任务与提醒字段
       onCreate: _createDB,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 3) {
@@ -105,6 +105,26 @@ class DatabaseHelper {
               debugPrint("⚠️ Database: 创建 todo_completions 表失败: $e");
             }
         }
+
+        if (oldVersion < 8) {
+           try {
+              final columns = [
+                {'name': 'recurrence', 'type': 'INTEGER DEFAULT 0'},
+                {'name': 'custom_interval_days', 'type': 'INTEGER'},
+                {'name': 'recurrence_end_date', 'type': 'INTEGER'},
+                {'name': 'reminder_minutes', 'type': 'INTEGER'},
+              ];
+              for (var col in columns) {
+                final info = await db.rawQuery("PRAGMA table_info(todos)");
+                if (!info.any((row) => row['name'] == col['name'])) {
+                  await db.execute("ALTER TABLE todos ADD COLUMN ${col['name']} ${col['type']};");
+                  debugPrint("✅ Database: 修复字段 todos.${col['name']}");
+                }
+              }
+            } catch (e) {
+              debugPrint("⚠️ Database: 修复字段 todos 循环任务字段失败: $e");
+            }
+        }
       }
     );
   }
@@ -163,7 +183,11 @@ class DatabaseHelper {
         created_date $integerType,
         created_at $integerType,
         updated_at $integerType,
-        collab_type $integerType DEFAULT 0
+        collab_type $integerType DEFAULT 0,
+        recurrence $integerType DEFAULT 0,
+        custom_interval_days $integerType,
+        recurrence_end_date $integerType,
+        reminder_minutes $integerType
       )
     ''');
 

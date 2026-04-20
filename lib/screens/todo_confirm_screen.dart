@@ -23,6 +23,7 @@ class ParsedTodoResult {
 
   final String? teamUuid;
   final String? teamName;
+  final DateTime? recurrenceEndDate;
 
   ParsedTodoResult({
     required this.title,
@@ -38,6 +39,7 @@ class ParsedTodoResult {
     this.collabType = 0,
     this.teamUuid,
     this.teamName,
+    this.recurrenceEndDate,
   });
 
   Map<String, dynamic> toMap() {
@@ -55,6 +57,7 @@ class ParsedTodoResult {
       'collab_type': collabType,
       'team_uuid': teamUuid,
       'team_name': teamName,
+      'recurrence_end_date': recurrenceEndDate?.toIso8601String(),
     };
   }
 }
@@ -133,6 +136,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         collabType: result['collab_type'] ?? 0,
         teamUuid: widget.initialTeamUuid,
         teamName: widget.initialTeamName,
+        recurrenceEndDate: result['recurrence_end_date'] != null
+            ? DateTime.tryParse(result['recurrence_end_date'])
+            : null,
       );
     }).toList();
   }
@@ -247,6 +253,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     String? selectedGroupId = todo.groupId;
     int reminderMinutes = todo.reminderMinutes ?? 5;
     int collabType = todo.collabType;
+    RecurrenceType recurrence = todo.recurrence;
+    int? customDays = todo.customIntervalDays;
+    DateTime? recurrenceEndDate = todo.recurrenceEndDate;
+    final customDaysCtrl = TextEditingController(text: customDays?.toString() ?? '');
 
     showDialog(
       context: context,
@@ -448,6 +458,65 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       },
                     ),
                   ],
+                  const Divider(),
+                  DropdownButtonFormField<RecurrenceType>(
+                    value: recurrence,
+                    decoration: InputDecoration(
+                      labelText: '循环设置 (可选)',
+                      prefixIcon: const Icon(Icons.replay_rounded),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: RecurrenceType.none, child: Text('不重复')),
+                      DropdownMenuItem(value: RecurrenceType.daily, child: Text('每天重复')),
+                      DropdownMenuItem(value: RecurrenceType.weekly, child: Text('每周重复')),
+                      DropdownMenuItem(value: RecurrenceType.monthly, child: Text('每月重复')),
+                      DropdownMenuItem(value: RecurrenceType.yearly, child: Text('每年重复')),
+                      DropdownMenuItem(value: RecurrenceType.weekdays, child: Text('工作日')),
+                      DropdownMenuItem(value: RecurrenceType.customDays, child: Text('间隔几天')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => recurrence = val);
+                    },
+                  ),
+                  if (recurrence == RecurrenceType.customDays) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: customDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: '间隔天数',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onChanged: (val) => customDays = int.tryParse(val),
+                    ),
+                  ],
+                  if (recurrence != RecurrenceType.none) ...[
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        recurrenceEndDate == null
+                            ? '循环截止日期 (可选)'
+                            : '循环截止: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}',
+                      ),
+                      trailing: const Icon(Icons.event_busy, size: 20),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: recurrenceEndDate ?? DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => recurrenceEndDate = picked);
+                        }
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -465,8 +534,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       isAllDay: isAllDay,
                       startTime: createdAt,
                       endTime: dueDate,
-                      recurrence: todo.recurrence,
-                      customIntervalDays: todo.customIntervalDays,
+                      recurrence: recurrence,
+                      customIntervalDays: customDays,
+                      recurrenceEndDate: recurrenceEndDate,
                       reminderMinutes: reminderMinutes,
                       groupId: selectedGroupId,
                       collabType: collabType,
