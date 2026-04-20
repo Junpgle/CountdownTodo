@@ -67,6 +67,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   List<Team> _teams = [];
   String? _selectedTeamUuid;
   String? _selectedTeamName; // 🚀 记录团队名
+  int _collabType = 0; // 🚀 协同类型：0-共同协作, 1-各自独立
 
   late AnimationController _dotsController;
 
@@ -417,6 +418,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       teamUuid: _selectedTeamUuid,
       teamName: selectedTeam?.name, // 🚀 补全团队名称
       creatorName: _username, // 🚀 补全创建者名称
+      collabType: _collabType, // 🚀 补全协作类型
     );
 
     widget.onTodoAdded(todo);
@@ -446,6 +448,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         teamUuid: _selectedTeamUuid, // 🚀 批量添加时也要带上团队属性
         teamName: selectedTeam?.name, // 🚀 补全团队名称
         creatorName: _username, // 🚀 补全创建者名称
+        collabType: _collabType,
       );
     }).toList();
 
@@ -828,6 +831,26 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               },
             ),
             const SizedBox(height: 12),
+            if (_selectedTeamUuid != null) ...[
+              DropdownButtonFormField<int>(
+                value: _collabType,
+                decoration: InputDecoration(
+                  labelText: "团队协作方式",
+                  prefixIcon: const Icon(Icons.hub_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text("共同协作 (共享进度)")),
+                  DropdownMenuItem(value: 1, child: Text("各自独立完成")),
+                ],
+                onChanged: (val) {
+                  if (val != null) setState(() => _collabType = val);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
           ],
           DropdownButtonFormField<RecurrenceType>(
             value: _recurrence,

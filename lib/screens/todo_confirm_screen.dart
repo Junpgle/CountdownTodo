@@ -19,6 +19,7 @@ class ParsedTodoResult {
   final String? originalText;
   final int? reminderMinutes;
   final String? groupId;
+  final int collabType;
 
   final String? teamUuid;
   final String? teamName;
@@ -34,6 +35,7 @@ class ParsedTodoResult {
     this.originalText,
     this.reminderMinutes,
     this.groupId,
+    this.collabType = 0,
     this.teamUuid,
     this.teamName,
   });
@@ -50,6 +52,7 @@ class ParsedTodoResult {
       'originalText': originalText,
       'reminderMinutes': reminderMinutes,
       'groupId': groupId,
+      'collab_type': collabType,
       'team_uuid': teamUuid,
       'team_name': teamName,
     };
@@ -127,6 +130,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         originalText: widget.originalText, // 📄 传入原始文本
         reminderMinutes: result['reminderMinutes'],
         groupId: result['groupId'],
+        collabType: result['collab_type'] ?? 0,
         teamUuid: widget.initialTeamUuid,
         teamName: widget.initialTeamName,
       );
@@ -242,6 +246,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     DateTime? dueDate = todo.endTime;
     String? selectedGroupId = todo.groupId;
     int reminderMinutes = todo.reminderMinutes ?? 5;
+    int collabType = todo.collabType;
 
     showDialog(
       context: context,
@@ -423,6 +428,26 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       }
                     },
                   ),
+                  if (todo.teamUuid != null) ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      value: collabType,
+                      decoration: InputDecoration(
+                        labelText: "团队协作方式",
+                        prefixIcon: const Icon(Icons.hub_outlined),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text("共同协作 (共享进度)")),
+                        DropdownMenuItem(value: 1, child: Text("各自独立完成")),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => collabType = val);
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -444,6 +469,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       customIntervalDays: todo.customIntervalDays,
                       reminderMinutes: reminderMinutes,
                       groupId: selectedGroupId,
+                      collabType: collabType,
+                      teamUuid: todo.teamUuid,
+                      teamName: todo.teamName,
                     );
                   });
                   Navigator.pop(ctx);

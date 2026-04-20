@@ -4,8 +4,10 @@ import 'dart:io'; // 🚀 新增：用于获取当前操作系统
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
-import '../models.dart';
 import 'api_service.dart';
+import 'notification_service.dart';
+import '../storage_service.dart';
+import '../models.dart';
 
 // ============================================================
 // 跨端专注感知：连接阿里云 WebSocket 服务器
@@ -295,6 +297,11 @@ class PomodoroSyncService {
       if (signal.action == 'TEAM_REMOVED' && signal.teamUuid != null) {
         debugPrint('[PomodoroSync] 🧹 收到踢出团队广播，清理本地数据: ${signal.teamUuid}');
         StorageService.clearTeamItems(signal.teamUuid!);
+        // 🚀 核心修复：弹出横幅提醒
+        NotificationService.showGenericNotification(
+          title: "移除团队通知",
+          body: "你已被移出团队: ${signal.teamUuid}",
+        );
       }
 
       if (signal.action == 'START' || signal.action == 'RECONNECT_SYNC') {

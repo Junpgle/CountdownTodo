@@ -107,6 +107,30 @@ class NotificationService {
     } catch (e) {}
   }
 
+  /// 🚀 Uni-Sync: 显示通用系统通知 (用于团队变动等重要事件)
+  static Future<void> showGenericNotification({
+    required String title,
+    required String body,
+  }) async {
+    const androidDetails = AndroidNotificationDetails(
+      'system_channel',
+      '系统通知',
+      channelDescription: '显示团队变动、状态提醒等重要信息',
+      importance: Importance.max,
+      priority: Priority.high,
+      showWhen: true,
+    );
+    const notificationDetails = NotificationDetails(android: androidDetails);
+    // 🚀 修复编译错误：恢复为具名参数形式，并确保 ID 唯一性
+    final int notifId = DateTime.now().millisecondsSinceEpoch.hashCode;
+    await _plugin.show(
+      id: notifId,
+      title: title,
+      body: body,
+      notificationDetails: notificationDetails,
+    );
+  }
+
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
     if (!await StorageService.isTodoSummaryNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;

@@ -134,6 +134,7 @@ class TodoItem {
   String? teamUuid;
   String? creatorName;
   String? teamName;
+  int collabType; // 🚀 0: 所有人共同协作, 1: 每个人独立完成
   bool hasConflict; 
   Map<String, dynamic>? serverVersionData; 
 
@@ -159,6 +160,7 @@ class TodoItem {
     this.creatorId,
     this.creatorName,
     this.teamName,
+    this.collabType = 0,
     this.hasConflict = false,
     this.serverVersionData,
   })  : this.id = id ?? const Uuid().v4(),
@@ -201,6 +203,7 @@ class TodoItem {
         'creator_id': creatorId,
         'creator_name': creatorName,
         'team_name': teamName,
+        'collab_type': collabType,
       };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -255,6 +258,7 @@ class TodoItem {
       creatorId: json['creator_id'] ?? json['creatorId'],
       creatorName: json['creator_name'] ?? json['creatorName'],
       teamName: json['team_name'] ?? json['teamName'],
+      collabType: json['collab_type'] ?? json['collabType'] ?? 0,
     );
   }
 

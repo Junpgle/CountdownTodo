@@ -24,6 +24,13 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   void initState() {
     super.initState();
     _loadAllTeamData();
+    StorageService.dataRefreshNotifier.addListener(_loadAllTeamData);
+  }
+
+  @override
+  void dispose() {
+    StorageService.dataRefreshNotifier.removeListener(_loadAllTeamData);
+    super.dispose();
   }
 
   Future<void> _loadAllTeamData() async {

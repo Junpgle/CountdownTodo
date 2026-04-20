@@ -1774,6 +1774,27 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                           ],
                                                         ),
                                                       ),
+                                                      if (todo.collabType == 1) ...[
+                                                         const SizedBox(width: 6),
+                                                         GestureDetector(
+                                                           onTap: () => _showIndependentTodoStatus(todo),
+                                                           child: Container(
+                                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                             decoration: BoxDecoration(
+                                                               color: Colors.green.withOpacity(0.15),
+                                                               borderRadius: BorderRadius.circular(4),
+                                                               border: Border.all(color: Colors.green.withOpacity(0.4), width: 0.8),
+                                                             ),
+                                                             child: Row(
+                                                               children: [
+                                                                 const Icon(Icons.assignment_turned_in_outlined, size: 10, color: Colors.green),
+                                                                 const SizedBox(width: 3),
+                                                                 const Text("独立任务进度", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
+                                                               ],
+                                                             ),
+                                                           ),
+                                                         ),
+                                                      ],
                                                     ],
                                                   ),
                                                 ],
@@ -2188,11 +2209,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           expanded: _isPastTodosExpanded,
           child: Column(
             children: pastItems.map((item) {
-              if (item.todo != null) {
-                return _buildTodoItemCard(item.todo!,
+              final todo = item!.todo;
+              if (todo != null) {
+                return _buildTodoItemCard(todo,
                     isPast: true,
                     isFuture: false,
-                    key: _getTodoDismissKey('dismiss', item.todo!.id));
+                    key: _getTodoDismissKey('dismiss', todo.id));
               }
               return item.widget;
             }).toList(),
@@ -2430,14 +2452,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       sections.add(_buildAnimatedSection(
           expanded: _isFutureExpanded,
           child: Column(
-              children: futureItems.map((item) {
-            if (item.todo != null)
-              return _buildTodoItemCard(item.todo!,
-                  isPast: false,
-                  isFuture: true,
-                  key: _getTodoDismissKey('dismiss', item.todo!.id));
-            return item.widget;
-          }).toList())));
+               children: futureItems.map((item) {
+                final todo = item!.todo;
+                if (todo != null) {
+                  return _buildTodoItemCard(todo,
+                      isPast: false,
+                      isFuture: true,
+                      key: _getTodoDismissKey('dismiss', todo.id));
+                }
+                return item.widget;
+              }).toList())));
     }
 
     return AnimatedSwitcher(
@@ -2865,6 +2889,75 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       ),
     );
   }
+
+  void _showIndependentTodoStatus(TodoItem todo) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final response = await ApiService.getTodoStatus(todo.id);
+      if (mounted) Navigator.pop(context); // 关闭加载
+
+      if (response['success'] == true) {
+        final List<dynamic> statusList = response['status'] ?? [];
+        if (!mounted) return;
+        
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text("任务进度: ${todo.title}"),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: statusList.isEmpty 
+                ? const Center(child: Text("暂无成员进度数据"))
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: statusList.length,
+                    itemBuilder: (context, index) {
+                      final s = statusList[index];
+                      final isDone = s['is_completed'] == 1;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: isDone ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+                          child: Text(
+                            s['username']?[0]?.toUpperCase() ?? '?',
+                            style: TextStyle(color: isDone ? Colors.green : Colors.grey),
+                          ),
+                        ),
+                        title: Text(s['username'] ?? '未知用户', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                          isDone ? "已完成" : "进行中",
+                          style: TextStyle(fontSize: 12, color: isDone ? Colors.green : Colors.grey),
+                        ),
+                        trailing: Icon(
+                          isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+                          color: isDone ? Colors.green : Colors.grey,
+                        ),
+                      );
+                    },
+                  ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("关闭")),
+            ],
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        );
+      } else {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("拉取详情失败: ${response['error'] ?? '未知错误'}")));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("发生错误: $e")));
+      }
+    }
+  }
 }
 
 class _TodoEditScreen extends StatefulWidget {
@@ -2901,6 +2994,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
   String? _username;
   List<Team> _teams = [];
   String? _selectedTeamUuid;
+  int _collabType = 0; // 🚀 协同类型
   bool _syncFolderToTeam = false;
 
   @override
@@ -2927,6 +3021,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     _selectedGroupId = t.groupId;
     _reminderMinutes = t.reminderMinutes ?? 5;
     _selectedTeamUuid = t.teamUuid;
+    _collabType = t.collabType; // 🚀 初始化协作类型
     _loadCategoryDefaults();
     _loadTeams();
   }
@@ -2974,6 +3069,7 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     todo.groupId = _selectedGroupId;
     todo.reminderMinutes = _reminderMinutes;
     todo.teamUuid = _selectedTeamUuid;
+    todo.collabType = _collabType; // 🚀 保存协作类型
     todo.markAsChanged();
 
     // 🚀 核心逻辑处理：文件夹跟随同步
@@ -3166,10 +3262,30 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
                       ),
                     )),
               ],
-              onChanged: (val) => setState(() => _selectedTeamUuid = val),
+            onChanged: (val) => setState(() => _selectedTeamUuid = val),
+          ),
+          const SizedBox(height: 12),
+          if (_selectedTeamUuid != null) ...[
+            DropdownButtonFormField<int>(
+              value: _collabType,
+              decoration: InputDecoration(
+                labelText: "团队协作方式",
+                prefixIcon: const Icon(Icons.hub_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              items: const [
+                DropdownMenuItem(value: 0, child: Text("共同协作 (共享进度)")),
+                DropdownMenuItem(value: 1, child: Text("各自独立完成")),
+              ],
+              onChanged: (val) {
+                if (val != null) setState(() => _collabType = val);
+              },
             ),
             const SizedBox(height: 12),
           ],
+        ],
           SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('全天事件',
@@ -3422,6 +3538,11 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
     );
   }
 }
+
+
+
+
+
 
 class _SortedDisplayItem {
   final TodoItem? todo;
