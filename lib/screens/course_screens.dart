@@ -159,11 +159,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _semesterMonday = now.subtract(Duration(days: now.weekday - 1));
     }
 
-    // 计算当前周
+    // 计算当前周 (移除强制 1 的下限)
     DateTime now = DateTime.now();
     int daysOffset = now.difference(_semesterMonday!).inDays;
     _currentWeek = (daysOffset ~/ 7) + 1;
-    if (_currentWeek < 1) _currentWeek = 1;
 
     if (weeks.isNotEmpty) {
       _availableWeeks = weeks;
@@ -349,10 +348,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
 
   void _changeWeek(int delta) {
-    if (_currentWeek + delta >= 1) {
-      _isNextSlide = delta > 0;
-      _jumpToWeek(_currentWeek + delta);
-    }
+    _isNextSlide = delta > 0;
+    _jumpToWeek(_currentWeek + delta);
   }
 
   void _jumpToWeek(int newWeek) {
@@ -401,8 +398,30 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     if (_currentWeek >= 1 && _currentWeek <= maxWeek) {
       return '第 $_currentWeek 周';
+    } else if (_currentWeek < 1) {
+      return '学期前 ${1 - _currentWeek} 周';
     } else {
       return '${DateFormat('M/d').format(monday)}-${DateFormat('M/d').format(sunday)}';
+    }
+  }
+
+  String _getBiWeekLabel() {
+    if (_semesterMonday == null) return "第$_currentWeek-${_currentWeek+1}周";
+    
+    DateTime w1Monday = _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+    DateTime w2Monday = w1Monday.add(const Duration(days: 7));
+    
+    String m1 = DateFormat('M月').format(w1Monday);
+    String m2 = DateFormat('M月').format(w2Monday);
+    
+    // 计算每月第几周 (简易： (day-1)/7 + 1)
+    int wk1 = ((w1Monday.day - 1) / 7).floor() + 1;
+    int wk2 = ((w2Monday.day - 1) / 7).floor() + 1;
+    
+    if (m1 == m2) {
+      return "$m1 第$wk1-$wk2周";
+    } else {
+      return "$m1第$wk1周-$m2第$wk2周";
     }
   }
 
@@ -1855,7 +1874,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               onTap: _viewMode == 0 ? _showWeekJumpDialog : null,
               child: Text(
                 _viewMode == 2 ? DateFormat('yyyy年M月').format(_selectedMonth) : 
-                (_viewMode == 1 ? "第$_currentWeek-${_currentWeek+1}周" : _getWeekLabel()),
+                (_viewMode == 1 ? _getBiWeekLabel() : _getWeekLabel()),
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ),

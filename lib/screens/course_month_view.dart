@@ -40,113 +40,296 @@ class CourseMonthView extends StatelessWidget {
     this.currentWeekMonday,
   }) : super(key: key);
 
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // 🚀 动态计算起始日期
+    // 1. 确定起始日期与天数
     final DateTime startDate;
+    int showDays;
+    
     if (viewMode == 2) {
       final firstDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month, 1);
       final daysBefore = firstDayOfMonth.weekday - 1;
       startDate = firstDayOfMonth.subtract(Duration(days: daysBefore));
+      showDays = daysBefore + DateTime(selectedMonth.year, selectedMonth.month + 1, 0).day;
     } else {
       startDate = currentWeekMonday ?? selectedMonth;
+      showDays = 14;
     }
     
-    // 🚀 根据 viewMode 决定显示天数
-    final int showDays = viewMode == 1 ? 14 : (selectedMonth.weekday - 1 + DateTime(selectedMonth.year, selectedMonth.month + 1, 0).day);
     final int rowCount = (showDays / 7).ceil();
-    final int totalDays = rowCount * 7;
-    final days = List.generate(totalDays, (index) => startDate.add(Duration(days: index)));
+    final List<List<DateTime>> weeks = List.generate(rowCount, (w) => 
+      List.generate(7, (d) => startDate.add(Duration(days: w * 7 + d)))
+    );
 
-    // 🚀 热力密度预计算
+    // 2. 预计算所有全局数据
     final Map<String, int> densityMap = {};
     for (var t in allTodos) {
-       if (t.isDeleted) continue;
-       final dt = t.dueDate ?? DateTime.fromMillisecondsSinceEpoch(t.updatedAt);
-       final dStr = DateFormat('yyyy-MM-dd').format(dt);
+       if (t.isDeleted || t.dueDate == null) continue;
+       final dStr = DateFormat('yyyy-MM-dd').format(t.dueDate!);
        densityMap[dStr] = (densityMap[dStr] ?? 0) + 1;
     }
+    final List<TodoItem> ganttTodos = allTodos.where((t) => !t.isDeleted && t.dueDate != null).toList();
 
-    // 🚀 甘特任务识别 (仅跨天)
-    final List<TodoItem> spanningTodos = allTodos.where((t) {
-      if (t.isDeleted || t.dueDate == null) return false;
-      final start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
-      return !DateUtils.isSameDay(start, t.dueDate!);
-    }).toList();
-    
-    return RepaintBoundary(
-      child: Column(
-        children: [
-          _buildWeekdayHeader(context),
-          const SizedBox(height: 4),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final int rows = rowCount;
-                const int cols = 7;
-                const double spacing = 1.0; 
+    return Column(
+      children: [
+        _buildWeekdayHeader(context),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // 🚀 铺满全屏核心逻辑：根据行数平分可用高度
+              double availableHeight = constraints.maxHeight;
+              double rowHeight = (availableHeight / weeks.length).clamp(100.0, 1000.0);
+
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                physics: const NeverScrollableScrollPhysics(), // 强制不滚动，因为我们要铺满
+                itemCount: weeks.length,
+                itemBuilder: (context, weekIdx) {
+                  return _buildWeekRow(context, weeks[weekIdx], ganttTodos, densityMap, isDark, rowHeight);
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeekRow(BuildContext context, List<DateTime> weekDays, List<TodoItem> allGanttTodos, Map<String, int> densityMap, bool isDark, double cellHeight) {
+    final List<Map<String, dynamic>> weekBars = [];
+    final weekStart = weekDays.first;
+    final weekEnd = weekDays.last.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+
+    for (var t in allGanttTodos) {
+      final taskStart = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
+      final taskEnd = t.dueDate!;
+      if (taskStart.isAfter(weekEnd) || taskEnd.isBefore(weekStart)) continue;
+
+      int startIdx = taskStart.isBefore(weekStart) ? 0 : taskStart.weekday - 1;
+      int endIdx = taskEnd.isAfter(weekEnd) ? 6 : taskEnd.weekday - 1;
+      
+      weekBars.add({
+        'todo': t,
+        'start': startIdx,
+        'end': endIdx,
+        'isRealStart': taskStart.isAfter(weekStart.subtract(const Duration(seconds: 1))),
+        'isRealEnd': taskEnd.isBefore(weekEnd.add(const Duration(seconds: 1))),
+      });
+    }
+
+    weekBars.sort((a, b) => (a['todo'] as TodoItem).id.compareTo((b['todo'] as TodoItem).id));
+
+    return LayoutBuilder(builder: (context, constraints) {
+      double cellWidth = constraints.maxWidth / 7;
+
+      return Container(
+        height: cellHeight,
+        margin: const EdgeInsets.only(bottom: 2),
+        child: Stack(
+          children: [
+            // Layer 0: 详细数据背景 (每个单元格可能包含迷你时间轴)
+            Row(
+              children: weekDays.map((day) {
+                final dStr = DateFormat('yyyy-MM-dd').format(day);
+                int count = densityMap[dStr] ?? 0;
+                Color? heatColor;
+                if (count > 0) {
+                   double opacity = (count / 10).clamp(0.05, 0.4);
+                   heatColor = Colors.blue.withOpacity(opacity);
+                }
                 
-                final double cellWidth = (constraints.maxWidth - (cols - 1) * spacing) / cols;
-                final double cellHeight = (constraints.maxHeight - (rows - 1) * spacing) / rows;
-                final double aspectRatio = cellWidth / (cellHeight > 0 ? cellHeight : 80);
-  
-                return GridView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  physics: const ClampingScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: cols,
-                    childAspectRatio: aspectRatio,
-                    mainAxisSpacing: spacing,
-                    crossAxisSpacing: spacing,
-                  ),
-                  itemCount: days.length,
-                  itemBuilder: (context, index) {
-                    final day = days[index];
-                    final dStr = DateFormat('yyyy-MM-dd').format(day);
-                    
-                    int count = densityMap[dStr] ?? 0;
-                    Color? heatColor;
-                    if (count > 0) {
-                       double opacity = (count / 8).clamp(0.05, 0.4);
-                       heatColor = Colors.blue.withOpacity(opacity);
-                    }
-
-                    final List<TodoItem> currentSpanning = spanningTodos.where((t) {
-                       final start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
-                       final startDay = DateTime(start.year, start.month, start.day);
-                       final endDay = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-                       return !day.isBefore(startDay) && !day.isAfter(endDay);
-                    }).toList();
-
-                    return _buildDayCell(
-                      context, 
-                      day, 
-                      isDark, 
-                      cellHeight,
-                      heatColor,
-                      currentSpanning,
-                      activeDataViews.contains('courses') ? (courseMap[dStr] ?? []) : [],
-                      activeDataViews.contains('todos') ? (todoMap[dStr] ?? []) : [],
-                      (activeDataViews.contains('todos') && !activeDataViews.contains('hideCrossDay')) 
-                          ? (crossDayTodoMap[dStr] ?? []) 
-                          : [],
-                      activeDataViews.contains('timeLogs') ? (logMap[dStr] ?? []) : [],
-                      activeDataViews.contains('pomodoros') ? (pomMap[dStr] ?? []) : [],
-                    );
-                  },
+                // 获取当前日期的各种数据用于渲染时间轴
+                final List<CourseItem> dayCourses = courseMap[dStr] ?? [];
+                final List<TodoItem> dayTodos = todoMap[dStr] ?? [];
+                
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => onDayTapped(day),
+                    child: _buildDetailedDayBackground(context, day, heatColor, isDark, cellHeight, dayCourses, dayTodos)
+                  )
                 );
-              },
+              }).toList(),
+            ),
+            
+            // Layer 1: 贯穿式甘特条带 (放在前面，避开日期数字)
+            Positioned.fill(
+              top: 30, 
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _clusterBars(weekBars).take(viewMode == 1 ? 5 : 3).map((rowGroup) {
+                  return SizedBox(
+                    height: 24,
+                    child: Stack(
+                      children: rowGroup.map((bar) {
+                        final t = bar['todo'] as TodoItem;
+                        final int start = bar['start'];
+                        final int end = bar['end'];
+                        final bool isRealStart = bar['isRealStart'];
+                        final bool isRealEnd = bar['isRealEnd'];
+                        
+                        final Color baseColor = t.teamUuid != null ? Colors.blue : Colors.deepPurpleAccent;
+                        final color = (t.isDone ? Colors.green : baseColor).withOpacity(0.9);
+
+                        return Positioned(
+                          left: start * cellWidth + 2,
+                          width: (end - start + 1) * cellWidth - 4,
+                          height: 20,
+                          child: GestureDetector(
+                            onTap: () => onGanttTodoTap?.call(t),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0,2))],
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                t.title,
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  List<List<Map<String, dynamic>>> _clusterBars(List<Map<String, dynamic>> bars) {
+    List<List<Map<String, dynamic>>> rows = [];
+    for (var bar in bars) {
+      bool placed = false;
+      for (var row in rows) {
+        bool overlap = row.any((existing) => !(bar['end'] < existing['start'] || bar['start'] > existing['end']));
+        if (!overlap) {
+          row.add(bar);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) rows.add([bar]);
+    }
+    return rows;
+  }
+
+  // 🚀 核心：带时间轴详情的日历背景
+  Widget _buildDetailedDayBackground(
+    BuildContext context, 
+    DateTime day, 
+    Color? heatColor, 
+    bool isDark, 
+    double height, 
+    List<CourseItem> courses,
+    List<TodoItem> todos
+  ) {
+    bool isToday = DateUtils.isSameDay(day, DateTime.now());
+    bool isCurrentMonth = day.month == selectedMonth.month;
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: heatColor ?? (isCurrentMonth ? (isDark ? Colors.white.withOpacity(0.02) : Colors.white) : Colors.transparent),
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.03), width: 0.5),
+      ),
+      child: Stack(
+        children: [
+          // 1. 日期数字
+          Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Text(
+              '${day.day}',
+              style: TextStyle(
+                fontSize: 11,
+                color: isToday ? Colors.redAccent : (isCurrentMonth ? (isDark ? Colors.white70 : Colors.black87) : Colors.grey.withOpacity(0.3)),
+                fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ),
+          
+          // 2. 🚀 详细时间轴 (仅在两周视图下展示)
+          if (viewMode == 1 && height > 200)
+            Positioned(
+              top: 25,
+              left: 4,
+              right: 4,
+              bottom: 4,
+              child: Stack(
+                children: [
+                  // 时间标尺 (虚线)
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: List.generate(4, (i) => Container(
+                      height: 0.5,
+                      width: double.infinity,
+                      color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                    )),
+                  ),
+                  // 数据映射 (垂直映射时间点)
+                  ...courses.map((c) {
+                    double startY = _calculateTimeY(c.startTime, 800, 2200);
+                    double endY = _calculateTimeY(c.endTime, 800, 2200);
+                    return Positioned(
+                      top: startY * (height - 30),
+                      height: (endY - startY).clamp(0.02, 1.0) * (height - 30),
+                      left: 0,
+                      width: 3,
+                      child: Container(
+                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.6), borderRadius: BorderRadius.circular(1)),
+                      ),
+                    );
+                  }),
+                  ...todos.where((t)=>t.dueDate != null).map((t) {
+                    double y = _calculateTimeY(t.dueDate!.hour * 100 + t.dueDate!.minute, 800, 2200);
+                    return Positioned(
+                      top: y * (height - 30),
+                      left: 4,
+                      width: 4,
+                      height: 4,
+                      child: Container(
+                        decoration: BoxDecoration(color: Colors.amber, shape: BoxShape.circle),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            
+          // 如果是月视图，则只显示简单的摘要点
+          if (viewMode == 2)
+            Positioned(
+              bottom: 4,
+              left: 4,
+              right: 4,
+              child: Wrap(
+                spacing: 2,
+                children: [
+                  if (courses.isNotEmpty) Container(width: 4, height: 4, decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle)),
+                  if (todos.isNotEmpty) Container(width: 4, height: 4, decoration: const BoxDecoration(color: Colors.amber, shape: BoxShape.circle)),
+                ],
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  // 计算时间在 0.0 - 1.0 之间的位置 (8:00 - 22:00)
+  double _calculateTimeY(int time, int start, int end) {
+    int minutes = (time ~/ 100) * 60 + (time % 100);
+    int startMin = (start ~/ 100) * 60;
+    int endMin = (end ~/ 100) * 60;
+    return ((minutes - startMin) / (endMin - startMin)).clamp(0.0, 1.0);
   }
 
   Widget _buildWeekdayHeader(BuildContext context) {
@@ -156,148 +339,10 @@ class CourseMonthView extends StatelessWidget {
       child: Row(
         children: weekdays.map((day) => Expanded(
           child: Center(
-            child: Text(
-              day,
-              style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
-            ),
+            child: Text(day, style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
           ),
         )).toList(),
       ),
     );
-  }
-
-  Widget _buildDayCell(
-    BuildContext context, 
-    DateTime day, 
-    bool isDark, 
-    double cellHeight,
-    Color? heatColor,
-    List<TodoItem> spanningTodos,
-    List<CourseItem> courses,
-    List<TodoItem> todos,
-    List<TodoItem> crossDayTodosInCell,
-    List<TimeLogItem> logs,
-    List<PomodoroRecord> pomodoros,
-  ) {
-    bool isCurrentMonth = day.month == selectedMonth.month;
-    bool isToday = DateUtils.isSameDay(day, DateTime.now());
-
-    List<dynamic> dayItems = [];
-    dayItems.addAll(courses);
-    dayItems.addAll(todos);
-    dayItems.addAll(logs);
-    dayItems.addAll(pomodoros);
-
-    dayItems.sort((a, b) {
-      int getPriority(dynamic item) {
-        if (item is CourseItem) return 0;
-        if (item is TodoItem) return 1;
-        if (item is TimeLogItem) return 2;
-        if (item is PomodoroRecord) return 3;
-        return 4;
-      }
-      return getPriority(a).compareTo(getPriority(b));
-    });
-
-    int maxItems = ((cellHeight - 30) / 12).floor().clamp(1, 8);
-
-    return GestureDetector(
-      onTap: () => onDayTapped(day),
-      child: Container(
-        decoration: BoxDecoration(
-          color: heatColor ?? (isCurrentMonth ? (isDark ? Colors.white.withOpacity(0.02) : Colors.white) : Colors.transparent),
-          borderRadius: BorderRadius.circular(2),
-          border: Border.all(
-            color: isToday ? Theme.of(context).colorScheme.primary : (isDark ? Colors.white10 : Colors.black.withOpacity(0.03)),
-            width: isToday ? 1.5 : 0.5,
-          ),
-        ),
-        child: Stack(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
-                  child: Text(
-                    '${day.day}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                      color: isCurrentMonth ? (isDark ? Colors.white70 : Colors.black87) : Colors.grey.withOpacity(0.3),
-                    ),
-                  ),
-                ),
-                // 🚀 甘特融合层
-                if (spanningTodos.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Column(
-                      children: spanningTodos.take(3).map((t) {
-                         final created = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
-                         final bool isStart = DateUtils.isSameDay(day, created);
-                         final bool isEnd = DateUtils.isSameDay(day, t.dueDate!);
-                         final color = (t.isDone ? Colors.green : Colors.blue).withOpacity(0.8);
-                         
-                         return GestureDetector(
-                           onTap: () {
-                             if (onGanttTodoTap != null) onGanttTodoTap!(t);
-                           },
-                           child: Container(
-                             height: 16,
-                             width: double.infinity,
-                             margin: const EdgeInsets.only(bottom: 2),
-                             padding: const EdgeInsets.symmetric(horizontal: 4),
-                             alignment: Alignment.centerLeft,
-                             decoration: BoxDecoration(
-                               color: color,
-                               borderRadius: BorderRadius.horizontal(
-                                 left: isStart ? const Radius.circular(4) : Radius.zero,
-                                 right: isEnd ? const Radius.circular(4) : Radius.zero,
-                               ),
-                             ),
-                             child: isStart ? Text(
-                               t.title,
-                               style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold, overflow: TextOverflow.ellipsis),
-                             ) : const SizedBox.shrink(),
-                           ),
-                         );
-                      }).toList(),
-                    ),
-                  ),
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: dayItems.length > maxItems ? maxItems : dayItems.length,
-                    itemBuilder: (context, idx) => _buildCompactItem(context, dayItems[idx]),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCompactItem(BuildContext context, dynamic item) {
-    if (item is CourseItem) return _buildMiniDot(_getCourseColor(item.courseName));
-    if (item is TodoItem) return _buildMiniDot(item.isDone ? Colors.green : Colors.amber);
-    return _buildMiniDot(Colors.blueGrey);
-  }
-
-  Widget _buildMiniDot(Color color) {
-    return Container(
-      width: double.infinity,
-      height: 2,
-      margin: const EdgeInsets.symmetric(vertical: 1, horizontal: 1),
-      decoration: BoxDecoration(color: color.withOpacity(0.5), borderRadius: BorderRadius.circular(1)),
-    );
-  }
-
-  Color _getCourseColor(String courseName) {
-    final List<Color> colors = [Colors.blue, Colors.orange, Colors.purple, Colors.teal, Colors.pink];
-    return colors[courseName.hashCode.abs() % colors.length];
   }
 }
