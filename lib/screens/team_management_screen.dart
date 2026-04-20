@@ -36,8 +36,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
       if (state.action == 'NEW_INVITATION' || 
           state.action == 'NEW_JOIN_REQUEST' || 
           state.action == 'PENDING_COUNTS' ||
-          state.action == 'JOIN_REQUEST_APPROVED') {
-        _loadTeams(); // 🚀 收到通知，全量刷新获取最新状态和红点
+          state.action == 'JOIN_REQUEST_APPROVED' ||
+          state.action == 'TEAM_MEMBER_JOINED') {
+        _loadTeams(isSilent: true); // 🚀 收到通知，静默刷新
       }
     });
   }
@@ -48,8 +49,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
     super.dispose();
   }
 
-  Future<void> _loadTeams() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadTeams({bool isSilent = false}) async {
+    if (!isSilent) setState(() => _isLoading = true);
     try {
       final rawTeams = await ApiService.fetchTeams();
       final invitations = await ApiService.fetchMyInvitations();
@@ -62,12 +63,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
         }
       }
 
-      setState(() {
-        _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
-        _myInvitations = invitations;
-        _teamPendingCounts = pendingCounts;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+          _myInvitations = invitations;
+          _teamPendingCounts = pendingCounts;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
