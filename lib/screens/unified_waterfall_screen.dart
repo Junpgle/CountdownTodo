@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
@@ -17,7 +18,6 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   List<TodoItem> _allCombinedTodos = [];
   bool _isLoading = true;
   int _viewDays = 30; // 默认月视图
-  double _lastScale = 1.0;
   DateTime _lastScaleTime = DateTime.now();
 
   @override
@@ -50,7 +50,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
 
   void _handleScaleUpdate(ScaleUpdateDetails details) {
     if (DateTime.now().difference(_lastScaleTime).inMilliseconds < 300) return;
-    
+
     final scale = details.scale;
     if (scale > 1.3 && _viewDays > 7) {
       // 放大 -> 显示更少天数
@@ -68,62 +68,128 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   }
 
   void _showTodoDetails(TodoItem todo) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.only(left: 24, right: 24, bottom: 40, top: 12),
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
+          color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(width: 4, height: 20, decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(width: 8),
-                Text("任务明细", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Text(todo.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            if (todo.remark != null && todo.remark!.isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.grey.withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
-                child: Text(todo.remark!, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-              ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                _buildDetailItem(Icons.calendar_today_rounded, "截止日期", todo.dueDate != null ? TimezoneUtils.getRelativeTime(todo.dueDate!.millisecondsSinceEpoch) : "未设置"),
-                const SizedBox(width: 24),
-                _buildDetailItem(Icons.group_rounded, "所属团队", todo.teamName ?? "个人任务"),
-              ],
-            ),
-            const SizedBox(height: 32),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, -5),
+            )
           ],
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 顶部拖拽指示器
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 5,
+                  margin: const EdgeInsets.only(bottom: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blueAccent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.assignment_outlined, color: Colors.blueAccent),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text("任务明细", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  IconButton(
+                    style: IconButton.styleFrom(backgroundColor: Colors.grey.withOpacity(0.1)),
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text(todo.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600, height: 1.3)),
+              const SizedBox(height: 20),
+
+              if (todo.remark != null && todo.remark!.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.only(bottom: 24),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.withOpacity(0.1)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.notes_rounded, size: 18, color: Colors.grey.shade500),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          todo.remark!,
+                          style: TextStyle(fontSize: 14, color: isDark ? Colors.grey.shade400 : Colors.grey.shade700, height: 1.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              Row(
+                children: [
+                  Expanded(child: _buildDetailCard(Icons.calendar_month_rounded, "截止日期", todo.dueDate != null ? TimezoneUtils.getRelativeTime(todo.dueDate!.millisecondsSinceEpoch) : "未设置", Colors.orange)),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildDetailCard(Icons.groups_rounded, "所属团队", todo.teamName ?? "个人任务", Colors.purple)),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDetailItem(IconData icon, String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [Icon(icon, size: 14, color: Colors.grey), const SizedBox(width: 4), Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey))]),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-      ],
+  Widget _buildDetailCard(IconData icon, String label, String value, MaterialColor color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color.shade400),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontWeight: FontWeight.w500)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), overflow: TextOverflow.ellipsis),
+        ],
+      ),
     );
   }
 
@@ -136,169 +202,264 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF2F4F7),
+      backgroundColor: bgColor,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : GestureDetector(
-              onScaleUpdate: _handleScaleUpdate,
-              child: CustomScrollView(
-                slivers: [
-                  SliverAppBar(
-                    floating: true,
-                    pinned: true,
-                    expandedHeight: 60,
-                    backgroundColor: isDark ? const Color(0xFF0F0F0F).withOpacity(0.9) : Colors.white.withOpacity(0.9),
-                    title: const Text('全景汇聚看板', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    centerTitle: false,
-                    actions: [
-                      IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadAllTeamData),
-                    ],
-                  ),
-                  
-                  // 🚀 看板功能区 (热力图 & 甘特图)
-                  SliverToBoxAdapter(
-                    child: Container(
-                      margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 8))],
-                      ),
-                      child: Column(
-                        children: [
-                          TeamHeatmapWidget(todos: _allCombinedTodos, viewDays: _viewDays == 30 ? 35 : _viewDays),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(indent: 16, endIndent: 16)),
-                          TeamGanttWidget(
-                            todos: _allCombinedTodos, 
-                            viewDays: _viewDays,
-                            onTodoTap: _showTodoDetails,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // 数据指标行
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(
-                      children: [
-                        _buildStatChip(context, "活跃任务", "${_allCombinedTodos.length}", Colors.blue),
-                        const SizedBox(width: 8),
-                        _buildStatChip(context, "团队关联", "${_allCombinedTodos.where((t)=>t.teamUuid!=null).length}", Colors.purple),
-                      ],
-                    ),
+        onScaleUpdate: _handleScaleUpdate,
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          slivers: [
+            SliverAppBar(
+              floating: true,
+              pinned: true,
+              expandedHeight: 60,
+              elevation: 0,
+              backgroundColor: isDark ? Colors.black.withOpacity(0.65) : Colors.white.withOpacity(0.65),
+              flexibleSpace: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                  child: Container(color: Colors.transparent),
+                ),
+              ),
+              title: const Text('全景汇聚看板', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+              centerTitle: false,
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: IconButton(
+                    icon: const Icon(Icons.refresh_rounded),
+                    tooltip: '刷新数据',
+                    onPressed: _loadAllTeamData,
                   ),
                 ),
-
-                const SliverToBoxAdapter(child: SizedBox(height: 12)),
-
-                // 任务流
-                _allCombinedTodos.isEmpty
-                    ? const SliverFillRemaining(child: Center(child: Text("暂无活跃的全景任务")))
-                    : SliverPadding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) => _buildWaterfallItem(_allCombinedTodos[index]),
-                            childCount: _allCombinedTodos.length,
-                          ),
-                        ),
-                      ),
-                const SliverToBoxAdapter(child: SizedBox(height: 50)),
               ],
             ),
-          ),
-    );
-  }
 
-  Widget _buildStatChip(BuildContext context, String label, String value, Color color) {
-    return Expanded(
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 80),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.2)),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_safeStr(label), style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text(_safeStr(value), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
-            ],
-          ),
+            // 🚀 看板功能区 (热力图 & 甘特图)
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isDark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.04),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    TeamHeatmapWidget(todos: _allCombinedTodos, viewDays: _viewDays == 30 ? 35 : _viewDays),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Divider(height: 1, color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1)),
+                    ),
+                    TeamGanttWidget(
+                      todos: _allCombinedTodos,
+                      viewDays: _viewDays,
+                      onTodoTap: _showTodoDetails,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 数据指标行
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(child: _buildStatChip(context, "活跃任务", "${_allCombinedTodos.length}", Colors.blue, Icons.flash_on_rounded)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildStatChip(context, "团队关联", "${_allCombinedTodos.where((t) => t.teamUuid != null).length}", Colors.purple, Icons.hub_rounded)),
+                  ],
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+            // 任务流
+            _allCombinedTodos.isEmpty
+                ? SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.task_alt_rounded, size: 64, color: Colors.grey.withOpacity(0.3)),
+                    const SizedBox(height: 16),
+                    Text("暂无活跃的全景任务", style: TextStyle(fontSize: 16, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+            )
+                : SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildWaterfallItem(_allCombinedTodos[index], isLast: index == _allCombinedTodos.length - 1),
+                  childCount: _allCombinedTodos.length,
+                ),
+              ),
+            ),
+
+            // 底部留白
+            SliverToBoxAdapter(
+              child: SizedBox(height: MediaQuery.of(context).padding.bottom + 50),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildWaterfallItem(TodoItem todo) {
+  Widget _buildStatChip(BuildContext context, String label, String value, MaterialColor color, IconData icon) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withOpacity(isDark ? 0.2 : 0.08), color.withOpacity(isDark ? 0.05 : 0.02)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(isDark ? 0.3 : 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color.shade400),
+              const SizedBox(width: 6),
+              Text(_safeStr(label), style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(_safeStr(value), style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: isDark ? Colors.white : Colors.black87)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaterfallItem(TodoItem todo, {required bool isLast}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     bool isTeamTask = todo.teamUuid != null;
-    Color teamColor = isTeamTask ? Colors.blue[600]! : Colors.orange[600]!;
+    Color teamColor = isTeamTask ? Colors.blue.shade500 : Colors.orange.shade500;
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 左侧时间点与团队标识线
-          Column(
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(color: teamColor, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
-              ),
-              Expanded(child: Container(width: 2, color: teamColor.withOpacity(0.2))),
-            ],
+          SizedBox(
+            width: 24,
+            child: Column(
+              children: [
+                const SizedBox(height: 24), // 对齐卡片视觉中心
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: teamColor, width: 3),
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.only(top: 4),
+                      decoration: BoxDecoration(
+                        color: teamColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
+          // 右侧卡片内容
           Expanded(
             child: Container(
-              margin: const EdgeInsets.only(bottom: 24),
-              padding: const EdgeInsets.all(14),
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
+                boxShadow: [
+                  BoxShadow(
+                    color: isDark ? Colors.black.withOpacity(0.2) : Colors.black.withOpacity(0.03),
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
+                  )
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      // 🚀 Uni-Sync 核心：团队名标签 (Team Tag)
+                      // 🚀 优化的标签样式
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: teamColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                        child: Text(
-                          isTeamTask ? "@${_safeStr(todo.teamName ?? '未知团队')}" : "#个人私密",
-                          style: TextStyle(fontSize: 9, color: teamColor, fontWeight: FontWeight.bold),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: teamColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(isTeamTask ? Icons.group_rounded : Icons.person_rounded, size: 10, color: teamColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              isTeamTask ? _safeStr(todo.teamName ?? '未知团队') : "个人私密",
+                              style: TextStyle(fontSize: 10, color: teamColor, fontWeight: FontWeight.bold),
+                            ),
+                          ],
                         ),
                       ),
                       const Spacer(),
-                      Text(
-                        _safeStr(TimezoneUtils.getRelativeTime(todo.dueDate?.millisecondsSinceEpoch ?? todo.updatedAt)),
-                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      Row(
+                        children: [
+                          Icon(Icons.schedule_rounded, size: 12, color: Colors.grey.shade400),
+                          const SizedBox(width: 4),
+                          Text(
+                            _safeStr(TimezoneUtils.getRelativeTime(todo.dueDate?.millisecondsSinceEpoch ?? todo.updatedAt)),
+                            style: TextStyle(fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontWeight: FontWeight.w500),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(_safeStr(todo.title), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 12),
+                  Text(_safeStr(todo.title), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.3)),
                   if (todo.remark != null && todo.remark!.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(_safeStr(todo.remark!), style: const TextStyle(fontSize: 11, color: Colors.grey), maxLines: 2),
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _safeStr(todo.remark!),
+                        style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade500 : Colors.grey.shade600, height: 1.4),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                 ],
               ),
