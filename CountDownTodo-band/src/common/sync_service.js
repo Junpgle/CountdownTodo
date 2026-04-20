@@ -1,8 +1,10 @@
+var appVersion = '1.0.5'
+var appVersionCode = 6
+var isVersionFetched = false
 var storage = require('@system.storage')
 var interconnect = require('@system.interconnect')
 var app = require('@system.app')
 var router = require('@system.router')
-
 var SYNC_KEY_PREFIX = 'sync_'
 var connect = null
 var isConnected = false
@@ -10,8 +12,7 @@ var batchBuffer = {}
 var pendingRequests = {}
 var isInitialized = false
 var diagMsg = ''
-var appVersion = '...'
-var appVersionCode = 0
+
 var onVersionReady = null
 var onSyncDataReceived = null
 var onAlertReceived = null
@@ -273,7 +274,13 @@ function requestSyncFromPhone(type, onResult) {
 }
 
 function init(opts) {
-  if (opts && opts.onVersionReady) onVersionReady = opts.onVersionReady
+  if (opts && opts.onVersionReady) {
+    onVersionReady = opts.onVersionReady
+    // 🚀 修复点 1：如果 UI 注册回调时，版本号已经被 app.ux 提前拉到了，直接立即回调通知 UI
+    if (isVersionFetched && appVersion !== '...') {
+      onVersionReady(appVersion)
+    }
+  }
   if (opts && opts.onAlertReceived) onAlertReceived = opts.onAlertReceived
   if (opts && opts.onSyncDataReceived) onSyncDataReceived = opts.onSyncDataReceived
 
@@ -281,6 +288,7 @@ function init(opts) {
     return
   }
 
+  // 🚀 第一步：异步获取版本号
   try {
     app.getInfo({
       success: function(info) {
@@ -289,9 +297,16 @@ function init(opts) {
           appVersionCode = info.versionCode || appVersionCode
         }
         if (onVersionReady) onVersionReady(appVersion)
+        
+        // 🚀 核心新增：拿到真实版本后，如果互联已经连上了，立刻补发一次更新手机端！
+        if (isConnected) {
+          sendVersionInfo()
+        }
       },
       fail: function() {
         if (onVersionReady) onVersionReady(appVersion)
+        // 即使获取失败也发一次，防止状态机卡死
+        if (isConnected) sendVersionInfo()
       }
     })
   } catch (e) {}
@@ -392,6 +407,7 @@ function sendVersionInfo() {
   var conn = getConnect()
   if (!conn) return
   if (typeof conn.send !== 'function') return
+
   conn.send({
     data: { type: 'band_info', version: appVersion, version_code: appVersionCode, timestamp: Date.now() },
     success: function() {},

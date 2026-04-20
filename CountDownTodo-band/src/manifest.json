@@ -1,8 +1,8 @@
 {
   "package": "com.math_quiz.junpgle.com.math_quiz_app",
   "name": "CountDownTodo",
-  "versionName": "1.0.4",
-  "versionCode": 4,
+  "versionName": "1.0.5",
+  "versionCode": 6,
   "minPlatformVersion": 1000,
   "icon": "/common/logo.png",
   "deviceTypeList": [

@@ -129,7 +129,7 @@ export default {
       onAlertReceived: function(alertData) {
         // 实时跳转到提醒页面
         if (alertData && alertData.title) {
-          router.push({
+          router.replace({
             uri: '/pages/alert',
             params: {
               title: alertData.title,
