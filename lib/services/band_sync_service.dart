@@ -294,6 +294,11 @@ class BandSyncService {
     return success;
   }
 
+  /// 发送版本更新信息到手环
+  static Future<bool> sendVersionUpdate(Map<String, dynamic> updateInfo) async {
+    return await sendData('version_update', updateInfo);
+  }
+
   static void _updateLastSyncTime() {
     _lastSyncTime = DateTime.now();
   }

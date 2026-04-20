@@ -3,6 +3,7 @@ package com.math_quiz.junpgle.com.math_quiz_app
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -55,11 +56,27 @@ class ReminderService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannels()
+        // 🚀 核心修复：Android 14+ 要求在 onCreate 中尽快开启前台服务，且必须指定类型
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                0
+            }
+            try {
+                startForeground(FG_NOTIFICATION_ID, buildSilentFgNotification(), type)
+            } catch (e: Exception) {
+                Log.e(TAG, "startForeground error in onCreate", e)
+                // 兜底调用
+                startForeground(FG_NOTIFICATION_ID, buildSilentFgNotification())
+            }
+        } else {
+            startForeground(FG_NOTIFICATION_ID, buildSilentFgNotification())
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // 必须立刻调 startForeground，否则 Android 8+ 会 ANR
-        startForeground(FG_NOTIFICATION_ID, buildSilentFgNotification())
+        // onCreate 已调用过，这里双重保险（注意：Android 12+ 允许在 onStartCommand 调用）
 
         when (intent?.action) {
             ACTION_SHOW_REMINDER -> {

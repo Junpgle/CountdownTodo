@@ -180,6 +180,22 @@ function handleReceivedData(data) {
       return
     }
 
+    // 🚀 特殊处理：版本更新提醒
+    if (type === 'version_update') {
+      storage.set({
+        key: 'sync_latest_version',
+        value: JSON.stringify(parsedData.data)
+      })
+      if (onAlertReceived) {
+        onAlertReceived({
+          title: '发现新版本',
+          content: '版本 ' + (parsedData.data.version_name || '未知') + ' 可用',
+          todoType: 'update'
+        })
+      }
+      return
+    }
+
     var batchData = parsedData.data
     var batchNum = parsedData.batchNum || 1
     var totalBatches = parsedData.totalBatches || 1

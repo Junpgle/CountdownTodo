@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -47,7 +48,10 @@ class TodoSectionWidget extends StatefulWidget {
     this.onGroupsChanged = _defaultOnGroupsChanged,
     this.onLLMResultsParsed,
     this.onTeamChanged,
+    this.initialSelectedTeamUuid,
   });
+
+  final String? initialSelectedTeamUuid;
 
   static void _defaultOnGroupsChanged(List<TodoGroup> _) {}
 
@@ -72,11 +76,31 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   final Set<String> _animatedTodoIds = {};
 
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
+  Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
 
   @override
   void initState() {
     super.initState();
+    _selectedSubTeamUuid = widget.initialSelectedTeamUuid;
     _loadSettings();
+    _fetchTeamRoles(); // 🚀 获取角色
+  }
+
+  Future<void> _fetchTeamRoles() async {
+    try {
+      final teams = await ApiService.fetchTeams();
+      if (mounted) {
+        setState(() {
+          for (var t in teams) {
+            final uuid = t['uuid']?.toString();
+            final role = (t['role'] == 0 || t['user_role'] == 0) ? 'admin' : 'member';
+            if (uuid != null) _teamRoles[uuid] = role;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("获取团队角色失败: $e");
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -1683,28 +1707,48 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                               activeColor: colorScheme.primary,
                                               value: todo.isDone,
                                               onChanged: (val) {
-                                                if (val == true && !todo.isDone) {
+                                                if (val == null) return;
+                                                
+                                                // 🚀 乐观 UI 更新：立即修改状态并通知父组件
+                                                final bool wasDone = todo.isDone;
+                                                setState(() {
+                                                  todo.isDone = val;
+                                                  if (val) {
+                                                    _isCompleting[todo.id] = true;
+                                                  } else {
+                                                    _isCompleting.remove(todo.id);
+                                                    _completingAnimations[todo.id]?.dispose();
+                                                    _completingAnimations.remove(todo.id);
+                                                  }
+                                                });
+                                                
+                                                todo.markAsChanged();
+                                                List<TodoItem> updatedList = List.from(widget.todos);
+                                                // 排序以将已完成移到底部
+                                                updatedList.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+                                                widget.onTodosChanged(updatedList);
+
+                                                // 🚀 新增：同步团队独立任务状态
+                                                if (todo.teamUuid != null && todo.collabType == 1) {
+                                                  if (val) {
+                                                    unawaited(ApiService.selfCompleteTodo(todo.id));
+                                                  } else {
+                                                    unawaited(ApiService.selfResetTodo(todo.id));
+                                                  }
+                                                }
+
+                                                if (val && !wasDone) {
+                                                  // 播放动画后清理
                                                   _completingAnimations[todo.id]?.dispose();
                                                   final controller = AnimationController(duration: const Duration(milliseconds: 400), vsync: this);
                                                   _completingAnimations[todo.id] = controller;
-                                                  _isCompleting[todo.id] = true;
                                                   controller.forward().then((_) {
-                                                    _isCompleting[todo.id] = false;
-                                                    todo.isDone = true;
-                                                    todo.markAsChanged();
-                                                    List<TodoItem> updatedList = List.from(widget.todos);
-                                                    updatedList.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-                                                    widget.onTodosChanged(updatedList);
+                                                    if (mounted) {
+                                                      setState(() {
+                                                        _isCompleting[todo.id] = false;
+                                                      });
+                                                    }
                                                   });
-                                                } else {
-                                                  _completingAnimations[todo.id]?.dispose();
-                                                  _completingAnimations.remove(todo.id);
-                                                  _isCompleting.remove(todo.id);
-                                                  todo.isDone = val!;
-                                                  todo.markAsChanged();
-                                                  List<TodoItem> updatedList = List.from(widget.todos);
-                                                  updatedList.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-                                                  widget.onTodosChanged(updatedList);
                                                 }
                                               },
                                             ),
@@ -1774,7 +1818,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                           ],
                                                         ),
                                                       ),
-                                                      if (todo.collabType == 1) ...[
+                                                      if (todo.collabType == 1 && _teamRoles[todo.teamUuid] == 'admin') ...[
                                                          const SizedBox(width: 6),
                                                          GestureDetector(
                                                            onTap: () => _showIndependentTodoStatus(todo),
@@ -2891,72 +2935,130 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   }
 
   void _showIndependentTodoStatus(TodoItem todo) async {
+    // 🚀 不再使用全局阻塞 Dialog，改为弹窗内局部加载
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+      builder: (ctx) => _IndependentStatusDialog(todo: todo),
     );
+  }
+}
 
+/// 🚀 新增：独立任务状态弹窗组件，带局部刷新逻辑，提升网络不佳时的体验
+class _IndependentStatusDialog extends StatefulWidget {
+  final TodoItem todo;
+  const _IndependentStatusDialog({required this.todo});
+
+  @override
+  State<_IndependentStatusDialog> createState() => _IndependentStatusDialogState();
+}
+
+class _IndependentStatusDialogState extends State<_IndependentStatusDialog> {
+  bool _isLoading = true;
+  List<dynamic> _statusList = [];
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStatus();
+  }
+
+  Future<void> _loadStatus() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
     try {
-      final response = await ApiService.getTodoStatus(todo.id);
-      if (mounted) Navigator.pop(context); // 关闭加载
-
-      if (response['success'] == true) {
-        final List<dynamic> statusList = response['status'] ?? [];
-        if (!mounted) return;
-        
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text("任务进度: ${todo.title}"),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: statusList.isEmpty 
-                ? const Center(child: Text("暂无成员进度数据"))
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: statusList.length,
-                    itemBuilder: (context, index) {
-                      final s = statusList[index];
-                      final isDone = s['is_completed'] == 1;
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isDone ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
-                          child: Text(
-                            s['username']?[0]?.toUpperCase() ?? '?',
-                            style: TextStyle(color: isDone ? Colors.green : Colors.grey),
-                          ),
-                        ),
-                        title: Text(s['username'] ?? '未知用户', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                          isDone ? "已完成" : "进行中",
-                          style: TextStyle(fontSize: 12, color: isDone ? Colors.green : Colors.grey),
-                        ),
-                        trailing: Icon(
-                          isDone ? Icons.check_circle : Icons.radio_button_unchecked,
-                          color: isDone ? Colors.green : Colors.grey,
-                        ),
-                      );
-                    },
-                  ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("关闭")),
-            ],
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
-        );
-      } else {
-        if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("拉取详情失败: ${response['error'] ?? '未知错误'}")));
-        }
+      final res = await ApiService.getTodoStatus(widget.todo.id);
+      if (mounted) {
+        setState(() {
+          _statusList = res['data'] ?? res['status'] ?? [];
+          _isLoading = false;
+        });
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("发生错误: $e")));
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
       }
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text("任务进度: ${widget.todo.title}"),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 350,
+        child: _isLoading 
+          ? const Center(child: CircularProgressIndicator())
+          : (_error != null 
+              ? Center(child: Text("加载失败: $_error"))
+              : (_statusList.isEmpty 
+                  ? const Center(child: Text("暂无成员进度数据"))
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _statusList.length,
+                      itemBuilder: (context, index) {
+                        final s = _statusList[index];
+                        final isDone = s['is_completed'] == 1;
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: isDone ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+                            child: Text(
+                              (s['username'] as String?)?.isNotEmpty == true 
+                                  ? s['username'][0].toUpperCase() 
+                                  : '?',
+                              style: TextStyle(color: isDone ? Colors.green : Colors.grey),
+                            ),
+                          ),
+                          title: Text(s['username']?.toString() ?? '未知用户', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                          subtitle: Text(
+                            isDone ? "已完成" : "进行中",
+                            style: TextStyle(fontSize: 12, color: isDone ? Colors.green : Colors.grey),
+                          ),
+                          trailing: isDone 
+                            ? IconButton(
+                                icon: const Icon(Icons.undo, size: 20, color: Colors.orange),
+                                tooltip: "撤回任务完成 (变更回未完成)",
+                                onPressed: () async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (c) => AlertDialog(
+                                      title: const Text("确认撤回"),
+                                      content: Text("确定要将成员 [${s['username']}] 的该任务变更回未完成吗？"),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("取消")),
+                                        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("撤回", style: TextStyle(color: Colors.orange))),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm == true) {
+                                    setState(() => _isLoading = true);
+                                    final res = await ApiService.resetTodoStatus(widget.todo.id, s['user_id'].toString());
+                                    if (res['success'] == true) {
+                                      _loadStatus(); // 刷新数据
+                                    } else {
+                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("重置失败: ${res['error']}")));
+                                      setState(() => _isLoading = false);
+                                    }
+                                  }
+                                },
+                              )
+                            : Icon(
+                                Icons.radio_button_unchecked,
+                                color: Colors.grey,
+                              ),
+                        );
+                      },
+                    ))),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text("关闭")),
+      ],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    );
   }
 }
 

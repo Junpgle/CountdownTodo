@@ -1736,6 +1736,9 @@ class _HomeDashboardState extends State<HomeDashboard>
           FloatWindowService.invalidateSlotCache();
           _loadAllData(); // _loadAllData 内部会重新 scheduleAll
         }
+        
+        // 🚀 同步手环版本信息
+        unawaited(UpdateService.syncBandVersionInfo());
       }
       // ... 前面代码保持不变
     } catch (e) {
@@ -2232,7 +2235,22 @@ class _HomeDashboardState extends State<HomeDashboard>
                           await StorageService.saveTodoGroups(widget.username, allGroups, sync: true);
                         },
                         onTodosChanged: (newTodos) async {
+                          // 🚀 记录变更，用于通知清除
+                          final oldTodos = List<TodoItem>.from(_todos);
                           setState(() => _todos = newTodos);
+
+                          // 🚀 核心修复：任务完成后自动清除对应通知
+                          for (var nt in newTodos) {
+                            if (nt.isDone) {
+                              final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
+                              if (!ot.isDone) {
+                                // 刚完成
+                                debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
+                                NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
+                              }
+                            }
+                          }
+
                           final allTodos =
                               await StorageService.getTodos(widget.username);
                           for (var newT in _todos) {
@@ -2253,6 +2271,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                           _rescheduleAlarms();
                           await WidgetService.updateTodoWidget(_todos);
                         },
+                        initialSelectedTeamUuid: _currentSelectedTeamUuid,
                         onRefreshRequested: _handleManualSync, 
                         onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
                           _navigateToTodoConfirm(

@@ -15,7 +15,10 @@
       <div class="title-group">
         <div class="title-row">
           <text class="title" static>CDT</text>
-          <text class="version-badge">{{bandVersion}}</text>
+          <div class="version-wrap" onclick="showUpdateInfo">
+            <text class="version-badge">{{bandVersion}}</text>
+            <div if="{{hasUpdate}}" class="update-dot"></div>
+          </div>
         </div>
         <text class="date">{{currentDate}}</text>
       </div>
@@ -114,7 +117,9 @@ export default {
     todayCourseText: '今日无课',
     pomodoroStatusText: '暂无专注',
     lastSyncTimeText: '',
-    bandVersion: ''
+    bandVersion: '',
+    hasUpdate: false,
+    updateDetail: null
   },
 
   statusTimer: null,
@@ -144,12 +149,14 @@ export default {
     })
     this.setCurrentDate()
     this.loadAllData()
+    this.checkUpdate()
     this.loadLastSyncTime()
   },
 
   onShow() {
     this.loadAllData()
     this.checkPendingAlert()
+    this.checkUpdate()
     this.loadLastSyncTime()
   },
 
@@ -211,6 +218,44 @@ export default {
         }
       },
       fail: function() {}
+    })
+  },
+  
+  checkUpdate() {
+    var self = this
+    storage.get({
+      key: 'sync_latest_version',
+      success: function(data) {
+        if (data) {
+          try {
+            var info = JSON.parse(data)
+            if (info && info.version_name) {
+              // 简单的字符串对比，实际可用 versionCode 更稳
+              var current = self.bandVersion.replace('v', '')
+              if (info.version_name !== current && current !== '...') {
+                self.hasUpdate = true
+                self.updateDetail = info
+                return
+              }
+            }
+          } catch(e) {}
+        }
+        self.hasUpdate = false
+      }
+    })
+  },
+  
+  showUpdateInfo() {
+    if (!this.hasUpdate || !this.updateDetail) {
+      prompt.showToast({ message: '当前已是最新版本 ' + this.bandVersion })
+      return
+    }
+    
+    var info = this.updateDetail
+    prompt.showDialog({
+      title: '发现新版本 ' + info.version_name,
+      message: info.update_info ? info.update_info.description : '请在手机端查看并更新',
+      buttons: [{ text: '确定', color: '#4a90d9' }]
     })
   },
 
@@ -552,7 +597,20 @@ export default {
 .version-badge {
   font-size: 18px;
   color: #666666;
+}
+
+.version-wrap {
+  flex-direction: row;
+  align-items: flex-start;
   margin-left: 12px;
+}
+
+.update-dot {
+  width: 10px;
+  height: 10px;
+  background-color: #ff4d4f;
+  border-radius: 5px;
+  margin-left: 2px;
 }
 
 .date {

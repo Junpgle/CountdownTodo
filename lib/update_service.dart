@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:CountDownTodo/services/band_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -267,6 +268,39 @@ class UpdateService {
       await prefs.setInt(
           _wallpaperLastCheckKey, DateTime.now().millisecondsSinceEpoch);
     }
+  }
+
+  // --- 手表端更新维护 ---
+  
+  /// 检查手表版本并推送给手表 (如果有连接)
+  static Future<void> syncBandVersionInfo() async {
+    if (!BandSyncService.isInitialized || !BandSyncService.isConnected) return;
+    
+    // 🚀 核心优化：检查用户是否开启了自动更新功能
+    final prefs = await SharedPreferences.getInstance();
+    final autoUpdate = prefs.getBool('band_auto_update_enabled') ?? true;
+    if (!autoUpdate) {
+      debugPrint("🚀 手环自动更新功能已关闭，跳过推送");
+      return;
+    }
+    
+    // 获取手机端的 Manifest，里面包含了 changelog_history
+    final manifest = await checkManifest(preferCache: true);
+    if (manifest == null) return;
+    
+    // 构造发送给手环的信息
+    final Map<String, dynamic> bandUpdateInfo = {
+      'version_code': manifest.versionCode,
+      'version_name': manifest.versionName,
+      'update_info': {
+        'title': manifest.updateInfo.title,
+        'description': manifest.updateInfo.description,
+      },
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+    
+    await BandSyncService.sendVersionUpdate(bandUpdateInfo);
+    debugPrint("🚀 已向手环推送最新版本信息: ${manifest.versionName}");
   }
 
   // 公告已读状态管理

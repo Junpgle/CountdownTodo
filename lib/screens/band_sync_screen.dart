@@ -24,11 +24,28 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   String _deviceName = '';
   bool _isSyncing = false;
   final List<String> _logs = [];
+  bool _isAutoUpdateEnabled = true; // 🚀 自动检查更新开关
 
   @override
   void initState() {
     super.initState();
+    _loadUpdateSettings();
     _initBandService();
+  }
+
+  Future<void> _loadUpdateSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isAutoUpdateEnabled = prefs.getBool('band_auto_update_enabled') ?? true;
+    });
+  }
+
+  Future<void> _saveUpdateSettings(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('band_auto_update_enabled', value);
+    setState(() {
+      _isAutoUpdateEnabled = value;
+    });
   }
 
   Future<void> _initBandService() async {
@@ -245,39 +262,68 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     return ValueListenableBuilder<String>(
       valueListenable: BandSyncService.bandVersionNotifier,
       builder: (context, version, _) {
-        return Card(
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, color: Colors.purple, size: 32),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+        return Column(
+          children: [
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Row(
                     children: [
-                      Text(
-                        '手环版本',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        version.isNotEmpty ? version : '等待连接...',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.purple,
+                        const Icon(Icons.info_outline, color: Colors.purple, size: 32),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '手环版本',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                version.isNotEmpty ? version : '等待连接...',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.purple,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                        if (_isConnected)
+                          TextButton.icon(
+                            onPressed: () async {
+                              _logs.add('手动检查手环更新...');
+                              await UpdateService.syncBandVersionInfo();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('已向手环推送最新版本信息')),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.system_update_alt_rounded, size: 18),
+                            label: const Text('检查更新'),
+                          ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('自动检查手环更新', style: TextStyle(fontSize: 14)),
+                      subtitle: const Text('连接时自动将最新版本信息推送至手环', style: TextStyle(fontSize: 12)),
+                      value: _isAutoUpdateEnabled,
+                      onChanged: _saveUpdateSettings,
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         );
       },
     );
