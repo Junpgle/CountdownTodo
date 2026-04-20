@@ -604,9 +604,10 @@ class _HomeDashboardState extends State<HomeDashboard>
               hasUpdate: true);
         }
         break;
+      case 'TEAM_REMOVED':
       case 'TEAM_UPDATE':
       case 'SYNC_DATA':
-        debugPrint('🚀 [协同] 收到团队更新信号 (${signal.action})，正在同步数据...');
+        debugPrint('🚀 [协同] 收到团队更新/移除信号 (${signal.action})，正在同步数据...');
         await _handleManualSync(silent: true);
         // 🚀 核心修复：协作信号驱动下，强制重新加载数据，不依赖 hasChanges 判断
         if (mounted) {
