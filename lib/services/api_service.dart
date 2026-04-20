@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
@@ -830,6 +831,118 @@ class ApiService {
         Uri.parse('$_effectiveBaseUrl/api/teams/members/remove'),
         headers: _getHeaders(),
         body: jsonEncode({'team_uuid': teamUuid, 'target_user_id': targetUserId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  // --- Uni-Sync V4.0 审批流接口 ---
+
+  static Future<Map<String, dynamic>> getPoWChallenge() async {
+    try {
+      final response = await _client.get(Uri.parse('$_effectiveBaseUrl/api/auth/pow_challenge'), headers: _getHeaders());
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static String? _calculatePoW(String challenge, int difficulty) {
+    String prefix = '0' * difficulty;
+    int nonce = 0;
+    while (true) {
+      String content = challenge + nonce.toString();
+      String hash = sha256.convert(utf8.encode(content)).toString();
+      if (hash.startsWith(prefix)) return nonce.toString();
+      nonce++;
+      if (nonce > 1000000) return null; // 安全限制，防止死循环
+    }
+  }
+
+  static Future<Map<String, dynamic>> requestJoinTeam(String code, {String message = ''}) async {
+    try {
+      // 1. 获取挑战
+      final challengeRes = await getPoWChallenge();
+      if (challengeRes['success'] != true) return challengeRes;
+      
+      final challenge = challengeRes['challenge'];
+      final difficulty = challengeRes['difficulty'] ?? 4;
+
+      // 2. 计算 PoW
+      final nonce = _calculatePoW(challenge, difficulty);
+      if (nonce == null) return {'success': false, 'error': '算力验证失败'};
+
+      // 3. 提交申请
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/request_join'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'invite_code': code,
+          'message': message,
+          'pow_challenge': challenge,
+          'pow_nonce': nonce,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<List<dynamic>> fetchPendingRequests(String teamUuid) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/pending_requests?team_uuid=$teamUuid'),
+        headers: _getHeaders(),
+      );
+      final data = jsonDecode(response.body);
+      return data['requests'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> processJoinRequest(String teamUuid, int targetUserId, String action) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/process_request'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'team_uuid': teamUuid,
+          'target_user_id': targetUserId,
+          'action': action
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<List<dynamic>> fetchMyInvitations() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/invitations'),
+        headers: _getHeaders(),
+      );
+       final data = jsonDecode(response.body);
+      return data['invitations'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> respondToInvitation(String teamUuid, String action) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/respond_invitation'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'team_uuid': teamUuid,
+          'action': action,
+        }),
       );
       return jsonDecode(response.body);
     } catch (e) {

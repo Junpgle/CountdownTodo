@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
+import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../services/pomodoro_sync_service.dart';
 import 'package:intl/intl.dart';
 import './unified_waterfall_screen.dart';
 import './conflict_inbox_screen.dart';
@@ -16,22 +18,59 @@ class TeamManagementScreen extends StatefulWidget {
 }
 
 class _TeamManagementScreenState extends State<TeamManagementScreen> {
+  StreamSubscription? _wsSub;
   List<Team> _teams = [];
+  List<dynamic> _myInvitations = [];
+  Map<String, int> _teamPendingCounts = {};
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadTeams();
+    _setupWsListener();
+  }
+
+  void _setupWsListener() {
+    _wsSub = PomodoroSyncService.instance.onStateChanged.listen((state) {
+      if (state.action == 'NEW_INVITATION' || 
+          state.action == 'NEW_JOIN_REQUEST' || 
+          state.action == 'PENDING_COUNTS' ||
+          state.action == 'JOIN_REQUEST_APPROVED') {
+        _loadTeams(); // 🚀 收到通知，全量刷新获取最新状态和红点
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _wsSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadTeams() async {
     setState(() => _isLoading = true);
-    final rawTeams = await ApiService.fetchTeams();
-    setState(() {
-      _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
-      _isLoading = false;
-    });
+    try {
+      final rawTeams = await ApiService.fetchTeams();
+      final invitations = await ApiService.fetchMyInvitations();
+      
+      Map<String, int> pendingCounts = {};
+      for(var t in rawTeams) {
+        if (t['role'] == 0) { // 管理员
+          final requests = await ApiService.fetchPendingRequests(t['uuid']);
+          pendingCounts[t['uuid']] = requests.length;
+        }
+      }
+
+      setState(() {
+        _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+        _myInvitations = invitations;
+        _teamPendingCounts = pendingCounts;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _showCreateTeamDialog() {
@@ -104,12 +143,12 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                 if (code.isEmpty) return;
                 setDialogState(() => isProcessing = true);
                 try {
-                  final res = await ApiService.joinTeamByCode(code);
-                  if (res['success'] == true) {
-                    Navigator.pop(context);
-                    _loadTeams();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('成功加入团队 🚀')));
-                  } else {
+                  final res = await ApiService.requestJoinTeam(code);
+                    if (res['success'] == true) {
+                      Navigator.pop(context);
+                      _loadTeams();
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('申请已提交，请等待管理员审核 ⏳')));
+                    } else {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['error'] ?? res['message'] ?? '加入失败')));
                   }
                 } finally {
@@ -180,31 +219,36 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
               else ...[
                 // 🚀 Uni-Sync 4.0: 协作功能中心 (全景时间轴 + 冲突解决)
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                    child: Row(
-                      children: [
-                        _buildQuickActionCard(
-                          title: "全景汇聚",
-                          desc: "时间轴对齐",
-                          icon: Icons.waterfall_chart_rounded,
-                          color: Colors.blueAccent,
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedWaterfallScreen(username: widget.username))),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                        child: Row(
+                          children: [
+                            _buildQuickActionCard(
+                              title: "全景汇聚",
+                              desc: "时间轴对齐",
+                              icon: Icons.waterfall_chart_rounded,
+                              color: Colors.blueAccent,
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedWaterfallScreen(username: widget.username))),
+                            ),
+                            const SizedBox(width: 12),
+                            _buildQuickActionCard(
+                              title: "冲突中心",
+                              desc: "数据对齐",
+                              icon: Icons.verified_user_rounded,
+                              color: Colors.orangeAccent,
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConflictInboxScreen(username: widget.username))),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        _buildQuickActionCard(
-                          title: "冲突中心",
-                          desc: "数据对齐",
-                          icon: Icons.verified_user_rounded,
-                          color: Colors.orangeAccent,
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConflictInboxScreen(username: widget.username))),
-                        ),
-                      ],
-                    ),
+                      ),
+                      if (_myInvitations.isNotEmpty) _buildInvitationsSection(),
+                    ],
                   ),
                 ),
 
-                if (_teams.isEmpty)
+                if (_teams.isEmpty && _myInvitations.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: Column(
@@ -250,6 +294,76 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
       ),
       floatingActionButton: _teams.isNotEmpty ? _buildSpeedDial(context) : null,
     );
+  }
+
+  Widget _buildInvitationsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: Row(
+            children: [
+              Icon(Icons.mail_outline, size: 18, color: Colors.blueAccent),
+              SizedBox(width: 8),
+              Text('收到的邀请', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+            ],
+          ),
+        ),
+        ..._myInvitations.map((inv) => Container(
+          margin: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.blue.withOpacity(0.1)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(backgroundColor: Colors.blue.withAlpha(30), child: Icon(Icons.group, color: Colors.blue)),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(inv['team_name'] ?? '未知团队', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('来自 ${inv['inviter_name']} 的邀请', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () => _handleInvitation(inv['team_uuid'], 'decline'),
+                child: Text('忽略', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: () => _handleInvitation(inv['team_uuid'], 'accept'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text('加入'),
+              ),
+            ],
+          ),
+        )).toList(),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Divider(height: 32),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleInvitation(String teamUuid, String action) async {
+    final res = await ApiService.respondToInvitation(teamUuid, action);
+    if (res['success'] == true) {
+      _loadTeams();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(action == 'accept' ? '已加入团队 ✨' : '已忽略邀请')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['error'] ?? '操作失败')));
+    }
   }
 
   Widget _buildQuickActionCard({
@@ -424,15 +538,34 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
             }
           },
         ),
-        IconButton(
-          icon: Icon(Icons.people_outline, size: 20),
-          onPressed: () => _showMembersSheet(team),
-          tooltip: '查看成员',
+        Stack(
+          children: [
+            IconButton(
+              icon: Icon(Icons.people_outline, size: 20),
+              onPressed: () => _showMembersSheet(team),
+              tooltip: '查看成员',
+            ),
+            if ((_teamPendingCounts[team.uuid] ?? 0) > 0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: EdgeInsets.all(4),
+                  decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  constraints: BoxConstraints(minWidth: 14, minHeight: 14),
+                  child: Text(
+                    '${_teamPendingCounts[team.uuid]}',
+                    style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
         ),
         IconButton(
           icon: Icon(Icons.person_add_outlined, size: 20),
           onPressed: () => _showAddMemberDialog(team),
-          tooltip: '邀请成员',
+          tooltip: '添加成员',
         ),
         if (team.userRole == TeamRole.admin)
           IconButton(
@@ -525,84 +658,142 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
         minChildSize: 0.4,
         expand: false,
         builder: (context, scrollController) {
-          return FutureBuilder<List<dynamic>>(
-            future: ApiService.fetchTeamMembers(team.uuid),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Text('加载失败: ${snapshot.error}', style: TextStyle(color: Colors.red)),
-                ));
-              }
-              final members = snapshot.data?.map((m) => TeamMember.fromJson(m)).toList() ?? [];
-              
-              return Column(
-                children: [
-                  Container(
-                    margin: EdgeInsets.symmetric(vertical: 12),
-                    width: 40, height: 4,
-                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('团队成员 (${members.length})', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        Text(team.name, style: TextStyle(color: Colors.grey, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                  Divider(),
-                  if (members.isEmpty)
-                    Expanded(child: Center(child: Text('暂无成员', style: TextStyle(color: Colors.grey))))
-                  else
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: members.length,
-                        itemBuilder: (context, index) {
-                          final member = members[index];
-                          final isAdmin = member.role == TeamRole.admin;
-                          final isMe = member.userId == _getCurrentUserId();
-
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.blue.withOpacity(0.1),
-                              child: Text(member.username?.substring(0,1).toUpperCase() ?? '?'),
-                            ),
-                            title: Text(member.username ?? '匿名用户'),
-                            subtitle: Text('加入于 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(member.joinedAt))}'),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (isAdmin)
-                                  Container(
-                                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                                    child: Text('管理员', style: TextStyle(fontSize: 10, color: Colors.blue)),
-                                  ),
-                                if (team.userRole == TeamRole.admin && !isAdmin)
-                                  IconButton(
-                                    icon: Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
-                                    onPressed: () => _confirmRemoveMember(team, member),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                ],
-              );
-            },
+          return Column(
+            children: [
+              Container(
+                margin: EdgeInsets.symmetric(vertical: 12),
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('团队详情', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(team.name, style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  ],
+                ),
+              ),
+              _buildMemberSheetTabs(team, scrollController),
+            ],
           );
         },
       ),
     );
+  }
+
+  Widget _buildMemberSheetTabs(Team team, ScrollController scrollController) {
+    return Expanded(
+      child: DefaultTabController(
+        length: team.userRole == TeamRole.admin ? 2 : 1,
+        child: Column(
+          children: [
+            TabBar(
+              labelColor: Colors.blue,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: Colors.blue,
+              tabs: [
+                Tab(text: '成员列表'),
+                if (team.userRole == TeamRole.admin) Tab(text: '申请审批'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildMembersList(team, scrollController),
+                  if (team.userRole == TeamRole.admin) _buildRequestsList(team, scrollController),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMembersList(Team team, ScrollController scrollController) {
+    return FutureBuilder<List<dynamic>>(
+      future: ApiService.fetchTeamMembers(team.uuid),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
+        final members = snapshot.data?.map((m) => TeamMember.fromJson(m)).toList() ?? [];
+        if (members.isEmpty) return Center(child: Text('暂无成员', style: TextStyle(color: Colors.grey)));
+        return ListView.builder(
+          controller: scrollController,
+          itemCount: members.length,
+          itemBuilder: (context, index) {
+            final member = members[index];
+            final isAdmin = member.role == TeamRole.admin;
+            return ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.blue.withOpacity(0.1),
+                child: Text(member.username?.substring(0, 1).toUpperCase() ?? '?'),
+              ),
+              title: Text(member.username ?? '匿名用户'),
+              subtitle: Text('加入于 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(member.joinedAt))}'),
+              trailing: isAdmin 
+                ? Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                    child: Text('管理员', style: TextStyle(fontSize: 10, color: Colors.blue)),
+                  )
+                : (team.userRole == TeamRole.admin) 
+                  ? IconButton(icon: Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20), onPressed: () => _confirmRemoveMember(team, member))
+                  : null,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildRequestsList(Team team, ScrollController scrollController) {
+    return FutureBuilder<List<dynamic>>(
+      future: ApiService.fetchPendingRequests(team.uuid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator());
+        final requests = snapshot.data ?? [];
+        if (requests.isEmpty) return Center(child: Text('暂无待处理申请', style: TextStyle(color: Colors.grey)));
+        
+        return ListView.builder(
+          controller: scrollController,
+          itemCount: requests.length,
+          itemBuilder: (context, index) {
+            final req = requests[index];
+            return ListTile(
+              leading: CircleAvatar(child: Text(req['username']?.substring(0,1).toUpperCase() ?? '?')),
+              title: Text(req['username'] ?? '未知用户'),
+              subtitle: Text(req['message'] != null && req['message'].isNotEmpty ? '留言: ${req['message']}' : '申请加入团队'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.check_circle, color: Colors.green),
+                    onPressed: () => _handleProcessRequest(team.uuid, req['user_id'], 'approve'),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.cancel, color: Colors.redAccent),
+                    onPressed: () => _handleProcessRequest(team.uuid, req['user_id'], 'reject'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _handleProcessRequest(String teamUuid, int userId, String action) async {
+    final res = await ApiService.processJoinRequest(teamUuid, userId, action);
+    if (res['success'] == true) {
+      _loadTeams();
+      Navigator.pop(context); // Close sheet
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(action == 'approve' ? '已批准入队' : '已拒绝申请')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['error'] ?? '操作失败')));
+    }
   }
 
   void _confirmRemoveMember(Team team, TeamMember member) {
@@ -644,7 +835,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('邀请成员'),
+        title: Text('添加成员'),
         content: TextField(
           controller: controller,
           decoration: InputDecoration(
@@ -666,7 +857,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                   if (res['success'] == true) {
                     Navigator.pop(context);
                     _loadTeams();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('邀请已发出 📧')));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('入队邀请已发出 ✨')));
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['error'] ?? res['message'] ?? '邀请失败')));
                   }
@@ -718,6 +909,50 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
       },
       icon: Icon(Icons.people),
       label: Text('管理团队'),
+    );
+  }
+
+  Widget _buildIconButton(IconData icon, VoidCallback onTap, String label) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(icon, color: Colors.blueAccent),
+          onPressed: onTap,
+          padding: EdgeInsets.zero,
+        ),
+        Text(label, style: TextStyle(fontSize: 10, color: Colors.blueAccent)),
+      ],
+    );
+  }
+
+  Widget _buildConflictBanner() {
+    return Positioned(
+      bottom: 20,
+      left: 20,
+      right: 20,
+      child: GestureDetector(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConflictInboxScreen(username: widget.username))),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)]
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.sync_problem, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text('发现协作冲突，请点击处理以保持数据对齐', 
+                  style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+              Icon(Icons.chevron_right, color: Colors.white),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
