@@ -67,20 +67,25 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   final Map<String, GlobalKey> _pomodoroCardKeys = {};
 
   GlobalKey _getCourseCardKey(String courseName, int weekday, int startTime) {
-    final keyStr = '${courseName}_${weekday}_${startTime}';
+    // Include current week to avoid key collisions while AnimatedSwitcher keeps
+    // both previous and next week grids in the tree during transition.
+    final keyStr = 'w${_currentWeek}_${courseName}_${weekday}_${startTime}';
     return _courseCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   GlobalKey _getTodoCardKey(String id) {
-    return _todoCardKeys.putIfAbsent(id, () => GlobalKey());
+    final keyStr = 'w${_currentWeek}_$id';
+    return _todoCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   GlobalKey _getTimeLogCardKey(String id) {
-    return _timeLogCardKeys.putIfAbsent(id, () => GlobalKey());
+    final keyStr = 'w${_currentWeek}_$id';
+    return _timeLogCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   GlobalKey _getPomodoroCardKey(String id) {
-    return _pomodoroCardKeys.putIfAbsent(id, () => GlobalKey());
+    final keyStr = 'w${_currentWeek}_$id';
+    return _pomodoroCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   // 时间轴参数配置

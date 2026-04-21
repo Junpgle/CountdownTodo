@@ -133,7 +133,30 @@ class CourseMonthView extends StatelessWidget {
       });
     }
 
-    weekBars.sort((a, b) => (a['todo'] as TodoItem).id.compareTo((b['todo'] as TodoItem).id));
+    // Sort bars by timeline so personal and team todos are mixed by time.
+    weekBars.sort((a, b) {
+      final TodoItem aTodo = a['todo'] as TodoItem;
+      final TodoItem bTodo = b['todo'] as TodoItem;
+
+      // Keep unfinished tasks on top, then preserve chronological order.
+      if (aTodo.isDone != bTodo.isDone) return aTodo.isDone ? 1 : -1;
+
+      final DateTime aStart = DateTime.fromMillisecondsSinceEpoch(
+        aTodo.createdDate ?? aTodo.createdAt,
+      ).toLocal();
+      final DateTime bStart = DateTime.fromMillisecondsSinceEpoch(
+        bTodo.createdDate ?? bTodo.createdAt,
+      ).toLocal();
+      final int byStart = aStart.compareTo(bStart);
+      if (byStart != 0) return byStart;
+
+      final DateTime aEnd = (aTodo.dueDate ?? aStart).toLocal();
+      final DateTime bEnd = (bTodo.dueDate ?? bStart).toLocal();
+      final int byEnd = aEnd.compareTo(bEnd);
+      if (byEnd != 0) return byEnd;
+
+      return aTodo.id.compareTo(bTodo.id);
+    });
 
     return LayoutBuilder(builder: (context, constraints) {
       double cellWidth = constraints.maxWidth / 7;
@@ -167,40 +190,85 @@ class CourseMonthView extends StatelessWidget {
             ),
             
             if (activeDataViews.contains('todos'))
-              Positioned.fill(
-                top: 25, 
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: _clusterBars(weekBars).take(viewMode == 1 ? 5 : 3).map((rowGroup) {
-                    return SizedBox(
-                      height: 22,
-                      child: Stack(
-                        children: rowGroup.map((bar) {
-                          final t = bar['todo'] as TodoItem;
-                          final int start = bar['start'];
-                          final int end = bar['end'];
-                          return Positioned(
-                            left: start * cellWidth + 2,
-                            width: (end - start + 1) * cellWidth - 4,
-                            height: 18,
-                            child: GestureDetector(
-                              onTap: () => onGanttTodoTap?.call(t),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: (t.isDone ? Colors.green : (t.teamUuid != null ? Colors.blue : Colors.deepPurpleAccent)).withOpacity(0.9),
-                                  borderRadius: BorderRadius.circular(6),
-                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 2, offset: const Offset(0,1))],
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 25,
+                bottom: viewMode == 2 ? 0 : 4,
+                child: LayoutBuilder(
+                  builder: (context, ganttConstraints) {
+                    final clusteredRows = _clusterBars(weekBars);
+                    if (clusteredRows.isEmpty) return const SizedBox.shrink();
+
+                    final bool isHalfMonthView = viewMode != 2;
+                    final int minRows = isHalfMonthView ? 5 : 3;
+                    final int maxRowsCap = isHalfMonthView ? 10 : 5;
+                    final double rowSpacing = isHalfMonthView ? 4 : 2;
+                    final double minRowHeight = 18;
+                    final int rowsBySpace =
+                        ((ganttConstraints.maxHeight + rowSpacing) / (minRowHeight + rowSpacing)).floor();
+                    final int maxRows = rowsBySpace.clamp(minRows, maxRowsCap);
+                    final rowGroups = clusteredRows.take(maxRows).toList();
+
+                    final double rowHeight =
+                        ((ganttConstraints.maxHeight - ((rowGroups.length - 1) * rowSpacing)) / rowGroups.length)
+                            .clamp(minRowHeight, isHalfMonthView ? 40.0 : 24.0);
+                    final double barHeight = (rowHeight - 4).clamp(14.0, 22.0);
+
+                    return Column(
+                      mainAxisAlignment:
+                          isHalfMonthView ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: rowGroups.map((rowGroup) {
+                        return SizedBox(
+                          height: rowHeight,
+                          child: Stack(
+                            children: rowGroup.map((bar) {
+                              final t = bar['todo'] as TodoItem;
+                              final int start = bar['start'];
+                              final int end = bar['end'];
+                              return Positioned(
+                                left: start * cellWidth + 2,
+                                width: (end - start + 1) * cellWidth - 4,
+                                height: barHeight,
+                                child: GestureDetector(
+                                  onTap: () => onGanttTodoTap?.call(t),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: (t.isDone
+                                              ? Colors.green
+                                              : (t.teamUuid != null ? Colors.blue : Colors.deepPurpleAccent))
+                                          .withOpacity(0.9),
+                                      borderRadius: BorderRadius.circular(6),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 2,
+                                          offset: const Offset(0, 1),
+                                        )
+                                      ],
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      t.title,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
                                 ),
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                                alignment: Alignment.centerLeft,
-                                child: Text(t.title, style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      }).toList(),
                     );
-                  }).toList(),
+                  },
                 ),
               ),
           ],

@@ -1019,6 +1019,30 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   // === 业务与辅助逻辑 ===
+  DateTime? _resolveCourseStartTime(CourseItem course, DateTime now) {
+    final dateText = course.date.trim();
+
+    DateTime? day;
+    if (dateText.isNotEmpty) {
+      // Prefer strict date parsing, then allow DateTime-compatible fallback.
+      try {
+        day = DateFormat('yyyy-MM-dd').parseStrict(dateText);
+      } catch (_) {
+        day = DateTime.tryParse(dateText);
+      }
+    }
+
+    // Fallback for legacy records without date: infer the day from weekday.
+    day ??= DateUtils.dateOnly(now)
+        .add(Duration(days: course.weekday - now.weekday));
+
+    final int hour = course.startTime ~/ 100;
+    final int minute = course.startTime % 100;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+    return DateTime(day.year, day.month, day.day, hour, minute);
+  }
+
   Future<void> _checkUpcomingEvents() async {
     DateTime now = DateTime.now();
 
@@ -1029,8 +1053,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool hasUpcomingCourse = false;
     for (var course in courses) {
       try {
-        DateTime courseTime = DateFormat('yyyy-MM-dd HH:mm')
-            .parse('${course.date} ${course.formattedStartTime}');
+        final courseTime = _resolveCourseStartTime(course, now);
+        if (courseTime == null) continue;
         int diffMinutes = courseTime.difference(now).inMinutes;
 
         if (diffMinutes >= 0 && diffMinutes <= 20) {
@@ -1045,7 +1069,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           break;
         }
       } catch (e) {
-        debugPrint("检查课程通知失败: $e");
+        debugPrint(
+            "检查课程通知失败: $e (course=${course.courseName}, date='${course.date}', start=${course.startTime})");
       }
     }
 
