@@ -559,7 +559,9 @@ class PomodoroService {
         .toList();
     // 读取所有本地标签（含已删除）
     final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keyTags);
+    final scopedKey = await _getScopedKey(_keyTags);
+    // 优先读当前账号隔离 key，兼容回退旧全局 key
+    final s = prefs.getString(scopedKey) ?? prefs.getString(_keyTags);
     final localAll = s == null
         ? <PomodoroTag>[]
         : (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
@@ -604,9 +606,11 @@ class PomodoroService {
       debugPrint('[PomodoroService] upload result: $ok');
       if (ok) {
         final prefs = await SharedPreferences.getInstance();
+        final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
         final now = DateTime.now().millisecondsSinceEpoch;
-        final current = prefs.getInt(_keyLastRecordUpload) ?? 0;
-        if (now > current) await prefs.setInt(_keyLastRecordUpload, now);
+        // 兼容读取旧全局水位线，但只写当前账号隔离 key
+        final current = prefs.getInt(lastUploadKey) ?? prefs.getInt(_keyLastRecordUpload) ?? 0;
+        if (now > current) await prefs.setInt(lastUploadKey, now);
       }
     } catch (e) {
       debugPrint('[PomodoroService] upload error (local saved): $e');
@@ -678,7 +682,7 @@ class PomodoroService {
 
       // 读取本地全量（含已删除 tombstone）
       final scopedKey = await _getScopedKey(_keyRecords);
-      final s = prefs.getString(scopedKey);
+      final s = prefs.getString(scopedKey) ?? prefs.getString(_keyRecords);
       final localAll = s == null
           ? <PomodoroRecord>[]
           : (jsonDecode(s) as List)
@@ -731,7 +735,7 @@ class PomodoroService {
 
       if (hasChange) {
         await prefs.setString(
-          _keyRecords,
+          scopedKey,
           jsonEncode(merged.values.map((r) => r.toJson()).toList()),
         );
       }
