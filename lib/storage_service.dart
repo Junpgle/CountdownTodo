@@ -168,7 +168,7 @@ class StorageService {
         model = "${androidInfo.manufacturer} ${androidInfo.model}";
         // 平板判断：最短边大于 600dp 通常认为是平板
         final double shortestSide = WidgetsBinding.instance.platformDispatcher
-                .views.first.physicalSize.shortestSide /
+            .views.first.physicalSize.shortestSide /
             WidgetsBinding
                 .instance.platformDispatcher.views.first.devicePixelRatio;
         type = shortestSide > 600 ? "Tablet" : "Phone";
@@ -176,7 +176,7 @@ class StorageService {
         IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
         model = iosInfo.utsname.machine ?? "iPhone";
         type =
-            iosInfo.model.toLowerCase().contains("ipad") ? "Tablet" : "Phone";
+        iosInfo.model.toLowerCase().contains("ipad") ? "Tablet" : "Phone";
       } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         model = Platform.operatingSystem;
         type = "PC";
@@ -282,7 +282,7 @@ class StorageService {
   }
 
   static Future<List<Map<String, dynamic>>>
-      getWindowsScheduledReminders() async {
+  getWindowsScheduledReminders() async {
     final prefs = await StorageService.prefs;
     String? jsonStr = prefs.getString(KEY_WINDOWS_SCHEDULED_REMINDERS);
     if (jsonStr == null || jsonStr.isEmpty) return [];
@@ -370,7 +370,7 @@ class StorageService {
       }
     }
     double accuracy =
-        totalQuestions == 0 ? 0.0 : (totalCorrect / totalQuestions);
+    totalQuestions == 0 ? 0.0 : (totalCorrect / totalQuestions);
     return {
       'accuracy': accuracy,
       'bestTime': hasPerfectScore ? bestTime : null,
@@ -446,7 +446,7 @@ class StorageService {
     await batch.commit(noResult: true);
 
     List<String> jsonList =
-        dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
+    dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
     if (sync) Future.microtask(() => syncData(username));
   }
@@ -460,11 +460,11 @@ class StorageService {
 
       // 1. 迁移检查
       final List<Map<String, dynamic>> sqliteCount =
-          await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
+      await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
             prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
-            
+
         // 🚀 核心修复：极致兼容方案 - 增加一次性迁移保护
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
           final String markerKey = "${KEY_COUNTDOWNS}_${username}_migrated";
@@ -491,19 +491,19 @@ class StorageService {
       if (maps.isNotEmpty) {
         return maps
             .map((m) => CountdownItem(
-                  id: m['uuid'],
-                  title: m['title'] ?? '',
-                  targetDate: DateTime.fromMillisecondsSinceEpoch(
-                      m['target_time']),
-                  isDeleted: m['is_deleted'] == 1,
-                  version: m['version'] ?? 1,
-                  updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  teamUuid: m['team_uuid'],
-                  teamName: m['team_name'],
-                  creatorId: m['creator_id'],
-                  creatorName: m['creator_name'],
-                ))
+          id: m['uuid'],
+          title: m['title'] ?? '',
+          targetDate: DateTime.fromMillisecondsSinceEpoch(
+              m['target_time']),
+          isDeleted: m['is_deleted'] == 1,
+          version: m['version'] ?? 1,
+          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          teamUuid: m['team_uuid'],
+          teamName: m['team_name'],
+          creatorId: m['creator_id'],
+          creatorName: m['creator_name'],
+        ))
             .toList();
       }
     } catch (e) {
@@ -561,7 +561,7 @@ class StorageService {
     List<TodoItem> dedupeList = dedupeMap.values.toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     List<String> jsonList =
-        dedupeList.map((e) => jsonEncode(e.toJson())).toList();
+    dedupeList.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
 
     // 🚀 Batch 极速批量写入，彻底解决数据库锁死
@@ -589,7 +589,8 @@ class StorageService {
         'is_completed': item.isDone ? 1 : 0,
         'is_deleted': item.isDeleted ? 1 : 0,
         'version': item.version,
-        'due_date': item.dueDate?.millisecondsSinceEpoch,
+        // 🚀 核心防御：提供 0 兜底，防止 SQLite NOT NULL 报错
+        'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
         'group_id': item.groupId,
         'created_date': item.createdDate ?? item.createdAt,
         'created_at': item.createdAt,
@@ -597,8 +598,9 @@ class StorageService {
         'collab_type': item.collabType,
         'recurrence': _normalizedRecurrenceIndex(item),
         'custom_interval_days': _normalizedCustomIntervalDays(item),
-        'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch,
-        'reminder_minutes': item.reminderMinutes,
+        // 🚀 核心防御：提供 0 兜底，防止 SQLite NOT NULL 报错
+        'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
+        'reminder_minutes': item.reminderMinutes ?? -1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
@@ -611,7 +613,7 @@ class StorageService {
     if (!BandSyncService.isInitialized || !BandSyncService.isConnected) return;
     try {
       final activeTodos =
-          items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
+      items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
       await BandSyncService.syncTodos(activeTodos);
     } catch (_) {}
   }
@@ -619,7 +621,7 @@ class StorageService {
   /// 🚀 Uni-Sync 4.0 增强：原子化更新单条待办，避免全量读写性能开销
   static Future<void> updateSingleTodo(String username, TodoItem item, {bool sync = true}) async {
     final db = await DatabaseHelper.instance.database;
-    
+
     // 1. 同步更新 SQLite
     await db.insert('todos', {
       'uuid': item.id,
@@ -634,14 +636,16 @@ class StorageService {
       'version': item.version,
       'updated_at': item.updatedAt,
       'created_at': item.createdAt,
-      'due_date': item.dueDate?.millisecondsSinceEpoch,
+      // 🚀 核心防御：0 兜底
+      'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
       'group_id': item.groupId,
       'created_date': item.createdDate,
       'collab_type': item.collabType,
       'recurrence': _normalizedRecurrenceIndex(item),
       'custom_interval_days': _normalizedCustomIntervalDays(item),
-      'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch,
-      'reminder_minutes': item.reminderMinutes,
+      // 🚀 核心防御：0 兜底
+      'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
+      'reminder_minutes': item.reminderMinutes ?? -1,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     // 2. 补齐 Oplog，确保离线更新能被同步
@@ -668,16 +672,16 @@ class StorageService {
       final List<Map<String, dynamic>> sqliteCount = await db.rawQuery('SELECT COUNT(*) as cnt FROM todos');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
-        
+
         // 🚀 核心修复：极致兼容方案 - 如果用户专用 key 为空，尝试读取旧的全局 key (KEY_TODOS)
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
-           final String markerKey = "${KEY_TODOS}_${username}_migrated";
-           if (!(prefs.getBool(markerKey) ?? false)) {
-              legacyJsonList = prefs.getStringList(KEY_TODOS) ?? [];
-              if (legacyJsonList.isNotEmpty) {
-                 await prefs.setBool(markerKey, true); // 记录此用户已完成全局迁移，防止跨号窃取
-              }
-           }
+          final String markerKey = "${KEY_TODOS}_${username}_migrated";
+          if (!(prefs.getBool(markerKey) ?? false)) {
+            legacyJsonList = prefs.getStringList(KEY_TODOS) ?? [];
+            if (legacyJsonList.isNotEmpty) {
+              await prefs.setBool(markerKey, true); // 记录此用户已完成全局迁移，防止跨号窃取
+            }
+          }
         }
 
         if (legacyJsonList.isNotEmpty) {
@@ -689,7 +693,7 @@ class StorageService {
 
       final List<Map<String, dynamic>> maps = await db.query('todos',
           where: includeDeleted ? null : 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
-          );
+      );
       if (maps.isNotEmpty) {
         List<TodoItem> todos = maps.map((m) => TodoItem(
           id: m['uuid'],
@@ -700,25 +704,29 @@ class StorageService {
           version: m['version'] ?? 1,
           updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
           createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          // 🚀 核心修复：处理从 TEXT 字段读取出的时间戳字符串
-          createdDate: m['created_date'] is String ? int.tryParse(m['created_date']) : m['created_date'] as int?,
-          dueDate: m['due_date'] != null 
-              ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['due_date'].toString()) ?? 0) 
+          createdDate: m['created_date'] != null ? int.tryParse(m['created_date'].toString()) : null,
+          // 🚀 核心修复：将 0 解析为 null
+          dueDate: (m['due_date'] != null && m['due_date'].toString() != '0' && m['due_date'].toString() != 'null' && m['due_date'].toString().isNotEmpty)
+              ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['due_date'].toString()) ?? 0)
               : null,
           teamUuid: m['team_uuid'],
           teamName: m['team_name'],
           creatorId: m['creator_id'],
           creatorName: m['creator_name'],
-          groupId: m['group_id'], 
+          groupId: m['group_id'],
           collabType: m['collab_type'] ?? 0,
           recurrence: RecurrenceType.values[
-              (_parseNullableInt(m['recurrence']) ?? 0)
-                  .clamp(0, RecurrenceType.values.length - 1)],
+          (_parseNullableInt(m['recurrence']) ?? 0)
+              .clamp(0, RecurrenceType.values.length - 1)],
           customIntervalDays: _parseNullableInt(m['custom_interval_days']),
-          recurrenceEndDate: m['recurrence_end_date'] != null 
-              ? DateTime.fromMillisecondsSinceEpoch(m['recurrence_end_date'] as int) 
+          // 🚀 核心修复：将 0 解析为 null
+          recurrenceEndDate: (m['recurrence_end_date'] != null && m['recurrence_end_date'].toString() != '0')
+              ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
               : null,
-          reminderMinutes: m['reminder_minutes'] as int?,
+          // 🚀 核心修复：将 -1 解析为 null
+          reminderMinutes: (m['reminder_minutes'] != null && m['reminder_minutes'].toString() != '-1')
+              ? int.tryParse(m['reminder_minutes'].toString())
+              : null,
         )).toList();
         return await _handleRecurrenceLogic(username, todos);
       }
@@ -755,7 +763,7 @@ class StorageService {
   static Future<List<TodoItem>> _handleRecurrenceLogic(String username, List<TodoItem> todos) async {
     final today = DateTime.now();
     final todayKey = '${today.year}-${today.month}-${today.day}';
-    
+
     if (_lastRecurrenceCheckDate != todayKey) {
       _lastRecurrenceCheckDate = todayKey;
       _recurrenceCheckCache.clear();
@@ -763,7 +771,7 @@ class StorageService {
 
     final cacheKey = 'recurrence_$username';
     if (_recurrenceCheckCache.containsKey(cacheKey) || _isCheckingRecurrence) return todos;
-    
+
     _isCheckingRecurrence = true;
 
     try {
@@ -829,10 +837,10 @@ class StorageService {
       );
     } else if (todo.createdDate != null) {
       final orig =
-          DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
-              .toLocal();
+      DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
+          .toLocal();
       todo.createdDate = DateTime(
-              now.year, now.month, now.day, orig.hour, orig.minute, orig.second)
+          now.year, now.month, now.day, orig.hour, orig.minute, orig.second)
           .millisecondsSinceEpoch;
     }
   }
@@ -912,7 +920,7 @@ class StorageService {
     await batch.commit(noResult: true);
 
     List<String> jsonList =
-        dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
+    dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODO_GROUPS}_$username", jsonList);
     if (sync) Future.microtask(() => syncData(username));
   }
@@ -926,19 +934,19 @@ class StorageService {
 
       // 1. 迁移检查
       final List<Map<String, dynamic>> sqliteCount =
-          await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
+      await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList = prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
-        
+
         // 🚀 核心修复：增加一次性迁移保护
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
-           final String markerKey = "${KEY_TODO_GROUPS}_${username}_migrated";
-           if (!(prefs.getBool(markerKey) ?? false)) {
-              legacyJsonList = prefs.getStringList(KEY_TODO_GROUPS) ?? [];
-              if (legacyJsonList.isNotEmpty) {
-                 await prefs.setBool(markerKey, true);
-              }
-           }
+          final String markerKey = "${KEY_TODO_GROUPS}_${username}_migrated";
+          if (!(prefs.getBool(markerKey) ?? false)) {
+            legacyJsonList = prefs.getStringList(KEY_TODO_GROUPS) ?? [];
+            if (legacyJsonList.isNotEmpty) {
+              await prefs.setBool(markerKey, true);
+            }
+          }
         }
 
         if (legacyJsonList.isNotEmpty) {
@@ -956,18 +964,18 @@ class StorageService {
       if (maps.isNotEmpty) {
         return maps
             .map((m) => TodoGroup(
-                  id: m['uuid'],
-                  name: m['name'] ?? '',
-                  isExpanded: m['is_expanded'] == 1,
-                  isDeleted: m['is_deleted'] == 1,
-                  version: m['version'] ?? 1,
-                  updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  teamUuid: m['team_uuid'],
-                  teamName: m['team_name'],
-                  creatorId: m['creator_id'],
-                  creatorName: m['creator_name'],
-                ))
+          id: m['uuid'],
+          name: m['name'] ?? '',
+          isExpanded: m['is_expanded'] == 1,
+          isDeleted: m['is_deleted'] == 1,
+          version: m['version'] ?? 1,
+          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          teamUuid: m['team_uuid'],
+          teamName: m['team_name'],
+          creatorId: m['creator_id'],
+          creatorName: m['creator_name'],
+        ))
             .toList();
       }
     } catch (e) {
@@ -1047,25 +1055,25 @@ class StorageService {
   static Future<List<TimeLogItem>> getTimeLogs(String username) async {
     final prefs = await StorageService.prefs;
     List<String> list = prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
-    
+
     // 🚀 核心修复：增加一次性迁移保护
     if (list.isEmpty && username.isNotEmpty) {
-       final String markerKey = "${KEY_TIME_LOGS}_${username}_migrated";
-       if (!(prefs.getBool(markerKey) ?? false)) {
-          list = prefs.getStringList(KEY_TIME_LOGS) ?? [];
-          if (list.isNotEmpty) {
-             await prefs.setBool(markerKey, true);
-          }
-       }
+      final String markerKey = "${KEY_TIME_LOGS}_${username}_migrated";
+      if (!(prefs.getBool(markerKey) ?? false)) {
+        list = prefs.getStringList(KEY_TIME_LOGS) ?? [];
+        if (list.isNotEmpty) {
+          await prefs.setBool(markerKey, true);
+        }
+      }
     }
 
     List<TimeLogItem> logs = [];
     for (var e in list) {
-       try {
-          logs.add(TimeLogItem.fromJson(jsonDecode(e)));
-       } catch (err) {
-          debugPrint("Parse TimeLog Error: $err");
-       }
+      try {
+        logs.add(TimeLogItem.fromJson(jsonDecode(e)));
+      } catch (err) {
+        debugPrint("Parse TimeLog Error: $err");
+      }
     }
     return logs;
   }
@@ -1095,13 +1103,13 @@ class StorageService {
   }
 
   static Future<Map<String, dynamic>?> getLocalScreenTimePackage() async {
-     final prefs = await StorageService.prefs;
-     final String? username = prefs.getString(KEY_CURRENT_USER);
-     final key = _scopedKey(KEY_LOCAL_SCREEN_TIME, username);
-     String? s = prefs.getString(key);
-     // 兼容旧版全局 key 的历史数据
-     s ??= prefs.getString(KEY_LOCAL_SCREEN_TIME);
-     return s != null ? jsonDecode(s) as Map<String, dynamic> : null;
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final key = _scopedKey(KEY_LOCAL_SCREEN_TIME, username);
+    String? s = prefs.getString(key);
+    // 兼容旧版全局 key 的历史数据
+    s ??= prefs.getString(KEY_LOCAL_SCREEN_TIME);
+    return s != null ? jsonDecode(s) as Map<String, dynamic> : null;
   }
 
   static Future<Map<String, dynamic>> getLocalScreenTimeMap() async {
@@ -1172,7 +1180,7 @@ class StorageService {
     lastSyncMs ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
     if (lastSyncMs != null) {
       DateTime lastSyncDate =
-          DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
+      DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
       DateTime now = DateTime.now();
 
       // 如果缓存日期不是今天，说明缓存已过期，返回空列表触发新的同步
@@ -1201,7 +1209,7 @@ class StorageService {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(KEY_CURRENT_USER);
     final String key = (username != null && username.isNotEmpty) ? "${KEY_SCREEN_TIME_HISTORY}_$username" : KEY_SCREEN_TIME_HISTORY;
-    
+
     String? jsonStr = prefs.getString(key);
     jsonStr ??= prefs.getString(KEY_SCREEN_TIME_HISTORY);
     if (jsonStr != null) {
@@ -1238,7 +1246,7 @@ class StorageService {
     DateTime now = DateTime.now();
     if (lastSync != null) {
       DateTime lastDate =
-          DateTime.fromMillisecondsSinceEpoch(lastSync, isUtc: true).toLocal();
+      DateTime.fromMillisecondsSinceEpoch(lastSync, isUtc: true).toLocal();
       if (now.difference(lastDate).inDays < 7) return;
     }
     List<dynamic> mappings = await ApiService.fetchAppMappings();
@@ -1279,14 +1287,14 @@ class StorageService {
   }
 
   static Future<Map<String, dynamic>> syncData(
-    String username, {
-    bool syncTodos = true,
-    bool syncCountdowns = true,
-    bool forceFullSync = false,
-    BuildContext? context,
-    bool syncTimeLogs = true,
-    bool syncPomodoro = true,
-  }) async {
+      String username, {
+        bool syncTodos = true,
+        bool syncCountdowns = true,
+        bool forceFullSync = false,
+        BuildContext? context,
+        bool syncTimeLogs = true,
+        bool syncPomodoro = true,
+      }) async {
     // 1. 状态锁：防止重复进入
     if (!syncTodos && !syncCountdowns && !syncTimeLogs && !syncPomodoro)
       return {'success': false, 'hasChanges': false};
@@ -1318,11 +1326,11 @@ class StorageService {
       List<Map<String, dynamic>> dirtyTimeLogs = [];
 
       List<TodoItem> allLocalTodos =
-          await getTodos(username, includeDeleted: true);
+      await getTodos(username, includeDeleted: true);
       List<TodoGroup> allLocalGroups =
-          await getTodoGroups(username, includeDeleted: true);
+      await getTodoGroups(username, includeDeleted: true);
       List<CountdownItem> allLocalCountdowns =
-          await getCountdowns(username, includeDeleted: true);
+      await getCountdowns(username, includeDeleted: true);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
 
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs', where: 'is_synced = 0');
@@ -1365,9 +1373,9 @@ class StorageService {
             'apps': localScreenStats
                 .where((e) => e is Map)
                 .map((e) => {
-                      'app_name': e['app_name']?.toString() ?? 'Unknown',
-                      'duration': (e['duration'] is int) ? e['duration'] : 0,
-                    })
+              'app_name': e['app_name']?.toString() ?? 'Unknown',
+              'duration': (e['duration'] is int) ? e['duration'] : 0,
+            })
                 .toList(),
           };
           debugPrint(
@@ -1398,12 +1406,12 @@ class StorageService {
 
       bool likelyDebounceIgnored =
           response['success'] == true &&
-          forceFullSync &&
-          (response['new_sync_time'] ?? -1) == lastSyncTime &&
-          (response['server_todos'] as List?)?.isEmpty == true &&
-          (response['server_todo_groups'] as List?)?.isEmpty == true &&
-          (response['server_countdowns'] as List?)?.isEmpty == true &&
-          (response['server_time_logs'] as List?)?.isEmpty == true;
+              forceFullSync &&
+              (response['new_sync_time'] ?? -1) == lastSyncTime &&
+              (response['server_todos'] as List?)?.isEmpty == true &&
+              (response['server_todo_groups'] as List?)?.isEmpty == true &&
+              (response['server_countdowns'] as List?)?.isEmpty == true &&
+              (response['server_time_logs'] as List?)?.isEmpty == true;
 
       if (likelyDebounceIgnored) {
         debugPrint('⏳ [全量同步] 命中服务端防抖空响应，3.2s 后自动重试一次');
@@ -1435,17 +1443,17 @@ class StorageService {
         final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
         if (joinedTeamUuids != null) {
           final Set<String> currentTeams = joinedTeamUuids.map((e) => e.toString()).toSet();
-          
+
           // 获取本地所有存在的 team_uuid
           final localTeamRows = await db.rawQuery('SELECT DISTINCT team_uuid FROM todos WHERE team_uuid IS NOT NULL');
           bool teamChanged = false;
           for (var row in localTeamRows) {
             String? tUuid = row['team_uuid']?.toString();
             if (tUuid != null && !currentTeams.contains(tUuid)) {
-               debugPrint("🧹 发现孤立团队数据: $tUuid, 正在清理...");
-               await clearTeamItems(tUuid);
-               hasChanges = true;
-               teamChanged = true;
+              debugPrint("🧹 发现孤立团队数据: $tUuid, 正在清理...");
+              await clearTeamItems(tUuid);
+              hasChanges = true;
+              teamChanged = true;
             }
           }
 
@@ -1459,7 +1467,7 @@ class StorageService {
       } else {
         throw Exception("${response['message'] ?? '同步失败'}");
       }
-      
+
       // 解析服务器返回的实时冲突
       if (response['conflicts'] != null) {
         conflicts = (response['conflicts'] as List).map((c) => ConflictInfo.fromJson(c)).toList();
@@ -1486,7 +1494,7 @@ class StorageService {
           final idx = todosIndexMap[sItem.id]!;
           final local = allLocalTodos[idx];
           debugPrint('🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
-          
+
           if (sItem.isDeleted ||
               sItem.version > local.version ||
               sItem.updatedAt > local.updatedAt) {
@@ -1581,7 +1589,7 @@ class StorageService {
           }
         }
       }
-      
+
       // 合并 Pomodoro (Tags & Records)
       if (syncPomodoro) {
         try {
@@ -1650,9 +1658,9 @@ class StorageService {
       final formattedApps = apps
           .where((e) => e is Map)
           .map((e) => {
-                'app_name': e['app_name']?.toString() ?? 'Unknown',
-                'duration': (e['duration'] is int) ? e['duration'] : 0,
-              })
+        'app_name': e['app_name']?.toString() ?? 'Unknown',
+        'duration': (e['duration'] is int) ? e['duration'] : 0,
+      })
           .toList();
 
       final success = await ApiService.uploadScreenTime(
@@ -1692,10 +1700,10 @@ class StorageService {
     ];
 
     if (!globalSettings.contains(key)) {
-       final String? username = prefs.getString(KEY_CURRENT_USER);
-       if (username != null && username.isNotEmpty) {
-          finalKey = "${key}_$username";
-       }
+      final String? username = prefs.getString(KEY_CURRENT_USER);
+      if (username != null && username.isNotEmpty) {
+        finalKey = "${key}_$username";
+      }
     }
 
     if (value is int) await prefs.setInt(finalKey, value);
@@ -1708,7 +1716,7 @@ class StorageService {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(KEY_CURRENT_USER);
     if (username != null && username.isNotEmpty) {
-       return prefs.getInt("${KEY_SYNC_INTERVAL}_$username") ?? (prefs.getInt(KEY_SYNC_INTERVAL) ?? 0);
+      return prefs.getInt("${KEY_SYNC_INTERVAL}_$username") ?? (prefs.getInt(KEY_SYNC_INTERVAL) ?? 0);
     }
     return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0;
   }
@@ -1733,14 +1741,14 @@ class StorageService {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(KEY_CURRENT_USER);
     if (username == null || username.isEmpty) {
-       return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
+      return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
     }
 
     final bool? scoped = prefs.getBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username");
     if (scoped == null) {
-       final bool global = prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
-       await prefs.setBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username", global);
-       return global;
+      final bool global = prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
+      await prefs.setBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username", global);
+      return global;
     }
     return scoped;
   }
@@ -1749,18 +1757,18 @@ class StorageService {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(KEY_CURRENT_USER);
     if (username == null || username.isEmpty) {
-       String? s = prefs.getString(KEY_SEMESTER_START);
-       return s != null ? DateTime.tryParse(s) : null;
+      String? s = prefs.getString(KEY_SEMESTER_START);
+      return s != null ? DateTime.tryParse(s) : null;
     }
 
     String? s = prefs.getString("${KEY_SEMESTER_START}_$username");
-    
+
     // 迁移检查：如果用户没有设置过隔离的日期，回退一次全局数据
     if (s == null) {
-       s = prefs.getString(KEY_SEMESTER_START);
-       if (s != null) {
-          await prefs.setString("${KEY_SEMESTER_START}_$username", s);
-       }
+      s = prefs.getString(KEY_SEMESTER_START);
+      if (s != null) {
+        await prefs.setString("${KEY_SEMESTER_START}_$username", s);
+      }
     }
 
     return s != null ? DateTime.tryParse(s) : null;
@@ -1770,16 +1778,16 @@ class StorageService {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(KEY_CURRENT_USER);
     if (username == null || username.isEmpty) {
-       String? s = prefs.getString(KEY_SEMESTER_END);
-       return s != null ? DateTime.tryParse(s) : null;
+      String? s = prefs.getString(KEY_SEMESTER_END);
+      return s != null ? DateTime.tryParse(s) : null;
     }
 
     String? s = prefs.getString("${KEY_SEMESTER_END}_$username");
     if (s == null) {
-       s = prefs.getString(KEY_SEMESTER_END);
-       if (s != null) {
-          await prefs.setString("${KEY_SEMESTER_END}_$username", s);
-       }
+      s = prefs.getString(KEY_SEMESTER_END);
+      if (s != null) {
+        await prefs.setString("${KEY_SEMESTER_END}_$username", s);
+      }
     }
     return s != null ? DateTime.tryParse(s) : null;
   }
@@ -2211,7 +2219,7 @@ class StorageService {
       String username) async {
     final prefs = await StorageService.prefs;
     final jsonStr =
-        prefs.getString("${KEY_CATEGORY_REMINDER_MINUTES}_$username");
+    prefs.getString("${KEY_CATEGORY_REMINDER_MINUTES}_$username");
     if (jsonStr == null) return {};
     try {
       final Map<String, dynamic> rawResult = jsonDecode(jsonStr);

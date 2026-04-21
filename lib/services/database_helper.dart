@@ -47,61 +47,61 @@ class DatabaseHelper {
     debugPrint("📂 Database: 正在打开持久化存储 [$path]");
 
     return await openDatabase(
-      path,
-      version: 8, // 🚀 升级版本至 8，补全循环任务与提醒字段
-      onCreate: _createDB,
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 3) {
-          // 🚀 Uni-Sync 安全升级：为核心业务表补全协作元数据
-          final tables = ['todos', 'countdowns', 'todo_groups'];
-          final columns = ['creator_id', 'creator_name', 'team_name'];
-          
-          for (final table in tables) {
-            for (final col in columns) {
-              try {
-                final info = await db.rawQuery('PRAGMA table_info($table)');
-                if (!info.any((row) => row['name'] == col)) {
-                  await db.execute("ALTER TABLE $table ADD COLUMN $col TEXT;");
-                }
-              } catch (_) { }
-            }
-          }
-        }
+        path,
+        version: 8, // 🚀 升级版本至 8，补全循环任务与提醒字段
+        onCreate: _createDB,
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 3) {
+            // 🚀 Uni-Sync 安全升级：为核心业务表补全协作元数据
+            final tables = ['todos', 'countdowns', 'todo_groups'];
+            final columns = ['creator_id', 'creator_name', 'team_name'];
 
-        // 🚀 Version 5: 核心加固 - 补全基础字段与 FTS 模块动态嗅探
-        if (oldVersion < 5) {
-          debugPrint("🔄 Database: 执行 Version 5 核心修复程序...");
-          
-          // 1. 深度补全缺失的核心业务列
-          final repairTasks = [
-            {'table': 'todos', 'col': 'group_id', 'type': 'TEXT'},
-            {'table': 'todos', 'col': 'created_date', 'type': 'INTEGER'},
-            {'table': 'todos', 'col': 'team_uuid', 'type': 'TEXT'},
-            {'table': 'todos', 'col': 'team_name', 'type': 'TEXT'},
-            {'table': 'todos', 'col': 'creator_id', 'type': 'TEXT'},
-            {'table': 'todos', 'col': 'creator_name', 'type': 'TEXT'},
-            {'table': 'todo_groups', 'col': 'team_uuid', 'type': 'TEXT'},
-            {'table': 'todo_groups', 'col': 'team_name', 'type': 'TEXT'},
-          ];
-
-          for (var task in repairTasks) {
-            try {
-              final info = await db.rawQuery("PRAGMA table_info(${task['table']})");
-              if (!info.any((row) => row['name'] == task['col'])) {
-                await db.execute("ALTER TABLE ${task['table']} ADD COLUMN ${task['col']} ${task['type']};");
-                debugPrint("✅ Database: 修复字段 ${task['table']}.${task['col']}");
+            for (final table in tables) {
+              for (final col in columns) {
+                try {
+                  final info = await db.rawQuery('PRAGMA table_info($table)');
+                  if (!info.any((row) => row['name'] == col)) {
+                    await db.execute("ALTER TABLE $table ADD COLUMN $col TEXT;");
+                  }
+                } catch (_) { }
               }
-            } catch (e) {
-              debugPrint("⚠️ Database: 修复字段 ${task['table']}.${task['col']} 失败: $e");
             }
           }
 
-          // 2. 强制重建 FTS 架构（采用动态嗅探）
-          await _setupFts(db);
-        }
+          // 🚀 Version 5: 核心加固 - 补全基础字段与 FTS 模块动态嗅探
+          if (oldVersion < 5) {
+            debugPrint("🔄 Database: 执行 Version 5 核心修复程序...");
 
-        if (oldVersion < 6) {
-           try {
+            // 1. 深度补全缺失的核心业务列
+            final repairTasks = [
+              {'table': 'todos', 'col': 'group_id', 'type': 'TEXT'},
+              {'table': 'todos', 'col': 'created_date', 'type': 'INTEGER'},
+              {'table': 'todos', 'col': 'team_uuid', 'type': 'TEXT'},
+              {'table': 'todos', 'col': 'team_name', 'type': 'TEXT'},
+              {'table': 'todos', 'col': 'creator_id', 'type': 'TEXT'},
+              {'table': 'todos', 'col': 'creator_name', 'type': 'TEXT'},
+              {'table': 'todo_groups', 'col': 'team_uuid', 'type': 'TEXT'},
+              {'table': 'todo_groups', 'col': 'team_name', 'type': 'TEXT'},
+            ];
+
+            for (var task in repairTasks) {
+              try {
+                final info = await db.rawQuery("PRAGMA table_info(${task['table']})");
+                if (!info.any((row) => row['name'] == task['col'])) {
+                  await db.execute("ALTER TABLE ${task['table']} ADD COLUMN ${task['col']} ${task['type']};");
+                  debugPrint("✅ Database: 修复字段 ${task['table']}.${task['col']}");
+                }
+              } catch (e) {
+                debugPrint("⚠️ Database: 修复字段 ${task['table']}.${task['col']} 失败: $e");
+              }
+            }
+
+            // 2. 强制重建 FTS 架构（采用动态嗅探）
+            await _setupFts(db);
+          }
+
+          if (oldVersion < 6) {
+            try {
               final info = await db.rawQuery("PRAGMA table_info(todos)");
               if (!info.any((row) => row['name'] == 'collab_type')) {
                 await db.execute("ALTER TABLE todos ADD COLUMN collab_type INTEGER DEFAULT 0;");
@@ -110,10 +110,10 @@ class DatabaseHelper {
             } catch (e) {
               debugPrint("⚠️ Database: 修复字段 todos.collab_type 失败: $e");
             }
-        }
+          }
 
-        if (oldVersion < 7) {
-           try {
+          if (oldVersion < 7) {
+            try {
               await db.execute('''
                 CREATE TABLE IF NOT EXISTS todo_completions (
                   todo_uuid TEXT,
@@ -127,10 +127,10 @@ class DatabaseHelper {
             } catch (e) {
               debugPrint("⚠️ Database: 创建 todo_completions 表失败: $e");
             }
-        }
+          }
 
-        if (oldVersion < 8) {
-           try {
+          if (oldVersion < 8) {
+            try {
               final columns = [
                 {'name': 'recurrence', 'type': 'INTEGER DEFAULT 0'},
                 {'name': 'custom_interval_days', 'type': 'INTEGER'},
@@ -147,8 +147,8 @@ class DatabaseHelper {
             } catch (e) {
               debugPrint("⚠️ Database: 修复字段 todos 循环任务字段失败: $e");
             }
+          }
         }
-      }
     );
   }
 
@@ -167,7 +167,8 @@ class DatabaseHelper {
           'updated_at': json['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
           'created_at': json['created_at'] ?? json['createdDate'] ?? DateTime.now().millisecondsSinceEpoch,
           'created_date': json['created_date'] ?? json['created_at'] ?? json['createdDate'] ?? DateTime.now().millisecondsSinceEpoch,
-          'due_date': json['due_date'] ?? json['dueDate'],
+          // 🚀 核心防御：提供 0 兜底，防止 SQLite NOT NULL 报错
+          'due_date': json['due_date'] ?? json['dueDate'] ?? 0,
           // 🚀 补全协作元数据
           'team_uuid': json['team_uuid'] ?? json['teamUuid'],
           'creator_id': json['creator_id'] ?? json['creatorId'],
@@ -176,8 +177,9 @@ class DatabaseHelper {
           'group_id': json['group_id'] ?? json['groupId'],
           'recurrence': json['recurrence'] ?? 0,
           'custom_interval_days': json['custom_interval_days'] ?? json['customIntervalDays'] ?? 0,
-          'recurrence_end_date': json['recurrence_end_date'] ?? json['recurrenceEndDate'],
-          'reminder_minutes': json['reminder_minutes'] ?? json['reminderMinutes'],
+          // 🚀 核心防御：提供 0 / -1 兜底，防止 SQLite NOT NULL 报错
+          'recurrence_end_date': json['recurrence_end_date'] ?? json['recurrenceEndDate'] ?? 0,
+          'reminder_minutes': json['reminder_minutes'] ?? json['reminderMinutes'] ?? -1,
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
@@ -355,7 +357,7 @@ class DatabaseHelper {
         INSERT INTO todos_fts(uuid, content, remark, team_name) VALUES (new.uuid, new.content, new.remark, new.team_name);
       END;
     ''');
-    
+
     await db.execute('''
       CREATE TRIGGER IF NOT EXISTS todos_after_update AFTER UPDATE ON todos BEGIN
         UPDATE todos_fts SET content = new.content, remark = new.remark, team_name = new.team_name WHERE uuid = old.uuid;
@@ -370,7 +372,7 @@ class DatabaseHelper {
   }
 
   // --- 通用操作接口 ---
-  
+
   Future<int> insertOpLog(String opType, String table, String uuid, Map<String, dynamic> data) async {
     final db = await instance.database;
     return await db.insert('op_logs', {
@@ -385,10 +387,10 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> searchTodos(String query) async {
     final db = await instance.database;
-    
+
     // 1. 动态探测 FTS 虚表是否存在
     final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'");
-    
+
     if (tables.isNotEmpty) {
       try {
         // 🚀 深度防御：先尝试执行一个极简的 MATCH 探测虚表是否真的可用
@@ -409,7 +411,7 @@ class DatabaseHelper {
         debugPrint("⚠️ FTS 查询异常，退化为 LIKE 模式: $e");
       }
     }
-    
+
     // 3. 兜底方案：使用标准 SQL LIKE 模糊查询
     return await db.rawQuery('''
       SELECT * FROM todos 
