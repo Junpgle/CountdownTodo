@@ -1311,13 +1311,22 @@ class StorageService {
           
           // 获取本地所有存在的 team_uuid
           final localTeamRows = await db.rawQuery('SELECT DISTINCT team_uuid FROM todos WHERE team_uuid IS NOT NULL');
+          bool teamChanged = false;
           for (var row in localTeamRows) {
             String? tUuid = row['team_uuid']?.toString();
             if (tUuid != null && !currentTeams.contains(tUuid)) {
                debugPrint("🧹 发现孤立团队数据: $tUuid, 正在清理...");
                await clearTeamItems(tUuid);
                hasChanges = true;
+               teamChanged = true;
             }
+          }
+
+          // 🚀 核心优化：如果发现同步返回的团队列表与本地认知不符，或者刚刚清理了孤立团队，则提示 WS 重新订阅新频道
+          if (teamChanged || currentTeams.length != localTeamRows.length) {
+            debugPrint("👥 [协同] 团队列表发生变化，请求 WebSocket 刷新订阅...");
+            // 利用 resumeSync 内部的逻辑可以触发重连与重新订阅
+            Future.microtask(() => PomodoroSyncService.instance.resumeSync());
           }
         }
       } else {

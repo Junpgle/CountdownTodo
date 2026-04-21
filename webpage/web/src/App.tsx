@@ -44,7 +44,10 @@ const App = () => {
 
   const handleOpenWeb = () => {
     if (user) setCurrentView('webapp');
-    else setCurrentView('auth');
+    else {
+      window.location.hash = 'app';
+      setCurrentView('auth');
+    }
   };
 
   /**
@@ -53,7 +56,8 @@ const App = () => {
   const handleLogout = () => {
     ApiService.clearAuthAndData();
     setUser(null);
-    setCurrentView('landing');
+    window.location.hash = 'app'; // 确保刷新或返回时留在登录页
+    setCurrentView('auth');
   };
 
   return (

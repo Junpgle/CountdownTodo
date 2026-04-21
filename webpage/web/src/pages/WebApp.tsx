@@ -422,7 +422,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     return Math.floor((d.getTime() - todayMs) / 86400000);
   };
 
-  const TodoCard = ({ todo, isPast, isFuture }: { todo: TodoItem, isPast?: boolean, isFuture?: boolean }) => {
+    const TodoCard = ({ todo, isPast, isFuture }: { todo: TodoItem, isPast?: boolean, isFuture?: boolean }) => {
     const progress = calcProgress(todo);
     const cDate = new Date(todo.created_date ?? todo.created_at);
 
@@ -448,6 +448,8 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       dateStr = `开始于 ${formatDt(cDate)}`;
     }
 
+    const hasTeamInfo = todo.team_name || todo.creator_name;
+
     return (
         <div className={`relative group flex items-start gap-2 sm:gap-4 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl transition-all duration-300 ${
             todo.is_completed
@@ -469,6 +471,20 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
             }`}>
               {todo.content}
             </p>
+            {hasTeamInfo && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {todo.team_name && (
+                  <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-500 rounded text-[9px] font-bold uppercase tracking-tight">
+                    {todo.team_name}
+                  </span>
+                )}
+                {todo.creator_name && (
+                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase tracking-tight">
+                    By {todo.creator_name}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="mt-1 sm:mt-2 space-y-1 sm:space-y-2">
               <p className={`text-[10px] sm:text-xs ${todo.is_completed ? 'text-slate-400' : (isPast ? 'text-red-500 font-medium' : 'text-slate-500')}`}>
                 {dateStr}
@@ -762,6 +778,17 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
               }`}>
                 {user.tier === 'pro' ? 'Pro 专业版' : (user.tier === 'admin' ? 'Admin 管理员' : 'Free 免费版')}
               </div>
+            </div>
+
+            <div className="mt-2 flex items-center gap-2">
+              <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                ApiService.getBackendKey() === 'aliyun' ? 'bg-orange-50 text-orange-600 border border-orange-100' : 'bg-blue-50 text-blue-600 border border-blue-100'
+              }`}>
+                {ApiService.getBackendKey() === 'aliyun' ? 'Aliyun ECS Node' : 'Cloudflare Worker'}
+              </div>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                {ApiService.getBackendUrl()}
+              </p>
             </div>
 
             <div className="pt-6 border-t border-slate-100">

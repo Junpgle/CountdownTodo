@@ -418,22 +418,53 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
         <div className="mt-6 pt-5 border-t border-slate-100">
           <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mb-3">
             <Globe className="w-3.5 h-3.5" />
-            <span>服务器</span>
+            <span>选择服务器</span>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
-              <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-              <span className="text-xs font-medium text-indigo-700">Cloudflare（当前）</span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100 opacity-50 cursor-not-allowed">
-              <div className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
-              <span className="text-xs font-medium text-slate-400">阿里云 ECS（暂不支持Web）</span>
-            </div>
+          <div className="grid grid-cols-1 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                ApiService.setBackend('cloudflare');
+                window.location.hash = 'app';
+                window.location.reload();
+              }}
+              className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                ApiService.getBackendKey() === 'cloudflare'
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm'
+                  : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-2.5 h-2.5 rounded-full ${ApiService.getBackendKey() === 'cloudflare' ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`} />
+                <span className="text-sm font-bold">Cloudflare</span>
+              </div>
+              {ApiService.getBackendKey() === 'cloudflare' && <ShieldCheck className="w-4 h-4" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                ApiService.setBackend('aliyun');
+                window.location.hash = 'app';
+                window.location.reload();
+              }}
+              className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                ApiService.getBackendKey() === 'aliyun'
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm'
+                  : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-2.5 h-2.5 rounded-full ${ApiService.getBackendKey() === 'aliyun' ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`} />
+                <span className="text-sm font-bold">阿里云 ECS</span>
+              </div>
+              {ApiService.getBackendKey() === 'aliyun' && <ShieldCheck className="w-4 h-4" />}
+            </button>
           </div>
-          <div className="mt-3 flex items-start gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] leading-relaxed text-amber-700">
-              不同服务器间数据不互通，请妥善保管账号信息
+          <div className="mt-4 flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100">
+            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-normal text-amber-700 font-medium">
+              数据在不同服务器间物理隔离，切换后需重新登录。推荐对同步稳定性要求高的用户使用阿里云。
             </p>
           </div>
         </div>

@@ -1,4 +1,15 @@
-const BASE_URL = 'https://mathquiz.junpgle.me';
+const BACKENDS = {
+  cloudflare: 'https://mathquiz.junpgle.me',
+  aliyun: 'https://api-cdt.junpgle.me'
+};
+
+type BackendKey = keyof typeof BACKENDS;
+
+const getInitialBackend = (): BackendKey => {
+  const saved = localStorage.getItem('cdt_backend_key') as BackendKey;
+  if (saved && BACKENDS[saved]) return saved;
+  return 'cloudflare';
+};
 
 interface RegisterPayload {
   username?: string;
@@ -8,11 +19,21 @@ interface RegisterPayload {
 }
 
 /**
-* ApiService 处理所有与后端的通信
-* 包含 Token 管理、设备 ID 生成以及基于用户 ID 的本地数据隔离逻辑
-*/
+ * ApiService 处理所有与后端的通信
+ * 包含 Token 管理、设备 ID 生成以及基于用户 ID 的本地数据隔离逻辑
+ */
 export const ApiService = {
-getToken: (): string | null => localStorage.getItem('cdt_token'),
+  getBackendKey: (): BackendKey => getInitialBackend(),
+  
+  getBackendUrl: (): string => BACKENDS[ApiService.getBackendKey()],
+
+  setBackend: (key: BackendKey): void => {
+    localStorage.setItem('cdt_backend_key', key);
+    // 切换后端时，建议清除旧的 Token 和用户信息以避免混淆
+    ApiService.clearAuthAndData();
+  },
+
+  getToken: (): string | null => localStorage.getItem('cdt_token'),
   setToken: (token: string): void => localStorage.setItem('cdt_token', token),
 
   /**
@@ -25,9 +46,12 @@ getToken: (): string | null => localStorage.getItem('cdt_token'),
   },
 
   /**
-   * 生成带用户 ID 前缀的存储键名，实现物理隔离
+   * 生成带用户 ID 和服务器标识前缀的存储键名，实现彻底隔离
    */
-  getUserKey: (userId: number, key: string) => `u${userId}_${key}`,
+  getUserKey: (userId: number, key: string) => {
+    const backend = ApiService.getBackendKey();
+    return `s_${backend}_u${userId}_${key}`;
+  },
 
   getDeviceId: (): string => {
     let did = localStorage.getItem('cdt_device_id');
@@ -40,6 +64,7 @@ getToken: (): string | null => localStorage.getItem('cdt_token'),
 
   async request(endpoint: string, options: RequestInit = {}): Promise<Record<string, unknown>> {
     const token = this.getToken();
+    const url = this.getBackendUrl();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
@@ -49,16 +74,15 @@ getToken: (): string | null => localStorage.getItem('cdt_token'),
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
+    const res = await fetch(`${url}${endpoint}`, {
       ...options,
       headers,
     });
 
     if (res.status === 401) {
       this.clearAuthAndData();
-      // 触发页面重载或强制跳转到根路径（LandingPage/AuthScreen）
-      // 这里的逻辑会让 App.tsx 的 useEffect 重新检查 token 并置空 user
-      window.location.hash = ''; 
+      // 触发页面重载，并强制留在 App 登录模式
+      window.location.hash = 'app'; 
       window.location.search = '';
       window.location.reload(); 
       throw new Error('未授权，请重新登录');

@@ -615,6 +615,11 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       case 'TEAM_UPDATE':
       case 'SYNC_DATA':
+      case 'JOIN_REQUEST_APPROVED': 
+      case 'TEAM_MEMBER_JOINED':
+      case 'NEW_JOIN_REQUEST':
+      case 'NEW_INVITATION':
+        debugPrint('🚀 [协同信号] 收到 ${signal.action}, 触发静默同步');
         _debounceCollaborativeSync();
         break;
 
@@ -1209,7 +1214,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkAutoSync();
+      _checkAutoSync(force: true);
       _loadSectionPreferences();
       _loadSemesterSettings();
       _checkUpdatesSilently();
@@ -1295,7 +1300,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
-  Future<void> _checkAutoSync() async {
+  Future<void> _checkAutoSync({bool force = false}) async {
     // 🛡️ 安全检查：升级引导未完成时禁止任何自动同步
     // 防止用户跳过引导进入主页后，空的本地数据被推送并覆盖云端数据
     final guideNeeded = await FeatureGuideScreen.shouldShow();
@@ -1305,7 +1310,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     DateTime? lastSync = await StorageService.getLastAutoSyncTime();
     DateTime now = DateTime.now();
 
-    if (interval == 0) {
+    if (force || interval == 0) {
       _handleManualSync(silent: true);
     } else {
       if (lastSync == null || now.difference(lastSync).inMinutes >= interval) {

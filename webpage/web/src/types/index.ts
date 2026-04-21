@@ -28,6 +28,12 @@ export interface TodoItem {
   recurrence_end_date?: number | null;
   remark?: string | null;
   group_id?: string | null;
+  // --- Team Fields ---
+  team_uuid?: string | null;
+  team_name?: string | null;
+  creator_name?: string | null;
+  collab_type?: number; // 0: Shared, 1: Independent
+  reminder_minutes?: number | null;
 }
 
 export interface TodoGroup {
@@ -39,6 +45,9 @@ export interface TodoGroup {
   version: number;
   updated_at: number;
   created_at: number;
+  // --- Team Fields ---
+  team_uuid?: string | null;
+  team_name?: string | null;
 }
 
 export interface CountdownItem {
@@ -51,6 +60,9 @@ export interface CountdownItem {
   updated_at: number;
   created_at: number;
   device_id: string;
+  // --- Team Fields ---
+  team_uuid?: string | null;
+  team_name?: string | null;
 }
 
 export interface PomodoroRecord {
@@ -68,4 +80,12 @@ export interface PomodoroRecord {
   updated_at: number;
   is_deleted: boolean | number;
 }
-
+export interface PomodoroTag {
+  uuid: string;
+  name: string;
+  color: string;
+  is_deleted: boolean;
+  version: number;
+  created_at: number;
+  updated_at: number;
+}
