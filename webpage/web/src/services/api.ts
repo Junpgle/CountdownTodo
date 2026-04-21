@@ -8,7 +8,7 @@ type BackendKey = keyof typeof BACKENDS;
 const getInitialBackend = (): BackendKey => {
   const saved = localStorage.getItem('cdt_backend_key') as BackendKey;
   if (saved && BACKENDS[saved]) return saved;
-  return 'cloudflare';
+  return 'aliyun';
 };
 
 interface RegisterPayload {

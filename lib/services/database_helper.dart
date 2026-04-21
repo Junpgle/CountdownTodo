@@ -174,6 +174,10 @@ class DatabaseHelper {
           'creator_name': json['creator_name'] ?? json['creatorName'],
           'team_name': json['team_name'] ?? json['teamName'],
           'group_id': json['group_id'] ?? json['groupId'],
+          'recurrence': json['recurrence'] ?? 0,
+          'custom_interval_days': json['custom_interval_days'] ?? json['customIntervalDays'] ?? 0,
+          'recurrence_end_date': json['recurrence_end_date'] ?? json['recurrenceEndDate'],
+          'reminder_minutes': json['reminder_minutes'] ?? json['reminderMinutes'],
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
@@ -208,9 +212,9 @@ class DatabaseHelper {
         updated_at $integerType,
         collab_type $integerType DEFAULT 0,
         recurrence $integerType DEFAULT 0,
-        custom_interval_days $integerType,
-        recurrence_end_date $integerType,
-        reminder_minutes $integerType
+        custom_interval_days INTEGER NOT NULL DEFAULT 0,
+        recurrence_end_date INTEGER,
+        reminder_minutes INTEGER
       )
     ''');
 

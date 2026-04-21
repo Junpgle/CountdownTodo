@@ -311,7 +311,7 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
               </div>
               <h2 className="text-2xl font-black text-slate-800 mb-2">选择一个团队以管理</h2>
               <p className="text-slate-400 max-w-sm font-medium leading-relaxed">
-                在这里你可以管理团队成员、审核加入申请以及查看团队专属数据同步。
+                在这里你可以管理团队成员、审核加入申请以及查看团队专属数据同步。（仅支持阿里云服务器，可在账号设置界面退出登录并切换服务器）
               </p>
             </div>
           ) : (

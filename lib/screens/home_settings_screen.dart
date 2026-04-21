@@ -698,10 +698,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
     try {
       await StorageService.resetSyncTime(_username);
-      await StorageService.syncData(_username, forceFullSync: true);
+      final syncResult =
+          await StorageService.syncData(_username, forceFullSync: true);
+
+      if (syncResult['success'] != true) {
+        throw Exception(syncResult['error'] ?? '同步未执行，请稍后重试');
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
+        StorageService.triggerRefresh();
         _rescheduleReminders(); // 🐘 新增：全量同步后重新调度闹钟
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ 全量同步完成')),

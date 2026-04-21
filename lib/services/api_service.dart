@@ -263,6 +263,7 @@ class ApiService {
     required List<Map<String, dynamic>> countdownsChanges,
     List<Map<String, dynamic>> todoGroupsChanges = const [],
     Map<String, dynamic>? screenTime,
+    bool forceFullSync = false,
     List<Map<String, dynamic>> timeLogsChanges =
         const [], // 🚀 1. 新增命名参数，默认为空列表
   }) async {
@@ -275,6 +276,7 @@ class ApiService {
         'todo_groups': todoGroupsChanges,
         'countdowns': countdownsChanges,
         'time_logs_changes': timeLogsChanges, // 🚀 2. 将数据加入到 JSON Payload 中
+        'force_full_sync': forceFullSync,
       };
 
       if (screenTime != null) {

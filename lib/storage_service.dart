@@ -109,6 +109,26 @@ class StorageService {
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier(0);
   static void triggerRefresh() => dataRefreshNotifier.value++;
 
+  static int _normalizedRecurrenceIndex(TodoItem item) {
+    final int idx = item.recurrence.index;
+    return idx >= 0 && idx < RecurrenceType.values.length ? idx : 0;
+  }
+
+  static int _normalizedCustomIntervalDays(TodoItem item) {
+    final int? raw = item.customIntervalDays;
+    if (item.recurrence == RecurrenceType.customDays) {
+      return (raw != null && raw > 0) ? raw : 1;
+    }
+    return (raw != null && raw >= 0) ? raw : 0;
+  }
+
+  static int? _parseNullableInt(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw.toString());
+  }
+
   static String _scopedKey(String baseKey, String? username) {
     if (username == null || username.isEmpty) return baseKey;
     return "${baseKey}_$username";
@@ -575,8 +595,8 @@ class StorageService {
         'created_at': item.createdAt,
         'updated_at': item.updatedAt,
         'collab_type': item.collabType,
-        'recurrence': item.recurrence.index,
-        'custom_interval_days': item.customIntervalDays,
+        'recurrence': _normalizedRecurrenceIndex(item),
+        'custom_interval_days': _normalizedCustomIntervalDays(item),
         'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch,
         'reminder_minutes': item.reminderMinutes,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -618,8 +638,8 @@ class StorageService {
       'group_id': item.groupId,
       'created_date': item.createdDate,
       'collab_type': item.collabType,
-      'recurrence': item.recurrence.index,
-      'custom_interval_days': item.customIntervalDays,
+      'recurrence': _normalizedRecurrenceIndex(item),
+      'custom_interval_days': _normalizedCustomIntervalDays(item),
       'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch,
       'reminder_minutes': item.reminderMinutes,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -691,8 +711,10 @@ class StorageService {
           creatorName: m['creator_name'],
           groupId: m['group_id'], 
           collabType: m['collab_type'] ?? 0,
-          recurrence: RecurrenceType.values[m['recurrence'] as int? ?? 0],
-          customIntervalDays: m['custom_interval_days'] as int?,
+          recurrence: RecurrenceType.values[
+              (_parseNullableInt(m['recurrence']) ?? 0)
+                  .clamp(0, RecurrenceType.values.length - 1)],
+          customIntervalDays: _parseNullableInt(m['custom_interval_days']),
           recurrenceEndDate: m['recurrence_end_date'] != null 
               ? DateTime.fromMillisecondsSinceEpoch(m['recurrence_end_date'] as int) 
               : null,
@@ -1268,7 +1290,9 @@ class StorageService {
     // 1. 状态锁：防止重复进入
     if (!syncTodos && !syncCountdowns && !syncTimeLogs && !syncPomodoro)
       return {'success': false, 'hasChanges': false};
-    if (_isSyncing) return {'success': false, 'hasChanges': false};
+    if (_isSyncing) {
+      return {'success': false, 'hasChanges': false, 'error': '同步进行中，请稍后重试'};
+    }
     _isSyncing = true;
     bool hasChanges = false;
     List<ConflictInfo> conflicts = [];
@@ -1356,16 +1380,36 @@ class StorageService {
       }
 
       // 5. 发起网络同步请求
-      final response = await ApiService.postDeltaSync(
-        userId: userId,
-        lastSyncTime: lastSyncTime,
-        deviceId: deviceId,
-        todosChanges: dirtyTodos,
-        todoGroupsChanges: dirtyGroups,
-        countdownsChanges: dirtyCountdowns,
-        timeLogsChanges: dirtyTimeLogs,
-        screenTime: screenPayload,
-      );
+      Future<Map<String, dynamic>> sendSyncRequest() {
+        return ApiService.postDeltaSync(
+          userId: userId,
+          lastSyncTime: lastSyncTime,
+          deviceId: deviceId,
+          todosChanges: dirtyTodos,
+          todoGroupsChanges: dirtyGroups,
+          countdownsChanges: dirtyCountdowns,
+          timeLogsChanges: dirtyTimeLogs,
+          screenTime: screenPayload,
+          forceFullSync: forceFullSync,
+        );
+      }
+
+      Map<String, dynamic> response = await sendSyncRequest();
+
+      bool likelyDebounceIgnored =
+          response['success'] == true &&
+          forceFullSync &&
+          (response['new_sync_time'] ?? -1) == lastSyncTime &&
+          (response['server_todos'] as List?)?.isEmpty == true &&
+          (response['server_todo_groups'] as List?)?.isEmpty == true &&
+          (response['server_countdowns'] as List?)?.isEmpty == true &&
+          (response['server_time_logs'] as List?)?.isEmpty == true;
+
+      if (likelyDebounceIgnored) {
+        debugPrint('⏳ [全量同步] 命中服务端防抖空响应，3.2s 后自动重试一次');
+        await Future.delayed(const Duration(milliseconds: 3200));
+        response = await sendSyncRequest();
+      }
 
       if (response['success'] == true) {
         // 🚀 全部上报成功后，标记 op_logs 为已同步
