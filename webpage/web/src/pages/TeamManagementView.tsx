@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Users, Plus, LogOut, Trash2, Check, X, Shield, User, 
-  Mail, Link as LinkIcon, ChevronRight, Loader2, AlertCircle,
+  Users, Plus, LogOut, Trash2, X, User,
+  Link as LinkIcon, ChevronRight, Loader2, AlertCircle,
   MessageSquare, UserPlus, ShieldCheck, Search
 } from 'lucide-react';
 import { ApiService } from '../services/api';
@@ -26,7 +26,7 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
   const [inviteCode, setInviteCode] = useState('');
   
   const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [, setError] = useState('');
 
   useEffect(() => {
     fetchInitialData();

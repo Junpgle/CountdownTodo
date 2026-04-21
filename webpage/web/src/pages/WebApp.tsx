@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiService } from '../services/api';
-import type { TodoItem, CountdownItem, User, TodoGroup } from '../types';
+import type { TodoItem, CountdownItem, User, TodoGroup, Team } from '../types';
 
 import {
   CURRENT_WEB_VERSION,
@@ -58,7 +58,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   const [reminderMin, setReminderMin] = useState<string>('');
   const [selectedTeamUuid, setSelectedTeamUuid] = useState<string | null>(null);
   const [collabType, setCollabType] = useState<number>(0); // 0: Shared, 1: Independent
-  const [userTeams, setUserTeams] = useState<any[]>([]);
+  const [userTeams, setUserTeams] = useState<Team[]>([]);
 
   // --- 网页版版本更新检查状态 ---
   const [updateInfo, setUpdateInfo] = useState<{ version: string, title: string, desc: string } | null>(null);
@@ -96,7 +96,9 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   const fetchUserTeams = async () => {
     try {
       const res = await ApiService.request('/api/teams');
-      if (res.success) setUserTeams(res.teams);
+      if (res.success && Array.isArray(res.teams)) {
+        setUserTeams(res.teams as Team[]);
+      }
     } catch (e) {}
   };
 
