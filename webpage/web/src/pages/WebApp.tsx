@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import {
   ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
-  User as UserIcon, Calendar, AlertCircle, Users as UsersIcon
+  User as UserIcon, Calendar, AlertCircle, Users as UsersIcon, RotateCcw, Bell,
+  MessageSquare, Shield
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiService } from '../services/api';
@@ -50,13 +51,22 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   const [nowMs, setNowMs] = useState(Date.now());
   const [mobileTab, setMobileTab] = useState<'home' | 'settings'>('home');
 
+  // --- 详情/高级字段 ---
+  const [recurrence, setRecurrence] = useState<number>(0); // 0: None, 1: Daily, 2: Weekly, 3: Monthly, 4: Yearly, 5: Custom
+  const [customInterval, setCustomInterval] = useState<string>('');
+  const [recurrenceEnd, setRecurrenceEnd] = useState<string>('');
+  const [reminderMin, setReminderMin] = useState<string>('');
+  const [selectedTeamUuid, setSelectedTeamUuid] = useState<string | null>(null);
+  const [collabType, setCollabType] = useState<number>(0); // 0: Shared, 1: Independent
+  const [userTeams, setUserTeams] = useState<any[]>([]);
+
   // --- 网页版版本更新检查状态 ---
   const [updateInfo, setUpdateInfo] = useState<{ version: string, title: string, desc: string } | null>(null);
 
   useEffect(() => {
     loadLocalData();
     handleSync();
-    fetchSyncStats();
+    fetchUserTeams();
 
     const timer = setInterval(() => setNowMs(Date.now()), 60000);
 
@@ -78,8 +88,17 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     };
     checkWebUpdate();
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+    };
   }, []);
+
+  const fetchUserTeams = async () => {
+    try {
+      const res = await ApiService.request('/api/teams');
+      if (res.success) setUserTeams(res.teams);
+    } catch (e) {}
+  };
 
   const loadLocalData = () => {
     setTodos(SyncEngine.getLocalTodos(user.id).filter(t => !t.is_deleted));
@@ -243,6 +262,12 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       device_id: ApiService.getDeviceId(),
       remark: newRemark.trim() || null,
       group_id: selectedGroupId || null,
+      recurrence: recurrence,
+      custom_interval_days: recurrence === 5 ? parseInt(customInterval) : null,
+      recurrence_end_date: recurrenceEnd ? new Date(recurrenceEnd).getTime() : null,
+      team_uuid: selectedTeamUuid,
+      collab_type: collabType,
+      reminder_minutes: reminderMin ? parseInt(reminderMin) : null
     };
 
     const all = SyncEngine.getLocalTodos(user.id);
@@ -305,6 +330,12 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     setNewStartDate(toDatetimeLocal(Date.now()));
     setNewDueDate('');
     setSelectedGroupId(null);
+    setRecurrence(0);
+    setCustomInterval('');
+    setRecurrenceEnd('');
+    setReminderMin('');
+    setSelectedTeamUuid(null);
+    setCollabType(0);
   };
 
   const openEditModal = (todo: TodoItem) => {
@@ -314,6 +345,14 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     setEditStartDate(toDatetimeLocal(todo.created_date ?? todo.created_at));
     setEditDueDate(todo.due_date ? toDatetimeLocal(todo.due_date) : '');
     setEditGroupId(todo.group_id ?? null);
+    
+    // 高级字段
+    setRecurrence(todo.recurrence || 0);
+    setCustomInterval(todo.custom_interval_days?.toString() || '');
+    setRecurrenceEnd(todo.recurrence_end_date ? toDatetimeLocal(todo.recurrence_end_date) : '');
+    setReminderMin(todo.reminder_minutes?.toString() || '');
+    setSelectedTeamUuid(todo.team_uuid || null);
+    setCollabType(todo.collab_type || 0);
   };
 
   const handleSaveTodoEdit = () => {
@@ -326,6 +365,13 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       target.created_date = new Date(editStartDate).getTime();
       target.due_date = editDueDate ? new Date(editDueDate).getTime() : null;
       target.group_id = editGroupId;
+      target.recurrence = recurrence;
+      target.custom_interval_days = recurrence === 5 ? parseInt(customInterval) : null;
+      target.recurrence_end_date = recurrenceEnd ? new Date(recurrenceEnd).getTime() : null;
+      target.team_uuid = selectedTeamUuid;
+      target.collab_type = collabType;
+      target.reminder_minutes = reminderMin ? parseInt(reminderMin) : null;
+      
       target.version++;
       target.updated_at = Date.now();
       SyncEngine.setLocalTodos(user.id, all);
@@ -533,6 +579,154 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
         </div>
     );
   };
+
+  const renderTodoFormFields = (isEdit: boolean) => (
+    <div className="space-y-5">
+      <div>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block flex items-center gap-1">
+          <Calendar className="w-3 h-3" /> 所属文件夹
+        </label>
+        <select 
+          value={isEdit ? (editGroupId || '') : (selectedGroupId || '')} 
+          onChange={e => isEdit ? setEditGroupId(e.target.value || null) : setSelectedGroupId(e.target.value || null)}
+          className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white outline-none transition font-bold"
+        >
+          <option value="">未分类</option>
+          {todoGroups.map(g => (
+            <option key={g.uuid} value={g.uuid}>{g.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block flex items-center gap-1">
+            <Clock className="w-3 h-3" /> 开始时间
+          </label>
+          <input
+            type="datetime-local"
+            value={isEdit ? editStartDate : newStartDate}
+            onChange={e => isEdit ? setEditStartDate(e.target.value) : setNewStartDate(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white outline-none transition font-bold"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block flex items-center gap-1">
+            <Clock className="w-3 h-3 text-rose-500" /> 截止时间 (可选)
+          </label>
+          <input
+            type="datetime-local"
+            value={isEdit ? editDueDate : newDueDate}
+            onChange={e => isEdit ? setEditDueDate(e.target.value) : setNewDueDate(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-rose-500/10 focus:bg-white outline-none transition font-bold"
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block flex items-center gap-1">
+            <RotateCcw className="w-3 h-3 text-indigo-500" /> 重复模式
+          </label>
+          <select
+            value={recurrence}
+            onChange={e => setRecurrence(parseInt(e.target.value))}
+            className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white outline-none transition font-bold"
+          >
+            <option value={0}>不重复</option>
+            <option value={1}>每天</option>
+            <option value={2}>每周</option>
+            <option value={3}>每月</option>
+            <option value={4}>每年</option>
+            <option value={5}>自定义天数</option>
+          </select>
+        </div>
+        {recurrence === 5 && (
+          <div className="flex-1 animate-in zoom-in-95">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">间隔天数</label>
+            <input
+              type="number"
+              placeholder="天数"
+              value={customInterval}
+              onChange={e => setCustomInterval(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white outline-none transition font-bold"
+            />
+          </div>
+        )}
+      </div>
+
+      {recurrence > 0 && (
+        <div className="animate-in slide-in-from-top-2 duration-300">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">重复截止日期 (如有)</label>
+          <input
+            type="datetime-local"
+            value={recurrenceEnd}
+            onChange={e => setRecurrenceEnd(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white outline-none transition font-bold"
+          />
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block flex items-center gap-1">
+            <Bell className="w-3 h-3 text-amber-500" /> 提前提醒 (分钟)
+          </label>
+          <input
+            type="number"
+            placeholder="例如: 15"
+            value={reminderMin}
+            onChange={e => setReminderMin(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-amber-500/10 focus:bg-white outline-none transition font-bold"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block flex items-center gap-1">
+            <UsersIcon className="w-3 h-3 text-indigo-500" /> 分配至团队
+          </label>
+          <select
+            value={selectedTeamUuid || ''}
+            onChange={e => setSelectedTeamUuid(e.target.value || null)}
+            className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white outline-none transition font-bold"
+          >
+            <option value="">个人任务</option>
+            {userTeams.map(t => (
+              <option key={t.uuid} value={t.uuid}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {selectedTeamUuid && (
+        <div className="animate-in slide-in-from-left-2 duration-300">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block flex items-center gap-1">
+            <Shield className="w-3 h-3 text-emerald-500" /> 协作模式
+          </label>
+          <select
+            value={collabType}
+            onChange={e => setCollabType(parseInt(e.target.value))}
+            className="w-full bg-emerald-50/30 border border-emerald-100 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:bg-white outline-none transition font-bold"
+          >
+            <option value={0}>全队共享 (一人完成全队通过)</option>
+            <option value={1}>独立挑战 (每人需分别完成)</option>
+          </select>
+        </div>
+      )}
+
+      <div>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block flex items-center gap-1">
+          <MessageSquare className="w-3 h-3" /> 详细备注
+        </label>
+        <textarea
+          rows={3}
+          placeholder="添加补充说明..."
+          value={isEdit ? editRemark : newRemark}
+          onChange={e => isEdit ? setEditRemark(e.target.value) : setNewRemark(e.target.value)}
+          className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white outline-none transition font-medium resize-none"
+        />
+      </div>
+    </div>
+  );
 
   const renderDashboard = () => (
       <div className="flex flex-col lg:flex-row gap-6 h-full flex-1 min-h-0 animate-in fade-in duration-300">
@@ -968,8 +1162,8 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
         {/* 统一添加弹窗 (Todo / Countdown) */}
         {showAddModal && (
             <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-              <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex justify-between items-center mb-8">
+              <div className="bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-[2.5rem] p-8 sm:p-10 shadow-2xl animate-in zoom-in-95 duration-200 custom-scrollbar">
+                <div className="flex justify-between items-center mb-8 sticky top-0 bg-white z-10 py-2">
                   <h4 className="font-black text-2xl text-slate-800">
                     {showAddModal === 'todo' ? '添加待办事项' : showAddModal === 'countdown' ? '添加重要倒计时' : '创建新文件夹'}
                   </h4>
@@ -990,42 +1184,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                     />
                   </div>
 
-                  {showAddModal === 'todo' && (
-                    <>
-                      <div>
-                        <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">所属文件夹 (可选)</label>
-                        <select 
-                          value={selectedGroupId || ''} 
-                          onChange={e => setSelectedGroupId(e.target.value || null)}
-                          className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
-                        >
-                          <option value="">未分类</option>
-                          {todoGroups.map(g => (
-                            <option key={g.uuid} value={g.uuid}>{g.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">开始时间 (必填)</label>
-                        <input
-                            type="datetime-local"
-                            value={newStartDate}
-                            onChange={e => setNewStartDate(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">备注 (可选)</label>
-                        <textarea
-                            value={newRemark}
-                            onChange={e => setNewRemark(e.target.value)}
-                            rows={2}
-                            className="w-full bg-slate-50 border border-slate-200 px-5 py-3 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium resize-none text-sm placeholder:text-slate-400"
-                            placeholder="添加备注信息..."
-                        />
-                      </div>
-                    </>
-                  )}
+                  {showAddModal === 'todo' && renderTodoFormFields(false)}
 
                   {showAddModal === 'countdown' && (
                       <div>
@@ -1057,8 +1216,8 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
         {/* 编辑待办弹窗 */}
         {editingTodo && (
             <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-              <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex justify-between items-center mb-8">
+              <div className="bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-[2.5rem] p-8 sm:p-10 shadow-2xl animate-in zoom-in-95 duration-200 custom-scrollbar">
+                <div className="flex justify-between items-center mb-8 sticky top-0 bg-white z-10 py-2">
                   <h4 className="font-black text-2xl text-slate-800">编辑待办事项</h4>
                   <button onClick={() => setEditingTodo(null)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition">
                     <X className="w-5 h-5" />
@@ -1078,58 +1237,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                     />
                   </div>
 
-                  <div>
-                    <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">备注 (可选)</label>
-                    <textarea
-                        value={editRemark}
-                        onChange={e => setEditRemark(e.target.value)}
-                        rows={2}
-                        className="w-full bg-slate-50 border border-slate-200 px-5 py-3 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium resize-none text-sm placeholder:text-slate-400"
-                        placeholder="添加备注信息..."
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">所属文件夹</label>
-                    <select 
-                      value={editGroupId || ''} 
-                      onChange={e => setEditGroupId(e.target.value || null)}
-                      className="w-full bg-slate-50 border border-slate-200 px-5 py-3 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
-                    >
-                      <option value="">未分类</option>
-                      {todoGroups.map(g => (
-                        <option key={g.uuid} value={g.uuid}>{g.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">开始时间</label>
-                    <input
-                        type="datetime-local"
-                        value={editStartDate}
-                        onChange={e => setEditStartDate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-bold text-slate-500 ml-1 mb-2 block">截止时间 (可选)</label>
-                    <input
-                        type="datetime-local"
-                        value={editDueDate}
-                        onChange={e => setEditDueDate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition font-medium"
-                    />
-                    {editDueDate && (
-                        <button
-                            onClick={() => setEditDueDate('')}
-                            className="mt-2 ml-1 text-xs text-slate-400 hover:text-red-400 transition font-medium"
-                        >
-                          × 清除截止时间
-                        </button>
-                    )}
-                  </div>
+                  {renderTodoFormFields(true)}
                 </div>
 
                 <button

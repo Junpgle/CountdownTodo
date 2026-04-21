@@ -111,6 +111,9 @@ export const SyncEngine = {
         }
         this.setLocalPomodoroTags(userId, Array.from(tagMap.values()));
 
+        if (Array.isArray(response.joined_team_uuids)) {
+          this.cleanupOrphanedTeamItems(userId, response.joined_team_uuids);
+        }
         this.setLastSyncTime(userId, Number(response.new_sync_time));
         return true;
       }
@@ -118,6 +121,32 @@ export const SyncEngine = {
     } catch (e) {
       console.error('Sync failed:', e);
       throw e;
+    }
+  },
+
+  cleanupOrphanedTeamItems(userId: number, currentTeamUuids: string[]) {
+    const teamSet = new Set(currentTeamUuids);
+
+    // 清理 Todos
+    const todos = this.getLocalTodos(userId);
+    const filteredTodos = todos.filter(t => !t.team_uuid || teamSet.has(t.team_uuid));
+    if (filteredTodos.length !== todos.length) {
+      console.log(`[Sync] Purged ${todos.length - filteredTodos.length} orphaned team todos.`);
+      this.setLocalTodos(userId, filteredTodos);
+    }
+
+    // 清理 Countdowns
+    const cds = this.getLocalCountdowns(userId);
+    const filteredCds = cds.filter(c => !c.team_uuid || teamSet.has(c.team_uuid));
+    if (filteredCds.length !== cds.length) {
+      this.setLocalCountdowns(userId, filteredCds);
+    }
+
+    // 清理 Groups
+    const groups = this.getLocalTodoGroups(userId);
+    const filteredGroups = groups.filter(g => !g.team_uuid || teamSet.has(g.team_uuid));
+    if (filteredGroups.length !== groups.length) {
+      this.setLocalTodoGroups(userId, filteredGroups);
     }
   }
 };

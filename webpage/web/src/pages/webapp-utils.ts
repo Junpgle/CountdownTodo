@@ -110,6 +110,7 @@ export interface PomodoroRecord {
   tag_uuids: string[];
   // sync fields
   device_id?: string | null;
+  team_uuid?: string | null;
   version: number;
   created_at: number;
   updated_at: number;
@@ -119,17 +120,17 @@ export interface PomodoroRecord {
 // ── 番茄钟记录本地存储 ──
 export function getLocalPomRecords(userId: number): PomodoroRecord[] {
   try {
-    return JSON.parse(localStorage.getItem(`u${userId}_pom_records`) || '[]') as PomodoroRecord[];
+    return JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'pom_records')) || '[]') as PomodoroRecord[];
   } catch { return []; }
 }
 export function setLocalPomRecords(userId: number, records: PomodoroRecord[]) {
-  localStorage.setItem(`u${userId}_pom_records`, JSON.stringify(records));
+  localStorage.setItem(ApiService.getUserKey(userId, 'pom_records'), JSON.stringify(records));
 }
 export function getPomLastSyncTime(userId: number): number {
-  return parseInt(localStorage.getItem(`u${userId}_pom_last_sync`) || '0', 10);
+  return parseInt(localStorage.getItem(ApiService.getUserKey(userId, 'pom_last_sync')) || '0', 10);
 }
 export function setPomLastSyncTime(userId: number, t: number) {
-  localStorage.setItem(`u${userId}_pom_last_sync`, String(t));
+  localStorage.setItem(ApiService.getUserKey(userId, 'pom_last_sync'), String(t));
 }
 
 // 追加 / 更新单条记录到本地，并标记为 dirty（updated_at > lastSync）
@@ -223,14 +224,14 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
 
 export function loadPomodoroSettings(userId: number): PomodoroSettings {
   try {
-    const raw = localStorage.getItem(`u${userId}_pomodoro_settings`);
+    const raw = localStorage.getItem(ApiService.getUserKey(userId, 'pomodoro_settings'));
     if (raw) return { ...DEFAULT_POMODORO_SETTINGS, ...JSON.parse(raw) as Partial<PomodoroSettings> };
   } catch { /* ignore */ }
   return { ...DEFAULT_POMODORO_SETTINGS };
 }
 
 export function savePomodoroSettings(userId: number, s: PomodoroSettings) {
-  localStorage.setItem(`u${userId}_pomodoro_settings`, JSON.stringify(s));
+  localStorage.setItem(ApiService.getUserKey(userId, 'pomodoro_settings'), JSON.stringify(s));
 }
 
 export interface PomodoroState {
@@ -241,20 +242,22 @@ export interface PomodoroState {
   tagUuids: string[];
   startTimeMs: number;      // when current focus session began
   recordUuid: string;
+  teamUuid?: string | null;
 }
 
 export function loadPomodoroState(userId: number): PomodoroState | null {
   try {
-    const raw = localStorage.getItem(`u${userId}_pomodoro_state`);
+    const raw = localStorage.getItem(ApiService.getUserKey(userId, 'pomodoro_state'));
     if (raw) return JSON.parse(raw) as PomodoroState;
   } catch { /* ignore */ }
   return null;
 }
 
 export function savePomodoroState(userId: number, state: PomodoroState | null) {
+  const key = ApiService.getUserKey(userId, 'pomodoro_state');
   if (state === null) {
-    localStorage.removeItem(`u${userId}_pomodoro_state`);
+    localStorage.removeItem(key);
   } else {
-    localStorage.setItem(`u${userId}_pomodoro_state`, JSON.stringify(state));
+    localStorage.setItem(key, JSON.stringify(state));
   }
 }
