@@ -8,7 +8,6 @@ class SystemSection extends StatelessWidget {
   final VoidCallback onShowStorageAnalysis;
   final bool isCheckingUpdate;
   final VoidCallback onCheckUpdates;
-  final VoidCallback onLogout;
 
   const SystemSection({
     Key? key,
@@ -18,7 +17,6 @@ class SystemSection extends StatelessWidget {
     required this.onShowStorageAnalysis,
     required this.isCheckingUpdate,
     required this.onCheckUpdates,
-    required this.onLogout,
   }) : super(key: key);
 
   @override
@@ -79,13 +77,6 @@ class SystemSection extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.chevron_right),
                 onTap: isCheckingUpdate ? null : onCheckUpdates,
-              ),
-              const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.redAccent),
-                title: const Text('退出当前账号',
-                    style: TextStyle(color: Colors.redAccent)),
-                onTap: onLogout,
               ),
             ],
           ),

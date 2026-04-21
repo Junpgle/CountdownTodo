@@ -13,12 +13,14 @@ import '../../storage_service.dart';
 
 class CourseImportHandler {
   final BuildContext context;
+  final String username;
   final DateTime? semesterStart;
   final VoidCallback onRescheduleReminders;
   final Function(String) showMessage;
 
   CourseImportHandler({
     required this.context,
+    required this.username,
     required this.semesterStart,
     required this.onRescheduleReminders,
     required this.showMessage,
@@ -99,12 +101,12 @@ class CourseImportHandler {
       switch (selectedSchool) {
         case 'hf':
           sourceName = "合肥工业大学";
-          success = await CourseService.importScheduleFromJson(content, semesterStart: semesterStart);
+          success = await CourseService.importScheduleFromJson(username, content, semesterStart: semesterStart);
           break;
         case 'xd':
           sourceName = "西安电子科技大学";
           if (semesterStart == null) throw Exception("请先设置开学日期");
-          success = await CourseService.importXidianScheduleFromIcs(content, semesterStart!);
+          success = await CourseService.importXidianScheduleFromIcs(username, content, semesterStart!);
           break;
         case 'zf':
           sourceName = "正方教务系统";
@@ -117,18 +119,18 @@ class CourseImportHandler {
           if (userAdjustedTimes == null) return;
           _showLoadingDialog("正在按照校准的时间导入...");
           if (semesterStart == null) { _closeLoadingDialog(); throw Exception("请先设置开学日期"); }
-          success = await CourseService.importZfSoftScheduleFromHtml(content, semesterStart!, customTimes: userAdjustedTimes);
+          success = await CourseService.importZfSoftScheduleFromHtml(username, content, semesterStart!, customTimes: userAdjustedTimes);
           break;
         case 'xm':
         case 'hl':
           sourceName = selectedSchool == 'xm' ? "厦门大学" : "河南财经政法大学";
           if (semesterStart == null) throw Exception("请先设置开学日期");
-          success = await CourseService.importXmuScheduleFromHtml(content, semesterStart!);
+          success = await CourseService.importXmuScheduleFromHtml(username, content, semesterStart!);
           break;
         case 'xj':
           sourceName = "厦门大学嘉庚学院";
           if (semesterStart == null) throw Exception("请先设置开学日期");
-          success = await CourseService.importXujcScheduleFromHtml(content, semesterStart!);
+          success = await CourseService.importXujcScheduleFromHtml(username, content, semesterStart!);
           break;
         default:
           throw Exception("未知的导入方式");
@@ -265,11 +267,11 @@ class CourseImportHandler {
       if (jsonCandidate != null && HfutScheduleParser.isValid(jsonCandidate)) {
         sourceName = "合肥工业大学";
         statusNotifier.value = "识别到: $sourceName (API数据)\n正在读取...";
-        success = await CourseService.importScheduleFromJson(jsonCandidate, semesterStart: semesterStart);
+        success = await CourseService.importScheduleFromJson(username, jsonCandidate, semesterStart: semesterStart);
       } else if (HfutScheduleParser.isValid(htmlContent)) {
         sourceName = "合肥工业大学";
         statusNotifier.value = "识别到: $sourceName (教务系统)\n正在智能解析...";
-        success = await CourseService.importScheduleFromJson(htmlContent, semesterStart: semesterStart);
+        success = await CourseService.importScheduleFromJson(username, htmlContent, semesterStart: semesterStart);
       } else if (htmlContent.contains('timetable_con') ||
           htmlContent.contains('id="table1"') ||
           htmlContent.contains('kbgrid_table')) {
@@ -293,6 +295,7 @@ class CourseImportHandler {
         }
 
         success = await CourseService.importZfSoftScheduleFromHtml(
+          username,
           htmlContent,
           semesterStart!,
           customTimes: userAdjustedTimes,
@@ -309,10 +312,10 @@ class CourseImportHandler {
         // Check if it's likely XMU or XUJC
         if (htmlContent.contains('厦门大学嘉庚学院') || htmlContent.contains('jw.xujc.com')) {
           sourceName = "厦门大学嘉庚学院";
-          success = await CourseService.importXujcScheduleFromHtml(htmlContent, semesterStart!);
+          success = await CourseService.importXujcScheduleFromHtml(username, htmlContent, semesterStart!);
         } else if (htmlContent.contains('XMUSTUDENT') || htmlContent.toLowerCase().contains('<html')) {
           sourceName = "智能网页解析";
-          success = await CourseService.importXmuScheduleFromHtml(htmlContent, semesterStart!);
+          success = await CourseService.importXmuScheduleFromHtml(username, htmlContent, semesterStart!);
         }
       }
 

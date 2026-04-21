@@ -2444,7 +2444,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
       // 添加课程卡片
       try {
-        final dashboardCourses = await CourseService.getDashboardCourses();
+        final dashboardCourses = await CourseService.getDashboardCourses(username);
         if (!mounted) return;
         final courses = dashboardCourses['courses'] as List? ?? [];
         if (courses.isNotEmpty) {

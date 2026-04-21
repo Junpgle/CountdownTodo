@@ -202,6 +202,8 @@ class StorageService {
       await prefs.setString(KEY_AUTH_TOKEN, token);
       ApiService.setToken(token);
     }
+    // 🚀 核心修复：登录成功后立即关闭旧的数据库连接，触发 getter 重新根据新用户打开隔离文件
+    await DatabaseHelper.instance.closeDatabase();
   }
 
   static Future<String?> getLoginSession() async {
@@ -219,6 +221,8 @@ class StorageService {
     await prefs.remove(KEY_LAST_SCREEN_TIME_SYNC);
     await prefs.remove(KEY_AUTH_TOKEN);
     ApiService.setToken('');
+    // 🚀 核心修复：退出登录后关闭并清空数据库引用
+    await DatabaseHelper.instance.closeDatabase();
   }
 
   static Future<void> saveSettings(Map<String, dynamic> settings) async {
@@ -1593,15 +1597,15 @@ class StorageService {
     return s != null ? DateTime.tryParse(s) : null;
   }
 
-  static Future<void> updateLastAutoSyncTime() async {
+  static Future<void> updateLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
-    await prefs.setInt(
-        KEY_LAST_AUTO_SYNC, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt("${KEY_LAST_AUTO_SYNC}_$username",
+        DateTime.now().millisecondsSinceEpoch);
   }
 
-  static Future<DateTime?> getLastAutoSyncTime() async {
+  static Future<DateTime?> getLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
-    int? timestamp = prefs.getInt(KEY_LAST_AUTO_SYNC);
+    int? timestamp = prefs.getInt("${KEY_LAST_AUTO_SYNC}_$username");
     if (timestamp != null)
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();

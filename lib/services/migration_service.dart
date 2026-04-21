@@ -108,7 +108,7 @@ class MigrationService {
           lessonType: c['lesson_type'] ?? '',
           date: c['date'] ?? '',
         )).toList();
-        await CourseService.saveCourses(courseItems);
+        await CourseService.saveCourses(oldUserId.toString(), courseItems);
       }
 
       // ==========================================
@@ -180,7 +180,7 @@ class MigrationService {
 
       if (courses.isNotEmpty) {
         onProgress("📤 上传课表...");
-        await CourseService.syncCoursesToCloud(newUserId);
+        await CourseService.syncCoursesToCloud(newUserId.toString(), newUserId);
       }
 
       if (pomodoroRecords.isNotEmpty) {
@@ -209,7 +209,14 @@ class MigrationService {
   /// 内部辅助函数：将本地通过 SharedPreferences 存储的旧用户数据，转移给新用户 ID
   static Future<void> _migrateLocalDataUserId(String oldId, String newId) async {
     final prefs = await SharedPreferences.getInstance();
-    final keysToMigrate = ['todos_$oldId', 'countdowns_$oldId', 'time_logs_$oldId', 'pomodoro_tags_$oldId'];
+    final keysToMigrate = [
+      'todos_$oldId', 
+      'countdowns_$oldId', 
+      'time_logs_$oldId', 
+      'pomodoro_tags_$oldId',
+      'course_schedule_json_$oldId',
+      'last_auto_sync_time_$oldId'
+    ];
 
     for (String oldKey in keysToMigrate) {
       if (prefs.containsKey(oldKey)) {

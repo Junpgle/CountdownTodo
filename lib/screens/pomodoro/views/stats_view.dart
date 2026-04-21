@@ -39,7 +39,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   Future<void> _syncIfDue() async {
     final interval = await StorageService.getSyncInterval();
     if (interval == 0) return;
-    final lastSync = await StorageService.getLastAutoSyncTime();
+    final lastSync = await StorageService.getLastAutoSyncTime(widget.username);
     final now = DateTime.now();
     bool due = false;
     if (lastSync == null) {

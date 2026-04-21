@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:path/path.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'environment_service.dart';
 import 'package:flutter/foundation.dart';
@@ -12,16 +13,38 @@ class DatabaseHelper {
   DatabaseHelper._init();
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDB('uni_sync.db');
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString('current_login_user') ?? 'default';
+
+    if (_database != null) {
+      // 🚀 核心校验：如果当前打开的数据库与当前登录用户不符，则强制关闭并重新打开
+      if (!_database!.path.contains('uni_sync_$username')) {
+        debugPrint("🔄 Database: 检测到用户切换 ($username)，正在强制重定向数据库文件...");
+        await closeDatabase();
+      } else {
+        return _database!;
+      }
+    }
+    _database = await _initDB('uni_sync_$username.db');
     return _database!;
+  }
+
+  /// 🚀 Uni-Sync: 强制关闭并重置数据库连接（用于登出或切换用户）
+  Future<void> closeDatabase() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
   }
 
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
-    // 🚀 根据环境动态选择数据库文件名（隔离测试数据）
-    final targetName = EnvironmentService.dbName;
+    // 🚀 根据环境动态选择前缀（隔离测试数据）
+    final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';
+    final targetName = envPrefix + filePath;
     final path = join(dbPath, targetName);
+
+    debugPrint("📂 Database: 正在打开持久化存储 [$path]");
 
     return await openDatabase(
       path,

@@ -221,7 +221,8 @@ class IslandSlotProvider {
   /// Get course slot data
   static Future<IslandSlotData> _getCourseSlot(bool isLeft) async {
     try {
-      final dashboard = await CourseService.getDashboardCourses();
+      final username = await StorageService.getLoginSession() ?? 'default';
+      final dashboard = await CourseService.getDashboardCourses(username);
       final courses = dashboard['courses'] as List?;
 
       if (courses != null && courses.isNotEmpty) {

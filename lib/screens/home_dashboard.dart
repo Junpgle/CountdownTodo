@@ -1019,7 +1019,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _checkUpcomingEvents() async {
     DateTime now = DateTime.now();
 
-    final dashboardData = await CourseService.getDashboardCourses();
+    final dashboardData = await CourseService.getDashboardCourses(widget.username);
     List<CourseItem> courses =
         (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
@@ -1307,7 +1307,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (guideNeeded) return;
 
     int interval = await StorageService.getSyncInterval();
-    DateTime? lastSync = await StorageService.getLastAutoSyncTime();
+    DateTime? lastSync = await StorageService.getLastAutoSyncTime(widget.username);
     DateTime now = DateTime.now();
 
     if (force || interval == 0) {
@@ -1614,7 +1614,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         StorageService.getTodoGroups(widget.username),
         StorageService.getCountdowns(widget.username),
         StorageService.getMathStats(widget.username),
-        CourseService.getDashboardCourses(),
+        CourseService.getDashboardCourses(widget.username),
       ]);
 
       final List<TodoItem> allTodos = (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList();
@@ -1637,7 +1637,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         _syncTodoNotification();
         WidgetService.updateTodoWidget(allTodos);
 
-        final allCourses = await CourseService.getAllCourses();
+        final allCourses = await CourseService.getAllCourses(widget.username);
         unawaited(ReminderScheduleService.scheduleAll(
           todos: allTodos,
           courses: allCourses,
@@ -1655,7 +1655,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _rescheduleAlarms() async {
-    final courses = await CourseService.getAllCourses();
+    final courses = await CourseService.getAllCourses(widget.username);
     await ReminderScheduleService.scheduleAll(
       todos: _todos,
       courses: courses,
@@ -1760,7 +1760,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         await _loadCachedScreenTime();
       }
 
-      await StorageService.updateLastAutoSyncTime();
+      await StorageService.updateLastAutoSyncTime(widget.username);
 
       if (mounted) {
         if (!silent) {

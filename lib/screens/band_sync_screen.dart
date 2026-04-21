@@ -905,7 +905,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     setState(() => _isSyncing = true);
     _logs.add('开始同步课程...');
 
-    final courses = await CourseService.getAllCourses();
+    final username = await _getUsername();
+    if (username == null || username.isEmpty) {
+      _logs.add('未登录，无法同步课程表');
+      setState(() => _isSyncing = false);
+      return;
+    }
+
+    final courses = await CourseService.getAllCourses(username);
     final now = DateTime.now();
     final todayStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';

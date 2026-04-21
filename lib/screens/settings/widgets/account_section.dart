@@ -123,6 +123,13 @@ class AccountSection extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: onForceFullSync,
               ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.redAccent),
+                title: const Text('退出当前账号',
+                    style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                onTap: onLogout,
+              ),
             ],
           ),
         ),

@@ -226,6 +226,13 @@ class ExternalShareHandler {
         statusNotifier.value = "获取课表文件中...";
 
         String content = await _safeReadFile(file);
+        final username = await StorageService.getLoginSession();
+        if (username == null || username.isEmpty) {
+          statusNotifier.value = "❌ 未登录\n请先登录后再导入课表";
+          await Future.delayed(const Duration(seconds: 2));
+          _closeDialogSafely(dialogContext);
+          return;
+        }
 
         await Future.delayed(const Duration(milliseconds: 400));
 
@@ -244,7 +251,7 @@ class ExternalShareHandler {
             return;
           }
           success = await CourseService.importXidianScheduleFromIcs(
-              content, semStart);
+              username, content, semStart);
         } else if (content.contains('timetable_con') ||
             content.contains('id="table1"')) {
           sourceName = "正方教务系统";
@@ -258,7 +265,7 @@ class ExternalShareHandler {
             return;
           }
           success = await CourseService.importZfSoftScheduleFromHtml(
-              content, semStart);
+              username, content, semStart);
         } else if (['mhtml', 'html', 'htm'].contains(ext) ||
             content.contains('quoted-printable') ||
             content.toLowerCase().contains('<html')) {
@@ -273,13 +280,13 @@ class ExternalShareHandler {
             return;
           }
           success =
-              await CourseService.importXmuScheduleFromHtml(content, semStart);
+              await CourseService.importXmuScheduleFromHtml(username, content, semStart);
         } else if (['json', 'txt'].contains(ext) ||
             content.trim().startsWith('[') ||
             content.trim().startsWith('{')) {
           sourceName = "聚在工大";
           statusNotifier.value = "识别到: $sourceName\n正在导入...";
-          success = await CourseService.importScheduleFromJson(content);
+          success = await CourseService.importScheduleFromJson(username, content);
         } else {
           statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
           await Future.delayed(const Duration(seconds: 2));

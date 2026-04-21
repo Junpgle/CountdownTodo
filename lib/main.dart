@@ -360,7 +360,7 @@ class _MyAppState extends State<MyApp> {
         }).toList();
 
       case 'course':
-        final courses = await CourseService.getAllCourses();
+        final courses = await CourseService.getAllCourses(user);
         return courses.map((c) => c.toJson()).toList();
 
       case 'countdown':

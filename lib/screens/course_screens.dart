@@ -123,7 +123,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final weeks = await CourseService.getAvailableWeeks();
+    final weeks = await CourseService.getAvailableWeeks(widget.username);
     final allTodosRaw = await StorageService.getTodos(widget.username);
 
     _allTodos = allTodosRaw.where((t) => !t.isDeleted).toList();
@@ -134,7 +134,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _pomodoroTags = await PomodoroService.getTags();
 
     // 加载所有课程供月视图使用
-    _allCourses = await CourseService.getAllCourses();
+    _allCourses = await CourseService.getAllCourses(widget.username);
 
     // 🚀 核心改进：优先从设置中读取开学日期，不要通过课程反推（课程周次索引在不同解析器间可能有 0/1 差异）
     DateTime? semStart = await StorageService.getSemesterStart();
@@ -142,7 +142,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _semesterMonday = semStart.subtract(Duration(days: semStart.weekday - 1));
     } else {
       // 没有任何设置时，尝试回退：
-      final allCourses = await CourseService.getAllCourses();
+      final allCourses = await CourseService.getAllCourses(widget.username);
       if (allCourses.isNotEmpty) {
         allCourses.sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
         final firstCourse = allCourses.first;
@@ -166,7 +166,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     if (weeks.isNotEmpty) {
       _availableWeeks = weeks;
-      _weekCourses = await CourseService.getCoursesByWeek(_currentWeek);
+      _weekCourses = await CourseService.getCoursesByWeek(widget.username, _currentWeek);
     } else {
       _availableWeeks = List.generate(20, (index) => index + 1);
       _weekCourses = [];
@@ -357,7 +357,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _currentWeek = newWeek;
       _isLoading = true;
     });
-    CourseService.getCoursesByWeek(newWeek).then((courses) {
+    CourseService.getCoursesByWeek(widget.username, newWeek).then((courses) {
       setState(() {
         _weekCourses = courses;
         _updateWeekTodos();

@@ -556,7 +556,7 @@ class LanSyncService {
       }
 
       if (syncConfig.syncCourses) {
-        await _mergeCourses(remoteCourses, (count) => coursesSynced = count);
+        await _mergeCourses(username, remoteCourses, (count) => coursesSynced = count);
         progress += step;
         _emitProgressValue(progress);
         _emitProgress('合并课程完成...');
@@ -742,10 +742,10 @@ class LanSyncService {
     }
   }
 
-  Future<void> _mergeCourses(
+  Future<void> _mergeCourses(String username,
       List<Map<String, dynamic>> remote, Function(int) onChanged) async {
     if (remote.isEmpty) return;
-    final local = await CourseService.getAllCourses();
+    final local = await CourseService.getAllCourses(username);
     final Map<String, CourseItem> merged = {};
     for (var c in local) {
       final key = '${c.courseName}_${c.date}_${c.startTime}';
@@ -762,7 +762,7 @@ class LanSyncService {
       }
     }
     if (changed) {
-      await CourseService.saveCourses(merged.values.toList());
+      await CourseService.saveCourses(username, merged.values.toList());
       onChanged(merged.length);
     }
   }
@@ -803,7 +803,7 @@ class LanSyncService {
     final pomodoroRecords =
         config.syncPomodoroRecords ? await PomodoroService.getRecords() : [];
     final courses =
-        config.syncCourses ? await CourseService.getAllCourses() : [];
+        config.syncCourses ? await CourseService.getAllCourses(username) : [];
 
     return {
       'todos': todos.map((t) => t.toJson()).toList(),
@@ -1051,7 +1051,7 @@ class LanSyncService {
           remotePomodoroTags, (count) => pomodoroTagsSynced = count);
       await _mergePomodoroRecords(
           remotePomodoroRecords, (count) => pomodoroRecordsSynced = count);
-      await _mergeCourses(remoteCourses, (count) => coursesSynced = count);
+      await _mergeCourses(username, remoteCourses, (count) => coursesSynced = count);
       _emitProgressValue(1.0);
 
       client.close();

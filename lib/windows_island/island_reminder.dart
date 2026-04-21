@@ -180,8 +180,9 @@ class IslandReminderService {
     final reminders = <Map<String, dynamic>>[];
 
     try {
-      final courses = await CourseService.getAllCourses();
-      debugPrint('[IslandReminder] Got ${courses.length} courses');
+      final username = await StorageService.getLoginSession() ?? 'default';
+      final courses = await CourseService.getAllCourses(username);
+      debugPrint('[IslandReminder] Got ${courses.length} courses for $username');
 
       final todayStr =
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';

@@ -141,6 +141,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _courseImportHandler = CourseImportHandler(
       context: context,
+      username: _username,
       semesterStart: _semesterStart,
       onRescheduleReminders: _rescheduleReminders,
       showMessage: (msg) => ScaffoldMessenger.of(context)
@@ -176,6 +177,7 @@ class _SettingsPageState extends State<SettingsPage> {
       // 在加载完设置后同步更新 handler 的 semesterStart
       _courseImportHandler = CourseImportHandler(
         context: context,
+        username: _username,
         semesterStart: _semesterStart,
         onRescheduleReminders: _rescheduleReminders,
         showMessage: (msg) => ScaffoldMessenger.of(context)
@@ -523,6 +525,7 @@ class _SettingsPageState extends State<SettingsPage> {
       // 🚀 核心修复：更新日期后必须同步更新导入处理器的状态，否则它持有的仍是旧的 null 值
       _courseImportHandler = CourseImportHandler(
         context: context,
+        username: _username,
         semesterStart: _semesterStart,
         onRescheduleReminders: _rescheduleReminders,
         showMessage: (msg) => ScaffoldMessenger.of(context)
@@ -617,7 +620,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _testCourseNotification() async {
-    final dashboardData = await CourseService.getDashboardCourses();
+    final dashboardData = await CourseService.getDashboardCourses(_username);
     List<CourseItem> courses =
         (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
@@ -625,7 +628,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (courses.isNotEmpty) {
       testCourse = courses.first;
     } else {
-      final allCourses = await CourseService.getAllCourses();
+      final allCourses = await CourseService.getAllCourses(_username);
       if (allCourses.isNotEmpty) {
         testCourse = allCourses.first;
       }
@@ -713,7 +716,7 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    final allCourses = await CourseService.getAllCourses();
+    final allCourses = await CourseService.getAllCourses(_username);
     if (allCourses.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('当前没有课表数据可上传')),
@@ -742,7 +745,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     _showLoadingDialog(context, "正在同步到云端...");
 
-    final result = await CourseService.syncCoursesToCloud(_userId!);
+    final result = await CourseService.syncCoursesToCloud(_username, _userId!);
 
     if (result['success'] == true) {
       final startMs = _semesterStart != null
@@ -999,10 +1002,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ─── 重新调度所有保活提醒 ──────────────────────────────────────
   Future<void> _rescheduleReminders() async {
-    if (_username.isEmpty || _username == "未登录") return;
+    if (_username.isEmpty || _username == "未登录" || _username == "加载中...") return;
     try {
       final todos = await StorageService.getTodos(_username);
-      final courses = await CourseService.getAllCourses();
+      final courses = await CourseService.getAllCourses(_username);
       await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
     } catch (e) {}
   }
@@ -1321,7 +1324,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 _storageManagementHandler.showStorageAnalysis,
             isCheckingUpdate: _isCheckingUpdate,
             onCheckUpdates: _checkUpdatesAndNotices,
-            onLogout: () => _handleLogout(force: false),
           ),
         ),
         _buildExpandableSection(
@@ -1657,7 +1659,6 @@ class _SettingsPageState extends State<SettingsPage> {
                           _storageManagementHandler.showStorageAnalysis,
                       isCheckingUpdate: _isCheckingUpdate,
                       onCheckUpdates: _checkUpdatesAndNotices,
-                      onLogout: () => _handleLogout(force: false),
                     ),
                     const SizedBox(height: 8),
                     Card(

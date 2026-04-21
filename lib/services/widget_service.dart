@@ -111,7 +111,7 @@ class WidgetService {
     // 并行读取所有必要的数据，极大提升性能
     final results = await Future.wait([
       StorageService.getTodos(username),
-      CourseService.getAllCourses(),
+      CourseService.getAllCourses(username),
       StorageService.getCountdowns(username),
       StorageService.getTimeLogs(username),
       PomodoroService.getTodayRecords(),

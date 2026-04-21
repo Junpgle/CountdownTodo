@@ -20,17 +20,17 @@ class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
 
   // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
-  static Future<void> saveCourses(List<CourseItem> courses) async {
+  static Future<void> saveCourses(String username, List<CourseItem> courses) async {
     final prefs = await SharedPreferences.getInstance();
     // 统一转换为标准的 List<Map> JSON 字符串，极大地提升后续读取效率
     final String encodedData = jsonEncode(courses.map((c) => c.toJson()).toList());
-    await prefs.setString(_keyCourseData, encodedData);
+    await prefs.setString("${_keyCourseData}_$username", encodedData);
   }
 
   // ================= 导入与解析逻辑 =================
 
   // 1. 从字符串导入课表 (合工大)
-  static Future<bool> importScheduleFromJson(String jsonString, {DateTime? semesterStart}) async {
+  static Future<bool> importScheduleFromJson(String username, String jsonString, {DateTime? semesterStart}) async {
     // 调用提取的 parser 进行校验
     if (!HfutScheduleParser.isValid(jsonString)) {
       return false;
@@ -41,7 +41,7 @@ class CourseService {
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
-      await saveCourses(parsedCourses);
+      await saveCourses(username!, parsedCourses);
       return true;
     } catch (e) {
       print("解析工大课表出错: $e");
@@ -50,13 +50,13 @@ class CourseService {
   }
 
   // 2. 导入厦大（本部）课表
-  static Future<bool> importXmuScheduleFromHtml(String htmlString, DateTime semesterStart) async {
+  static Future<bool> importXmuScheduleFromHtml(String username, String htmlString, DateTime semesterStart) async {
     try {
       List<CourseItem> parsedCourses = XmuScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
-      await saveCourses(parsedCourses);
+      await saveCourses(username, parsedCourses);
       return true;
     } catch (e) {
       print("解析厦大课表出错: $e");
@@ -65,13 +65,13 @@ class CourseService {
   }
 
   // 🚀 2.1 导入厦大嘉庚学院课表
-  static Future<bool> importXujcScheduleFromHtml(String htmlString, DateTime semesterStart) async {
+  static Future<bool> importXujcScheduleFromHtml(String username, String htmlString, DateTime semesterStart) async {
     try {
       List<CourseItem> parsedCourses = XujcScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
-      await saveCourses(parsedCourses);
+      await saveCourses(username, parsedCourses);
       return true;
     } catch (e) {
       print("解析嘉庚课表出错: $e");
@@ -80,13 +80,13 @@ class CourseService {
   }
 
   // 🚀 3. 新增：导入西电 ics 课表
-  static Future<bool> importXidianScheduleFromIcs(String icsString, DateTime semesterStart) async {
+  static Future<bool> importXidianScheduleFromIcs(String username, String icsString, DateTime semesterStart) async {
     try {
       List<CourseItem> parsedCourses = XidianScheduleParser.parseIcs(icsString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
-      await saveCourses(parsedCourses);
+      await saveCourses(username, parsedCourses);
       return true;
     } catch (e) {
       print("解析西电课表出错: $e");
@@ -94,12 +94,12 @@ class CourseService {
     }
   }
 
-  // 4. 从文件路径导入课表 (供外部 App 唤起时调用，主要用于处理早期工大 JSON 文件)
-  static Future<bool> importScheduleFromFile(String filePath) async {
+  // 4. 从文件路径导入课表 (供外部 App 唤起时调用)
+  static Future<bool> importScheduleFromFile(String username, String filePath) async {
     try {
       File file = File(filePath);
       String content = await file.readAsString();
-      return await importScheduleFromJson(content);
+      return await importScheduleFromJson(username, content);
     } catch (e) {
       return false;
     }
@@ -107,6 +107,7 @@ class CourseService {
 
   // 🚀 5. 新增：导入正方教务系统课表
   static Future<bool> importZfSoftScheduleFromHtml(
+      String username,
       String htmlString,
       DateTime semesterStart,
       {Map<int, Map<String, int>>? customTimes} // 🚀 适配：接收用户自定义的作息表
@@ -121,7 +122,7 @@ class CourseService {
       if (parsedCourses.isEmpty) return false;
 
       // 保存到本地存储
-      await saveCourses(parsedCourses);
+      await saveCourses(username, parsedCourses);
       return true;
     } catch (e) {
       print("解析正方教务课表出错: $e");
@@ -132,9 +133,9 @@ class CourseService {
   // ================= 提取与业务逻辑 =================
 
   // 4. 获取所有解析后的课程对象
-  static Future<List<CourseItem>> getAllCourses() async {
+  static Future<List<CourseItem>> getAllCourses(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    final String? data = prefs.getString(_keyCourseData);
+    final String? data = prefs.getString("${_keyCourseData}_$username");
     if (data == null || data.isEmpty) return [];
 
     try {
@@ -158,9 +159,9 @@ class CourseService {
   }
 
   // 5. 获取主页今日/明日需要显示的课程
-  static Future<Map<String, dynamic>> getDashboardCourses() async {
+  static Future<Map<String, dynamic>> getDashboardCourses(String username) async {
     try {
-      final courses = await getAllCourses();
+      final courses = await getAllCourses(username);
       if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
 
       DateTime now = DateTime.now();
@@ -197,14 +198,14 @@ class CourseService {
   }
 
   // 6. 按周获取课程
-  static Future<List<CourseItem>> getCoursesByWeek(int weekIndex) async {
-    final courses = await getAllCourses();
+  static Future<List<CourseItem>> getCoursesByWeek(String username, int weekIndex) async {
+    final courses = await getAllCourses(username);
     return courses.where((c) => c.weekIndex == weekIndex).toList();
   }
 
   // 7. 获取包含课程的所有周数列表
-  static Future<List<int>> getAvailableWeeks() async {
-    final courses = await getAllCourses();
+  static Future<List<int>> getAvailableWeeks(String username) async {
+    final courses = await getAllCourses(username);
     final weeks = courses.map((c) => c.weekIndex).toSet().toList();
     weeks.sort();
     return weeks;
@@ -213,8 +214,8 @@ class CourseService {
   // ================= 云端同步逻辑 =================
 
   // 8. 上传本地课表到云端
-  static Future<Map<String, dynamic>> syncCoursesToCloud(int userId) async {
-    final courses = await getAllCourses();
+  static Future<Map<String, dynamic>> syncCoursesToCloud(String username, int userId) async {
+    final courses = await getAllCourses(username);
 
     // 转换为后端需要的结构
     final courseMaps = courses.map((c) => {
