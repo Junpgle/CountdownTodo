@@ -89,3 +89,33 @@ export interface PomodoroTag {
   created_at: number;
   updated_at: number;
 }
+export interface Team {
+  uuid: string;
+  name: string;
+  creator_id: number;
+  created_at: number;
+  role?: number; // 0: Admin, 1: Member
+  member_count?: number;
+  invite_code?: string | null;
+}
+
+export interface TeamMember {
+  user_id: number;
+  username: string;
+  email: string;
+  avatar_url?: string;
+  role: number;
+  joined_at: number;
+}
+
+export interface JoinRequest {
+  id: number;
+  team_uuid: string;
+  user_id: number;
+  username?: string;
+  avatar_url?: string;
+  status: number; // 0: Pending, 1: Approved, 2: Rejected, 3: Invitation
+  message?: string;
+  requested_at: number;
+  team_name?: string; // For invitations
+}

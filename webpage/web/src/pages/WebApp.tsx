@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
-  User as UserIcon, Calendar, AlertCircle
+  User as UserIcon, Calendar, AlertCircle, Users as UsersIcon
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiService } from '../services/api';
@@ -19,12 +19,13 @@ import { ScreenTimeView } from './ScreenTimeView';
 import { CourseView } from './CourseView';
 import { PomodoroStatsView } from './PomodoroStatsView';
 import { PomodoroFocusView } from './PomodoroFocusView';
+import { TeamManagementView } from './TeamManagementView';
 
 // --------------------------------------------------------
 // 主应用组件 (WebApp)
 // --------------------------------------------------------
 export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: User, onLogout: () => void }) => {
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'screentime' | 'pomodoro' | 'focus'>('dashboard');
+  const [currentTab, setCurrentTab] = useState<'dashboard' | 'screentime' | 'pomodoro' | 'focus' | 'teams'>('dashboard');
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [todoGroups, setTodoGroups] = useState<TodoGroup[]>([]);
   const [countdowns, setCountdowns] = useState<CountdownItem[]>([]);
@@ -869,6 +870,12 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                 >
                   <Clock className="w-4 h-4" /> 专注统计
                 </button>
+                <button
+                    onClick={() => {setCurrentTab('teams'); setMobileTab('home');}}
+                    className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${currentTab === 'teams' && mobileTab === 'home' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}
+                >
+                  <UsersIcon className="w-4 h-4" /> 团队管理
+                </button>
               </div>
             </div>
 
@@ -938,6 +945,10 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
             <Clock className="w-5 h-5" />
             <span className="text-[9px] font-bold">统计</span>
           </button>
+          <button onClick={() => {setCurrentTab('teams'); setMobileTab('home');}} className={`flex flex-col items-center gap-0.5 p-2 ${currentTab === 'teams' && mobileTab === 'home' ? 'text-indigo-500' : 'text-slate-400'}`}>
+            <UsersIcon className="w-5 h-5" />
+            <span className="text-[9px] font-bold">团队</span>
+          </button>
           <button onClick={() => setMobileTab('settings')} className={`flex flex-col items-center gap-0.5 p-2 ${mobileTab === 'settings' ? 'text-indigo-600' : 'text-slate-400'}`}>
             <UserIcon className="w-5 h-5" />
             <span className="text-[9px] font-bold">设置</span>
@@ -951,6 +962,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
           {currentTab === 'screentime' && mobileTab === 'home' && <ScreenTimeView userId={user.id} />}
           {currentTab === 'focus' && mobileTab === 'home' && <PomodoroFocusView userId={user.id} todos={todos} onTodoCompleted={handleTodoCompleted} />}
           {currentTab === 'pomodoro' && mobileTab === 'home' && <PomodoroStatsView userId={user.id} todos={todos} />}
+          {currentTab === 'teams' && mobileTab === 'home' && <TeamManagementView user={user} onBack={() => setCurrentTab('dashboard')} />}
         </main>
 
         {/* 统一添加弹窗 (Todo / Countdown) */}
