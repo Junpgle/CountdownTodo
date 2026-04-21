@@ -367,11 +367,36 @@ class PomodoroService {
     if (!_runStateCtrl.isClosed) _runStateCtrl.close();
   }
 
+  // ── 私有助手：获取隔离的存储 Key ──────────────────────────
+  static Future<String> _getScopedKey(String baseKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? username = prefs.getString('current_user'); // 必须与 StorageService.KEY_CURRENT_USER 一致
+    if (username == null || username.isEmpty) return baseKey;
+    return "${baseKey}_$username";
+  }
+
   // ── 设置 ─────────────────────────────────────────────────
 
   static Future<PomodoroSettings> getSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keySettings);
+    final scopedKey = await _getScopedKey(_keySettings);
+    String? s = prefs.getString(scopedKey);
+    
+    // 迁移检查
+    if (s == null) {
+      final String? username = prefs.getString('current_user');
+      if (username != null && username.isNotEmpty) {
+        final markerKey = "${_keySettings}_${username}_migrated";
+        if (!(prefs.getBool(markerKey) ?? false)) {
+          s = prefs.getString(_keySettings);
+          if (s != null) {
+            await prefs.setString(scopedKey, s);
+            await prefs.setBool(markerKey, true);
+          }
+        }
+      }
+    }
+
     if (s == null) return PomodoroSettings();
     try {
       return PomodoroSettings.fromJson(jsonDecode(s));
@@ -382,7 +407,8 @@ class PomodoroService {
 
   static Future<void> saveSettings(PomodoroSettings settings) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keySettings, jsonEncode(settings.toJson()));
+    final scopedKey = await _getScopedKey(_keySettings);
+    await prefs.setString(scopedKey, jsonEncode(settings.toJson()));
     // 异步同步到云端（忽略失败）
     ApiService.syncPomodoroSettings(settings.toJson()).catchError((_) => false);
   }
@@ -391,7 +417,8 @@ class PomodoroService {
 
   static Future<PomodoroRunState?> loadRunState() async {
     final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keyRunState);
+    final scopedKey = await _getScopedKey(_keyRunState);
+    final s = prefs.getString(scopedKey);
     if (s == null) return null;
     try {
       return PomodoroRunState.fromJson(jsonDecode(s));
@@ -402,13 +429,15 @@ class PomodoroService {
 
   static Future<void> saveRunState(PomodoroRunState state) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyRunState, jsonEncode(state.toJson()));
+    final scopedKey = await _getScopedKey(_keyRunState);
+    await prefs.setString(scopedKey, jsonEncode(state.toJson()));
     _runStateCtrl.add(state); // 🚀 发送变更信号
   }
 
   static Future<void> clearRunState() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyRunState);
+    final scopedKey = await _getScopedKey(_keyRunState);
+    await prefs.remove(scopedKey);
     _runStateCtrl.add(null); // 🚀 发送清除信号
   }
 
@@ -416,7 +445,24 @@ class PomodoroService {
 
   static Future<List<PomodoroTag>> getTags() async {
     final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keyTags);
+    final scopedKey = await _getScopedKey(_keyTags);
+    String? s = prefs.getString(scopedKey);
+
+    // 迁移检查
+    if (s == null) {
+      final String? username = prefs.getString('current_user');
+      if (username != null && username.isNotEmpty) {
+        final markerKey = "${_keyTags}_${username}_migrated";
+        if (!(prefs.getBool(markerKey) ?? false)) {
+          s = prefs.getString(_keyTags);
+          if (s != null) {
+            await prefs.setString(scopedKey, s);
+            await prefs.setBool(markerKey, true);
+          }
+        }
+      }
+    }
+
     if (s == null) return [];
     try {
       return (jsonDecode(s) as List)
@@ -431,8 +477,9 @@ class PomodoroService {
   /// 保存标签（自动检测丢失的项并转化为墓碑，防止云端同步时复活）
   static Future<void> saveTags(List<PomodoroTag> tagsToSave) async {
     final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keyTags);
-
+    final scopedKey = await _getScopedKey(_keyTags);
+    final s = prefs.getString(scopedKey);
+    
     List<PomodoroTag> allLocal = [];
     if (s != null) {
       try {
@@ -463,13 +510,14 @@ class PomodoroService {
     }
 
     await prefs.setString(
-        _keyTags, jsonEncode(newMap.values.map((t) => t.toJson()).toList()));
+        scopedKey, jsonEncode(newMap.values.map((t) => t.toJson()).toList()));
   }
 
   /// 软删除一个标签（打上 tombstone 标记），以便同步时告诉云端删除
   static Future<void> deleteTag(String uuid) async {
     final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keyTags);
+    final scopedKey = await _getScopedKey(_keyTags);
+    final s = prefs.getString(scopedKey);
     if (s == null) return;
 
     final allTags =
@@ -482,7 +530,7 @@ class PomodoroService {
       allTags[idx].version += 1;
 
       await prefs.setString(
-          _keyTags, jsonEncode(allTags.map((t) => t.toJson()).toList()));
+          scopedKey, jsonEncode(allTags.map((t) => t.toJson()).toList()));
 
       // 立即触发一次云端同步，让云端也跟着删掉
       syncTagsToCloud().catchError((_) {});
@@ -491,14 +539,16 @@ class PomodoroService {
 
   static Future<void> syncTagsToCloud() async {
     final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keyTags);
+    final scopedKey = await _getScopedKey(_keyTags);
+    final s = prefs.getString(scopedKey);
     if (s == null) return;
     final allTags =
         (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
     if (allTags.isEmpty) return;
     await ApiService.syncPomodoroTags(allTags.map((t) => t.toJson()).toList());
+    final lastSyncKey = await _getScopedKey('pomodoro_last_tag_sync');
     await prefs.setInt(
-        'pomodoro_last_tag_sync', DateTime.now().millisecondsSinceEpoch);
+        lastSyncKey, DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<void> syncTagsFromCloud() async {
@@ -531,8 +581,9 @@ class PomodoroService {
 
   static Future<void> _saveRecords(List<PomodoroRecord> records) async {
     final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_keyRecords);
     await prefs.setString(
-        _keyRecords, jsonEncode(records.map((r) => r.toJson()).toList()));
+        scopedKey, jsonEncode(records.map((r) => r.toJson()).toList()));
   }
 
   /// 添加一条专注记录，本地保存后立即尝试上传云端；失败时保留本地记录等待下次 syncRecordsToCloud 补传
@@ -609,9 +660,9 @@ class PomodoroService {
   static Future<bool> syncRecordsFromCloud({int? fromMs}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // 获取上次拉取的时间戳，默认从 0 开始（全量，或根据服务器策略返回）
-      // 这里为了稳妥，同步时可以往前多推 1 小时，防止临界点丢失
-      int lastDownload = prefs.getInt(_keyLastRecordDownload) ?? 0;
+      // 获取上次拉取的时间戳，默认从 0 开始
+      final lastDownloadKey = await _getScopedKey(_keyLastRecordDownload);
+      int lastDownload = prefs.getInt(lastDownloadKey) ?? 0;
       if (lastDownload > 0) {
         lastDownload -= 3600 * 1000; // 往前推 1 小时
       }
@@ -626,7 +677,8 @@ class PomodoroService {
           .toList();
 
       // 读取本地全量（含已删除 tombstone）
-      final s = prefs.getString(_keyRecords);
+      final scopedKey = await _getScopedKey(_keyRecords);
+      final s = prefs.getString(scopedKey);
       final localAll = s == null
           ? <PomodoroRecord>[]
           : (jsonDecode(s) as List)
@@ -691,7 +743,8 @@ class PomodoroService {
         if (r.updatedAt > latestTs) latestTs = r.updatedAt;
       }
       if (latestTs > 0) {
-        await prefs.setInt(_keyLastRecordDownload, latestTs);
+        final lastDownloadKey = await _getScopedKey(_keyLastRecordDownload);
+        await prefs.setInt(lastDownloadKey, latestTs);
       }
 
       return hasChange;
@@ -707,7 +760,8 @@ class PomodoroService {
   static Future<void> syncRecordsToCloud() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final lastUpload = prefs.getInt(_keyLastRecordUpload) ?? 0;
+      final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
+      final lastUpload = prefs.getInt(lastUploadKey) ?? 0;
       final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
       final dirty = all.where((r) => r.updatedAt > lastUpload).toList();
@@ -716,7 +770,7 @@ class PomodoroService {
           dirty.map((r) => r.toJson()).toList());
       if (ok) {
         await prefs.setInt(
-            _keyLastRecordUpload, DateTime.now().millisecondsSinceEpoch);
+            lastUploadKey, DateTime.now().millisecondsSinceEpoch);
       }
     } catch (e) {
       debugPrint('[PomodoroService] syncRecordsToCloud error: $e');
@@ -726,7 +780,24 @@ class PomodoroService {
   /// 读取全量（含已删除）内部方法
   static Future<List<PomodoroRecord>> _getAllRecordsRaw() async {
     final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString(_keyRecords);
+    final scopedKey = await _getScopedKey(_keyRecords);
+    String? s = prefs.getString(scopedKey);
+
+    // 迁移检查
+    if (s == null) {
+      final String? username = prefs.getString('current_user');
+      if (username != null && username.isNotEmpty) {
+        final markerKey = "${_keyRecords}_${username}_migrated";
+        if (!(prefs.getBool(markerKey) ?? false)) {
+          s = prefs.getString(_keyRecords);
+          if (s != null) {
+            await prefs.setString(scopedKey, s);
+            await prefs.setBool(markerKey, true);
+          }
+        }
+      }
+    }
+
     if (s == null) return [];
     try {
       return (jsonDecode(s) as List)

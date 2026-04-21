@@ -232,7 +232,11 @@ class CourseSectionWidget extends StatelessWidget {
           isLight: isLight,
         ),
         if (courses.isEmpty)
-          EmptyState(text: "近期没有需要上的课", isLight: isLight)
+          EmptyState(
+              text: dashboardCourseData['title'] == '暂无课表'
+                  ? "尚未导入课表，点击上方图标开始"
+                  : "近期暂无课程（今天与明天）",
+              isLight: isLight)
         else
           ListView.builder(
             padding: EdgeInsets.zero,

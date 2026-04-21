@@ -4,6 +4,7 @@ import {
   PlayCircle, StopCircle, Hash
 } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { SyncEngine } from '../services/sync';
 import type { TodoItem } from '../types';
 import type { PomodoroTag, PomodoroRecord, PomodoroSettings, PomodoroState } from './webapp-utils';
 import {
@@ -63,8 +64,20 @@ export const PomodoroFocusView = ({
 
   // Load tags + check cross-device active session on mount
   useEffect(() => {
+    SyncEngine.syncData(userId).catch(console.error);
     fetchTags();
     checkCrossDeviceActive();
+
+    // 🚀 Periodic check (every 1 minute) while idle as fallback
+    const id = setInterval(() => {
+      if (!loadPomodoroState(userId)) {
+        checkCrossDeviceActive();
+      }
+    }, 60000);
+
+    return () => {
+      clearInterval(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -161,6 +174,7 @@ export const PomodoroFocusView = ({
     const nowMs = Date.now();
     const endMs = nowMs + settings.focusDuration * 1000;
     const recordUuid = generateUUID();
+    const teamUuid = todoUuid ? todos.find(t => t.uuid === todoUuid)?.team_uuid : null;
     const state: PomodoroState = {
       phase: 'focus',
       loopIndex,
@@ -169,6 +183,7 @@ export const PomodoroFocusView = ({
       tagUuids,
       startTimeMs: nowMs,
       recordUuid,
+      teamUuid,
     };
     savePomodoroState(userId, state);
     setPomState(state);
@@ -244,11 +259,13 @@ export const PomodoroFocusView = ({
     tag_uuids: string[];
   }) => {
     const now = Date.now();
+    const todo = rec.todo_uuid ? todos.find(t => t.uuid === rec.todo_uuid) : null;
     const fullRec: PomodoroRecord = {
       ...rec,
       status: rec.status as PomodoroRecord['status'],
       end_time: rec.end_time,
       device_id: ApiService.getDeviceId(),
+      team_uuid: todo?.team_uuid || null,
       version: 1,
       created_at: rec.start_time,
       updated_at: now,
@@ -356,7 +373,7 @@ export const PomodoroFocusView = ({
           <h2 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
             <span className="text-2xl">🍅</span> 番茄专注工作台
           </h2>
-          <p className="text-slate-500 text-sm mt-0.5">深度专注，高效完成每一项任务。因技术原因，网页端不支持跨端感知。如需使用请下载PC端或者Android端。</p>
+          <p className="text-slate-500 text-sm mt-0.5">深度专注，高效完成每一项任务。网页端现已支持与手机/电脑端的实时同步与接管。</p>
         </div>
         <div className="flex items-center gap-2">
           <button

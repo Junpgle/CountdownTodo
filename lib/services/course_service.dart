@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 import '../services/api_service.dart';
+import '../storage_service.dart';
 
 // 引入不同高校的解析器
 import '../course_import/parsers/hfut_parser.dart';
@@ -135,7 +136,25 @@ class CourseService {
   // 4. 获取所有解析后的课程对象
   static Future<List<CourseItem>> getAllCourses(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    final String? data = prefs.getString("${_keyCourseData}_$username");
+    String? data = prefs.getString("${_keyCourseData}_$username");
+
+    // 🚀 核心修复：无缝向上兼容（仅执行一次迁移，防止多账号共用该全局数据）
+    if ((data == null || data.isEmpty) && username.isNotEmpty) {
+      final String legacyKey = _keyCourseData;
+      final String markerKey = "${legacyKey}_${username}_migrated";
+      
+      if (!(prefs.getBool(markerKey) ?? false)) {
+        final String? legacyData = prefs.getString(legacyKey);
+        if (legacyData != null && legacyData.isNotEmpty) {
+          print("🚚 [Isolation] Migrating legacy course data to user scoped key: $username");
+          await prefs.setString("${_keyCourseData}_$username", legacyData);
+          data = legacyData;
+          // 标记已迁移，防止下一个切换进来的账号再次非法“继承”这批数据
+          await prefs.setBool(markerKey, true);
+        }
+      }
+    }
+
     if (data == null || data.isEmpty) return [];
 
     try {
@@ -165,11 +184,24 @@ class CourseService {
       if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
 
       DateTime now = DateTime.now();
+      DateTime todayNormalized = DateTime(now.year, now.month, now.day);
       String todayStr = DateFormat('yyyy-MM-dd').format(now);
       int currentHHMM = now.hour * 100 + now.minute;
 
-      // 筛选今天的课程
+      // 1. 尝试按日期精确筛选今天的课程
       List<CourseItem> todayCourses = courses.where((c) => c.date == todayStr).toList();
+
+      // 🚀 核心改进：如果没有按日期找到，尝试按“当前周次+星期”回退计算（支持动态修改开学日期的情况）
+      if (todayCourses.isEmpty) {
+        final DateTime? semStart = await StorageService.getSemesterStart();
+        if (semStart != null) {
+          final DateTime semMonday = DateTime(semStart.year, semStart.month, semStart.day)
+              .subtract(Duration(days: semStart.weekday - 1));
+          int todayWeek = todayNormalized.difference(semMonday).inDays ~/ 7 + 1;
+          int todayWeekday = todayNormalized.weekday;
+          todayCourses = courses.where((c) => c.weekIndex == todayWeek && c.weekday == todayWeekday).toList();
+        }
+      }
 
       // 如果今天有课，且“还没全部上完”，则展示今天的课程
       if (todayCourses.isNotEmpty) {
@@ -180,10 +212,23 @@ class CourseService {
         }
       }
 
-      // 如果今天的课没排，或者“今天的课都上完了”，找明天的
+      // 2. 今天的课没排，或者“今天的课都上完了”，找明天的
       DateTime tomorrow = now.add(const Duration(days: 1));
+      DateTime tomorrowNormalized = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
       String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
       List<CourseItem> tomorrowCourses = courses.where((c) => c.date == tomorrowStr).toList();
+
+      // 🚀 明天也同样支持回退计算
+      if (tomorrowCourses.isEmpty) {
+        final DateTime? semStart = await StorageService.getSemesterStart();
+        if (semStart != null) {
+          final DateTime semMonday = DateTime(semStart.year, semStart.month, semStart.day)
+              .subtract(Duration(days: semStart.weekday - 1));
+          int tomorrowWeek = tomorrowNormalized.difference(semMonday).inDays ~/ 7 + 1;
+          int tomorrowWeekday = tomorrowNormalized.weekday;
+          tomorrowCourses = courses.where((c) => c.weekIndex == tomorrowWeek && c.weekday == tomorrowWeekday).toList();
+        }
+      }
 
       if (tomorrowCourses.isNotEmpty) {
         tomorrowCourses.sort((a, b) => a.startTime.compareTo(b.startTime));

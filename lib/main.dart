@@ -542,6 +542,7 @@ class _MyAppState extends State<MyApp> {
                           ? FeatureGuideScreen(loggedInUser: _loggedInUser)
                           : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
                               ? HomeDashboard(
+                                  key: ValueKey(_loggedInUser),
                                   username: _loggedInUser!,
                                 )
                               : const LoginScreen(),

@@ -318,8 +318,17 @@ class _SettingsPageState extends State<SettingsPage> {
     DateTime? sStart = await StorageService.getSemesterStart();
     DateTime? sEnd = await StorageService.getSemesterEnd();
 
-    String? noCourseBehaviorPref = prefs.getString('no_course_behavior');
-    int style = prefs.getInt('float_window_style') ?? 0;
+    String? currentUsername = prefs.getString(StorageService.KEY_CURRENT_USER);
+    String? noCourseBehaviorPref;
+    int style = 0;
+    
+    if (currentUsername != null && currentUsername.isNotEmpty) {
+       noCourseBehaviorPref = prefs.getString('no_course_behavior_$currentUsername');
+       style = prefs.getInt('float_window_style_$currentUsername') ?? 0;
+    }
+    
+    noCourseBehaviorPref ??= prefs.getString('no_course_behavior');
+    style = style == 0 ? (prefs.getInt('float_window_style') ?? 0) : style;
 
     final animationsEnabled =
         await AnimationConfigService.isAnimationsEnabled();
@@ -876,11 +885,8 @@ class _SettingsPageState extends State<SettingsPage> {
           );
         }).toList();
 
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(
-          'course_schedule_json',
-          jsonEncode(courses.map((c) => c.toJson()).toList()),
-        );
+        // 🚀 核心修复：使用 CourseService.saveCourses 自动处理用户隔离 Key
+        await CourseService.saveCourses(_username, courses);
 
         if (mounted) {
           _rescheduleReminders(); // 🐘 新增：拉取后重新调度闹钟
@@ -1080,7 +1086,13 @@ class _SettingsPageState extends State<SettingsPage> {
               if (val != null) {
                 setState(() => _noCourseBehavior = val);
                 SharedPreferences.getInstance().then(
-                    (prefs) => prefs.setString('no_course_behavior', val));
+                    (prefs) {
+                       final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+                       if (username != null && username.isNotEmpty) {
+                          prefs.setString('no_course_behavior_$username', val);
+                       }
+                       prefs.setString('no_course_behavior', val);
+                    });
               }
             },
           ),
@@ -1147,6 +1159,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (val == null) return;
                     setState(() => _floatWindowStyle = val);
                     final prefs = await SharedPreferences.getInstance();
+                    final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+                    if (username != null && username.isNotEmpty) {
+                       await prefs.setInt('float_window_style_$username', val);
+                    }
                     await prefs.setInt('float_window_style', val);
                     if (val == 2) {
                       try {

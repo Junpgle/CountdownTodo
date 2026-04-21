@@ -53,6 +53,7 @@ class StorageService {
   static const String KEY_SEMESTER_END = "semester_end_date";
   static const String KEY_TIME_LOGS = "user_time_logs";
   static const String KEY_SERVER_CHOICE = "app_server_choice";
+  static const String KEY_SYSTEM_STARTUP_ENABLED = "system_startup_enabled";
   static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
   static const String KEY_PRIVACY_DATE = "privacy_policy_date";
   static const String KEY_PRIVACY_CACHED_VERSION =
@@ -107,6 +108,11 @@ class StorageService {
   /// 🚀 Uni-Sync: 全局数据刷新通知器
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier(0);
   static void triggerRefresh() => dataRefreshNotifier.value++;
+
+  static String _scopedKey(String baseKey, String? username) {
+    if (username == null || username.isEmpty) return baseKey;
+    return "${baseKey}_$username";
+  }
 
   // ==========================================
   // 🛡️ 设备信息与标识管理 (解决未知设备问题)
@@ -217,8 +223,12 @@ class StorageService {
 
   static Future<void> clearLoginSession() async {
     final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
     await prefs.remove(KEY_CURRENT_USER);
-    await prefs.remove(KEY_LAST_SCREEN_TIME_SYNC);
+    await prefs.remove(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username));
+    await prefs.remove(_scopedKey(KEY_SCREEN_TIME_CACHE, username));
+    await prefs.remove(_scopedKey(KEY_SCREEN_TIME_HISTORY, username));
+    await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
     await prefs.remove(KEY_AUTH_TOKEN);
     ApiService.setToken('');
     // 🚀 核心修复：退出登录后关闭并清空数据库引用
@@ -434,6 +444,18 @@ class StorageService {
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
             prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
+            
+        // 🚀 核心修复：极致兼容方案 - 增加一次性迁移保护
+        if (legacyJsonList.isEmpty && username.isNotEmpty) {
+          final String markerKey = "${KEY_COUNTDOWNS}_${username}_migrated";
+          if (!(prefs.getBool(markerKey) ?? false)) {
+            legacyJsonList = prefs.getStringList(KEY_COUNTDOWNS) ?? [];
+            if (legacyJsonList.isNotEmpty) {
+              await prefs.setBool(markerKey, true);
+            }
+          }
+        }
+
         if (legacyJsonList.isNotEmpty) {
           debugPrint("🚀 自动迁移倒数日老数据至 SQLite...");
           List<CountdownItem> legacyData = legacyJsonList
@@ -626,6 +648,18 @@ class StorageService {
       final List<Map<String, dynamic>> sqliteCount = await db.rawQuery('SELECT COUNT(*) as cnt FROM todos');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+        
+        // 🚀 核心修复：极致兼容方案 - 如果用户专用 key 为空，尝试读取旧的全局 key (KEY_TODOS)
+        if (legacyJsonList.isEmpty && username.isNotEmpty) {
+           final String markerKey = "${KEY_TODOS}_${username}_migrated";
+           if (!(prefs.getBool(markerKey) ?? false)) {
+              legacyJsonList = prefs.getStringList(KEY_TODOS) ?? [];
+              if (legacyJsonList.isNotEmpty) {
+                 await prefs.setBool(markerKey, true); // 记录此用户已完成全局迁移，防止跨号窃取
+              }
+           }
+        }
+
         if (legacyJsonList.isNotEmpty) {
           debugPrint("🚀 自动迁移老数据至 SQLite...");
           List<Map<String, dynamic>> legacyData = legacyJsonList.map((e) => jsonDecode(e) as Map<String, dynamic>).toList();
@@ -872,8 +906,19 @@ class StorageService {
       final List<Map<String, dynamic>> sqliteCount =
           await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
       if (sqliteCount.first['cnt'] == 0) {
-        List<String> legacyJsonList =
-            prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+        List<String> legacyJsonList = prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+        
+        // 🚀 核心修复：增加一次性迁移保护
+        if (legacyJsonList.isEmpty && username.isNotEmpty) {
+           final String markerKey = "${KEY_TODO_GROUPS}_${username}_migrated";
+           if (!(prefs.getBool(markerKey) ?? false)) {
+              legacyJsonList = prefs.getStringList(KEY_TODO_GROUPS) ?? [];
+              if (legacyJsonList.isNotEmpty) {
+                 await prefs.setBool(markerKey, true);
+              }
+           }
+        }
+
         if (legacyJsonList.isNotEmpty) {
           debugPrint("🚀 自动迁移待办组数据至 SQLite...");
           List<TodoGroup> legacyData = legacyJsonList
@@ -980,14 +1025,25 @@ class StorageService {
   static Future<List<TimeLogItem>> getTimeLogs(String username) async {
     final prefs = await StorageService.prefs;
     List<String> list = prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
-    List<TimeLogItem> logs = [];
+    
+    // 🚀 核心修复：增加一次性迁移保护
+    if (list.isEmpty && username.isNotEmpty) {
+       final String markerKey = "${KEY_TIME_LOGS}_${username}_migrated";
+       if (!(prefs.getBool(markerKey) ?? false)) {
+          list = prefs.getStringList(KEY_TIME_LOGS) ?? [];
+          if (list.isNotEmpty) {
+             await prefs.setBool(markerKey, true);
+          }
+       }
+    }
 
+    List<TimeLogItem> logs = [];
     for (var e in list) {
-      try {
-        logs.add(TimeLogItem.fromJson(jsonDecode(e)));
-      } catch (err) {
-        debugPrint("Parse TimeLog Error: $err");
-      }
+       try {
+          logs.add(TimeLogItem.fromJson(jsonDecode(e)));
+       } catch (err) {
+          debugPrint("Parse TimeLog Error: $err");
+       }
     }
     return logs;
   }
@@ -1011,18 +1067,23 @@ class StorageService {
   // ==========================================
   static Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_LOCAL_SCREEN_TIME, jsonEncode(stats));
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final key = _scopedKey(KEY_LOCAL_SCREEN_TIME, username);
+    await prefs.setString(key, jsonEncode(stats));
+  }
+
+  static Future<Map<String, dynamic>?> getLocalScreenTimePackage() async {
+     final prefs = await StorageService.prefs;
+     final String? username = prefs.getString(KEY_CURRENT_USER);
+     final key = _scopedKey(KEY_LOCAL_SCREEN_TIME, username);
+     String? s = prefs.getString(key);
+     // 兼容旧版全局 key 的历史数据
+     s ??= prefs.getString(KEY_LOCAL_SCREEN_TIME);
+     return s != null ? jsonDecode(s) as Map<String, dynamic> : null;
   }
 
   static Future<Map<String, dynamic>> getLocalScreenTimeMap() async {
-    final prefs = await StorageService.prefs;
-    String? jsonStr = prefs.getString(KEY_LOCAL_SCREEN_TIME);
-    if (jsonStr != null) {
-      try {
-        return jsonDecode(jsonStr);
-      } catch (_) {}
-    }
-    return {};
+    return await getLocalScreenTimePackage() ?? {};
   }
 
   static Future<List<dynamic>> getLocalScreenTime() async {
@@ -1034,11 +1095,16 @@ class StorageService {
     if (stats.isEmpty) return;
 
     final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final historyKey = _scopedKey(KEY_SCREEN_TIME_HISTORY, username);
+    final cacheKey = _scopedKey(KEY_SCREEN_TIME_CACHE, username);
+    final syncKey = _scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username);
     final now = DateTime.now();
     final String today = DateFormat('yyyy-MM-dd').format(now);
 
     // 1. 获取已有的历史记录
-    String? histStr = prefs.getString(KEY_SCREEN_TIME_HISTORY);
+    String? histStr = prefs.getString(historyKey);
+    histStr ??= prefs.getString(KEY_SCREEN_TIME_HISTORY);
     Map<String, dynamic> history = {};
     if (histStr != null) {
       try {
@@ -1062,22 +1128,26 @@ class StorageService {
     }
 
     // 4. 原子化写入本地存储
-    await prefs.setString(KEY_SCREEN_TIME_HISTORY, jsonEncode(history));
+    await prefs.setString(historyKey, jsonEncode(history));
 
     // 5. 更新“当前视图快照” (KEY_SCREEN_TIME_CACHE)
     // 🚀 核心修复：只有当最新更新日期确实是今天时，才更新首页显示的 Cache
     // 这样如果凌晨同步了旧数据，首页不会被错误覆盖
-    await prefs.setString(KEY_SCREEN_TIME_CACHE, jsonEncode(stats));
+    await prefs.setString(cacheKey, jsonEncode(stats));
 
     // 更新最后同步成功的时间戳（记录到毫秒）
-    await prefs.setInt(KEY_LAST_SCREEN_TIME_SYNC, now.millisecondsSinceEpoch);
+    await prefs.setInt(syncKey, now.millisecondsSinceEpoch);
   }
 
   static Future<List<dynamic>> getScreenTimeCache() async {
     final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final cacheKey = _scopedKey(KEY_SCREEN_TIME_CACHE, username);
+    final syncKey = _scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username);
 
     // 检查缓存是否是今天的
-    int? lastSyncMs = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+    int? lastSyncMs = prefs.getInt(syncKey);
+    lastSyncMs ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
     if (lastSyncMs != null) {
       DateTime lastSyncDate =
           DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
@@ -1088,12 +1158,13 @@ class StorageService {
           lastSyncDate.month != now.month ||
           lastSyncDate.day != now.day) {
         debugPrint("缓存已过期 (日期不匹配)，清理过期数据");
-        await prefs.remove(KEY_SCREEN_TIME_CACHE);
+        await prefs.remove(cacheKey);
         return [];
       }
     }
 
-    String? jsonStr = prefs.getString(KEY_SCREEN_TIME_CACHE);
+    String? jsonStr = prefs.getString(cacheKey);
+    jsonStr ??= prefs.getString(KEY_SCREEN_TIME_CACHE);
     if (jsonStr != null) {
       try {
         return jsonDecode(jsonStr);
@@ -1106,7 +1177,11 @@ class StorageService {
 
   static Future<Map<String, List<dynamic>>> getScreenTimeHistory() async {
     final prefs = await StorageService.prefs;
-    String? jsonStr = prefs.getString(KEY_SCREEN_TIME_HISTORY);
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String key = (username != null && username.isNotEmpty) ? "${KEY_SCREEN_TIME_HISTORY}_$username" : KEY_SCREEN_TIME_HISTORY;
+    
+    String? jsonStr = prefs.getString(key);
+    jsonStr ??= prefs.getString(KEY_SCREEN_TIME_HISTORY);
     if (jsonStr != null) {
       try {
         Map<String, dynamic> raw = jsonDecode(jsonStr);
@@ -1119,13 +1194,16 @@ class StorageService {
 
   static Future<void> updateLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
+    final String? username = prefs.getString(KEY_CURRENT_USER);
     await prefs.setInt(
-        KEY_LAST_SCREEN_TIME_SYNC, DateTime.now().millisecondsSinceEpoch);
+        _scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username), DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<DateTime?> getLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
-    int? timestamp = prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    int? timestamp = prefs.getInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username));
+    timestamp ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
     if (timestamp != null)
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();
@@ -1345,7 +1423,7 @@ class StorageService {
 
       // 🛡️ 屏幕时间逻辑优化：上传成功后，务必清理“待上传”缓存
       if (screenPayload != null) {
-        await prefs.remove(KEY_LOCAL_SCREEN_TIME);
+        await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
         debugPrint("✅ 本机屏幕时间上传成功，已清理待上传缓存");
       }
 
@@ -1492,6 +1570,11 @@ class StorageService {
         await saveScreenTimeCache(response['screen_time_results']);
       }
 
+      // 9. 🚀 关键：如果数据发生了变动，触发全局刷新通知
+      if (hasChanges) {
+        triggerRefresh();
+      }
+
       return {'success': true, 'hasChanges': hasChanges, 'conflicts': conflicts};
     } catch (e) {
       debugPrint("syncData error: $e");
@@ -1536,7 +1619,7 @@ class StorageService {
       );
 
       if (success) {
-        await prefs.remove(KEY_LOCAL_SCREEN_TIME);
+        await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
         return true;
       } else {
         debugPrint("syncScreenTimeAlone failed");
@@ -1553,14 +1636,36 @@ class StorageService {
   // ==========================================
   static Future<void> saveAppSetting(String key, dynamic value) async {
     final prefs = await StorageService.prefs;
-    if (value is int) await prefs.setInt(key, value);
-    if (value is String) await prefs.setString(key, value);
-    if (value is bool) await prefs.setBool(key, value);
+    String finalKey = key;
+
+    // 🚀 全局设置例外列表 (不进行账户隔离的设置)
+    const List<String> globalSettings = [
+      KEY_THEME_MODE,
+      KEY_SERVER_CHOICE,
+      KEY_SYSTEM_STARTUP_ENABLED,
+      KEY_DEVICE_ID,
+      'update_channel',
+    ];
+
+    if (!globalSettings.contains(key)) {
+       final String? username = prefs.getString(KEY_CURRENT_USER);
+       if (username != null && username.isNotEmpty) {
+          finalKey = "${key}_$username";
+       }
+    }
+
+    if (value is int) await prefs.setInt(finalKey, value);
+    if (value is String) await prefs.setString(finalKey, value);
+    if (value is bool) await prefs.setBool(finalKey, value);
     if (key == KEY_THEME_MODE) themeNotifier.value = value;
   }
 
   static Future<int> getSyncInterval() async {
     final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    if (username != null && username.isNotEmpty) {
+       return prefs.getInt("${KEY_SYNC_INTERVAL}_$username") ?? (prefs.getInt(KEY_SYNC_INTERVAL) ?? 0);
+    }
     return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0;
   }
 
@@ -1582,18 +1687,56 @@ class StorageService {
 
   static Future<bool> getSemesterEnabled() async {
     final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    if (username == null || username.isEmpty) {
+       return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
+    }
+
+    final bool? scoped = prefs.getBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username");
+    if (scoped == null) {
+       final bool global = prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
+       await prefs.setBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username", global);
+       return global;
+    }
+    return scoped;
   }
 
   static Future<DateTime?> getSemesterStart() async {
     final prefs = await StorageService.prefs;
-    String? s = prefs.getString(KEY_SEMESTER_START);
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    if (username == null || username.isEmpty) {
+       String? s = prefs.getString(KEY_SEMESTER_START);
+       return s != null ? DateTime.tryParse(s) : null;
+    }
+
+    String? s = prefs.getString("${KEY_SEMESTER_START}_$username");
+    
+    // 迁移检查：如果用户没有设置过隔离的日期，回退一次全局数据
+    if (s == null) {
+       s = prefs.getString(KEY_SEMESTER_START);
+       if (s != null) {
+          await prefs.setString("${KEY_SEMESTER_START}_$username", s);
+       }
+    }
+
     return s != null ? DateTime.tryParse(s) : null;
   }
 
   static Future<DateTime?> getSemesterEnd() async {
     final prefs = await StorageService.prefs;
-    String? s = prefs.getString(KEY_SEMESTER_END);
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    if (username == null || username.isEmpty) {
+       String? s = prefs.getString(KEY_SEMESTER_END);
+       return s != null ? DateTime.tryParse(s) : null;
+    }
+
+    String? s = prefs.getString("${KEY_SEMESTER_END}_$username");
+    if (s == null) {
+       s = prefs.getString(KEY_SEMESTER_END);
+       if (s != null) {
+          await prefs.setString("${KEY_SEMESTER_END}_$username", s);
+       }
+    }
     return s != null ? DateTime.tryParse(s) : null;
   }
 

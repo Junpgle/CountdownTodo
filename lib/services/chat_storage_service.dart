@@ -50,6 +50,14 @@ class ChatStorageService {
   static const String _chatApiKeyKey = 'chat_api_key';
   static const String _chatApiUrlKey = 'chat_api_url';
   static const String _deepThinkingKey = 'chat_deep_thinking';
+
+  // 🚀 私有助手：获取隔离的存储 Key
+  static Future<String> _getScopedKey(String baseKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? username = prefs.getString('current_login_user');
+    if (username == null || username.isEmpty) return baseKey;
+    return "${baseKey}_$username";
+  }
   static const String _defaultPrompt = '''你是一个智能待办助手，帮助用户管理他们的待办事项。
 
 【当前时间】
@@ -78,7 +86,24 @@ class ChatStorageService {
 
   static Future<List<ChatSession>> loadSessions() async {
     final prefs = await SharedPreferences.getInstance();
-    final sessionsStr = prefs.getString(_sessionsKey);
+    final scopedKey = await _getScopedKey(_sessionsKey);
+    String? sessionsStr = prefs.getString(scopedKey);
+
+    // 迁移检查：如果用户隔离 Key 为空，尝试从全局 Key 迁移（仅一次）
+    if (sessionsStr == null || sessionsStr.isEmpty) {
+      final String? username = prefs.getString('current_login_user');
+      if (username != null && username.isNotEmpty) {
+        final markerKey = "${_sessionsKey}_${username}_migrated";
+        if (!(prefs.getBool(markerKey) ?? false)) {
+          sessionsStr = prefs.getString(_sessionsKey);
+          if (sessionsStr != null) {
+            await prefs.setString(scopedKey, sessionsStr);
+            await prefs.setBool(markerKey, true);
+          }
+        }
+      }
+    }
+
     if (sessionsStr == null || sessionsStr.isEmpty) {
       return [];
     }
@@ -94,30 +119,34 @@ class ChatStorageService {
 
   static Future<void> saveSessions(List<ChatSession> sessions) async {
     final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_sessionsKey);
     final jsonList = sessions.map((s) => s.toJson()).toList();
-    await prefs.setString(_sessionsKey, jsonEncode(jsonList));
+    await prefs.setString(scopedKey, jsonEncode(jsonList));
   }
 
   static Future<void> clearAllSessions() async {
     final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys();
-    for (final key in keys) {
-      if (key.startsWith('chat_history_') ||
-          key == _sessionsKey ||
-          key == _activeSessionKey) {
-        await prefs.remove(key);
-      }
+    final sessions = await loadSessions();
+    for (final s in sessions) {
+      final hKey = await _getScopedKey(_historyKey(s.id));
+      await prefs.remove(hKey);
     }
+    final sKey = await _getScopedKey(_sessionsKey);
+    final aKey = await _getScopedKey(_activeSessionKey);
+    await prefs.remove(sKey);
+    await prefs.remove(aKey);
   }
 
   static Future<String?> getActiveSessionId() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_activeSessionKey);
+    final scopedKey = await _getScopedKey(_activeSessionKey);
+    return prefs.getString(scopedKey);
   }
 
   static Future<void> setActiveSessionId(String sessionId) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_activeSessionKey, sessionId);
+    final scopedKey = await _getScopedKey(_activeSessionKey);
+    await prefs.setString(scopedKey, sessionId);
   }
 
   static Future<ChatSession> createSession({String? title}) async {
@@ -136,12 +165,14 @@ class ChatStorageService {
     final sessions = await loadSessions();
     sessions.removeWhere((s) => s.id == sessionId);
     await saveSessions(sessions);
-    await prefs.remove(_historyKey(sessionId));
+    final hKey = await _getScopedKey(_historyKey(sessionId));
+    await prefs.remove(hKey);
     final activeId = await getActiveSessionId();
     if (activeId == sessionId && sessions.isNotEmpty) {
       await setActiveSessionId(sessions.first.id);
     } else if (sessions.isEmpty) {
-      await prefs.remove(_activeSessionKey);
+      final aKey = await _getScopedKey(_activeSessionKey);
+      await prefs.remove(aKey);
     }
   }
 
@@ -163,7 +194,8 @@ class ChatStorageService {
     final prefs = await SharedPreferences.getInstance();
     final sid = sessionId ?? await getActiveSessionId();
     if (sid == null) return [];
-    final historyStr = prefs.getString(_historyKey(sid));
+    final hKey = await _getScopedKey(_historyKey(sid));
+    final historyStr = prefs.getString(hKey);
     if (historyStr == null || historyStr.isEmpty) {
       return [];
     }
@@ -185,7 +217,8 @@ class ChatStorageService {
     final sid = sessionId ?? await getActiveSessionId();
     if (sid == null) return;
     final jsonList = history.map((msg) => msg.toJson()).toList();
-    await prefs.setString(_historyKey(sid), jsonEncode(jsonList));
+    final hKey = await _getScopedKey(_historyKey(sid));
+    await prefs.setString(hKey, jsonEncode(jsonList));
   }
 
   static Future<void> addMessage(ChatMessage message) async {
@@ -219,44 +252,74 @@ class ChatStorageService {
     final prefs = await SharedPreferences.getInstance();
     final sid = await getActiveSessionId();
     if (sid != null) {
-      await prefs.remove(_historyKey(sid));
+      final hKey = await _getScopedKey(_historyKey(sid));
+      await prefs.remove(hKey);
     }
   }
 
   static Future<String> getCustomPrompt() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_customPromptKey) ?? _defaultPrompt;
+    final scopedKey = await _getScopedKey(_customPromptKey);
+    return prefs.getString(scopedKey) ?? _defaultPrompt;
   }
 
   static Future<void> saveCustomPrompt(String prompt) async {
     final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_customPromptKey);
     if (prompt.trim().isEmpty) {
-      await prefs.remove(_customPromptKey);
+      await prefs.remove(scopedKey);
     } else {
-      await prefs.setString(_customPromptKey, prompt);
+      await prefs.setString(scopedKey, prompt);
     }
   }
 
   static Future<bool> isPromptEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_promptEnabledKey) ?? true;
+    final scopedKey = await _getScopedKey(_promptEnabledKey);
+    return prefs.getBool(scopedKey) ?? true;
   }
 
   static Future<void> setPromptEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_promptEnabledKey, enabled);
+    final scopedKey = await _getScopedKey(_promptEnabledKey);
+    await prefs.setBool(scopedKey, enabled);
   }
 
   static Future<void> resetPrompt() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_customPromptKey);
+    final scopedKey = await _getScopedKey(_customPromptKey);
+    await prefs.remove(scopedKey);
   }
 
   static Future<Map<String, String>?> getChatConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    final model = prefs.getString(_chatModelKey);
-    final apiKey = prefs.getString(_chatApiKeyKey);
-    final apiUrl = prefs.getString(_chatApiUrlKey);
+    final mKey = await _getScopedKey(_chatModelKey);
+    final kKey = await _getScopedKey(_chatApiKeyKey);
+    final uKey = await _getScopedKey(_chatApiUrlKey);
+
+    String? model = prefs.getString(mKey);
+    String? apiKey = prefs.getString(kKey);
+    String? apiUrl = prefs.getString(uKey);
+
+    // 迁移检查
+    if (model == null) {
+      final String? username = prefs.getString('current_login_user');
+      if (username != null && username.isNotEmpty) {
+        final markerKey = "${_chatModelKey}_${username}_migrated";
+        if (!(prefs.getBool(markerKey) ?? false)) {
+          model = prefs.getString(_chatModelKey);
+          apiKey = prefs.getString(_chatApiKeyKey);
+          apiUrl = prefs.getString(_chatApiUrlKey);
+          if (model != null) {
+            await prefs.setString(mKey, model);
+            if (apiKey != null) await prefs.setString(kKey, apiKey);
+            if (apiUrl != null) await prefs.setString(uKey, apiUrl);
+            await prefs.setBool(markerKey, true);
+          }
+        }
+      }
+    }
+
     if (model == null || model.isEmpty) return null;
     return {
       'model': model,
@@ -272,35 +335,44 @@ class ChatStorageService {
     String? apiUrl,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final mKey = await _getScopedKey(_chatModelKey);
+    final kKey = await _getScopedKey(_chatApiKeyKey);
+    final uKey = await _getScopedKey(_chatApiUrlKey);
+    
     if (model.isEmpty) {
-      await prefs.remove(_chatModelKey);
-      await prefs.remove(_chatApiKeyKey);
-      await prefs.remove(_chatApiUrlKey);
+      await prefs.remove(mKey);
+      await prefs.remove(kKey);
+      await prefs.remove(uKey);
     } else {
-      await prefs.setString(_chatModelKey, model);
+      await prefs.setString(mKey, model);
       if (apiKey.isNotEmpty) {
-        await prefs.setString(_chatApiKeyKey, apiKey);
+        await prefs.setString(kKey, apiKey);
       }
       if (apiUrl != null && apiUrl.isNotEmpty) {
-        await prefs.setString(_chatApiUrlKey, apiUrl);
+        await prefs.setString(uKey, apiUrl);
       }
     }
   }
 
   static Future<void> clearChatConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_chatModelKey);
-    await prefs.remove(_chatApiKeyKey);
-    await prefs.remove(_chatApiUrlKey);
+    final mKey = await _getScopedKey(_chatModelKey);
+    final kKey = await _getScopedKey(_chatApiKeyKey);
+    final uKey = await _getScopedKey(_chatApiUrlKey);
+    await prefs.remove(mKey);
+    await prefs.remove(kKey);
+    await prefs.remove(uKey);
   }
 
   static Future<bool> isDeepThinkingEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_deepThinkingKey) ?? false;
+    final scopedKey = await _getScopedKey(_deepThinkingKey);
+    return prefs.getBool(scopedKey) ?? false;
   }
 
   static Future<void> setDeepThinkingEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_deepThinkingKey, enabled);
+    final scopedKey = await _getScopedKey(_deepThinkingKey);
+    await prefs.setBool(scopedKey, enabled);
   }
 }

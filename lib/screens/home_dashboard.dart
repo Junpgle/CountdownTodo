@@ -160,6 +160,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     WidgetService.init();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
+    
+    // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
+    StorageService.dataRefreshNotifier.addListener(_loadAllData);
 
     // 🚀 桌面端拦截：确保只在移动设备监听通道
     if (Platform.isAndroid || Platform.isIOS) {
