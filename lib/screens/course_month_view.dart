@@ -18,7 +18,7 @@ class CourseMonthView extends StatelessWidget {
   final Function(DateTime) onMonthChanged;
   final Function(DateTime) onDayTapped;
   final List<TodoItem> allTodos;
-  final int viewMode; 
+  final int viewMode;
   final Function(TodoItem)? onGanttTodoTap;
   final DateTime? currentWeekMonday;
 
@@ -43,7 +43,7 @@ class CourseMonthView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     // 1. 确定起始日期与天数
     final DateTime startDate;
     int showDays;
@@ -57,35 +57,35 @@ class CourseMonthView extends StatelessWidget {
       showDays = 14;
     }
     final int rowCount = (showDays / 7).ceil();
-    final List<List<DateTime>> weeks = List.generate(rowCount, (w) => 
-      List.generate(7, (d) => startDate.add(Duration(days: w * 7 + d)))
+    final List<List<DateTime>> weeks = List.generate(rowCount, (w) =>
+        List.generate(7, (d) => startDate.add(Duration(days: w * 7 + d)))
     );
 
     // 2. 预计算所有全局数据 (应用筛选逻辑，包含隐藏跨天)
     final Map<String, int> densityMap = {};
     if (activeDataViews.contains('todos')) {
       for (var t in allTodos) {
-         if (t.isDeleted || t.dueDate == null) continue;
-         
-         // 🚀 核心修复：检查是否跨天并响应隐藏设置
-         final start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
-         bool isCrossDay = !DateUtils.isSameDay(start, t.dueDate!);
-         if (isCrossDay && activeDataViews.contains('hideCrossDay')) continue;
+        if (t.isDeleted || t.dueDate == null) continue;
 
-         final dStr = DateFormat('yyyy-MM-dd').format(t.dueDate!);
-         densityMap[dStr] = (densityMap[dStr] ?? 0) + 1;
+        // 🚀 核心修复：检查是否跨天并响应隐藏设置
+        final start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
+        bool isCrossDay = !DateUtils.isSameDay(start, t.dueDate!);
+        if (isCrossDay && activeDataViews.contains('hideCrossDay')) continue;
+
+        final dStr = DateFormat('yyyy-MM-dd').format(t.dueDate!);
+        densityMap[dStr] = (densityMap[dStr] ?? 0) + 1;
       }
     }
 
-    final List<TodoItem> ganttTodos = activeDataViews.contains('todos') 
+    final List<TodoItem> ganttTodos = activeDataViews.contains('todos')
         ? allTodos.where((t) {
-            if (t.isDeleted || t.dueDate == null) return false;
-            // 🚀 核心修复：看板色条也必须响应隐藏跨天设置
-            final start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
-            bool isCrossDay = !DateUtils.isSameDay(start, t.dueDate!);
-            if (isCrossDay && activeDataViews.contains('hideCrossDay')) return false;
-            return true;
-        }).toList()
+      if (t.isDeleted || t.dueDate == null) return false;
+      // 🚀 核心修复：看板色条也必须响应隐藏跨天设置
+      final start = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
+      bool isCrossDay = !DateUtils.isSameDay(start, t.dueDate!);
+      if (isCrossDay && activeDataViews.contains('hideCrossDay')) return false;
+      return true;
+    }).toList()
         : [];
 
     return Column(
@@ -123,7 +123,7 @@ class CourseMonthView extends StatelessWidget {
 
       int startIdx = taskStart.isBefore(weekStart) ? 0 : taskStart.weekday - 1;
       int endIdx = taskEnd.isAfter(weekEnd) ? 6 : taskEnd.weekday - 1;
-      
+
       weekBars.add({
         'todo': t,
         'start': startIdx,
@@ -171,24 +171,24 @@ class CourseMonthView extends StatelessWidget {
                 int count = densityMap[dStr] ?? 0;
                 Color? heatColor;
                 if (count > 0) {
-                   double opacity = (count / 10).clamp(0.05, 0.4);
-                   heatColor = Colors.blue.withOpacity(opacity);
+                  double opacity = (count / 10).clamp(0.05, 0.4);
+                  heatColor = Colors.blue.withOpacity(opacity);
                 }
-                
+
                 final List<CourseItem> dayCourses = activeDataViews.contains('courses') ? (courseMap[dStr] ?? []) : [];
                 final List<TodoItem> dayTodos = activeDataViews.contains('todos') ? (todoMap[dStr] ?? []) : [];
                 final List<TimeLogItem> dayLogs = activeDataViews.contains('timeLogs') ? (logMap[dStr] ?? []) : [];
                 final List<PomodoroRecord> dayPoms = activeDataViews.contains('pomodoros') ? (pomMap[dStr] ?? []) : [];
-                
+
                 return Expanded(
-                  child: GestureDetector(
-                    onTap: () => onDayTapped(day),
-                    child: _buildDetailedDayBackground(context, day, heatColor, isDark, cellHeight, dayCourses, dayTodos, dayLogs, dayPoms)
-                  )
+                    child: GestureDetector(
+                        onTap: () => onDayTapped(day),
+                        child: _buildDetailedDayBackground(context, day, heatColor, isDark, cellHeight, dayCourses, dayTodos, dayLogs, dayPoms)
+                    )
                 );
               }).toList(),
             ),
-            
+
             if (activeDataViews.contains('todos'))
               Positioned(
                 left: 0,
@@ -201,72 +201,78 @@ class CourseMonthView extends StatelessWidget {
                     if (clusteredRows.isEmpty) return const SizedBox.shrink();
 
                     final bool isHalfMonthView = viewMode != 2;
-                    final int minRows = isHalfMonthView ? 5 : 3;
-                    final int maxRowsCap = isHalfMonthView ? 10 : 5;
-                    final double rowSpacing = isHalfMonthView ? 4 : 2;
-                    final double minRowHeight = 18;
-                    final int rowsBySpace =
-                        ((ganttConstraints.maxHeight + rowSpacing) / (minRowHeight + rowSpacing)).floor();
-                    final int maxRows = rowsBySpace.clamp(minRows, maxRowsCap);
-                    final rowGroups = clusteredRows.take(maxRows).toList();
+                    final double rowSpacing = isHalfMonthView ? 4.0 : 2.0;
+                    final double minRowHeight = 18.0;
 
+                    // 1. 动态计算理想行高 (不限制最大截取行数)
+                    final double calculatedRowHeight =
+                        (ganttConstraints.maxHeight - ((clusteredRows.length - 1) * rowSpacing)) / clusteredRows.length;
+
+                    // 2. 限制最大和最小高度，当高度被压缩到 minRowHeight 时，超出部分自然触发可滚动
                     final double rowHeight =
-                        ((ganttConstraints.maxHeight - ((rowGroups.length - 1) * rowSpacing)) / rowGroups.length)
-                            .clamp(minRowHeight, isHalfMonthView ? 40.0 : 24.0);
+                    calculatedRowHeight.clamp(minRowHeight, isHalfMonthView ? 40.0 : 24.0);
                     final double barHeight = (rowHeight - 4).clamp(14.0, 22.0);
 
-                    return Column(
-                      mainAxisAlignment:
-                          isHalfMonthView ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: rowGroups.map((rowGroup) {
-                        return SizedBox(
-                          height: rowHeight,
-                          child: Stack(
-                            children: rowGroup.map((bar) {
-                              final t = bar['todo'] as TodoItem;
-                              final int start = bar['start'];
-                              final int end = bar['end'];
-                              return Positioned(
-                                left: start * cellWidth + 2,
-                                width: (end - start + 1) * cellWidth - 4,
-                                height: barHeight,
-                                child: GestureDetector(
-                                  onTap: () => onGanttTodoTap?.call(t),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: (t.isDone
-                                              ? Colors.green
-                                              : (t.teamUuid != null ? Colors.blue : Colors.deepPurpleAccent))
-                                          .withOpacity(0.9),
-                                      borderRadius: BorderRadius.circular(6),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.1),
-                                          blurRadius: 2,
-                                          offset: const Offset(0, 1),
-                                        )
-                                      ],
-                                    ),
-                                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      t.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.bold,
+                    // 3. 使用 SingleChildScrollView 使内容支持滑动查看
+                    return SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: clusteredRows.map((rowGroup) {
+                          return Container(
+                            height: rowHeight,
+                            margin: EdgeInsets.only(
+                              bottom: rowGroup == clusteredRows.last ? 0 : rowSpacing,
+                            ),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: rowGroup.map((bar) {
+                                final t = bar['todo'] as TodoItem;
+                                final int start = bar['start'];
+                                final int end = bar['end'];
+                                return Positioned(
+                                  left: start * cellWidth + 2,
+                                  width: (end - start + 1) * cellWidth - 4,
+                                  height: barHeight,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => onGanttTodoTap?.call(t),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: (t.isDone
+                                            ? Colors.green
+                                            : (t.teamUuid != null ? Colors.blue : Colors.deepPurpleAccent))
+                                            .withOpacity(0.9),
+                                        borderRadius: BorderRadius.circular(6),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.1),
+                                            blurRadius: 2,
+                                            offset: const Offset(0, 1),
+                                          )
+                                        ],
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        t.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      }).toList(),
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     );
                   },
                 ),
@@ -293,7 +299,7 @@ class CourseMonthView extends StatelessWidget {
   Widget _buildDetailedDayBackground(BuildContext context, DateTime day, Color? heatColor, bool isDark, double height, List<CourseItem> courses, List<TodoItem> todos, List<TimeLogItem> logs, List<PomodoroRecord> poms) {
     bool isToday = DateUtils.isSameDay(day, DateTime.now());
     bool isCurrentMonth = day.month == selectedMonth.month;
-    
+
     // 🚀 核心修复：小圆点和时间轴也要响应隐藏跨天设置
     List<TodoItem> filteredTodos = todos.where((t) {
       if (activeDataViews.contains('hideCrossDay')) {
@@ -323,9 +329,9 @@ class CourseMonthView extends StatelessWidget {
                   ...courses.map((c) => _buildVerticalBar(c.startTime, c.endTime, Colors.blue.withOpacity(0.6), height)),
                   ...filteredTodos.where((t)=>t.dueDate != null).map((t) => _buildTimeDot(t.dueDate!.hour * 100 + t.dueDate!.minute, Colors.amber, height)),
                   ...logs.map((l) {
-                      DateTime s = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
-                      DateTime e = DateTime.fromMillisecondsSinceEpoch(l.endTime, isUtc: true).toLocal();
-                      return _buildVerticalBar(s.hour * 100 + s.minute, e.hour * 100 + e.minute, Colors.blueAccent.withOpacity(0.4), height);
+                    DateTime s = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
+                    DateTime e = DateTime.fromMillisecondsSinceEpoch(l.endTime, isUtc: true).toLocal();
+                    return _buildVerticalBar(s.hour * 100 + s.minute, e.hour * 100 + e.minute, Colors.blueAccent.withOpacity(0.4), height);
                   }),
                   ...poms.map((p) => _buildTimeDot(DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true).toLocal().hour * 100, Colors.redAccent, height)),
                 ],
