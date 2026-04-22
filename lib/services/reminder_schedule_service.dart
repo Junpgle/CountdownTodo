@@ -199,7 +199,6 @@ class ReminderScheduleService {
     }
 
     if (reminders.isEmpty) {
-      debugPrint('[ReminderSchedule] 无未来提醒，跳过注册');
       return;
     }
 

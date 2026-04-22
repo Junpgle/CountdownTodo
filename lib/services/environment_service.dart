@@ -12,16 +12,12 @@ class EnvironmentService {
     final packageInfo = await PackageInfo.fromPlatform();
     _packageName = packageInfo.packageName;
     
-    // 🛡️ 调试打印：确认包名识别情况
-    print('🚀 [Environment] Package Detected: $_packageName');
-    
     // 🛡️ 自动探测：如果包名包含 .debug，强制判定为测试环境
     _isTest = _packageName.endsWith('.debug');
     
     if (_isTest) {
       // 🔌 测试环境：强制锁定到阿里云 8084 测试服务器
       ApiService.lockBaseUrl(ApiService.aliyunTestUrl);
-      print('🔌 [Environment] Mode: TEST (Locked to 8084)');
     } else {
       // 🔌 生产环境：根据用户选择决定
       String serverChoice = await StorageService.getServerChoice();

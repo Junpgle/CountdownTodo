@@ -633,13 +633,11 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       case 'NEW_JOIN_REQUEST':
       case 'PENDING_COUNTS':
-        debugPrint('🚀 [协同信号] 收到 ${signal.action}, 刷新待处理计数');
         _fetchTeamPendingCount();
         break;
 
       case 'NEW_ANNOUNCEMENT':
       case 'ANNOUNCEMENT_RECALLED':
-        debugPrint('🚀 [协同信号] 收到 ${signal.action}, 刷新首页公告');
         _fetchActiveAnnouncements();
         break;
 
@@ -1694,7 +1692,6 @@ class _HomeDashboardState extends State<HomeDashboard>
     _isDataLoading = true;
 
     try {
-      debugPrint('📊 [DashboardLoader] 正在加载全量数据...');
       final startTime = DateTime.now();
 
       // 1. 读取基础数据 (并发执行，提升冷启速度)
@@ -1736,7 +1733,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
 
       final duration = DateTime.now().difference(startTime);
-      debugPrint('✅ [DashboardLoader] 加载成功: ${allTodos.length} Todos, ${allCountdowns.length} Countdowns, 耗时: ${duration.inMilliseconds}ms');
+      // debugPrint('✅ [DashboardLoader] 加载成功: ${allTodos.length} Todos, ${allCountdowns.length} Countdowns, 耗时: ${duration.inMilliseconds}ms');
     } catch (e) {
       debugPrint('❌ [DashboardLoader] 加载失败: $e');
     } finally {

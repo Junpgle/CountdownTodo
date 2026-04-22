@@ -59,7 +59,6 @@ class SplashService {
         await prefs.setInt(_cachedDurationMs, dayConfig['duration_ms'] as int);
       }
 
-      debugPrint('[Splash] 已预取明天 ($tomorrowStr) 的开屏内容');
     } catch (e) {
       debugPrint('[Splash] 预取失败: $e');
     }
@@ -106,7 +105,6 @@ class SplashService {
         await prefs.setInt(_cachedDurationMs, dayConfig['duration_ms'] as int);
       }
 
-      debugPrint('[Splash] 已获取今天 ($todayStr) 的开屏内容');
     } catch (e) {
       debugPrint('[Splash] 获取今天内容失败: $e');
     }

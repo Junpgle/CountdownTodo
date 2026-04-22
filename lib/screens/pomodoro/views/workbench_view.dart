@@ -44,8 +44,7 @@ class PomodoroWorkbench extends StatefulWidget {
   State<PomodoroWorkbench> createState() => PomodoroWorkbenchState();
 }
 
-class PomodoroWorkbenchState extends State<PomodoroWorkbench>
-    with WidgetsBindingObserver {
+class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindingObserver {
   // ── 设置 ──
   PomodoroSettings _settings = PomodoroSettings();
 
@@ -237,7 +236,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           return <TodoItem>[];
         });
         _todos = (todosRaw).where((t) => !t.isDeleted && !t.isDone).toList();
-        
+
         final groupsRaw = await StorageService.getTodoGroups(widget.username)
             .timeout(const Duration(seconds: 5), onTimeout: () => <TodoGroup>[]);
         _todoGroups = groupsRaw.where((g) => !g.isDeleted).toList();
@@ -360,21 +359,21 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _syncConnState = state;
         _wsConnected = state == SyncConnectionState.connected;
       });
-      debugPrint('[工作台] 同步通道连接状态变更: $state');
+      // debugPrint('[工作台] 同步通道连接状态变更: $state');
     });
 
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态，则通知云端清除残留
     _syncService.onStaleSyncFocus = (state) async {
-      debugPrint('[工作台] 收到服务端回推的残留状态，校验本地...');
+      // debugPrint('[工作台] 收到服务端回推的残留状态，校验本地...');
       final saved = await PomodoroService.loadRunState();
       if (saved == null ||
           (saved.phase != PomodoroPhase.focusing &&
               saved.phase != PomodoroPhase.breaking)) {
-        debugPrint('[工作台] 本地无运行中的专注，发送 CLEAR_FOCUS 清除云端残留');
+        // debugPrint('[工作台] 本地无运行中的专注，发送 CLEAR_FOCUS 清除云端残留');
         _syncService.sendClearFocusSignal();
       } else {
-        debugPrint('[工作台] 本地仍有运行中的专注，保留云端状态');
+        // debugPrint('[工作台] 本地仍有运行中的专注，保留云端状态');
       }
     };
 
@@ -517,10 +516,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           final nowMs = DateTime.now().millisecondsSinceEpoch;
           final isCountUp = signal.mode == 1;
           int rem = 0;
-          
+
           int localTargetEnd = 0;
           int localSessionStart = 0;
-          
+
           if (signal.serverElapsedMs != null) {
             if (isCountUp) {
               localSessionStart = nowMs - signal.serverElapsedMs!;
@@ -580,7 +579,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       case 'FOCUS_DISCONNECTED':
         // 🚀 遵从“本地计时优先”原则：只有在远程观察模式下，才接受外部的停止信号
         if (_phase != PomodoroPhase.remoteWatching) break;
-        
+
         // 🚀 精准匹配：如果信号中包含 ID，必须与当前观察的 ID 一致才停止
         if (signal.sessionUuid != null && _currentSessionUuid != signal.sessionUuid) break;
         if (signal.todoUuid != null && _boundTodo?.id != signal.todoUuid) break;
@@ -949,17 +948,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _startTicker() {
-    debugPrint(
-        '[Ticker] _startTicker called, _isPaused: $_isPaused, _phase: $_phase');
     _ticker?.cancel();
     _notifyTickCount = 0;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
-      debugPrint('[Ticker] Tick fired, _isPaused: $_isPaused, _phase: $_phase');
+      // debugPrint('[Ticker] Tick fired, _isPaused: $_isPaused, _phase: $_phase');
       if (!mounted) return;
       if (_phase != PomodoroPhase.focusing && _phase != PomodoroPhase.breaking)
         return;
       if (_isPaused) {
-        debugPrint('[Ticker] Skipping tick because _isPaused is true');
+        // debugPrint('[Ticker] Skipping tick because _isPaused is true');
         return;
       }
 
@@ -967,19 +964,19 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       final bool isCountUp = _phase == PomodoroPhase.focusing &&
           _settings.mode == TimerMode.countUp;
 
-      debugPrint(
-          '[Ticker] About to compute elapsed, _sessionStartMs: $_sessionStartMs, _accumulatedMs: $_accumulatedMs, now: $now');
+      // debugPrint(
+      //     '[Ticker] About to compute elapsed, _sessionStartMs: $_sessionStartMs, _accumulatedMs: $_accumulatedMs, now: $now');
       if (isCountUp) {
         final elapsed =
             (((now - _sessionStartMs) - _accumulatedMs) / 1000).floor();
-        debugPrint(
-            '[Ticker] countUp elapsed: $elapsed, _remainingSeconds before setState: $_remainingSeconds');
+        // debugPrint(
+        //     '[Ticker] countUp elapsed: $elapsed, _remainingSeconds before setState: $_remainingSeconds');
         if (_isPaused) {
-          debugPrint('[Ticker] CRITICAL: Ticker tried to update while _isPaused=true. Skipping.');
+          // debugPrint('[Ticker] CRITICAL: Ticker tried to update while _isPaused=true. Skipping.');
         } else {
           setState(() {
             _remainingSeconds = elapsed;
-            debugPrint('[Ticker] Set _remainingSeconds to $elapsed');
+            // debugPrint('[Ticker] Set _remainingSeconds to $elapsed');
           });
         }
         _notifyTickCount++;
@@ -1022,16 +1019,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _pauseFocus() {
-    debugPrint(
-        '[Pause] _pauseFocus called, current _isPaused: $_isPaused, phase: $_phase');
+    // debugPrint(
+    //     '[Pause] _pauseFocus called, current _isPaused: $_isPaused, phase: $_phase');
     if (_phase != PomodoroPhase.focusing || _isPaused) {
-      debugPrint('[Pause] Early return, condition failed');
+      // debugPrint('[Pause] Early return, condition failed');
       return;
     }
-    debugPrint('[Pause] About to cancel ticker');
+    // debugPrint('[Pause] About to cancel ticker');
     _ticker?.cancel();
-    debugPrint(
-        '[Pause] Ticker cancelled, setting _pausedAtMs and _pauseStartMs');
+    // debugPrint(
+    //     '[Pause] Ticker cancelled, setting _pausedAtMs and _pauseStartMs');
     _pausedAtMs = DateTime.now().millisecondsSinceEpoch;
     _pauseStartMs = DateTime.now().millisecondsSinceEpoch;
 
@@ -1362,8 +1359,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         sessionUuid: _currentSessionUuid);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(newTodo != null 
-              ? '已切换至: ${newTodo.title}' 
+          content: Text(newTodo != null
+              ? '已切换至: ${newTodo.title}'
               : '已切换为自由专注'),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating));
@@ -1790,14 +1787,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     leading: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                            color: _boundTodo == null 
+                            color: _boundTodo == null
                                 ? Theme.of(context).colorScheme.primaryContainer
                                 : Theme.of(context).colorScheme.surfaceContainerHighest,
                             shape: BoxShape.circle),
                         child: Icon(
-                          _boundTodo == null ? Icons.check : Icons.clear, 
+                          _boundTodo == null ? Icons.check : Icons.clear,
                           size: 20,
-                          color: _boundTodo == null 
+                          color: _boundTodo == null
                               ? Theme.of(context).colorScheme.primary
                               : Theme.of(context).colorScheme.onSurfaceVariant,
                         )),
@@ -1806,7 +1803,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     selectedTileColor: Theme.of(context)
                         .colorScheme
                         .primaryContainer
-                        .withValues(alpha: 0.3),
+                        .withOpacity(0.3),
                     onTap: () async {
                       if (_phase == PomodoroPhase.focusing) {
                         await _switchTask(null);
@@ -1844,7 +1841,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         sections.addAll(tasks.map((t) => _buildTodoTile(ctx, t, isSwitching)));
                       }
                     }
-                    
+
                     // Safety for any other IDs
                     grouped.forEach((id, tasks) {
                       if (tasks.isNotEmpty) {
@@ -1903,7 +1900,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           : null,
       selected: t.id == _boundTodo?.id,
       selectedTileColor:
-          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+          Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
       onTap: () async {
         Navigator.pop(ctx);
         if (_phase == PomodoroPhase.focusing) {
@@ -2396,7 +2393,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   label: Text(tag.name, style: const TextStyle(fontSize: 13)),
                   selected: selected,
                   showCheckmark: false,
-                  selectedColor: color.withValues(alpha: 0.2),
+                  selectedColor: color.withOpacity(0.2),
                   side: BorderSide(
                       color: selected ? color : Colors.grey.shade300),
                   shape: RoundedRectangleBorder(
@@ -2424,8 +2421,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Widget _buildActions(
       bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
     final bool isPaused = _isPaused && _phase == PomodoroPhase.focusing;
-    debugPrint(
-        '[BuildActions] _isPaused: $_isPaused, _phase: $_phase, isPaused: $isPaused, isFocusing: $isFocusing');
+    // debugPrint(
+    //     '[BuildActions] _isPaused: $_isPaused, _phase: $_phase, isPaused: $isPaused, isFocusing: $isFocusing');
     return WorkbenchActions(
       isIdle: isIdle,
       isFocusing: isFocusing,
@@ -2470,13 +2467,13 @@ class _SimpleTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
+          color: color.withOpacity(0.12),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.4))),
+          border: Border.all(color: color.withOpacity(0.4))),
       child: Text(name,
           style: TextStyle(
               fontSize: 12,
-              color: color.withValues(alpha: 0.9),
+              color: color.withOpacity(0.9),
               fontWeight: FontWeight.w500)),
     );
   }

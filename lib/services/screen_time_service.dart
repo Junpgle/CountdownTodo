@@ -66,7 +66,7 @@ class ScreenTimeService {
       if (Platform.isAndroid) {
         bool hasPermission = await checkPermission();
         if (!hasPermission) {
-          debugPrint("⚠️ Android 屏幕使用权限未授予，跳过屏幕时间采集，其他数据继续同步");
+          // debugPrint("⚠️ Android 屏幕使用权限未授予，跳过屏幕时间采集，其他数据继续同步");
         } else {
           final dynamic stats =
               await _channel.invokeMethod('getScreenTimeData');

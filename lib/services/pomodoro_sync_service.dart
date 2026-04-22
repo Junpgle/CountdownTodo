@@ -272,7 +272,6 @@ class PomodoroSyncService {
         '&platform=${Uri.encodeComponent(platform)}'
         '&version=${Uri.encodeComponent(versionParam)}',
       );
-      debugPrint('[PomodoroSync] 🔌 正在尝试连接至: $uri');
 
       _channel = WebSocketChannel.connect(uri);
 
@@ -315,7 +314,14 @@ class PomodoroSyncService {
 
   void _onMessage(dynamic raw) {
     try {
-      debugPrint('📥 [WS接收] 原始数据: $raw');
+      // 🚀 Uni-Sync 4.0: 生产环境静默处理 PONG 信号，减少控制台噪音
+      final rawStr = raw.toString();
+      if (rawStr.contains('"action":"PONG"')) {
+        _lastMessageTime = DateTime.now();
+        return;
+      }
+      
+      // debugPrint('📥 [WS接收] 原始数据: $raw'); // 调试时开启
       final data = jsonDecode(raw.toString()) as Map<String, dynamic>;
       final signal = CrossDevicePomodoroState.fromJson(data);
 
@@ -560,7 +566,6 @@ class PomodoroSyncService {
           'type': 'subscribe',
           'teamUuids': teamUuids,
         });
-        debugPrint('[PomodoroSync] 👥 已发送团队房间订阅请求: $teamUuids');
       }
     } catch (e) {
       debugPrint('[PomodoroSync] 团队订阅失败: $e');

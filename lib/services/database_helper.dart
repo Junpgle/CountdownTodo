@@ -53,8 +53,6 @@ class DatabaseHelper {
     final targetName = envPrefix + filePath;
     final path = join(dbPath, targetName);
 
-    debugPrint("📂 Database: 正在打开持久化存储 [$path]");
-
     return await openDatabase(
         path,
         version: 8, // 🚀 升级版本至 8，补全循环任务与提醒字段

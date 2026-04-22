@@ -1334,7 +1334,6 @@ class StorageService {
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
 
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs', where: 'is_synced = 0');
-      debugPrint('🔍 [同步流水] 发现 ${pendingOps.length} 条待同步操作');
 
       for (var op in pendingOps) {
         final table = op['target_table'];
@@ -1353,7 +1352,7 @@ class StorageService {
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
       dirtyTimeLogs = allLocalTimeLogs.where((t) => t.updatedAt > lastSyncTime).map((t) => t.toJson()).toList();
 
-      debugPrint('🔍 [同步判定] lastSyncTime: $lastSyncTime, 本地总任务数: ${allLocalTodos.length}');
+      // debugPrint('🔍 [同步判定] lastSyncTime: $lastSyncTime, 本地总任务数: ${allLocalTodos.length}');
 
       // 4. 读取本机待同步屏幕时间 (改为 Map 结构)
       Map<String, dynamic> localPackage = await getLocalScreenTimeMap();
@@ -1422,7 +1421,6 @@ class StorageService {
       if (response['success'] == true) {
         // 🚀 全部上报成功后，标记 op_logs 为已同步
         await db.update('op_logs', {'is_synced': 1}, where: 'is_synced = 0');
-        debugPrint('✅ [同步流水] 已标记记录为已同步');
 
         // 🚀 处理独立待办完成情况
         final List<dynamic>? indCompletions = response['independent_completions'];
