@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'environment_service.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -38,6 +40,13 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDB(String filePath) async {
+    // 🚀 核心修复：桌面端 SQL 引擎逃生通道
+    if (!kIsWeb && Platform.isWindows) {
+      debugPrint("🛠️ Database: 检测到 Windows 平台，正在初始化 FFI 引擎...");
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
+
     final dbPath = await getDatabasesPath();
     // 🚀 根据环境动态选择前缀（隔离测试数据）
     final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';

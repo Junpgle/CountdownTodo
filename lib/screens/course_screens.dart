@@ -152,9 +152,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         allCourses.sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
         final firstCourse = allCourses.first;
         if (firstCourse.date.isNotEmpty) {
-          DateTime firstCourseDate = DateFormat('yyyy-MM-dd').parse(firstCourse.date);
-          _semesterMonday = firstCourseDate.subtract(Duration(days: firstCourse.weekday - 1))
-              .subtract(Duration(days: (firstCourse.weekIndex > 0 ? firstCourse.weekIndex : 0) * 7));
+          DateTime firstCourseDate = DateFormat('yyyy-MM-dd').parse(
+              firstCourse.date);
+          _semesterMonday =
+              firstCourseDate.subtract(Duration(days: firstCourse.weekday - 1))
+                  .subtract(Duration(days: (firstCourse.weekIndex > 0
+                  ? firstCourse.weekIndex
+                  : 0) * 7));
         }
       }
     }
@@ -166,33 +170,39 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     // 计算当前周 (移除强制 1 的下限)
     DateTime now = DateTime.now();
-    int daysOffset = now.difference(_semesterMonday!).inDays;
+    int daysOffset = now
+        .difference(_semesterMonday!)
+        .inDays;
     _currentWeek = (daysOffset ~/ 7) + 1;
+
+    // 🚀 核心修复：无论是否有课表，都必须加载日志和番茄钟
+    _allTimeLogs = await StorageService.getTimeLogs(widget.username);
+    _allPomodoroRecords = await PomodoroService.getRecords();
+    _allCourses = await CourseService.getAllCourses(widget.username);
 
     if (weeks.isNotEmpty) {
       _availableWeeks = weeks;
-      _weekCourses = await CourseService.getCoursesByWeek(widget.username, _currentWeek);
+      _weekCourses =
+      await CourseService.getCoursesByWeek(widget.username, _currentWeek);
     } else {
       _availableWeeks = List.generate(20, (index) => index + 1);
       _weekCourses = [];
     }
 
-    _updateWeekTodos();
-    _updateWeekTimeLogsAndPomodoros();
-    
-    // 🚀 性能优化：优先渲染周视图，将耗时的月视图全量分组逻辑推迟到下一帧
-    setState(() => _isLoading = false);
-    
-    Future.microtask(() {
-      if (mounted) {
-        _groupDataForMonthView();
-        setState(() {}); // 更新月视图数据
-      }
-    });
+    if (mounted) {
+      _groupDataForMonthView();
+      _allTodos = await StorageService.getTodos(widget.username);
+      _updateWeekTodos();
+      _updateWeekTimeLogsAndPomodoros();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _courseExpandCtrl.forward();
-    });
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _courseExpandCtrl.forward();
+      });
+    }
   }
 
   // --- 🚀 性能优化: 预先按日期分组数据 (避免在动画期间重复计算) ---
@@ -205,13 +215,22 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   void _groupDataForMonthView() {
     _monthCourseMap = {};
     for (var c in _allCourses) {
-      _monthCourseMap.putIfAbsent(c.date, () => []).add(c);
+      if (c.date.isNotEmpty) {
+        _monthCourseMap.putIfAbsent(c.date, () => []).add(c);
+      } else if (_semesterMonday != null && c.weekIndex > 0) {
+        // 🚀 核心改进：将“第几周+星期几”投影到具体日期
+        final date = _semesterMonday!.add(Duration(
+          days: (c.weekIndex - 1) * 7 + (c.weekday - 1)
+        ));
+        final dStr = DateFormat('yyyy-MM-dd').format(date);
+        _monthCourseMap.putIfAbsent(dStr, () => []).add(c);
+      }
     }
 
     _monthTodoMap = {};
     _monthCrossDayTodoMap = {};
     for (var t in _allTodos) {
-      DateTime tStart = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt, isUtc: true).toLocal();
+      DateTime tStart = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
       DateTime tEnd = t.dueDate ?? tStart.add(const Duration(hours: 1));
       bool isAllDay = t.dueDate != null && tStart.hour == 0 && tStart.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
       bool isAcross = !(tStart.year == tEnd.year && tStart.month == tEnd.month && tStart.day == tEnd.day);
@@ -230,8 +249,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     _monthLogMap = {};
     for (var l in _allTimeLogs) {
-      DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
-      DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime, isUtc: true).toLocal();
+      DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime).toLocal();
+      DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime).toLocal();
       DateTime cursor = DateTime(lStart.year, lStart.month, lStart.day);
       DateTime endCursor = DateTime(lEnd.year, lEnd.month, lEnd.day);
       while (!cursor.isAfter(endCursor)) {
@@ -243,10 +262,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     _monthPomMap = {};
     for (var p in _allPomodoroRecords) {
-      if (p.startTime == 0) continue;
-      DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true).toLocal();
+      if (p.startTime <= 0) continue;
+      DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal();
       int pEndMs = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-      DateTime pEnd = DateTime.fromMillisecondsSinceEpoch(pEndMs, isUtc: true).toLocal();
+      DateTime pEnd = DateTime.fromMillisecondsSinceEpoch(pEndMs).toLocal();
       DateTime cursor = DateTime(pStart.year, pStart.month, pStart.day);
       DateTime endCursor = DateTime(pEnd.year, pEnd.month, pEnd.day);
       while (!cursor.isAfter(endCursor)) {
@@ -545,6 +564,33 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
 
     items.sort((a, b) {
+      int getStartTime(dynamic item) {
+        if (item is CourseItem) {
+          // 课程：转换为当天的分钟数进行比较
+          return item.startTime; 
+        }
+        if (item is TodoItem) {
+          // 待办：如果是全天/跨天，取创建时间或 0 点；如果是日内，取 dueDate 的时间
+          if (item.dueDate == null) return 0;
+          return item.dueDate!.hour * 100 + item.dueDate!.minute;
+        }
+        if (item is TimeLogItem) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal();
+          return dt.hour * 100 + dt.minute;
+        }
+        if (item is PomodoroRecord) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal();
+          return dt.hour * 100 + dt.minute;
+        }
+        return 9999;
+      }
+      
+      final int timeA = getStartTime(a);
+      final int timeB = getStartTime(b);
+      
+      if (timeA != timeB) return timeA.compareTo(timeB);
+      
+      // 如果时间相同，再按类型排优先级
       int getPriority(dynamic item) {
         if (item is CourseItem) return 0;
         if (item is TodoItem) return 1;
@@ -1030,7 +1076,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       Map<String, int> collisionMap = {};
 
       for (int weekday = 1; weekday <= 7; weekday++) {
-        for (var todo in _intraDayTodosPerDay[weekday]!) {
+        final dayTodos = _intraDayTodosPerDay[weekday] ?? [];
+        for (var todo in dayTodos) {
           DateTime start = DateTime.fromMillisecondsSinceEpoch(
                   todo.createdDate ?? todo.createdAt,
                   isUtc: true)
@@ -2121,8 +2168,20 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                               viewMode: _viewMode,
                                               currentWeekMonday: _getMondayOfCurrentWeek(), // 🚀 动态透传起点
                                               onMonthChanged: (m) => setState(() => _selectedMonth = m),
-                                              onDayTapped: (d) => setState(() => _selectedMonthDay = d),
-                                              onGanttTodoTap: _showTodoDetails,
+                                              onDayTapped: (d) {
+                                                setState(() => _selectedMonthDay = d);
+                                                if (constraints.maxWidth <= 900) {
+                                                  _showDayDetailSheet(d);
+                                                }
+                                              },
+                                              onGanttTodoTap: (todo) {
+                                                if (todo.dueDate != null) {
+                                                  setState(() => _selectedMonthDay = todo.dueDate);
+                                                  if (constraints.maxWidth <= 900) {
+                                                    _showDayDetailSheet(todo.dueDate!);
+                                                  }
+                                                }
+                                              },
                                             ),
                                           ),
                                         ),
@@ -2162,8 +2221,17 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                     child: LayoutBuilder(
                                       builder: (context, innerConstraints) {
                                         double cellWidth = (innerConstraints.maxWidth - timeColumnWidth) / 7;
-                                        double minuteHeight = innerConstraints.maxHeight / ((endHour - startHour) * 60);
-                                        return _buildGrid(cellWidth, minuteHeight);
+                                        // 🚀 核心修复：不再强行压缩到一屏，而是给定一个合理的分钟高度，使全天高度可滑动
+                                        const double minuteHeight = 0.95; 
+                                        double totalHeight = (endHour - startHour) * 60 * minuteHeight;
+                                        
+                                        return SingleChildScrollView(
+                                          physics: const BouncingScrollPhysics(),
+                                          child: SizedBox(
+                                            height: totalHeight,
+                                            child: _buildGrid(cellWidth, minuteHeight),
+                                          ),
+                                        );
                                       },
                                     ),
                                   ),
@@ -2185,7 +2253,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             ),
                           ),
                         ),
-                        child: _buildTodaySidebar(),
+                        child: _selectedMonthDay != null 
+                            ? _buildMonthDaySidebar(_selectedMonthDay!) 
+                            : _buildTodaySidebar(),
                       ),
                   ],
                 );
@@ -2281,6 +2351,25 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   String _safeStr(String? s) {
     if (s == null) return '';
     return s.replaceAll(RegExp(r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'), '');
+  }
+
+  void _showDayDetailSheet(DateTime day) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: _buildMonthDaySidebar(day),
+        ),
+      ),
+    );
   }
 
   void _showTodoDetails(TodoItem todo) {
