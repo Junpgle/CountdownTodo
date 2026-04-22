@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import './unified_waterfall_screen.dart';
 import './conflict_inbox_screen.dart';
 import './team_message_center_screen.dart';
+import './team_announcement_screen.dart';
 
 class TeamManagementScreen extends StatefulWidget {
   final String username;
@@ -49,6 +50,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           state.action == 'PENDING_COUNTS' ||
           state.action == 'JOIN_REQUEST_APPROVED' ||
           state.action == 'TEAM_MEMBER_JOINED' ||
+          state.action == 'NEW_ANNOUNCEMENT' ||
           state.action == 'TEAM_REMOVED') {
         _loadTeams(isSilent: true); // 🚀 收到通知，静默刷新
       }
@@ -759,7 +761,21 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                     label: Text(pendingCount > 0 ? '审批申请' : '成员管理', style: const TextStyle(fontSize: 13)),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orangeAccent,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      side: BorderSide(color: Colors.orangeAccent.withOpacity(0.2)),
+                    ),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamAnnouncementScreen(team: team))),
+                    icon: const Icon(Icons.campaign_rounded, size: 18),
+                    label: const Text('团队公告', style: TextStyle(fontSize: 13)),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(

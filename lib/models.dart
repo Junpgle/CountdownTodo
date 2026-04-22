@@ -709,42 +709,53 @@ class ConflictInfo {
   );
 }
 class TeamAnnouncement {
-  final String id;
+  final String uuid;
   final String teamUuid;
+  final String title;
   final String content;
   final String? creatorName;
-  final int timestamp;
+  final int createdAt;
+  final int? expiresAt; // 🚀 过期时间戳
   final bool isPriority; // 是否强制置顶且需确认
   bool isRead; // 本地状态：当前用户是否已读
 
   TeamAnnouncement({
-    required this.id,
+    required this.uuid,
     required this.teamUuid,
+    required this.title,
     required this.content,
     this.creatorName,
-    required this.timestamp,
+    required this.createdAt,
+    this.expiresAt,
     this.isPriority = false,
     this.isRead = false,
   });
 
+  // 兼容旧代码使用的 timestamp 字段
+  int get timestamp => createdAt;
+
   factory TeamAnnouncement.fromJson(Map<String, dynamic> json) {
     return TeamAnnouncement(
-      id: json['id']?.toString() ?? '',
+      uuid: json['uuid']?.toString() ?? '',
       teamUuid: json['team_uuid']?.toString() ?? '',
+      title: json['title']?.toString() ?? '无标题',
       content: json['content']?.toString() ?? '',
       creatorName: json['creator_name'],
-      timestamp: json['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
+      createdAt: json['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+      expiresAt: json['expires_at'],
       isPriority: json['is_priority'] == 1 || json['is_priority'] == true,
       isRead: json['is_read'] == 1 || json['is_read'] == true,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
+    'uuid': uuid,
     'team_uuid': teamUuid,
+    'title': title,
     'content': content,
     'creator_name': creatorName,
-    'timestamp': timestamp,
+    'created_at': createdAt,
+    'expires_at': expiresAt,
     'is_priority': isPriority ? 1 : 0,
     'is_read': isRead ? 1 : 0,
   };

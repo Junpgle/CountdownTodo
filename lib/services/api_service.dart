@@ -1002,4 +1002,94 @@ class ApiService {
       return {'success': false, 'error': e.toString()};
     }
   }
+
+  // ==========================================
+  // 🚀 10b. 团队公告 (Announcements)
+  // ==========================================
+
+  static Future<Map<String, dynamic>> createTeamAnnouncement(String teamUuid, String title, String content, {bool isPriority = false, int? expiresAt}) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/create'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'team_uuid': teamUuid,
+          'title': title,
+          'content': content,
+          'is_priority': isPriority ? 1 : 0,
+          'expires_at': expiresAt,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> deleteTeamAnnouncement(String announcementUuid) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/delete'),
+        headers: _getHeaders(),
+        body: jsonEncode({'announcement_uuid': announcementUuid}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<List<dynamic>> fetchTeamAnnouncements(String teamUuid) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/announcements?team_uuid=$teamUuid'),
+        headers: _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['announcements'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> markAnnouncementAsRead(String announcementUuid) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/read'),
+        headers: _getHeaders(),
+        body: jsonEncode({'announcement_uuid': announcementUuid}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchAnnouncementStats(String announcementUuid) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/stats?announcement_uuid=$announcementUuid'),
+        headers: _getHeaders(),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<List<dynamic>> fetchUnreadPriorityAnnouncements() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/unread_priority'),
+        headers: _getHeaders(),
+      );
+      final data = jsonDecode(response.body);
+      return data['announcements'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
 }

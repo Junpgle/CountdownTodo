@@ -637,6 +637,12 @@ class _HomeDashboardState extends State<HomeDashboard>
         _fetchTeamPendingCount();
         break;
 
+      case 'NEW_ANNOUNCEMENT':
+      case 'ANNOUNCEMENT_RECALLED':
+        debugPrint('🚀 [协同信号] 收到 ${signal.action}, 刷新首页公告');
+        _fetchActiveAnnouncements();
+        break;
+
       case 'START':
       case 'SYNC_FOCUS':
       case 'RECONNECT_SYNC':
@@ -1340,6 +1346,22 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   /// 🚀 Uni-Sync 4.0: 获取所有团队待处理申请总数
+  /// 🚀 Uni-Sync 4.0: 获取当前置顶公告
+  Future<void> _fetchActiveAnnouncements() async {
+    try {
+      final list = await ApiService.fetchUnreadPriorityAnnouncements();
+      if (list.isNotEmpty && mounted) {
+        setState(() {
+          _activeAnnouncement = TeamAnnouncement.fromJson(list.first);
+        });
+      } else if (mounted) {
+        setState(() => _activeAnnouncement = null);
+      }
+    } catch (e) {
+      debugPrint('❌ [首页] 获取置顶公告失败: $e');
+    }
+  }
+
   Future<void> _fetchTeamPendingCount() async {
     try {
       final rawTeams = await ApiService.fetchTeams();
@@ -1703,6 +1725,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         // 2. 交互与同步逻辑 (异步执行)
         _syncTodoNotification();
         _fetchTeamPendingCount(); // 🚀 Uni-Sync 4.0: 加载团队消息计数
+        _fetchActiveAnnouncements(); // 🚀 Uni-Sync 4.0: 获取置顶公告
         WidgetService.updateTodoWidget(allTodos);
 
         final allCourses = await CourseService.getAllCourses(widget.username);
@@ -2403,12 +2426,19 @@ class _HomeDashboardState extends State<HomeDashboard>
                   SyncStatusBanner(
                     onDiagnosticRequested: _showLinkDiagnostics,
                   ),
+                
+                // DEBUG: 检查状态
+                // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
 
                 // 🚀 Uni-Sync 4.0: 团队置顶公告
                 if (_activeAnnouncement != null && (_selectedTabIndex != 1 || isTablet))
                   StickyAnnouncementBanner(
                     announcement: _activeAnnouncement!,
-                    onAcknowledge: () => setState(() => _activeAnnouncement = null),
+                    onAcknowledge: () async {
+                      final uuid = _activeAnnouncement!.uuid;
+                      setState(() => _activeAnnouncement = null);
+                      await ApiService.markAnnouncementAsRead(uuid);
+                    },
                   ),
 
                 // 🚀 统一处理本地与远程专注 Banner
