@@ -1,7 +1,7 @@
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
+import '../storage_service.dart';
+import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
@@ -1141,10 +1141,15 @@ class ApiService {
     return combinedHistory;
   }
 
-  static Future<Map<String, dynamic>> rollbackItem(dynamic logId, {bool isLocal = false}) async {
-    // 🚀 如果是本地记录或处于离线状态，执行本地回滚
+  static Future<Map<String, dynamic>> rollbackItem(dynamic logId, {
+    bool isLocal = false, 
+    String? table, 
+    String? username
+  }) async {
+    // 🚀 如果是本地记录或处于离线状态，执行本地强力回滚（含缓存刷新）
     if (isLocal) {
-      final success = await DatabaseHelper.instance.rollbackFromLocalLog(logId as int);
+      if (table == null || username == null) return {'success': false, 'error': '缺少回滚上下文'};
+      final success = await StorageService.rollbackLocalItem(table, logId as int, username);
       return {'success': success, 'message': success ? '本地回滚成功' : '本地回滚失败'};
     }
 
@@ -1156,7 +1161,6 @@ class ApiService {
       );
       return jsonDecode(response.body);
     } catch (e) {
-      // 容错：如果云端失败且我们有对应的本地日志，可以尝试本地回滚（此处逻辑可根据需求细化）
       return {'success': false, 'error': "网络错误，无法执行云端回滚"};
     }
   }

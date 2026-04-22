@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../storage_service.dart';
+import '../services/environment_service.dart';
 
 class VersionHistorySheet extends StatefulWidget {
   final String uuid;
@@ -62,11 +64,23 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
     );
 
     if (confirmed == true) {
-      final res = await ApiService.rollbackItem(logId, isLocal: isLocal);
+      final username = await StorageService.getCurrentUsername();
+      final res = await ApiService.rollbackItem(
+        logId, 
+        isLocal: isLocal,
+        table: widget.table,
+        username: username,
+      );
+
       if (res['success'] == true) {
+        // 🚀 Uni-Sync 4.0: 回滚成功后立即触发本地刷新与同步
+        if (username != null) {
+          await StorageService.syncData(username);
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('已成功回滚版本'), backgroundColor: Colors.green),
+            SnackBar(content: Text(res['message'] ?? '已成功回滚版本'), backgroundColor: Colors.green),
           );
           Navigator.pop(context);
         }
@@ -144,7 +158,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
                             separatorBuilder: (_, __) => const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final item = _history[index];
-                              return _buildHistoryItem(item);
+                              return _buildHistoryItem(item, index);
                             },
                           ),
               ),
@@ -168,7 +182,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
     );
   }
 
-  Widget _buildHistoryItem(dynamic item) {
+  Widget _buildHistoryItem(dynamic item, int index) {
     final colorScheme = Theme.of(context).colorScheme;
     final timestamp = DateTime.fromMillisecondsSinceEpoch(item['timestamp']);
     final timeStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(timestamp);
@@ -235,7 +249,8 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
                   child: Text('本地', style: TextStyle(fontSize: 9, color: colorScheme.onSecondaryContainer)),
                 ),
               const Spacer(),
-              if (opType != 'INSERT' && index != 0) // 第一个记录或新增记录通常不回滚
+              // 🚀 核心修复：只有非第一项（非当前最新版）才显示还原按钮
+              if (index != 0) 
                 TextButton.icon(
                   onPressed: () => _handleRollback(item['id'], isLocal: item['is_local'] == true),
                   icon: const Icon(Icons.settings_backup_restore, size: 14),
@@ -349,6 +364,4 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
       ],
     );
   }
-  
-  int get index => _history.indexOf(_history.firstWhere((element) => true)); // Helper to find index in itemBuilder
 }

@@ -262,13 +262,21 @@ class DatabaseHelper {
         'remark': beforeData['remark'],
         'is_completed': (beforeData['is_completed'] == 1 || beforeData['is_completed'] == true) ? 1 : 0,
         'due_date': beforeData['due_date'] ?? 0,
+        'created_date': beforeData['created_date'] ?? 0,
+        'group_id': beforeData['group_id'],
+        'team_uuid': beforeData['team_uuid'],
+        'collab_type': beforeData['collab_type'] ?? 0,
+        'is_all_day': (beforeData['is_all_day'] == 1 || beforeData['is_all_day'] == true) ? 1 : 0,
+        'recurrence': beforeData['recurrence'] ?? 0,
+        'reminder_minutes': beforeData['reminder_minutes'] ?? -1,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
-        'version': (beforeData['version'] ?? 0) + 1, // 回滚视为一次新版本更新
+        'version': (beforeData['version'] ?? 0) + 1,
       }, where: 'uuid = ?', whereArgs: [targetUuid]);
     } else if (targetTable == 'countdowns') {
       await db.update('countdowns', {
         'title': beforeData['title'],
         'target_time': beforeData['target_time'],
+        'is_deleted': (beforeData['is_deleted'] == 1 || beforeData['is_deleted'] == true) ? 1 : 0,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
         'version': (beforeData['version'] ?? 0) + 1,
       }, where: 'uuid = ?', whereArgs: [targetUuid]);

@@ -28,6 +28,7 @@ class StorageService {
 
   static String? _lastRecurrenceCheckDate;
   static final Map<String, bool> _recurrenceCheckCache = {};
+  
 
   // --- 常量定义 ---
   static const String KEY_USERS = "users_data";
@@ -186,6 +187,38 @@ class StorageService {
     }
 
     return "$model ($type)";
+  }
+
+  // ==========================================
+  // 基础身份获取 (Auth Identity)
+  // ==========================================
+  static Future<String?> getCurrentUsername() async {
+    final p = await prefs;
+    return p.getString(KEY_CURRENT_USER);
+  }
+
+  static Future<bool> rollbackLocalItem(String table, int logId, String username) async {
+    try {
+      // 1. 执行 SQL 层的物理回滚
+      final success = await DatabaseHelper.instance.rollbackFromLocalLog(logId);
+      if (!success) return false;
+
+      // 2. 🚀 关键：立即从 DB 重载该表的数据并刷新内存/Prefs 缓存
+      if (table == 'todos') {
+        final List<TodoItem> freshTodos = await DatabaseHelper.instance.getTodos();
+        await saveTodos(username, freshTodos, sync: false, isSyncSource: true);
+      } else if (table == 'countdowns') {
+        final List<CountdownItem> freshCds = await DatabaseHelper.instance.getCountdowns();
+        await saveCountdowns(username, freshCds, sync: false, isSyncSource: true);
+      }
+
+      // 3. 触发 UI 刷新信号
+      triggerRefresh();
+      return true;
+    } catch (e) {
+      debugPrint("❌ rollbackLocalItem error: $e");
+      return false;
+    }
   }
 
   static Future<String> getDeviceId() async {
