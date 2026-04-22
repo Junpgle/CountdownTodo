@@ -12,6 +12,9 @@ class TeamGanttWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final datedTodos = todos.where((t) => t.dueDate != null && !t.isDone).toList();
+    // 🚀 按截止时间升序排序，确保甘特图从早到晚排列
+    datedTodos.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+
     if (datedTodos.isEmpty) {
       return const Center(child: Text("暂无带排期的活跃任务", style: TextStyle(fontSize: 10, color: Colors.grey)));
     }

@@ -35,10 +35,13 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
 
   Future<void> _loadAllTeamData() async {
     final todos = await StorageService.getTodos(widget.username);
-    // 过滤并排序：仅显示未完成且未删除的，按更新时间/截止时间排序
+    // 过滤并排序：仅显示未完成且未删除的，按截止时间（优先）或更新时间升序排列（时间轴顺序）
     final filtered = todos.where((t) => !t.isDeleted && !t.isDone).toList();
-    filtered.sort((a, b) => (b.dueDate?.millisecondsSinceEpoch ?? b.updatedAt)
-        .compareTo(a.dueDate?.millisecondsSinceEpoch ?? a.updatedAt));
+    filtered.sort((a, b) {
+      final timeA = a.dueDate?.millisecondsSinceEpoch ?? a.updatedAt;
+      final timeB = b.dueDate?.millisecondsSinceEpoch ?? b.updatedAt;
+      return timeA.compareTo(timeB);
+    });
 
     if (mounted) {
       setState(() {
