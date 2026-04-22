@@ -1092,4 +1092,37 @@ class ApiService {
       return [];
     }
   }
+
+  // ==========================================
+  // 🚀 11. 版本记录与回滚 (History & Rollback)
+  // ==========================================
+
+  static Future<List<dynamic>> fetchItemHistory(String uuid, String table) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/sync/history?uuid=$uuid&table=$table'),
+        headers: _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['history'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> rollbackItem(int logId) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/sync/rollback'),
+        headers: _getHeaders(),
+        body: jsonEncode({'log_id': logId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }

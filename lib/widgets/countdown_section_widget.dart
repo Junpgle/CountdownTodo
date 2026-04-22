@@ -7,6 +7,7 @@ import 'package:CountDownTodo/screens/historical_countdowns_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../widgets/home_sections.dart';
 import '../utils/page_transitions.dart';
+import 'version_history_sheet.dart';
 
 class CountdownSectionWidget extends StatefulWidget {
   final List<CountdownItem> countdowns;
@@ -291,7 +292,9 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
         itemCount: activeCountdowns.length,
         itemBuilder: (context, index) {
           final item = activeCountdowns[index];
-          final diff = item.targetDate.difference(today).inDays;
+          final diff = item.targetDate
+              .difference(today)
+              .inDays;
 
           final bool isUrgent = diff <= 3;
 
@@ -299,7 +302,8 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             final controller = AnimationController(
               duration: const Duration(milliseconds: 800),
               vsync: this,
-            )..repeat(reverse: true);
+            )
+              ..repeat(reverse: true);
             _pulseControllers[item.id] = controller;
           } else if (!isUrgent && _pulseControllers.containsKey(item.id)) {
             _pulseControllers[item.id]?.dispose();
@@ -308,54 +312,70 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
 
           // 核心修复：增加系统级别的深色模式检测
           final bool isDarkTheme =
-              Theme.of(context).brightness == Brightness.dark;
+              Theme
+                  .of(context)
+                  .brightness == Brightness.dark;
           final bool useDarkUI = isDarkTheme || widget.isLight;
 
           final bgColor = useDarkUI
               ? (isUrgent
-                  ? Colors.redAccent.withAlpha((0.25 * 255).round())
-                  : (widget.isLight
-                      ? Colors.white.withAlpha((0.1 * 255).round())
-                      : Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withAlpha((0.5 * 255).round())))
+              ? Colors.redAccent.withAlpha((0.25 * 255).round())
+              : (widget.isLight
+              ? Colors.white.withAlpha((0.1 * 255).round())
+              : Theme
+              .of(context)
+              .colorScheme
+              .surfaceContainerHighest
+              .withAlpha((0.5 * 255).round())))
               : (isUrgent
-                  ? Colors.red.shade50
-                  : Theme.of(context).colorScheme.surface);
+              ? Colors.red.shade50
+              : Theme
+              .of(context)
+              .colorScheme
+              .surface);
 
           final borderColor = useDarkUI
               ? (isUrgent
-                  ? Colors.redAccent.withAlpha((0.5 * 255).round())
-                  : Colors.white.withAlpha((0.15 * 255).round()))
+              ? Colors.redAccent.withAlpha((0.5 * 255).round())
+              : Colors.white.withAlpha((0.15 * 255).round()))
               : (isUrgent
-                  ? Colors.redAccent.withAlpha((0.3 * 255).round())
-                  : Colors.black.withAlpha((0.05 * 255).round()));
+              ? Colors.redAccent.withAlpha((0.3 * 255).round())
+              : Colors.black.withAlpha((0.05 * 255).round()));
 
           final textColor = useDarkUI
               ? Colors.white
-              : Theme.of(context).colorScheme.onSurface;
+              : Theme
+              .of(context)
+              .colorScheme
+              .onSurface;
 
           final subTextColor = useDarkUI
               ? Colors.white70
-              : Theme.of(context).colorScheme.onSurfaceVariant;
+              : Theme
+              .of(context)
+              .colorScheme
+              .onSurfaceVariant;
 
           final accentColor = useDarkUI
               ? (isUrgent ? Colors.redAccent.shade100 : Colors.white)
               : (isUrgent
-                  ? Colors.redAccent
-                  : Theme.of(context).colorScheme.primary);
+              ? Colors.redAccent
+              : Theme
+              .of(context)
+              .colorScheme
+              .primary);
 
           final closeBgColor = useDarkUI
               ? Colors.white.withAlpha((0.15 * 255).round())
-              : Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withAlpha((0.05 * 255).round());
+              : Theme
+              .of(context)
+              .colorScheme
+              .onSurface
+              .withAlpha((0.05 * 255).round());
 
           return AnimatedBuilder(
             animation:
-                _pulseControllers[item.id] ?? const AlwaysStoppedAnimation(0.0),
+            _pulseControllers[item.id] ?? const AlwaysStoppedAnimation(0.0),
             builder: (context, child) {
               if (!isUrgent) return child!;
               final pulse = _pulseControllers[item.id]?.value ?? 0.0;
@@ -387,114 +407,122 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 boxShadow: useDarkUI
                     ? []
                     : [
-                        BoxShadow(
-                          color: Colors.black.withAlpha((0.04 * 255).round()),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        )
-                      ],
+                  BoxShadow(
+                    color: Colors.black.withAlpha((0.04 * 255).round()),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
               ),
               child: Material(
                 color: Colors.transparent,
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              item.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: textColor,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                height: 1.2,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          InkWell(
-                            onTap: () => _deleteCountdown(item),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: closeBgColor,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.close,
-                                size: 12,
-                                color: subTextColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (item.teamUuid != null) ...[
-                        const SizedBox(height: 2), // 🚀 紧凑化
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onLongPress: () =>
+                      VersionHistorySheet.show(
+                          context, item.id, 'countdowns', item.title),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.groups_rounded,
-                                size: 10,
-                                color: accentColor.withOpacity(0.6)),
-                            const SizedBox(width: 3),
                             Expanded(
                               child: Text(
-                                "${item.teamName ?? '团队'} · ${item.creatorName ?? '成员'}",
-                                maxLines: 1,
+                                item.title,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontSize: 8,
-                                  color: subTextColor.withOpacity(0.8),
+                                  color: textColor,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  height: 1.2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => _deleteCountdown(item),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: closeBgColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 12,
+                                  color: subTextColor,
                                 ),
                               ),
                             ),
                           ],
                         ),
-                      ],
-                      const SizedBox(height: 6), // 🚀 取代 Spacer()，提供稳定间距
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            "$diff",
-                            style: TextStyle(
-                              fontSize: 28, // 🚀 稍微缩小，防止垂直挤压
-                              height: 1.0,
-                              fontWeight: FontWeight.bold,
-                              color: accentColor,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4.0),
-                            child: Text(
-                              "天",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: subTextColor,
-                                fontWeight: FontWeight.w500,
+                        if (item.teamUuid != null) ...[
+                          const SizedBox(height: 2), // 🚀 紧凑化
+                          Row(
+                            children: [
+                              Icon(Icons.groups_rounded,
+                                  size: 10,
+                                  color: accentColor.withOpacity(0.6)),
+                              const SizedBox(width: 3),
+                              Expanded(
+                                child: Text(
+                                  "${item.teamName ?? '团队'} · ${item
+                                      .creatorName ?? '成员'}",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    color: subTextColor.withOpacity(0.8),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 2), // 🚀 紧凑化
-                      Text(
-                        "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: subTextColor,
-                          letterSpacing: 0.2,
+                        const SizedBox(height: 6), // 🚀 取代 Spacer()，提供稳定间距
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              "$diff",
+                              style: TextStyle(
+                                fontSize: 28, // 🚀 稍微缩小，防止垂直挤压
+                                height: 1.0,
+                                fontWeight: FontWeight.bold,
+                                color: accentColor,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4.0),
+                              child: Text(
+                                "天",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: subTextColor,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 2), // 🚀 紧凑化
+                        Text(
+                          "目标日: ${DateFormat('yyyy-MM-dd').format(
+                              item.targetDate)}",
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: subTextColor,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

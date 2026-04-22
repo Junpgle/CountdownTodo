@@ -5,6 +5,7 @@ import 'home_sections.dart';
 
 import '../screens/course_screens.dart';
 import '../utils/page_transitions.dart';
+import 'version_history_sheet.dart';
 
 // ─────────────────────────────────────────────
 // HHMM 整数 → 时间字符串  例: 800→"8:00"  950→"9:50"
@@ -431,6 +432,7 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => widget.onTap(_cardKey),
+          onLongPress: () => VersionHistorySheet.show(context, widget.course.uuid, 'courses', widget.course.courseName),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(

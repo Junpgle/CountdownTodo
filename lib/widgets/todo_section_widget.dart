@@ -22,6 +22,7 @@ import 'todo_group_widget.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
 import '../services/pomodoro_sync_service.dart';
+import 'version_history_sheet.dart';
 
 class TodoSectionWidget extends StatefulWidget {
   final List<TodoItem> todos;
@@ -3440,6 +3441,44 @@ class _TodoEditScreenState extends State<_TodoEditScreen> {
              ],
              const SizedBox(height: 24),
           ],
+          const SizedBox(height: 12),
+          const Text("数据存证", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.black.withOpacity(0.04)),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => VersionHistorySheet.show(context, widget.todo.id, 'todos', widget.todo.title),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.history_rounded, color: colorScheme.primary, size: 22),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("版本记录与回滚", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                            Text("追踪修改历史，支持一键恢复至旧版本", style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: Colors.grey.withOpacity(0.5)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 60),
         ]),
       ),
     );
