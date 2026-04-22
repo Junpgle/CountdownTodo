@@ -86,6 +86,7 @@ class HomeAppBar extends StatefulWidget {
   final GlobalKey? settingsKey;
   final GlobalKey? courseKey;
   final bool showCourseButton;
+  final int teamPendingCount; // 🚀 Uni-Sync 4.0: 团队待处理消息数
 
   const HomeAppBar({
     super.key,
@@ -99,6 +100,7 @@ class HomeAppBar extends StatefulWidget {
     this.settingsKey,
     this.courseKey,
     this.showCourseButton = true,
+    this.teamPendingCount = 0,
   });
 
   @override
@@ -139,6 +141,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       {required IconData icon,
       required VoidCallback onPressed,
       bool isLoading = false,
+      int badgeCount = 0,
       Key? buttonKey}) {
     return Container(
       key: buttonKey,
@@ -149,20 +152,40 @@ class _HomeAppBarState extends State<HomeAppBar>
             : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
         shape: BoxShape.circle,
       ),
-      child: IconButton(
-        icon: isLoading
-            ? RotationTransition(
-                turns: _syncRotationController,
-                child: Icon(icon,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          IconButton(
+            icon: isLoading
+                ? RotationTransition(
+                    turns: _syncRotationController,
+                    child: Icon(icon,
+                        color: widget.isLight
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.primary),
+                  )
+                : Icon(icon,
                     color: widget.isLight
                         ? Colors.white
-                        : Theme.of(context).colorScheme.primary),
-              )
-            : Icon(icon,
-                color: widget.isLight
-                    ? Colors.white
-                    : Theme.of(context).colorScheme.onSurface),
-        onPressed: onPressed,
+                        : Theme.of(context).colorScheme.onSurface),
+            onPressed: onPressed,
+          ),
+          if (badgeCount > 0)
+            Positioned(
+              right: 6,
+              top: 6,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                child: Text(
+                  badgeCount > 9 ? '9+' : badgeCount.toString(),
+                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -238,6 +261,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           context,
           icon: Icons.people_rounded,
           onPressed: () => Navigator.pushNamed(context, '/teams'),
+          badgeCount: widget.teamPendingCount,
         ),
         _buildActionButton(
           context,

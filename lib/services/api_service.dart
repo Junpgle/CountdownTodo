@@ -989,4 +989,17 @@ class ApiService {
       return {'success': false, 'error': e.toString()};
     }
   }
+
+  /// 🚀 Uni-Sync 4.0: 获取团队系统消息流
+  static Future<Map<String, dynamic>> fetchTeamSystemMessages(String teamUuid) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/system_messages?team_uuid=$teamUuid'),
+        headers: _getHeaders(),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }

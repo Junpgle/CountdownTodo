@@ -323,13 +323,30 @@ class PomodoroSyncService {
         debugPrint('[PomodoroSync] 🎁 收到新版本推送: ${signal.latestVersion}');
       }
 
+      // 🚀 Uni-Sync 4.0: 团队系统消息处理
+      if (signal.action == 'NEW_JOIN_REQUEST') {
+        debugPrint('[PomodoroSync] 🔔 收到新的团队申请信号');
+        NotificationService.showGenericNotification(
+          title: "新的入队申请",
+          body: signal.delta?['message'] ?? "有人申请加入你的团队，请前往管理界面处理",
+        );
+      }
+
+      if (signal.action == 'TEAM_MEMBER_LEFT') {
+        debugPrint('[PomodoroSync] 👥 成员退出团队信号');
+        NotificationService.showGenericNotification(
+          title: "团队成员变动",
+          body: "有成员退出了你的团队",
+        );
+      }
+
       if (signal.action == 'TEAM_REMOVED' && signal.teamUuid != null) {
         debugPrint('[PomodoroSync] 🧹 收到踢出团队广播，清理本地数据: ${signal.teamUuid}');
         StorageService.clearTeamItems(signal.teamUuid!);
         // 🚀 核心修复：弹出横幅提醒
         NotificationService.showGenericNotification(
           title: "移除团队通知",
-          body: "你已被移出团队: ${signal.teamUuid}",
+          body: "你已被移出团队",
         );
       }
 

@@ -8,6 +8,7 @@ import '../services/pomodoro_sync_service.dart';
 import 'package:intl/intl.dart';
 import './unified_waterfall_screen.dart';
 import './conflict_inbox_screen.dart';
+import './team_message_center_screen.dart';
 
 class TeamManagementScreen extends StatefulWidget {
   final String username;
@@ -353,6 +354,41 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
   void _showSuccessToast(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.green.shade600, behavior: SnackBarBehavior.floating));
   void _showErrorToast(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating));
 
+  Widget _buildMessageCenterAction() {
+    int totalPending = _teamPendingCounts.values.fold(0, (sum, count) => sum + count);
+    return Padding(
+      padding: const EdgeInsets.only(right: 4.0),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.notifications_none_rounded),
+            tooltip: '消息中心',
+            onPressed: () {
+              final managedTeams = _teams.where((t) => t.userRole == TeamRole.admin).toList();
+              Navigator.push(context, MaterialPageRoute(builder: (_) => TeamMessageCenterScreen(managedTeams: managedTeams)));
+            },
+          ),
+          if (totalPending > 0)
+            Positioned(
+              right: 8,
+              top: 12,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                child: Text(
+                  totalPending > 9 ? '9+' : totalPending.toString(),
+                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ============== 核心页面构建 ==============
   @override
   Widget build(BuildContext context) {
@@ -379,6 +415,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
             title: const Text('团队协作', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
             centerTitle: false,
             actions: [
+              _buildMessageCenterAction(),
               Padding(
                 padding: const EdgeInsets.only(right: 8.0),
                 child: IconButton(
@@ -801,53 +838,32 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 40, height: 5,
-                margin: const EdgeInsets.only(bottom: 24),
-                decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-            const Text('邀请新成员', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.copy_rounded, color: Colors.green),
-              ),
-              title: const Text('复制邀请口令', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              subtitle: const Text('发送给微信/QQ好友，对方打开App可自动识别', style: TextStyle(fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () async {
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 24),
+            const Text('邀请新成员', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            _buildInviteOption(
+              icon: Icons.copy_all_rounded,
+              title: '分享邀请码',
+              subtitle: '复制邀请话术发送给好友，点击自动申请',
+              color: Colors.blueAccent,
+              onTap: () {
                 Navigator.pop(context);
-                if (team.inviteCode != null && team.inviteCode!.isNotEmpty) {
-                  final inviteText = '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${team.inviteCode}]';
-                  Clipboard.setData(ClipboardData(text: inviteText));
-                  _showSuccessToast('邀请文案已复制，快去分享吧 📋');
-                } else {
-                  await _handleGenerateCode(team);
-                }
+                final inviteText = '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${team.inviteCode}]';
+                Clipboard.setData(ClipboardData(text: inviteText));
+                _showSuccessToast('邀请文案已复制 📋');
               },
             ),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.email_rounded, color: Colors.blueAccent),
-              ),
-              title: const Text('通过邮箱邀请', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              subtitle: const Text('直接向对方的注册邮箱发送系统邀请', style: TextStyle(fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right_rounded),
+            const SizedBox(height: 12),
+            _buildInviteOption(
+              icon: Icons.alternate_email_rounded,
+              title: '邮件邀请',
+              subtitle: '直接通过账号邮箱添加，无需审核',
+              color: Colors.purpleAccent,
               onTap: () {
                 Navigator.pop(context);
                 _showAddMemberDialog(team);
@@ -859,341 +875,38 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     );
   }
 
-  Future<void> _handleGenerateCode(Team team) async {
-    final res = await ApiService.generateInviteCode(team.uuid);
-    if (res['success'] == true) {
-      final inviteText = '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${res['code']}]';
-      Clipboard.setData(ClipboardData(text: inviteText));
-      _showSuccessToast('新邀请码 ${res['code']} 已生成，包含邀请文案已复制');
-      _loadTeams(); // 刷新数据以显示新邀请码
-    } else {
-      _showErrorToast('生成邀请码失败');
-    }
-  }
-
-  void _confirmDeleteTeam(Team team) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('解散团队')]),
-        content: Text('确定要解散 "${team.name}" 吗？\n\n此操作不可恢复，所有关联的团队任务将转为个人的私有任务。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white, elevation: 0),
-            onPressed: () async {
-              Navigator.pop(context);
-              _showProcessingDialog();
-              final res = await ApiService.deleteTeam(team.uuid);
-              Navigator.pop(context);
-              if (res['success'] == true) {
-                _loadTeams();
-                _showSuccessToast('团队已解散');
-              } else {
-                _showErrorToast(res['error'] ?? '解散失败');
-              }
-            },
-            child: const Text('确认解散'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _confirmLeaveTeam(Team team) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [Icon(Icons.exit_to_app_rounded, color: Colors.orange), SizedBox(width: 8), Text('退出团队')]),
-        content: Text('确定要退出 "${team.name}" 吗？退出后将无法查看该团队的数据。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white, elevation: 0),
-            onPressed: () async {
-              Navigator.pop(context);
-              _showProcessingDialog();
-              final res = await ApiService.leaveTeam(team.uuid);
-              Navigator.pop(context);
-              if (res['success'] == true) {
-                _loadTeams();
-                _showSuccessToast('已成功退出团队');
-              } else {
-                _showErrorToast(res['error'] ?? '退出失败');
-              }
-            },
-            child: const Text('确认退出'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showProcessingDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-  }
-
-  // ============== 成员与审批底部抽屉 ==============
-  void _showMembersSheet(Team team) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.95,
-        minChildSize: 0.5,
-        builder: (context, scrollController) {
-          return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))],
-              ),
-              child: Column(
-                children: [
-                  // 顶部拖拽指示器
-                  Center(
-                    child: Container(
-                      width: 48,
-                      height: 5,
-                      margin: const EdgeInsets.only(top: 12, bottom: 16),
-                      decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Row(
-                      children: [
-                        const Text('团队管理', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.grey.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                          child: Text(team.name, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade700)),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          style: IconButton.styleFrom(backgroundColor: Colors.grey.withOpacity(0.1)),
-                          icon: const Icon(Icons.close_rounded, size: 20),
-                          onPressed: () => Navigator.pop(context),
-                        )
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildMemberSheetTabs(team, scrollController),
-                ],
-              )
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildMemberSheetTabs(Team team, ScrollController scrollController) {
-    final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
-
-    return Expanded(
-      child: DefaultTabController(
-        length: team.userRole == TeamRole.admin ? 2 : 1,
-        child: Column(
+  Widget _buildInviteOption({required IconData icon, required String title, required String subtitle, required Color color, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: color.withOpacity(0.1)),
+          borderRadius: BorderRadius.circular(20),
+          color: color.withOpacity(0.05),
+        ),
+        child: Row(
           children: [
-            TabBar(
-              labelColor: Colors.blueAccent,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.blueAccent,
-              dividerColor: Colors.grey.withOpacity(0.1),
-              indicatorSize: TabBarIndicatorSize.label,
-              tabs: [
-                const Tab(text: '所有成员'),
-                if (team.userRole == TeamRole.admin)
-                  Tab(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text('入队申请'),
-                          if (pendingCount > 0) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(10)),
-                              child: Text('$pendingCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                            )
-                          ]
-                        ],
-                      )
-                  ),
-              ],
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+              child: Icon(icon, color: color, size: 24),
             ),
+            const SizedBox(width: 16),
             Expanded(
-              child: TabBarView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildMembersList(team, scrollController),
-                  if (team.userRole == TeamRole.admin) _buildRequestsList(team, scrollController),
+                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                 ],
               ),
             ),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildMembersList(Team team, ScrollController scrollController) {
-    return FutureBuilder<List<dynamic>>(
-      future: ApiService.fetchTeamMembers(team.uuid),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        final members = snapshot.data?.map((m) => TeamMember.fromJson(m)).toList() ?? [];
-        if (members.isEmpty) return Center(child: Text('暂无成员', style: TextStyle(color: Colors.grey.shade500)));
-
-        return ListView.builder(
-          controller: scrollController,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: members.length,
-          itemBuilder: (context, index) {
-            final member = members[index];
-            final isAdmin = member.role == TeamRole.admin;
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-              leading: CircleAvatar(
-                backgroundColor: Colors.blueAccent.withOpacity(0.1),
-                foregroundColor: Colors.blueAccent,
-                child: Text(_safeFirstChar(member.username)), // 🚀 修复 UTF-16 切片奔溃 Bug
-              ),
-              title: Text(member.username ?? '匿名用户', style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text('加入于 ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(member.joinedAt))}', style: const TextStyle(fontSize: 12)),
-              trailing: isAdmin
-                  ? Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: const Text('管理员', style: TextStyle(fontSize: 11, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-              )
-                  : (team.userRole == TeamRole.admin)
-                  ? IconButton(
-                  icon: const Icon(Icons.person_remove_rounded, color: Colors.redAccent, size: 20),
-                  tooltip: '移除成员',
-                  onPressed: () => _confirmRemoveMember(team, member)
-              )
-                  : null,
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildRequestsList(Team team, ScrollController scrollController) {
-    return FutureBuilder<List<dynamic>>(
-      future: ApiService.fetchPendingRequests(team.uuid),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        final requests = snapshot.data ?? [];
-        if (requests.isEmpty) {
-          return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.check_circle_outline_rounded, size: 48, color: Colors.grey.shade300),
-                  const SizedBox(height: 16),
-                  Text('当前没有待处理的申请', style: TextStyle(color: Colors.grey.shade500)),
-                ],
-              )
-          );
-        }
-
-        return ListView.builder(
-          controller: scrollController,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: requests.length,
-          itemBuilder: (context, index) {
-            final req = requests[index];
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.withOpacity(0.1)),
-              ),
-              child: ListTile(
-                leading: CircleAvatar(
-                    backgroundColor: Colors.orangeAccent.withOpacity(0.1),
-                    foregroundColor: Colors.orangeAccent,
-                    child: Text(_safeFirstChar(req['username'])) // 🚀 修复 UTF-16 切片奔溃 Bug
-                ),
-                title: Text(req['username'] ?? '未知用户', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(req['message'] != null && req['message'].isNotEmpty ? '留言: ${req['message']}' : '申请加入团队', style: const TextStyle(fontSize: 12)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      style: IconButton.styleFrom(backgroundColor: Colors.red.withOpacity(0.1)),
-                      icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 18),
-                      onPressed: () => _handleProcessRequest(team.uuid, req['user_id'], 'reject'),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      style: IconButton.styleFrom(backgroundColor: Colors.green.withOpacity(0.1)),
-                      icon: const Icon(Icons.check_rounded, color: Colors.green, size: 18),
-                      onPressed: () => _handleProcessRequest(team.uuid, req['user_id'], 'approve'),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _handleProcessRequest(String teamUuid, int userId, String action) async {
-    final res = await ApiService.processJoinRequest(teamUuid, userId, action);
-    if (res['success'] == true) {
-      _loadTeams();
-      Navigator.pop(context); // Close sheet
-      _showSuccessToast(action == 'approve' ? '已同意该用户加入团队' : '已拒绝该申请');
-    } else {
-      _showErrorToast(res['error'] ?? '操作失败');
-    }
-  }
-
-  void _confirmRemoveMember(Team team, TeamMember member) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('移除成员'),
-        content: Text('确定要将 "${member.username}" 移出团队吗？此操作不可撤销。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white, elevation: 0),
-            onPressed: () async {
-              Navigator.pop(context); // Close dialog
-              _showProcessingDialog();
-              final res = await ApiService.removeTeamMember(team.uuid, member.userId);
-              Navigator.pop(context); // Close processing
-              if (res['success'] == true) {
-                Navigator.pop(context); // Close sheet
-                _loadTeams();
-                _showSuccessToast('已将该成员移出团队');
-              } else {
-                _showErrorToast(res['error'] ?? '移除失败');
-              }
-            },
-            child: const Text('确定移除'),
-          ),
-        ],
       ),
     );
   }
@@ -1201,21 +914,21 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
   void _showAddMemberDialog(Team team) {
     final controller = TextEditingController();
     _showCustomDialog(
-      title: '邀请新成员',
+      title: '添加团队成员',
       icon: Icons.person_add_rounded,
       content: TextField(
         controller: controller,
         decoration: InputDecoration(
-          hintText: '请输入对方登录邮箱...',
+          hintText: '输入对方的注册邮箱...',
           filled: true,
           fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[100],
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
-        keyboardType: TextInputType.emailAddress,
         autofocus: true,
+        keyboardType: TextInputType.emailAddress,
       ),
-      actionText: '发送邀请',
+      actionText: '添加',
       onAction: (setDialogState) async {
         final email = controller.text.trim();
         if (email.isEmpty) return;
@@ -1225,9 +938,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           if (res['success'] == true) {
             Navigator.pop(context);
             _loadTeams();
-            _showSuccessToast('入队邀请已成功发送 ✨');
+            _showSuccessToast('成员添加成功 ✨');
           } else {
-            _showErrorToast(res['error'] ?? res['message'] ?? '邀请失败');
+            _showErrorToast(res['error'] ?? res['message'] ?? '添加失败');
           }
         } finally {
           if (mounted) setDialogState(() => false);
@@ -1236,13 +949,89 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     );
   }
 
-  // ============== 悬浮菜单 ==============
+  void _showMembersSheet(Team team) async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          child: _TeamMembersView(team: team, scrollController: scrollController, onRefresh: _loadTeams),
+        ),
+      ),
+    );
+  }
+
+  void _handleGenerateCode(Team team) async {
+    final res = await ApiService.generateInviteCode(team.uuid);
+    if (res['success'] == true) {
+      _loadTeams();
+      _showSuccessToast('邀请码已更新 ✨');
+    }
+  }
+
+  void _confirmLeaveTeam(Team team) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('退出团队'),
+        content: Text('确定要退出「${team.name}」吗？退出后将无法查看该团队的协作任务。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final res = await ApiService.leaveTeam(team.uuid);
+              if (res['success'] == true) {
+                _loadTeams();
+                _showSuccessToast('已退出团队');
+              } else {
+                _showErrorToast(res['error'] ?? '退出失败');
+              }
+            },
+            child: const Text('确定退出', style: TextStyle(color: Colors.orange)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteTeam(Team team) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('解散团队'),
+        content: Text('警告：此操作不可逆！解散「${team.name}」将删除所有团队数据并移除所有成员。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final res = await ApiService.deleteTeam(team.uuid);
+              if (res['success'] == true) {
+                _loadTeams();
+                _showSuccessToast('团队已解散');
+              } else {
+                _showErrorToast(res['error'] ?? '解散失败');
+              }
+            },
+            child: const Text('确定解散', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSpeedDial(BuildContext context, bool isDark) {
-    return FloatingActionButton.extended(
-      elevation: 4,
+    return FloatingActionButton(
       backgroundColor: Colors.blueAccent,
-      foregroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       onPressed: () {
         showModalBottomSheet(
           context: context,
@@ -1252,47 +1041,28 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 40, height: 5,
-                    margin: const EdgeInsets.only(bottom: 24),
-                    decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-                const Text('管理团队', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 24),
+                const Text('团队操作', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 24),
                 ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
-                    child: const Icon(Icons.group_add_rounded, color: Colors.blueAccent),
-                  ),
-                  title: const Text('创建新团队', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  subtitle: const Text('成为管理员，邀请他人加入协作', style: TextStyle(fontSize: 12)),
-                  trailing: const Icon(Icons.chevron_right_rounded),
+                  leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, color: Colors.blueAccent)),
+                  title: const Text('创建新团队', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('开启一个全新的协作项目'),
                   onTap: () {
                     Navigator.pop(context);
                     _showCreateTeamDialog();
                   },
                 ),
-                const SizedBox(height: 8),
+                const Divider(),
                 ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.orangeAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
-                    child: const Icon(Icons.link_rounded, color: Colors.orangeAccent),
-                  ),
-                  title: const Text('使用邀请码加入', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  subtitle: const Text('输入由其他人分享的邀请码加入团队', style: TextStyle(fontSize: 12)),
-                  trailing: const Icon(Icons.chevron_right_rounded),
+                  leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.orangeAccent.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.link_rounded, color: Colors.orangeAccent)),
+                  title: const Text('加入已有团队', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('通过邀请码加入其他协作小组'),
                   onTap: () {
                     Navigator.pop(context);
                     _showJoinTeamDialog();
@@ -1303,8 +1073,161 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           ),
         );
       },
-      icon: const Icon(Icons.add_rounded),
-      label: const Text('新建 / 加入', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+      child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+    );
+  }
+}
+
+// ============== 成员列表子视图 ==============
+class _TeamMembersView extends StatefulWidget {
+  final Team team;
+  final ScrollController scrollController;
+  final VoidCallback onRefresh;
+  const _TeamMembersView({required this.team, required this.scrollController, required this.onRefresh});
+
+  @override
+  __TeamMembersViewState createState() => __TeamMembersViewState();
+}
+
+class __TeamMembersViewState extends State<_TeamMembersView> {
+  List<dynamic> _members = [];
+  List<dynamic> _requests = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _loading = true);
+    final members = await ApiService.fetchTeamMembers(widget.team.uuid);
+    List<dynamic> requests = [];
+    if (widget.team.userRole == TeamRole.admin) {
+      requests = await ApiService.fetchPendingRequests(widget.team.uuid);
+    }
+    setState(() {
+      _members = members;
+      _requests = requests;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(2))),
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            children: [
+              const Icon(Icons.manage_accounts_rounded, color: Colors.blueAccent),
+              const SizedBox(width: 12),
+              Text('成员管理 - ${widget.team.name}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              if (!_loading) Text('${_members.length} 人', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+            controller: widget.scrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              if (_requests.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  child: Text('待审批申请', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                ),
+                ..._requests.map((r) => _buildRequestItem(r)),
+                const SizedBox(height: 16),
+                const Divider(),
+              ],
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Text('团队成员', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              ..._members.map((m) => _buildMemberItem(m)),
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRequestItem(dynamic r) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.blueAccent.withOpacity(0.1))),
+      child: Row(
+        children: [
+          CircleAvatar(backgroundColor: Colors.blueAccent.withOpacity(0.1), child: Text(r['username']?[0]?.toUpperCase() ?? '?', style: const TextStyle(color: Colors.blueAccent))),
+          const SizedBox(width: 12),
+          Expanded(child: Text(r['username'] ?? '未知用户', style: const TextStyle(fontWeight: FontWeight.bold))),
+          TextButton(onPressed: () => _handleRequest(r, 'reject'), child: const Text('拒绝', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () => _handleRequest(r, 'approve'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('同意'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMemberItem(dynamic m) {
+    final bool isAdmin = m['role'] == 0;
+    final bool isMe = m['is_me'] == true || m['id'] == ApiService.currentUserId;
+
+    return ListTile(
+      leading: CircleAvatar(backgroundColor: isAdmin ? Colors.blueAccent.withOpacity(0.1) : Colors.grey.withOpacity(0.1), child: Text(m['username']?[0]?.toUpperCase() ?? '?', style: TextStyle(color: isAdmin ? Colors.blueAccent : Colors.grey))),
+      title: Text('${m['username']}${isMe ? ' (我)' : ''}', style: TextStyle(fontWeight: isMe ? FontWeight.bold : FontWeight.normal)),
+      subtitle: Text(isAdmin ? '管理员' : '成员', style: TextStyle(fontSize: 12, color: isAdmin ? Colors.blueAccent : Colors.grey)),
+      trailing: (widget.team.userRole == TeamRole.admin && !isAdmin)
+          ? IconButton(
+        icon: const Icon(Icons.person_remove_rounded, color: Colors.redAccent, size: 20),
+        onPressed: () => _confirmRemoveMember(m),
+      )
+          : null,
+    );
+  }
+
+  Future<void> _handleRequest(dynamic r, String action) async {
+    final res = await ApiService.processJoinRequest(widget.team.uuid, r['user_id'], action);
+    if (res['success'] == true) {
+      _loadData();
+      widget.onRefresh();
+    }
+  }
+
+  void _confirmRemoveMember(dynamic m) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('移除成员'),
+        content: Text('确定要将「${m['username']}」从团队中移除吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final res = await ApiService.removeTeamMember(widget.team.uuid, m['user_id']);
+              if (res['success'] == true) {
+                _loadData();
+                widget.onRefresh();
+              }
+            },
+            child: const Text('移除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 }

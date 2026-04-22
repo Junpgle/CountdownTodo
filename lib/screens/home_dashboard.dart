@@ -140,6 +140,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   PomodoroRunState? _localPomodoro;
   bool _isDataLoading = false; // 🚀 加载锁，防止并发触发导致的数据库竞争
   int _todoUpdateSignal = 0; // 🚀 协同更新信号
+  int _teamPendingCount = 0; // 🚀 Uni-Sync 4.0: 团队待处理消息数
   String? _currentSelectedTeamUuid; // 🚀 选中的团队 ID
   String? _currentSelectedTeamName; // 🚀 选中的团队名称
   Timer? _localPomodoroTicker;
@@ -625,10 +626,15 @@ class _HomeDashboardState extends State<HomeDashboard>
       case 'SYNC_DATA':
       case 'JOIN_REQUEST_APPROVED': 
       case 'TEAM_MEMBER_JOINED':
-      case 'NEW_JOIN_REQUEST':
       case 'NEW_INVITATION':
         debugPrint('🚀 [协同信号] 收到 ${signal.action}, 触发静默同步');
         _debounceCollaborativeSync();
+        break;
+
+      case 'NEW_JOIN_REQUEST':
+      case 'PENDING_COUNTS':
+        debugPrint('🚀 [协同信号] 收到 ${signal.action}, 刷新待处理计数');
+        _fetchTeamPendingCount();
         break;
 
       case 'START':
@@ -1333,6 +1339,28 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
+  /// 🚀 Uni-Sync 4.0: 获取所有团队待处理申请总数
+  Future<void> _fetchTeamPendingCount() async {
+    try {
+      final rawTeams = await ApiService.fetchTeams();
+      int totalPending = 0;
+      
+      // 并发获取各团队待处理数
+      await Future.wait(rawTeams.map((t) async {
+        if (t['role'] == 0) { // 如果是管理员
+          final reqs = await ApiService.fetchPendingRequests(t['uuid']);
+          totalPending += reqs.length;
+        }
+      }));
+
+      if (mounted) {
+        setState(() => _teamPendingCount = totalPending);
+      }
+    } catch (e) {
+      debugPrint('❌ [首页] 获取团队消息计数失败: $e');
+    }
+  }
+
   Future<void> _checkAutoSync({bool force = false}) async {
     // 🛡️ 安全检查：升级引导未完成时禁止任何自动同步
     // 防止用户跳过引导进入主页后，空的本地数据被推送并覆盖云端数据
@@ -1674,6 +1702,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
         // 2. 交互与同步逻辑 (异步执行)
         _syncTodoNotification();
+        _fetchTeamPendingCount(); // 🚀 Uni-Sync 4.0: 加载团队消息计数
         WidgetService.updateTodoWidget(allTodos);
 
         final allCourses = await CourseService.getAllCourses(widget.username);
@@ -2356,6 +2385,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     settingsKey: _settingsButtonKey,
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,
+                    teamPendingCount: _teamPendingCount, // 🚀 绑定计数
                     onSettings: () async {
                       await PageTransitions.pushFromRect(
                         context: context,
