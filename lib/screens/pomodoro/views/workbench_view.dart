@@ -300,6 +300,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 _boundTodo = restoredTodo;
                 _selectedTagUuids = restoredTagUuids;
               });
+              // 🚀 补擦除逻辑：初始状态为闲置
+              _syncService.setLocalFocusing(false);
             }
           }
         } catch (e, st) {}
@@ -559,8 +561,17 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       case 'STOP':
       case 'INTERRUPT':
+      case 'FINISH':
+      case 'CLEAR_FOCUS':
       case 'FOCUS_DISCONNECTED':
+        // 🚀 遵从“本地计时优先”原则：只有在远程观察模式下，才接受外部的停止信号
         if (_phase != PomodoroPhase.remoteWatching) break;
+        
+        // 🚀 精准匹配：如果信号中包含 ID，必须与当前观察的 ID 一致才停止
+        if (signal.sessionUuid != null && _currentSessionUuid != signal.sessionUuid) break;
+        if (signal.todoUuid != null && _boundTodo?.id != signal.todoUuid) break;
+
+        if (_phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished) break;
         _stopRemoteTicker();
         setState(() {
           _phase = PomodoroPhase.idle;
@@ -752,6 +763,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _accumulatedMs = saved.accumulatedMs ?? 0;
           _pauseStartMs = saved.pauseStartMs;
         });
+        _syncService.setLocalFocusing(true);
         widget.onPhaseChanged(_phase);
         _pushPomodoroNotification(overrideRemaining: remaining);
         _showLocalFloat();
@@ -1221,6 +1233,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _remoteState = null;
     });
     _stopRemoteTicker();
+    _syncService.setLocalFocusing(true);
     widget.onPhaseChanged(_phase);
     _pushPomodoroNotification(alertKey: 'pomo_start_$end');
     _showLocalFloat();
@@ -1360,7 +1373,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
-      _syncService.sendStopSignal();
+      _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
       // 🚀 Notify island to switch to idle immediately
       await FloatWindowService.update(endMs: 0, isLocal: true);
 
@@ -1390,7 +1403,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       final isCountUp = _settings.mode == TimerMode.countUp;
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
-      _syncService.sendStopSignal();
+      _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
       // 🚀 Notify island to switch to idle immediately
       await FloatWindowService.update(endMs: 0, isLocal: true);
       await _askCompletionAndRecord(
@@ -1524,6 +1537,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _currentCycle = 1;
         _remainingSeconds = isCountUp ? 0 : _settings.focusMinutes * 60;
       });
+      _syncService.setLocalFocusing(false);
       widget.onPhaseChanged(_phase);
       await _persistIdleBoundTodo(_boundTodo);
       _showLocalFloat();
@@ -1538,6 +1552,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _targetEndMs = end;
       _remainingSeconds = _settings.breakMinutes * 60;
     });
+    _syncService.setLocalFocusing(true);
     widget.onPhaseChanged(_phase);
     _pushPomodoroNotification();
     _showLocalFloat();
@@ -1564,6 +1579,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             ? 0
             : _settings.focusMinutes * 60;
       });
+      _syncService.setLocalFocusing(false);
       widget.onPhaseChanged(_phase);
       PomodoroService.clearRunState();
       await _persistIdleBoundTodo(_boundTodo);
@@ -1610,7 +1626,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         NotificationService.cancelNotification();
         NotificationService.cancelReminder(40001);
         NotificationService.cancelReminder(40002);
-        _syncService.sendStopSignal();
+        _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
         // 🚀 Notify island to switch to idle immediately
         await FloatWindowService.update(endMs: 0, isLocal: true);
         final isCountUpMode = _settings.mode == TimerMode.countUp;
@@ -1619,6 +1635,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _currentCycle = 1;
           _remainingSeconds = isCountUpMode ? 0 : _settings.focusMinutes * 60;
         });
+        _syncService.setLocalFocusing(false);
         widget.onPhaseChanged(_phase);
         _persistIdleBoundTodo(_boundTodo);
         PomodoroService.clearRunState();

@@ -158,6 +158,7 @@ class PomodoroSyncService {
   bool _connecting = false;
   String? _focusSourceDevice;
   DateTime _lastMessageTime = DateTime.now(); // 🚀 新增：记录最后一次收到消息的时间
+  bool _isLocalFocusing = false; // 🚀 新增：本地是否处于专注/休息计时中
 
   // ── 公开广播流 ─────────────────────────────────────────────
   final _stateCtrl = StreamController<CrossDevicePomodoroState>.broadcast();
@@ -275,6 +276,12 @@ class PomodoroSyncService {
 
       _startHeartbeat();
       _subscribeToTeams(); 
+
+      // 🚀 补擦除逻辑：连接成功后，如果本地不是专注发起者且处于空闲，主动上报一次空闲状态
+      // 只有在 _isLocalFocusing 为 false 时才发送，避免干扰当前正在进行的计时
+      if (!_isLocalFocusing) {
+        _reportIdleStatus();
+      }
     } catch (e) {
       debugPrint('[PomodoroSync] ❌ 连接失败: $e');
       _setConnState(SyncConnectionState.error);
@@ -411,7 +418,22 @@ class PomodoroSyncService {
     });
   }
 
-  void sendStopSignal() => _send({'action': 'STOP'});
+  void sendStopSignal({String? todoUuid, String? sessionUuid}) => _send({
+        'action': 'STOP',
+        if (todoUuid != null) 'todo_uuid': todoUuid,
+        if (sessionUuid != null) 'session_uuid': sessionUuid,
+      });
+
+  /// 🚀 新增：上报本地空闲状态（用于重连后的补擦除）
+  void _reportIdleStatus() {
+    _send({'action': 'IDLE_REPORT'});
+  }
+
+  /// 🚀 新增：设置本地专注状态标签，由 WorkbenchView 维护
+  void setLocalFocusing(bool focusing) {
+    _isLocalFocusing = focusing;
+    debugPrint('[PomodoroSync] 更新本地专注状态标签: $focusing');
+  }
 
   void sendSwitchSignal(
       {required String? todoUuid,

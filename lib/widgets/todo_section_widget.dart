@@ -21,6 +21,7 @@ import 'home_sections.dart';
 import 'todo_group_widget.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
+import '../services/pomodoro_sync_service.dart';
 
 class TodoSectionWidget extends StatefulWidget {
   final List<TodoItem> todos;
@@ -1722,7 +1723,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                   }
                                                 });
                                                 
-                                                todo.markAsChanged();
+                                                 if (val) {
+                                                   PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+                                                 }
+                                                 todo.markAsChanged();
                                                 List<TodoItem> updatedList = List.from(widget.todos);
                                                 // 排序以将已完成移到底部
                                                 updatedList.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
@@ -2075,6 +2079,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             widget.onGroupsChanged(widget.todoGroups);
           },
           onTodoToggle: (todo) {
+            if (!todo.isDone) {
+               // 这里是取反前的判断，逻辑上是即将变为 Done
+               PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+            }
             todo.isDone = !todo.isDone;
             todo.markAsChanged();
             widget.onTodosChanged(widget.todos);
@@ -2121,6 +2129,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           onTodoTap: (todo) => _editTodo(todo, context),
           onTodoDelete: (todo) async {
             setState(() {
+              // 🚀 跨端联动：删除任务即刻终止番茄钟
+              PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
               todo.isDeleted = true;
               todo.markAsChanged();
             });

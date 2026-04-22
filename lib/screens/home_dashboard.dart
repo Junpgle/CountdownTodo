@@ -1444,6 +1444,12 @@ class _HomeDashboardState extends State<HomeDashboard>
       _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
     });
 
+    // 🚀 跨端联动：完成待办的同时，告知云端停止对应的番茄钟（如果有设备在观察的话）
+    PomodoroSyncService().sendStopSignal(
+      todoUuid: currentTodo!.id,
+      sessionUuid: _localPomodoro?.sessionUuid,
+    );
+    
     // 🚀 Uni-Sync 4.0 优化：改用单条原子化更新，性能提升显著
     await StorageService.updateSingleTodo(widget.username, currentTodo!);
 
