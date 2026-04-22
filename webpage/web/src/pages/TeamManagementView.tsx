@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Plus, LogOut, Trash2, X, User,
   Link as LinkIcon, ChevronRight, Loader2, AlertCircle,
-  MessageSquare, UserPlus, ShieldCheck, Search
+  MessageSquare, UserPlus, ShieldCheck, Search,
+  Megaphone, Clock, Calendar, Eye, Activity, History
 } from 'lucide-react';
 import { ApiService } from '../services/api';
-import type { Team, TeamMember, JoinRequest, User as UserType } from '../types';
+import type { Team, TeamMember, JoinRequest, User as UserType, TeamAnnouncement } from '../types';
 
 interface TeamManagementViewProps {
   user: UserType;
@@ -26,7 +27,17 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
   const [inviteCode, setInviteCode] = useState('');
   
   const [actionLoading, setActionLoading] = useState(false);
-  const [, setError] = useState('');
+  const [error, setError] = useState('');
+  
+  // Announcements
+  const [announcements, setAnnouncements] = useState<TeamAnnouncement[]>([]);
+  const [showAnnounceModal, setShowAnnounceModal] = useState(false);
+  const [newAnnTitle, setNewAnnTitle] = useState('');
+  const [newAnnContent, setNewAnnContent] = useState('');
+  const [isPriority, setIsPriority] = useState(false);
+  
+  // Activity Logs
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
 
   useEffect(() => {
     fetchInitialData();
@@ -35,6 +46,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
   useEffect(() => {
     if (activeTeamId) {
       fetchTeamDetails(activeTeamId);
+      fetchAnnouncements(activeTeamId);
+      fetchActivityLogs(activeTeamId);
     }
   }, [activeTeamId]);
 
@@ -64,6 +77,24 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       }
     } catch (e: any) {
       console.error('获取团队详情失败', e);
+    }
+  };
+
+  const fetchAnnouncements = async (teamUuid: string) => {
+    try {
+      const res = await ApiService.request(`/api/teams/announcements?team_uuid=${teamUuid}`);
+      if (res.success) setAnnouncements(res.announcements);
+    } catch (e) {
+      console.error('获取公告失败', e);
+    }
+  };
+
+  const fetchActivityLogs = async (teamUuid: string) => {
+    try {
+      const res = await ApiService.request(`/api/teams/system_messages?team_uuid=${teamUuid}`);
+      if (res.success) setActivityLogs(res.messages);
+    } catch (e) {
+      console.error('获取动态失败', e);
     }
   };
 
@@ -183,6 +214,61 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       }
     } catch (e: any) {
       alert(e.message);
+    }
+  };
+
+  const handlePostAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeTeamId || !newAnnTitle.trim() || !newAnnContent.trim()) return;
+    setActionLoading(true);
+    try {
+      const res = await ApiService.request('/api/teams/announcements/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          team_uuid: activeTeamId,
+          title: newAnnTitle,
+          content: newAnnContent,
+          is_priority: isPriority
+        })
+      });
+      if (res.success) {
+        setNewAnnTitle('');
+        setNewAnnContent('');
+        setIsPriority(false);
+        setShowAnnounceModal(false);
+        fetchAnnouncements(activeTeamId);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (annUuid: string) => {
+    if (!window.confirm('确定要撤回该公告吗？')) return;
+    try {
+      const res = await ApiService.request('/api/teams/announcements/delete', {
+        method: 'POST',
+        body: JSON.stringify({ announcement_uuid: annUuid })
+      });
+      if (res.success && activeTeamId) {
+        fetchAnnouncements(activeTeamId);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleReadAnnouncement = async (annUuid: string) => {
+    try {
+      await ApiService.request('/api/teams/announcements/read', {
+        method: 'POST',
+        body: JSON.stringify({ announcement_uuid: annUuid })
+      });
+      if (activeTeamId) fetchAnnouncements(activeTeamId);
+    } catch (e) {
+      console.error('标记已读失败', e);
     }
   };
 
@@ -349,14 +435,96 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
               </div>
 
               {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto p-8 flex flex-col lg:flex-row gap-8">
-                {/* Members List */}
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                      <ShieldCheck className="w-5 h-5 text-indigo-500" /> 团队成员
-                    </h3>
+              <div className="flex-1 overflow-y-auto p-8 flex flex-col xl:flex-row gap-8">
+                {/* Center Column: Announcements & Members */}
+                <div className="flex-1 space-y-10">
+                  {/* Announcements Section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                        <Megaphone className="w-5 h-5 text-indigo-500" /> 团队公告
+                      </h3>
+                      {activeTeam?.role === 0 && (
+                        <button 
+                          onClick={() => setShowAnnounceModal(true)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-100 transition"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> 发布新公告
+                        </button>
+                      )}
+                    </div>
+
+                    {announcements.length === 0 ? (
+                      <div className="bg-slate-50 border border-dashed border-slate-200 rounded-3xl p-12 text-center">
+                        <Megaphone className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">暂无公告</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {announcements.map(ann => (
+                          <div 
+                            key={ann.uuid} 
+                            className={`p-6 rounded-[2rem] border transition-all ${
+                              ann.is_priority 
+                                ? 'bg-indigo-50/50 border-indigo-100 shadow-sm' 
+                                : 'bg-white border-slate-100'
+                            } ${!ann.is_read ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
+                          >
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex items-center gap-2">
+                                {ann.is_priority && (
+                                  <span className="px-2 py-0.5 bg-rose-500 text-white rounded-lg text-[9px] font-black uppercase tracking-wider animate-pulse">重要</span>
+                                )}
+                                <h4 className="text-base font-black text-slate-800">{ann.title}</h4>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {!ann.is_read && (
+                                  <button 
+                                    onClick={() => handleReadAnnouncement(ann.uuid)}
+                                    className="px-2 py-1 bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-black hover:bg-indigo-200 transition uppercase"
+                                  >
+                                    标记已读
+                                  </button>
+                                )}
+                                {activeTeam?.role === 0 && (
+                                  <button 
+                                    onClick={() => handleDeleteAnnouncement(ann.uuid)}
+                                    className="p-1.5 text-slate-300 hover:text-red-500 transition"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-sm text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{ann.content}</p>
+                            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-slate-50">
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                <Clock className="w-3.5 h-3.5" />
+                                {new Date(ann.created_at).toLocaleString()}
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                <User className="w-3.5 h-3.5" />
+                                {ann.creator_name}
+                              </div>
+                              {ann.is_read ? (
+                                <div className="flex items-center gap-1.5 text-[10px] font-black text-green-500 uppercase tracking-widest">
+                                  <ShieldCheck className="w-3.5 h-3.5" />
+                                  已读
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-500 uppercase tracking-widest">
+                                  <AlertCircle className="w-3.5 h-3.5" />
+                                  未读
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Members List */}
                   <div className="space-y-3">
                     {teamMembers.map(member => (
                       <div key={member.user_id} className="flex items-center justify-between p-4 bg-slate-50/50 hover:bg-slate-50 border border-slate-100 rounded-2xl transition">
@@ -476,6 +644,30 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
                       </p>
                     </div>
                   </div>
+
+                  {/* Recent Activity */}
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 flex items-center gap-2 mb-6">
+                      <Activity className="w-5 h-5 text-orange-500" /> 最近动态
+                    </h3>
+                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      {activityLogs.length === 0 ? (
+                        <p className="text-[10px] font-bold text-slate-400 text-center py-8 uppercase tracking-widest">暂无动态</p>
+                      ) : (
+                        activityLogs.map((log, idx) => (
+                          <div key={idx} className="flex gap-3 items-start group">
+                            <div className="w-1 bg-slate-100 group-hover:bg-indigo-500 transition-colors h-12 rounded-full mt-1 shrink-0" />
+                            <div>
+                              <p className="text-xs font-bold text-slate-800 leading-snug">{log.message}</p>
+                              <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-tighter">
+                                {new Date(log.timestamp).toLocaleTimeString()} · {log.username}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -484,6 +676,59 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       </div>
 
       {/* Modals */}
+      {showAnnounceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={() => setShowAnnounceModal(false)} />
+          <form 
+            onSubmit={handlePostAnnouncement}
+            className="w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-2xl relative animate-in zoom-in-95 duration-200"
+          >
+            <h3 className="text-2xl font-black text-slate-800 mb-6">发布团队公告</h3>
+            <div className="space-y-4">
+              <input
+                type="text"
+                required
+                placeholder="公告标题"
+                value={newAnnTitle}
+                onChange={e => setNewAnnTitle(e.target.value)}
+                className="w-full bg-slate-50 border-2 border-slate-100 px-6 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all text-slate-900 font-bold"
+                autoFocus
+              />
+              <textarea
+                required
+                placeholder="公告内容..."
+                rows={4}
+                value={newAnnContent}
+                onChange={e => setNewAnnContent(e.target.value)}
+                className="w-full bg-slate-50 border-2 border-slate-100 px-6 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all text-slate-900 font-medium resize-none"
+              />
+              <label className="flex items-center gap-3 px-2 py-1 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={isPriority} 
+                  onChange={e => setIsPriority(e.target.checked)}
+                  className="w-5 h-5 rounded-lg border-2 border-slate-200 text-indigo-600 focus:ring-indigo-500 transition-all cursor-pointer"
+                />
+                <span className="text-sm font-black text-slate-600 group-hover:text-indigo-600 transition-colors uppercase tracking-wider">标记为重要公告 (首页置顶)</span>
+              </label>
+              <button
+                disabled={actionLoading}
+                type="submit"
+                className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl mt-4 hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-xl shadow-indigo-100 disabled:opacity-50 flex items-center justify-center gap-3 text-lg"
+              >
+                {actionLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : '立即发布'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAnnounceModal(false)}
+                className="w-full py-4 text-slate-400 font-bold hover:text-slate-600"
+              >
+                取 消
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={() => setShowCreateModal(false)} />

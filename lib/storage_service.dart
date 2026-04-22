@@ -429,6 +429,11 @@ class StorageService {
         });
       }
 
+      // 🚀 Uni-Sync 4.0: 记录本地审计日志 (离线版本记录)
+      if (!isSyncSource) {
+        _recordLocalAudit('countdowns', item.id, item.toJson(), item.teamUuid);
+      }
+
       batch.insert('countdowns', {
         'uuid': item.id,
         'team_uuid': item.teamUuid,
@@ -440,7 +445,9 @@ class StorageService {
         'is_deleted': item.isDeleted ? 1 : 0,
         'version': item.version,
         'updated_at': item.updatedAt,
-        'created_at': item.createdAt
+        'created_at': item.createdAt,
+        'has_conflict': item.hasConflict ? 1 : 0,
+        'conflict_data': item.conflictData != null ? jsonEncode(item.conflictData) : null,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
@@ -503,6 +510,8 @@ class StorageService {
           teamName: m['team_name'],
           creatorId: m['creator_id'],
           creatorName: m['creator_name'],
+          hasConflict: m['has_conflict'] == 1,
+          conflictData: m['conflict_data'] != null ? jsonDecode(m['conflict_data']) : null,
         ))
             .toList();
       }
@@ -578,6 +587,11 @@ class StorageService {
           'is_synced': 0
         });
       }
+      // 🚀 Uni-Sync 4.0: 记录本地审计日志 (离线版本记录)
+      if (!isSyncSource) {
+        _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid);
+      }
+
       batch.insert('todos', {
         'uuid': item.id,
         'content': item.title,
@@ -601,12 +615,58 @@ class StorageService {
         // 🚀 核心防御：提供 0 兜底，防止 SQLite NOT NULL 报错
         'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
         'reminder_minutes': item.reminderMinutes ?? -1,
+        'is_all_day': item.isAllDay ? 1 : 0,
+        'has_conflict': item.hasConflict ? 1 : 0,
+        'conflict_data': item.serverVersionData != null ? jsonEncode(item.serverVersionData) : null,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
 
     if (sync) Future.microtask(() => syncData(username));
     Future.microtask(() => _syncTodosToBand(items));
+  }
+
+
+  /// 🚀 Uni-Sync 4.0: 辅助方法 - 记录本地审计快照
+  static Future<void> _recordLocalAudit(String table, String uuid, Map<String, dynamic> afterData, String? teamUuid) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      // 1. 获取旧数据快照
+      final List<Map<String, dynamic>> existing = await db.query(table, where: 'uuid = ?', whereArgs: [uuid]);
+      Map<String, dynamic>? beforeData = existing.isNotEmpty ? Map<String, dynamic>.from(existing.first) : null;
+      Map<String, dynamic> enrichedAfter = Map<String, dynamic>.from(afterData);
+
+      // 🚀 核心优化：本地名称解析 - 让离线历史也显示人类可读的名称
+      Future<String?> lookupName(String targetTable, String? targetUuid) async {
+        if (targetUuid == null || targetUuid.isEmpty) return null;
+        final List<Map<String, dynamic>> res = await db.query(targetTable, 
+            columns: ['name'], where: 'uuid = ?', whereArgs: [targetUuid]);
+        return res.isNotEmpty ? res.first['name'] as String? : null;
+      }
+
+      // 补全 before_data 的名称
+      if (beforeData != null) {
+        if (beforeData['group_id'] != null) beforeData['group_name'] = await lookupName('todo_groups', beforeData['group_id']);
+        if (beforeData['team_uuid'] != null) beforeData['team_name'] = await lookupName('teams', beforeData['team_uuid']);
+      }
+      // 补全 after_data 的名称
+      if (enrichedAfter['group_id'] != null) enrichedAfter['group_name'] = await lookupName('todo_groups', enrichedAfter['group_id']);
+      if (enrichedAfter['team_uuid'] != null) enrichedAfter['team_name'] = await lookupName('teams', enrichedAfter['team_uuid']);
+
+      // 2. 存入本地审计表
+      await DatabaseHelper.instance.insertLocalAuditLog(
+        userId: ApiService.currentUserId ?? 0,
+        targetTable: table,
+        targetUuid: uuid,
+        opType: beforeData == null ? 'INSERT' : 'UPDATE',
+        beforeData: beforeData,
+        afterData: enrichedAfter,
+        teamUuid: teamUuid,
+        operatorName: '本人(离线)',
+      );
+    } catch (e) {
+      debugPrint("⚠️ 记录本地审计失败: $e");
+    }
   }
 
   static Future<void> _syncTodosToBand(List<TodoItem> items) async {

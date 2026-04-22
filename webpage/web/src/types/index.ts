@@ -119,3 +119,27 @@ export interface JoinRequest {
   requested_at: number;
   team_name?: string; // For invitations
 }
+
+export interface TeamAnnouncement {
+  uuid: string;
+  team_uuid: string;
+  creator_id: number;
+  creator_name?: string;
+  title: string;
+  content: string;
+  is_priority: boolean | number;
+  expires_at: number | null;
+  created_at: number;
+  updated_at: number;
+  is_read?: boolean | number;
+}
+
+export interface AnnouncementStats {
+  total_members: number;
+  read_count: number;
+  read_rate: number;
+  read_members: Array<{
+    username: string;
+    read_at: number;
+  }>;
+}

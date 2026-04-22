@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 // ==========================================
 // 1. 测验相关 (完整保留原有逻辑)
@@ -137,6 +138,7 @@ class TodoItem {
   int collabType; // 🚀 0: 所有人共同协作, 1: 每个人独立完成
   bool hasConflict; 
   Map<String, dynamic>? serverVersionData; 
+  bool isAllDay; 
 
   TodoItem({
     String? id,
@@ -163,6 +165,7 @@ class TodoItem {
     this.collabType = 0,
     this.hasConflict = false,
     this.serverVersionData,
+    this.isAllDay = false,
   })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -204,6 +207,9 @@ class TodoItem {
         'creator_name': creatorName,
         'team_name': teamName,
         'collab_type': collabType,
+        'is_all_day': isAllDay ? 1 : 0,
+        'has_conflict': hasConflict ? 1 : 0,
+        'conflict_data': serverVersionData != null ? jsonEncode(serverVersionData) : null,
       };
 
   factory TodoItem.fromJson(Map<String, dynamic> json) {
@@ -259,6 +265,9 @@ class TodoItem {
       creatorName: json['creator_name'] ?? json['creatorName'],
       teamName: json['team_name'] ?? json['teamName'],
       collabType: json['collab_type'] ?? json['collabType'] ?? 0,
+      isAllDay: json['is_all_day'] == 1 || json['isAllDay'] == true,
+      hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
+      serverVersionData: json['conflict_data'] != null ? (json['conflict_data'] is String ? jsonDecode(json['conflict_data']) : json['conflict_data']) : null,
     );
   }
 
@@ -305,6 +314,8 @@ class CountdownItem {
   String? teamName;
   String? creatorId;
   String? creatorName;
+  bool hasConflict;
+  Map<String, dynamic>? conflictData;
 
   CountdownItem({
     String? id,
@@ -318,6 +329,8 @@ class CountdownItem {
     this.teamName,
     this.creatorId,
     this.creatorName,
+    this.hasConflict = false,
+    this.conflictData,
   })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -341,6 +354,8 @@ class CountdownItem {
         'team_name': teamName,
         'creator_id': creatorId,
         'creator_name': creatorName,
+        'has_conflict': hasConflict ? 1 : 0,
+        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
       };
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) {
@@ -368,6 +383,8 @@ class CountdownItem {
       teamName: json['team_name'] ?? json['teamName'],
       creatorId: json['creator_id'] ?? json['creatorId'],
       creatorName: json['creator_name'] ?? json['creatorName'],
+      hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
+      conflictData: json['conflict_data'] != null ? (json['conflict_data'] is String ? jsonDecode(json['conflict_data']) : json['conflict_data']) : null,
     );
   }
 }

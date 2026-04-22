@@ -48,12 +48,12 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
     }
   }
 
-  Future<void> _handleRollback(int logId) async {
+  Future<void> _handleRollback(dynamic logId, {bool isLocal = false}) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('确认回滚'),
-        content: const Text('确定要将该项恢复至此历史版本吗？回滚操作将同步至所有设备。'),
+        title: Text(isLocal ? '确认本地回滚' : '确认云端回滚'),
+        content: Text(isLocal ? '确定要恢复至本地暂存的此版本吗？' : '确定要将该项恢复至此历史版本吗？回滚操作将同步至所有设备。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确认回滚')),
@@ -62,7 +62,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
     );
 
     if (confirmed == true) {
-      final res = await ApiService.rollbackItem(logId);
+      final res = await ApiService.rollbackItem(logId, isLocal: isLocal);
       if (res['success'] == true) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -224,10 +224,20 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
               ),
               const SizedBox(width: 8),
               Text(operator, style: const TextStyle(fontWeight: FontWeight.w500)),
+              if (item['is_local'] == true)
+                Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text('本地', style: TextStyle(fontSize: 9, color: colorScheme.onSecondaryContainer)),
+                ),
               const Spacer(),
               if (opType != 'INSERT' && index != 0) // 第一个记录或新增记录通常不回滚
                 TextButton.icon(
-                  onPressed: () => _handleRollback(item['id']),
+                  onPressed: () => _handleRollback(item['id'], isLocal: item['is_local'] == true),
                   icon: const Icon(Icons.settings_backup_restore, size: 14),
                   label: const Text('还原此版本', style: TextStyle(fontSize: 12)),
                   style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
@@ -246,19 +256,49 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
   Widget _buildDataDiff(dynamic before, dynamic after) {
     if (after == null) return const SizedBox();
     
-    // 提取关键变化（如标题、状态）
     final List<Widget> changes = [];
     
-    void addChange(String label, dynamic bVal, dynamic aVal) {
-      if (bVal != aVal) {
+    String formatTime(dynamic val) {
+      if (val == null || val == 0) return '无';
+      try {
+        final dt = DateTime.fromMillisecondsSinceEpoch(val is String ? int.parse(val) : val);
+        return DateFormat('MM-dd HH:mm').format(dt);
+      } catch (_) { return val.toString(); }
+    }
+
+    String getRecurrenceName(int index) {
+      const names = ['不重复', '每天', '自定义天数', '每周', '每月', '每年', '工作日'];
+      if (index >= 0 && index < names.length) return names[index];
+      return '未知';
+    }
+    
+    void addChange(String label, dynamic bVal, dynamic aVal, {String Function(dynamic, dynamic)? contextFormatter}) {
+      final formattedB = contextFormatter != null ? contextFormatter(bVal, before) : (bVal?.toString() ?? '无');
+      final formattedA = contextFormatter != null ? contextFormatter(aVal, after) : (aVal?.toString() ?? '无');
+
+      if (formattedB != formattedA) {
         changes.add(Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Row(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('$label: ', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              Text('$bVal', style: const TextStyle(fontSize: 12, decoration: TextDecoration.lineThrough)),
-              const Icon(Icons.arrow_right_alt, size: 14, color: Colors.grey),
-              Text('$aVal', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(formattedB, 
+                      style: const TextStyle(fontSize: 12, decoration: TextDecoration.lineThrough, color: Colors.grey),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  const Icon(Icons.arrow_right_alt, size: 14, color: Colors.grey),
+                  Expanded(
+                    child: Text(formattedA, 
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
             ],
           ),
         ));
@@ -266,20 +306,45 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
     }
 
     if (widget.table == 'todos') {
-      addChange('内容', before?['content'] ?? '空', after['content']);
+      addChange('内容', before?['content'], after['content']);
+      addChange('备注', before?['remark'], after['remark']);
+      addChange('截止时间', before?['due_date'], after['due_date'], contextFormatter: (v, ctx) => formatTime(v));
+      addChange('开始时间', before?['created_date'], after['created_date'], contextFormatter: (v, ctx) => formatTime(v));
+      addChange('重复规则', before?['recurrence'] ?? 0, after['recurrence'] ?? 0, contextFormatter: (v, ctx) => getRecurrenceName(v as int));
+      addChange('全天事件', before?['is_all_day'] ?? 0, after['is_all_day'] ?? 0, contextFormatter: (v, ctx) => v == 1 ? '是' : '否');
+      
+      // 🚀 优化：使用 context 准确获取对应快照中的名称
+      addChange('文件夹', before?['group_id'], after['group_id'], 
+        contextFormatter: (v, ctx) => (v == null || v == '') ? '未分组' : (ctx?['group_name'] ?? v.toString()));
+      
+      addChange('团队归属', before?['team_uuid'], after['team_uuid'], 
+        contextFormatter: (v, ctx) => (v == null || v == '') ? '个人' : (ctx?['team_name'] ?? v.toString()));
+        
+      addChange('协作方式', before?['collab_type'] ?? 0, after['collab_type'] ?? 0, 
+        contextFormatter: (v, ctx) => v == 1 ? '每个人独立完成' : '全员共同协作');
+
       if (before?['is_completed'] != after['is_completed']) {
-        addChange('状态', (before?['is_completed'] == 1) ? '已完成' : '待办', (after['is_completed'] == 1) ? '已完成' : '待办');
+        addChange('状态', before?['is_completed'], after['is_completed'], contextFormatter: (v, ctx) => v == 1 ? '已完成' : '待办');
+      }
+      if (before?['is_deleted'] != after['is_deleted']) {
+        addChange('删除状态', before?['is_deleted'], after['is_deleted'], contextFormatter: (v, ctx) => v == 1 ? '已删除' : '正常');
       }
     } else if (widget.table == 'countdowns') {
-      addChange('标题', before?['title'] ?? '空', after['title']);
+      addChange('标题', before?['title'], after['title']);
+      addChange('目标时间', before?['target_time'], after['target_time'], contextFormatter: (v, ctx) => formatTime(v));
     }
 
-    if (changes.isEmpty) return const SizedBox();
+    if (changes.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Text('数据无实质性变更', style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(height: 16),
+        const Divider(height: 24),
         ...changes,
       ],
     );

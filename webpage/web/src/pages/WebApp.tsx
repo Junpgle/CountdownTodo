@@ -3,11 +3,11 @@ import {
   ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
   User as UserIcon, Calendar, AlertCircle, Users as UsersIcon, RotateCcw, Bell,
-  MessageSquare, Shield
+  MessageSquare, Shield, Megaphone, Info
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiService } from '../services/api';
-import type { TodoItem, CountdownItem, User, TodoGroup, Team } from '../types';
+import type { TodoItem, CountdownItem, User, TodoGroup, Team, TeamAnnouncement } from '../types';
 
 import {
   CURRENT_WEB_VERSION,
@@ -62,13 +62,18 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
   // --- 网页版版本更新检查状态 ---
   const [updateInfo, setUpdateInfo] = useState<{ version: string, title: string, desc: string } | null>(null);
+  const [priorityAnns, setPriorityAnns] = useState<TeamAnnouncement[]>([]);
 
   useEffect(() => {
     loadLocalData();
     handleSync();
     fetchUserTeams();
-
-    const timer = setInterval(() => setNowMs(Date.now()), 60000);
+    fetchPriorityAnns();
+    
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+      fetchPriorityAnns(); // Periodically check for important announcements
+    }, 60000);
 
     // 检查网页版更新
     const checkWebUpdate = async () => {
@@ -100,6 +105,29 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
         setUserTeams(res.teams as Team[]);
       }
     } catch (e) {}
+  };
+
+  const fetchPriorityAnns = async () => {
+    try {
+      const res = await ApiService.request('/api/teams/announcements/unread_priority');
+      if (res.success) {
+        setPriorityAnns(res.announcements);
+      }
+    } catch (e) {
+      console.error('获取重要公告失败', e);
+    }
+  };
+
+  const markAnnRead = async (annUuid: string) => {
+    try {
+      await ApiService.request('/api/teams/announcements/read', {
+        method: 'POST',
+        body: JSON.stringify({ announcement_uuid: annUuid })
+      });
+      setPriorityAnns(prev => prev.filter(a => a.uuid !== annUuid));
+    } catch (e) {
+      console.error('标记已读失败', e);
+    }
   };
 
   const loadLocalData = () => {
@@ -731,7 +759,49 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   );
 
   const renderDashboard = () => (
-      <div className="flex flex-col lg:flex-row gap-6 h-full flex-1 min-h-0 animate-in fade-in duration-300">
+      <div className="flex flex-col h-full flex-1 min-h-0 animate-in fade-in duration-300">
+        {/* Priority Announcements Bar */}
+        {priorityAnns.length > 0 && (
+          <div className="mb-6 space-y-2">
+            {priorityAnns.map(ann => (
+              <div 
+                key={ann.uuid} 
+                className="bg-indigo-600 text-white px-6 py-4 rounded-3xl shadow-xl shadow-indigo-100 flex items-center justify-between group animate-in slide-in-from-top-4"
+              >
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+                    <Megaphone className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-lg">重要通知</span>
+                      <span className="text-[10px] font-bold opacity-60 uppercase">{ann.team_name}</span>
+                    </div>
+                    <p className="text-sm font-black truncate mt-0.5">{ann.title}</p>
+                    <p className="text-xs opacity-80 truncate">{ann.content.substring(0, 100)}...</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button 
+                    onClick={() => markAnnRead(ann.uuid)}
+                    className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-50 transition uppercase tracking-widest"
+                  >
+                    知晓并忽略
+                  </button>
+                  <button 
+                    onClick={() => setCurrentTab('teams')}
+                    className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition"
+                    title="查看详情"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-col lg:flex-row gap-6 h-full flex-1 min-h-0">
         {/* 左半部分：自适应周视图 */}
         <div className="w-full lg:w-1/2 flex flex-col shrink-0 lg:shrink h-auto lg:h-full min-h-[500px] lg:min-h-0">
           <CourseView userId={user.id} todos={todos} countdowns={countdowns} />
@@ -950,6 +1020,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
             </div>
 
           </div>
+        </div>
         </div>
       </div>
   );

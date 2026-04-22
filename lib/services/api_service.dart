@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'database_helper.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
@@ -1098,22 +1100,54 @@ class ApiService {
   // ==========================================
 
   static Future<List<dynamic>> fetchItemHistory(String uuid, String table) async {
+    List<dynamic> combinedHistory = [];
+    
+    // 1. 尝试获取云端历史
     try {
       final response = await _client.get(
         Uri.parse('$_effectiveBaseUrl/api/sync/history?uuid=$uuid&table=$table'),
         headers: _getHeaders(),
-      );
+      ).timeout(const Duration(seconds: 3));
+      
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['history'] ?? [];
+        combinedHistory.addAll(data['history'] ?? []);
       }
-      return [];
     } catch (e) {
-      return [];
+      debugPrint("🌐 云端历史不可用，切换至纯本地模式: $e");
     }
+
+    // 2. 获取本地历史并合并
+    try {
+      final localLogs = await DatabaseHelper.instance.getLocalAuditLogs(uuid, table);
+      for (var log in localLogs) {
+        // 转换本地格式为 UI 统一格式
+        combinedHistory.add({
+          'id': log['id'], // 注意：本地 ID 可能是 int
+          'is_local': true, // 标记为本地记录
+          'op_type': log['op_type'],
+          'before_data': log['before_data'] != null ? jsonDecode(log['before_data']) : null,
+          'after_data': log['after_data'] != null ? jsonDecode(log['after_data']) : null,
+          'timestamp': log['timestamp'],
+          'operator_name': log['operator_name'] ?? '本地修改',
+        });
+      }
+    } catch (e) {
+      debugPrint("⚠️ 获取本地历史失败: $e");
+    }
+
+    // 3. 排序：按时间倒序
+    combinedHistory.sort((a, b) => (b['timestamp'] as int).compareTo(a['timestamp'] as int));
+    return combinedHistory;
   }
 
-  static Future<Map<String, dynamic>> rollbackItem(int logId) async {
+  static Future<Map<String, dynamic>> rollbackItem(dynamic logId, {bool isLocal = false}) async {
+    // 🚀 如果是本地记录或处于离线状态，执行本地回滚
+    if (isLocal) {
+      final success = await DatabaseHelper.instance.rollbackFromLocalLog(logId as int);
+      return {'success': success, 'message': success ? '本地回滚成功' : '本地回滚失败'};
+    }
+
     try {
       final response = await _client.post(
         Uri.parse('$_effectiveBaseUrl/api/sync/rollback'),
@@ -1122,7 +1156,8 @@ class ApiService {
       );
       return jsonDecode(response.body);
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      // 容错：如果云端失败且我们有对应的本地日志，可以尝试本地回滚（此处逻辑可根据需求细化）
+      return {'success': false, 'error': "网络错误，无法执行云端回滚"};
     }
   }
 }

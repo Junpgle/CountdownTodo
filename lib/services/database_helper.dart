@@ -55,7 +55,7 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 8, // 🚀 升级版本至 8，补全循环任务与提醒字段
+        version: 10, // 🚀 升级至 10，支持离线审计日志 (Offline Version History)
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 3) {
@@ -155,8 +155,125 @@ class DatabaseHelper {
               debugPrint("⚠️ Database: 修复字段 todos 循环任务字段失败: $e");
             }
           }
+          if (oldVersion < 9) {
+            try {
+              final tables = ['todos', 'countdowns', 'todo_groups'];
+              for (var table in tables) {
+                final info = await db.rawQuery("PRAGMA table_info($table)");
+                if (!info.any((row) => row['name'] == 'has_conflict')) {
+                  await db.execute("ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;");
+                  await db.execute("ALTER TABLE $table ADD COLUMN conflict_data TEXT;");
+                  debugPrint("✅ Database: 修复字段 $table.has_conflict");
+                }
+              }
+              // 特别补全 todos 的 is_all_day
+              final todoInfo = await db.rawQuery("PRAGMA table_info(todos)");
+              if (!todoInfo.any((row) => row['name'] == 'is_all_day')) {
+                await db.execute("ALTER TABLE todos ADD COLUMN is_all_day INTEGER DEFAULT 0;");
+              }
+            } catch (e) {
+              debugPrint("⚠️ Database: 修复冲突检测字段失败: $e");
+            }
+          }
+          if (oldVersion < 10) {
+            try {
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS local_audit_logs (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  team_uuid TEXT,
+                  user_id INTEGER,
+                  target_table TEXT,
+                  target_uuid TEXT,
+                  op_type TEXT,
+                  before_data TEXT,
+                  after_data TEXT,
+                  timestamp INTEGER,
+                  operator_name TEXT
+                )
+              ''');
+              debugPrint("✅ Database: 创建 local_audit_logs 表");
+            } catch (e) {
+              debugPrint("⚠️ Database: 创建 local_audit_logs 失败: $e");
+            }
+          }
         }
     );
+  }
+
+  // ==========================================
+  // 🚀 Uni-Sync 4.0: 离线审计系统核心方法
+  // ==========================================
+
+  /// 记录本地审计日志
+  Future<void> insertLocalAuditLog({
+    String? teamUuid,
+    required int userId,
+    required String targetTable,
+    required String targetUuid,
+    required String opType,
+    Map<String, dynamic>? beforeData,
+    Map<String, dynamic>? afterData,
+    String? operatorName,
+  }) async {
+    final db = await database;
+    await db.insert('local_audit_logs', {
+      'team_uuid': teamUuid,
+      'user_id': userId,
+      'target_table': targetTable,
+      'target_uuid': targetUuid,
+      'op_type': opType,
+      'before_data': beforeData != null ? jsonEncode(beforeData) : null,
+      'after_data': afterData != null ? jsonEncode(afterData) : null,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'operator_name': operatorName ?? '本地用户',
+    });
+  }
+
+  /// 获取本地审计日志
+  Future<List<Map<String, dynamic>>> getLocalAuditLogs(String uuid, String table) async {
+    final db = await database;
+    final List<Map<String, dynamic>> logs = await db.query(
+      'local_audit_logs',
+      where: 'target_uuid = ? AND target_table = ?',
+      whereArgs: [uuid, table],
+      orderBy: 'timestamp DESC',
+      limit: 50,
+    );
+    return logs;
+  }
+
+  /// 执行本地回滚 (离线模式)
+  Future<bool> rollbackFromLocalLog(int logId) async {
+    final db = await database;
+    final log = await db.query('local_audit_logs', where: 'id = ?', whereArgs: [logId]);
+    if (log.isEmpty) return false;
+
+    final targetTable = log.first['target_table'] as String;
+    final targetUuid = log.first['target_uuid'] as String;
+    final beforeDataStr = log.first['before_data'] as String?;
+
+    if (beforeDataStr == null) return false;
+    final Map<String, dynamic> beforeData = jsonDecode(beforeDataStr);
+
+    // 根据表名还原数据
+    if (targetTable == 'todos') {
+      await db.update('todos', {
+        'content': beforeData['content'],
+        'remark': beforeData['remark'],
+        'is_completed': (beforeData['is_completed'] == 1 || beforeData['is_completed'] == true) ? 1 : 0,
+        'due_date': beforeData['due_date'] ?? 0,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'version': (beforeData['version'] ?? 0) + 1, // 回滚视为一次新版本更新
+      }, where: 'uuid = ?', whereArgs: [targetUuid]);
+    } else if (targetTable == 'countdowns') {
+      await db.update('countdowns', {
+        'title': beforeData['title'],
+        'target_time': beforeData['target_time'],
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'version': (beforeData['version'] ?? 0) + 1,
+      }, where: 'uuid = ?', whereArgs: [targetUuid]);
+    }
+    return true;
   }
 
   /// 🚀 Uni-Sync 4.0: 从传统的 SharedPreferences 迁移数据到 SQL
@@ -223,7 +340,10 @@ class DatabaseHelper {
         recurrence $integerType DEFAULT 0,
         custom_interval_days INTEGER NOT NULL DEFAULT 0,
         recurrence_end_date INTEGER,
-        reminder_minutes INTEGER
+        reminder_minutes INTEGER,
+        has_conflict INTEGER DEFAULT 0,
+        conflict_data TEXT,
+        is_all_day INTEGER DEFAULT 0
       )
     ''');
 
@@ -241,7 +361,9 @@ class DatabaseHelper {
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,
-        updated_at $integerType
+        updated_at $integerType,
+        has_conflict INTEGER DEFAULT 0,
+        conflict_data TEXT
       )
     ''');
 
@@ -259,7 +381,9 @@ class DatabaseHelper {
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,
-        updated_at $integerType
+        updated_at $integerType,
+        has_conflict INTEGER DEFAULT 0,
+        conflict_data TEXT
       )
     ''');
 
@@ -294,6 +418,22 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_countdowns_uuid ON countdowns(uuid)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_todo_groups_team ON todo_groups(team_uuid)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_todo_groups_uuid ON todo_groups(uuid)');
+
+    // 7. 🚀 Uni-Sync 核心：离线审计日志 (支持离线查看版本记录)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS local_audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        team_uuid TEXT,
+        user_id INTEGER,
+        target_table TEXT,
+        target_uuid TEXT,
+        op_type TEXT,
+        before_data TEXT,
+        after_data TEXT,
+        timestamp INTEGER,
+        operator_name TEXT
+      )
+    ''');
 
     // 🚀 Uni-Sync 核心：初始化 FTS 搜索引擎 (带嗅探)
     await _setupFts(db);
