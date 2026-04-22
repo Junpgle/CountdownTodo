@@ -284,7 +284,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     }
 
     return SizedBox(
-      height: 120, // reduced from 140 to make cards smaller
+      height: 130, // 🚀 适度增加总高度，防止小屏幕溢出
       child: ListView.builder(
         clipBehavior: Clip.none,
         scrollDirection: Axis.horizontal,
@@ -379,7 +379,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             },
             child: Container(
               width: 130,
-              margin: const EdgeInsets.only(right: 12, bottom: 10),
+              margin: const EdgeInsets.only(right: 12, bottom: 8), // 🚀 微调边距
               decoration: BoxDecoration(
                 color: bgColor,
                 borderRadius: BorderRadius.circular(20),
@@ -437,11 +437,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                         ],
                       ),
                       if (item.teamUuid != null) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2), // 🚀 紧凑化
                         Row(
                           children: [
-                            Icon(Icons.groups_rounded, 
-                                size: 10, 
+                            Icon(Icons.groups_rounded,
+                                size: 10,
                                 color: accentColor.withOpacity(0.6)),
                             const SizedBox(width: 3),
                             Expanded(
@@ -458,14 +458,14 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                           ],
                         ),
                       ],
-                      const Spacer(),
+                      const SizedBox(height: 6), // 🚀 取代 Spacer()，提供稳定间距
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
                             "$diff",
                             style: TextStyle(
-                              fontSize: 32,
+                              fontSize: 28, // 🚀 稍微缩小，防止垂直挤压
                               height: 1.0,
                               fontWeight: FontWeight.bold,
                               color: accentColor,
@@ -473,11 +473,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                           ),
                           const SizedBox(width: 4),
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 6.0),
+                            padding: const EdgeInsets.only(bottom: 4.0),
                             child: Text(
                               "天",
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11,
                                 color: subTextColor,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -485,13 +485,13 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2), // 🚀 紧凑化
                       Text(
                         "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 9,
                           color: subTextColor,
-                          letterSpacing: 0.5,
+                          letterSpacing: 0.2,
                         ),
                       ),
                     ],
