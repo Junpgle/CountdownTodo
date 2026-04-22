@@ -117,10 +117,14 @@ class _MyAppState extends State<MyApp> {
   bool _showDefaultSplash = true;
   bool _showHolidaySplash = false;
   bool _showPrivacyUpdate = false;
+  bool _defaultSplashCompleted = false;
+  bool _windowReadyForSplashTransition = true;
 
   @override
   void initState() {
     super.initState();
+    _windowReadyForSplashTransition =
+        kIsWeb || !(Platform.isWindows || Platform.isLinux || Platform.isMacOS);
     registerCloseDialogCallback(_showCloseConfirmDialog);
     // 立即开始初始化，不等待首屏动画
     _initializeApp();
@@ -134,6 +138,10 @@ class _MyAppState extends State<MyApp> {
     if (mounted) {
       setState(() {
         _splashContent = splashContent;
+        // 避免竞态：如果默认开屏已结束但缓存稍后才返回，也要能切到节日开屏。
+        if (_defaultSplashCompleted && splashContent != null) {
+          _showHolidaySplash = true;
+        }
       });
     }
   }
@@ -284,6 +292,14 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _onDefaultSplashComplete() {
+    _defaultSplashCompleted = true;
+    _applySplashTransitionIfReady();
+  }
+
+  void _applySplashTransitionIfReady() {
+    if (!_defaultSplashCompleted || !_windowReadyForSplashTransition || !mounted) {
+      return;
+    }
     if (mounted) {
       setState(() {
         _showDefaultSplash = false;
@@ -449,6 +465,12 @@ class _MyAppState extends State<MyApp> {
         titleBarStyle: TitleBarStyle.normal,
       );
       windowManager.waitUntilReadyToShow(windowOptions, () async {
+        if (mounted && !_windowReadyForSplashTransition) {
+          setState(() {
+            _windowReadyForSplashTransition = true;
+          });
+          _applySplashTransitionIfReady();
+        }
         await windowManager.show();
         await windowManager.focus();
         // Try to create the island window on Windows. Before creating, probe
@@ -463,6 +485,17 @@ class _MyAppState extends State<MyApp> {
             debugPrint('FloatWindowService init failed: $e');
           }
         }
+      });
+
+      // 回退保护：避免极端情况下桌面窗口回调未触发导致流程阻塞。
+      Future.delayed(const Duration(seconds: 3), () {
+        if (!mounted || _windowReadyForSplashTransition) {
+          return;
+        }
+        setState(() {
+          _windowReadyForSplashTransition = true;
+        });
+        _applySplashTransitionIfReady();
       });
     }
   }

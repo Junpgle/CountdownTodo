@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 
@@ -19,11 +20,17 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
+  Timer? _completeTimer;
+  bool _completed = false;
 
   @override
   void initState() {
     super.initState();
-    final durationMs = widget.content['durationMs'] as int;
+    final dynamic rawDuration = widget.content['durationMs'];
+    final durationMs = rawDuration is int
+        ? rawDuration
+        : (int.tryParse(rawDuration?.toString() ?? '') ?? 500);
+    final safeDurationMs = durationMs.clamp(300, 8000);
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
@@ -34,15 +41,12 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    Future.delayed(Duration(milliseconds: durationMs), () {
-      if (mounted) {
-        widget.onComplete();
-      }
-    });
+    _completeTimer = Timer(Duration(milliseconds: safeDurationMs), _completeOnce);
   }
 
   @override
   void dispose() {
+    _completeTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -63,9 +67,9 @@ class _SplashScreenState extends State<SplashScreen>
           children: [
             if (hasImage)
               if (isWide)
-                _buildWideLayout(imagePath!, size)
+                _buildWideLayout(imagePath, size)
               else
-                _buildNarrowLayout(imagePath!, size)
+                _buildNarrowLayout(imagePath, size)
             else
               FadeTransition(
                 opacity: _fadeAnimation,
@@ -198,6 +202,13 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _skip() {
     _controller.stop();
+    _completeOnce();
+  }
+
+  void _completeOnce() {
+    if (_completed || !mounted) return;
+    _completed = true;
+    _completeTimer?.cancel();
     widget.onComplete();
   }
 }

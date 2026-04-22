@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 class DefaultSplashScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -13,6 +14,8 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
+  Timer? _completeTimer;
+  bool _completed = false;
 
   @override
   void initState() {
@@ -27,15 +30,15 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
 
     _controller.forward();
 
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        widget.onComplete();
-      }
+    // Start timeout after first frame to avoid finishing before splash is visible.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _completeTimer = Timer(const Duration(milliseconds: 900), _completeOnce);
     });
   }
 
   @override
   void dispose() {
+    _completeTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -94,6 +97,13 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
 
   void _skip() {
     _controller.stop();
+    _completeOnce();
+  }
+
+  void _completeOnce() {
+    if (_completed || !mounted) return;
+    _completed = true;
+    _completeTimer?.cancel();
     widget.onComplete();
   }
 }
