@@ -129,8 +129,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注
   Timer? _remotePomodoroTicker;
   int _remotePomodoroRemaining = 0;
-  StreamSubscription<CrossDevicePomodoroState>? _remotePomodoroSub;
-  StreamSubscription<SyncConnectionState>? _connStateSub; // 🚀 新增：连接状态订阅
+  StreamSubscription? _remotePomodoroSub;
+  StreamSubscription? _connStateSub; // 🚀 兼容性修复：改为通配订阅类型
   final _syncService = PomodoroSyncService();
   String _deviceId = '';
   bool _hasShownUpdate = false;

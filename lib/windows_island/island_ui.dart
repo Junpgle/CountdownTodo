@@ -665,39 +665,59 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         alignment: Alignment.topCenter,
         child: AnimatedBuilder(
           animation: _sizeController,
-          builder: (_, __) => Container(
-            width: _sizeAnimation.value.width,
-            height: _sizeAnimation.value.height,
-            decoration: BoxDecoration(
-              color: isTransparent ? Colors.transparent : IslandConfig.bgColor,
-              borderRadius: BorderRadius.circular(isCard
-                  ? IslandConfig.cardRadius
-                  : IslandConfig.capsuleRadius),
-              border: isTransparent
-                  ? null
-                  : Border.all(
-                      color: Colors.black.withOpacity(0.5), width: 0.8),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.4),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: AnimatedSwitcher(
-              duration: IslandConfig.switchDuration,
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.92, end: 1.0).animate(anim),
-                  child: child,
+          builder: (_, __) {
+            final double borderRadius = isCard
+                ? IslandConfig.cardRadius
+                : IslandConfig.capsuleRadius;
+            return Container(
+              width: _sizeAnimation.value.width,
+              height: _sizeAnimation.value.height,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(borderRadius),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.55),
+                    blurRadius: 15,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(borderRadius),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isTransparent
+                          ? Colors.transparent
+                          : IslandConfig.bgColor.withOpacity(0.82),
+                      borderRadius: BorderRadius.circular(borderRadius),
+                      border: isTransparent
+                          ? null
+                          : Border.all(
+                              color: Colors.white.withOpacity(0.08),
+                              width: 0.8,
+                            ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: AnimatedSwitcher(
+                      duration: IslandConfig.switchDuration,
+                      transitionBuilder: (child, anim) => FadeTransition(
+                        opacity: anim,
+                        child: ScaleTransition(
+                          scale: Tween<double>(begin: 0.92, end: 1.0)
+                              .animate(anim),
+                          child: child,
+                        ),
+                      ),
+                      child: _buildContent(),
+                    ),
+                  ),
                 ),
               ),
-              child: _buildContent(),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

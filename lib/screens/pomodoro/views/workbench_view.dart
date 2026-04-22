@@ -89,12 +89,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   // ── 跨端感知 ──
   final _syncService = PomodoroSyncService();
-  StreamSubscription<CrossDevicePomodoroState>? _crossDeviceSub;
+  StreamSubscription? _crossDeviceSub;
+  StreamSubscription? _connSub; // 🚀 兼容性修复：改为通配订阅类型
   CrossDevicePomodoroState? _remoteState;
   Timer? _remoteTicker;
   List<String> _remoteTagNames = [];
 
   bool _wsConnected = false;
+  SyncConnectionState _syncConnState = SyncConnectionState.disconnected; // 🚀 新增：跟踪连接状态
   bool _hasShownUpdate = false;
   bool _initializing = true;
 
@@ -183,8 +185,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _ticker?.cancel();
     _remoteTicker?.cancel();
     _crossDeviceSub?.cancel();
+    _connSub?.cancel();
     _runStateSub?.cancel();
     _islandSub?.cancel();
+    _bandSub?.cancel();
     _wsConnected = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -348,6 +352,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _crossDeviceSub?.cancel();
     _crossDeviceSub =
         _syncService.onStateChanged.listen(_handleCrossDeviceSignal);
+
+    _connSub?.cancel();
+    _connSub = _syncService.onConnectionChanged.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _syncConnState = state;
+        _wsConnected = state == SyncConnectionState.connected;
+      });
+      debugPrint('[工作台] 同步通道连接状态变更: $state');
+    });
 
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态，则通知云端清除残留
@@ -2213,16 +2227,52 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildSyncLinkButton() {
-    return AnimatedOpacity(
-      opacity: _wsConnected ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 600),
-      child: const Tooltip(
-          message: '跨端同步已连接',
-          child: Center(
-              child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: Icon(Icons.link_rounded, size: 20, color: Colors.grey),
-          ))),
+    IconData icon;
+    Color color;
+    String message;
+    bool canRetry = false;
+
+    switch (_syncConnState) {
+      case SyncConnectionState.connected:
+        icon = Icons.link_rounded;
+        color = Colors.green;
+        message = '跨端同步已连接';
+        break;
+      case SyncConnectionState.connecting:
+        icon = Icons.sync;
+        color = Colors.blueAccent;
+        message = '正在连接同步通道...';
+        break;
+      case SyncConnectionState.error:
+      case SyncConnectionState.disconnected:
+      default:
+        icon = Icons.link_off_rounded;
+        color = Colors.redAccent.withOpacity(0.8);
+        message = '同步连接已断开，点击重试';
+        canRetry = true;
+    }
+
+    return Tooltip(
+      message: message,
+      child: GestureDetector(
+        onTap: canRetry ? () => _syncService.reconnectIfNeeded() : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_syncConnState == SyncConnectionState.connecting)
+                const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.blueAccent))
+              else
+                Icon(icon, size: 20, color: color),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

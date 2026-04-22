@@ -157,8 +157,9 @@ class PomodoroSyncService {
   Timer? _heartbeatTimer;
   bool _connecting = false;
   String? _focusSourceDevice;
-  DateTime _lastMessageTime = DateTime.now(); // 🚀 新增：记录最后一次收到消息的时间
-  bool _isLocalFocusing = false; // 🚀 新增：本地是否处于专注/休息计时中
+  DateTime _lastMessageTime = DateTime.now(); // 记录最后一次收到消息的时间
+  bool _isLocalFocusing = false; // 本地是否处于专注/休息计时中
+  int _retryCount = 0; // 🚀 新增：当前重试次数
 
   // ── 公开广播流 ─────────────────────────────────────────────
   final _stateCtrl = StreamController<CrossDevicePomodoroState>.broadcast();
@@ -261,6 +262,7 @@ class PomodoroSyncService {
       );
 
       _setConnState(SyncConnectionState.connected);
+      _retryCount = 0; // 重连成功，重置重试计数
       _lastMessageTime = DateTime.now(); // 重置心跳计时
 
       _wsSub = _channel!.stream.listen(
@@ -343,7 +345,16 @@ class PomodoroSyncService {
 
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(_reconnectDelay, () {
+    
+    // 🚀 指数退避：重试延迟随次数增加 2s, 5s, 10s, 30s, 60s(max)
+    _retryCount++;
+    int delaySecs = (_retryCount * 5).clamp(5, 60);
+    if (_retryCount > 3) delaySecs = 30;
+    if (_retryCount > 6) delaySecs = 60;
+    
+    debugPrint('[PomodoroSync] 🔄 将在 $delaySecs 秒后进行第 $_retryCount 次重连尝试...');
+    
+    _reconnectTimer = Timer(Duration(seconds: delaySecs), () {
       if (_userId != null) {
         _doConnect();
       }

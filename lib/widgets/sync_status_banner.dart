@@ -21,7 +21,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   Timer? _heartbeatTimer;
 
   // 监听 WS 连接状态变化
-  StreamSubscription<SyncConnectionState>? _wsConnSub;
+  StreamSubscription? _wsConnSub;
 
   @override
   void initState() {
@@ -39,7 +39,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   }
 
   /// WS 状态变化时立即触发一次综合检查
-  void _onWsStateChanged(SyncConnectionState wsState) {
+  void _onWsStateChanged(dynamic wsState) {
     if (!mounted) return;
     // WS 状态一变化就立即重新评估，不等下次 heartbeat
     _evaluateStatus(wsState);
@@ -72,7 +72,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   }
 
   /// 🚀 双维度评估：HTTP 可达 + WS 连接状态
-  void _evaluateStatus(SyncConnectionState wsState) {
+  void _evaluateStatus(dynamic wsState) {
     switch (wsState) {
       case SyncConnectionState.connected:
         updateStatus(SyncPathStatus.online, message: "数据已实时同步");
