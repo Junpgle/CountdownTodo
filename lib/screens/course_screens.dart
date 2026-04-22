@@ -90,8 +90,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   // 时间轴参数配置
   final double timeColumnWidth = 45.0; 
-  final int startHour = 7; 
-  final int endHour = 23; 
+  final int startHour = 6; 
+  final int endHour = 24;
 
   @override
   void initState() {
@@ -1897,9 +1897,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    double timeColumnWidth = 50.0;
-    int startHour = 8;
-    int endHour = 22;
 
     return Scaffold(
       appBar: AppBar(
@@ -2221,17 +2218,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                     child: LayoutBuilder(
                                       builder: (context, innerConstraints) {
                                         double cellWidth = (innerConstraints.maxWidth - timeColumnWidth) / 7;
-                                        // 🚀 核心修复：不再强行压缩到一屏，而是给定一个合理的分钟高度，使全天高度可滑动
-                                        const double minuteHeight = 0.95; 
-                                        double totalHeight = (endHour - startHour) * 60 * minuteHeight;
+                                        // 🚀 恢复自适应：将全天时间轴按比例缩放到当前屏幕可用高度，无需滑动
+                                        double totalMinutes = (endHour - startHour) * 60;
+                                        double minuteHeight = innerConstraints.maxHeight / totalMinutes;
                                         
-                                        return SingleChildScrollView(
-                                          physics: const BouncingScrollPhysics(),
-                                          child: SizedBox(
-                                            height: totalHeight,
-                                            child: _buildGrid(cellWidth, minuteHeight),
-                                          ),
-                                        );
+                                        return _buildGrid(cellWidth, minuteHeight);
                                       },
                                     ),
                                   ),
