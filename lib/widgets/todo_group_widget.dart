@@ -7,6 +7,7 @@ class TodoGroupWidget extends StatefulWidget {
   final TodoGroup group;
   final List<TodoItem> groupTodos;
   final bool isLight;
+  final Map<String, String> teamRoles;
   final VoidCallback onToggle;
   final Function(TodoItem) onTodoToggle;
   final Function(String todoId) onTodoDropped;
@@ -14,12 +15,14 @@ class TodoGroupWidget extends StatefulWidget {
   final VoidCallback onDelete;
   final Function(TodoItem) onTodoTap;
   final Function(TodoItem) onTodoDelete;
+  final Function(TodoItem)? onShowIndependentTodoStatus;
 
   const TodoGroupWidget({
     super.key,
     required this.group,
     required this.groupTodos,
     required this.isLight,
+    required this.teamRoles,
     required this.onToggle,
     required this.onTodoToggle,
     required this.onTodoDropped,
@@ -27,6 +30,7 @@ class TodoGroupWidget extends StatefulWidget {
     required this.onDelete,
     required this.onTodoTap,
     required this.onTodoDelete,
+    this.onShowIndependentTodoStatus,
   });
 
   @override
@@ -37,6 +41,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     with TickerProviderStateMixin {
   late AnimationController _progressController;
   bool _hasAnimated = false;
+  bool _suppressTodoItemTap = false;
 
   @override
   void initState() {
@@ -637,7 +642,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
           ),
         ),
         child: InkWell(
-          onTap: () => widget.onTodoTap(todo),
+          onTap: () {
+            if (_suppressTodoItemTap) {
+              _suppressTodoItemTap = false;
+              return;
+            }
+            widget.onTodoTap(todo);
+          },
           borderRadius: BorderRadius.circular(12),
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 4.0),
@@ -787,6 +798,54 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                       ],
                                     ),
                                   ),
+                                  if (todo.collabType == 1 &&
+                                      widget.teamRoles[todo.teamUuid] == 'admin' &&
+                                      widget.onShowIndependentTodoStatus != null) ...[
+                                    const SizedBox(width: 6),
+                                    GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () {
+                                        _suppressTodoItemTap = true;
+                                        widget.onShowIndependentTodoStatus!(todo);
+                                        Future.microtask(() {
+                                          _suppressTodoItemTap = false;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5, vertical: 1.5),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color:
+                                                Colors.green.withOpacity(0.35),
+                                            width: 0.5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: const [
+                                            Icon(
+                                              Icons
+                                                  .assignment_turned_in_outlined,
+                                              size: 9,
+                                              color: Colors.green,
+                                            ),
+                                            SizedBox(width: 3),
+                                            Text(
+                                              '独立任务进度',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.green,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ],

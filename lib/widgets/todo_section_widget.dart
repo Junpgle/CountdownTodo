@@ -2072,6 +2072,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           group: g,
           groupTodos: gTodos,
           isLight: widget.isLight,
+          teamRoles: _teamRoles,
           onToggle: () {
             setState(() {
               g.isExpanded = !g.isExpanded;
@@ -2117,6 +2118,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               );
             }
           },
+          onShowIndependentTodoStatus: _showIndependentTodoStatus,
           onDelete: () async {
             final idx = widget.todoGroups.indexWhere((x) => x.id == g.id);
             if (idx != -1) {
