@@ -212,6 +212,8 @@ class TodoItem {
         'conflict_data': serverVersionData != null ? jsonEncode(serverVersionData) : null,
       };
 
+  factory TodoItem.fromSql(Map<String, dynamic> map) => TodoItem.fromJson(map);
+
   factory TodoItem.fromJson(Map<String, dynamic> json) {
     // 优先读取后端的 uuid 字段，如果没有再尝试 id 字段，最后才兜底生成
     String parsedId =
@@ -358,6 +360,8 @@ class CountdownItem {
         'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
       };
 
+  factory CountdownItem.fromSql(Map<String, dynamic> map) => CountdownItem.fromJson(map);
+
   factory CountdownItem.fromJson(Map<String, dynamic> json) {
     // 优先读取后端的 uuid 字段
     String parsedId =
@@ -441,6 +445,8 @@ class TodoGroup {
         'creator_id': creatorId,
         'creator_name': creatorName,
       };
+
+  factory TodoGroup.fromSql(Map<String, dynamic> map) => TodoGroup.fromJson(map);
 
   factory TodoGroup.fromJson(Map<String, dynamic> json) {
     String parsedId =

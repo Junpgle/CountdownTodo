@@ -7,6 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'environment_service.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
+import '../models.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -549,11 +550,9 @@ class DatabaseHelper {
     if (tables.isNotEmpty) {
       try {
         // 🚀 深度防御：先尝试执行一个极简的 MATCH 探测虚表是否真的可用
-        // 防止那种“表名存在但在 module 缺失环境下无法加载”的僵尸表情况
         await db.rawQuery("SELECT 1 FROM todos_fts WHERE todos_fts MATCH 'test' LIMIT 0");
 
         // 2. 优先尝试 FTS 搜索 (FTS5 支持 rank，FTS4 仅支持 content 检索)
-        // 注意：FTS4 没有内建 rank 字段，这里我们做一个简单的兼容处理
         final hasRank = (await db.rawQuery("PRAGMA table_info(todos_fts)")).any((col) => col['name'] == 'rank');
 
         return await db.rawQuery('''
@@ -579,5 +578,26 @@ class DatabaseHelper {
   Future close() async {
     final db = await instance.database;
     db.close();
+  }
+
+  // 🚀 Uni-Sync 4.0: 获取所有待办事项（用于缓存重载）
+  Future<List<TodoItem>> getTodos() async {
+    final db = await instance.database;
+    final List<Map<String, dynamic>> maps = await db.query('todos');
+    return List.generate(maps.length, (i) => TodoItem.fromSql(maps[i]));
+  }
+
+  // 🚀 Uni-Sync 4.0: 获取所有待办组
+  Future<List<TodoGroup>> getTodoGroups() async {
+    final db = await instance.database;
+    final List<Map<String, dynamic>> maps = await db.query('todo_groups');
+    return List.generate(maps.length, (i) => TodoGroup.fromSql(maps[i]));
+  }
+
+  // 🚀 Uni-Sync 4.0: 获取所有倒计时
+  Future<List<CountdownItem>> getCountdowns() async {
+    final db = await instance.database;
+    final List<Map<String, dynamic>> maps = await db.query('countdowns');
+    return List.generate(maps.length, (i) => CountdownItem.fromSql(maps[i]));
   }
 }
