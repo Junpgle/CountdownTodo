@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
 
@@ -134,54 +135,115 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
       child: !shouldShow 
         ? const SizedBox.shrink()
         : RepaintBoundary(
-            key: ValueKey(_status), // 状态变化时触发连贯动画
+            key: ValueKey(_status),
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: _getStatusColor().withOpacity(0.15),
-                border: Border(bottom: BorderSide(color: _getStatusColor().withOpacity(0.3), width: 0.5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
-              child: InkWell(
-                onTap: () => setState(() => _isExpanded = !_isExpanded),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(_getStatusIcon(), size: 16, color: _getStatusColor()),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _detailMessage + (ApiService.baseUrl.contains(':8084') ? ' 🚀[TEST]' : ''),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: _getStatusColor().withOpacity(0.9),
-                            ),
-                          ),
+              child: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor().withOpacity(0.85),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.white.withOpacity(0.12),
+                          width: 0.5,
                         ),
-                        if (isUrgent || _status == SyncPathStatus.connecting)
-                          TextButton(
-                            onPressed: widget.onDiagnosticRequested,
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: const Size(50, 24),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            child: Text("链路诊断", style: TextStyle(fontSize: 11, color: _getStatusColor())),
-                          ),
-                      ],
+                      ),
                     ),
-                    if (_isExpanded && (isUrgent || _status == SyncPathStatus.connecting))
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          "Uni-Sync 正在检测您的实时同步通道。若长时间处于连接中，请尝试切换网络或检查服务器防火墙设置。",
-                          style: TextStyle(fontSize: 10, color: _getStatusColor().withOpacity(0.7)),
-                        ),
-                      )
-                  ],
+                    child: InkWell(
+                      onTap: () => setState(() => _isExpanded = !_isExpanded),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(_getStatusIcon(), size: 16, color: Colors.white.withOpacity(0.95)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _detailMessage + (ApiService.baseUrl.contains(':8084') ? ' 🚀[TEST]' : ''),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ),
+                              if (isUrgent || _status == SyncPathStatus.connecting)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () {
+                                        PomodoroSyncService.instance.manualReconnect();
+                                        updateStatus(SyncPathStatus.connecting, message: "正在尝试手动重连...");
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('已触发手动同步重连...'), duration: Duration(seconds: 1)),
+                                        );
+                                      },
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                        minimumSize: const Size(50, 24),
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      child: Text(
+                                        "立即重连",
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white.withOpacity(0.95),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    TextButton(
+                                      onPressed: widget.onDiagnosticRequested,
+                                      style: TextButton.styleFrom(
+                                        padding: EdgeInsets.zero,
+                                        minimumSize: const Size(50, 24),
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      child: Text(
+                                        "链路诊断",
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white.withOpacity(0.7),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                          if (_isExpanded && (isUrgent || _status == SyncPathStatus.connecting))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8, bottom: 4),
+                              child: Text(
+                                "Uni-Sync 正在检测您的实时同步通道。若长时间处于连接中，请尝试切换网络或检查服务器防火墙设置。",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white.withOpacity(0.75),
+                                  height: 1.4,
+                                ),
+                              ),
+                            )
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

@@ -581,6 +581,11 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // 🚀 获取 auth token 用于 WebSocket 鉴权
     String? authToken = ApiService.getToken();
+    if (authToken == null || authToken.isEmpty) {
+      authToken = prefs.getString('auth_token');
+      // 同步回 ApiService 以防万一
+      if (authToken != null) ApiService.setToken(authToken);
+    }
 
     await _syncService.ensureConnected(
         userIdInt.toString(), 'flutter_$_deviceId',

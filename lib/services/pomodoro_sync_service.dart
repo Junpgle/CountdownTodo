@@ -223,6 +223,20 @@ class PomodoroSyncService {
     await _doConnect();
   }
 
+  /// 🚀 新增：手动强制重连（忽略 _connecting 锁）
+  Future<void> manualReconnect() async {
+    _reconnectTimer?.cancel(); // 取消正在排队的自动重连
+    _retryCount = 0; // 重置指数退避计数
+
+    if (_userId == null || _deviceId == null) {
+      debugPrint('[PomodoroSync] ❌ 无法手动重连：UserId($_userId) 或 DeviceId($_deviceId) 为空');
+      return;
+    }
+    debugPrint('[PomodoroSync] ⚡ 收到手动强制重连请求，正在解锁并重试...');
+    _connecting = false; // 强制解锁
+    await _doConnect();
+  }
+
   Future<void> _doConnect() async {
     if (_connecting) return;
     _connecting = true;
@@ -232,11 +246,17 @@ class PomodoroSyncService {
     await _wsSub?.cancel();
     _wsSub = null;
     try {
-      await _channel?.sink.close(ws_status.normalClosure);
+      // 🚀 增加超时，防止在网络异常时 close 操作卡死
+      await _channel?.sink.close(ws_status.normalClosure).timeout(const Duration(seconds: 2));
     } catch (_) {}
     _channel = null;
 
     _setConnState(SyncConnectionState.connecting);
+    
+    // 🚀 动态补全凭证：如果当前 Token 为空，尝试从全局 ApiService 同步
+    if (_authToken == null || _authToken!.isEmpty) {
+      _authToken = ApiService.getToken();
+    }
 
     try {
       final platform = kIsWeb ? 'web' : Platform.operatingSystem;

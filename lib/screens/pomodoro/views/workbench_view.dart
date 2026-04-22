@@ -2254,21 +2254,52 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     return Tooltip(
       message: message,
-      child: GestureDetector(
-        onTap: canRetry ? () => _syncService.reconnectIfNeeded() : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: InkWell(
+        onTap: () {
+          // 🚀 强制触发重连
+          _syncService.manualReconnect();
+          if (_syncConnState != SyncConnectionState.connected) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('正在尝试重新连接同步服务器...'),
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.3), width: 1),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (_syncConnState == SyncConnectionState.connecting)
                 const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.blueAccent))
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blueAccent,
+                  ),
+                )
               else
-                Icon(icon, size: 20, color: color),
+                Icon(icon, size: 18, color: color),
+              if (canRetry) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '点击重连',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
