@@ -3,6 +3,20 @@ const BACKENDS = {
   aliyun: 'https://api-cdt.junpgle.me'
 };
 
+export class ApiRequestError extends Error {
+  status: number;
+  endpoint: string;
+  payload?: Record<string, unknown>;
+
+  constructor(message: string, status: number, endpoint: string, payload?: Record<string, unknown>) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.endpoint = endpoint;
+    this.payload = payload;
+  }
+}
+
 type BackendKey = keyof typeof BACKENDS;
 
 const getInitialBackend = (): BackendKey => {
@@ -88,12 +102,40 @@ export const ApiService = {
       throw new Error('未授权，请重新登录');
     }
 
-    const data = await res.json() as Record<string, unknown>;
+    let data: Record<string, unknown> = {};
+    try {
+      data = await res.json() as Record<string, unknown>;
+    } catch (_) {
+      data = {};
+    }
+
     if (!res.ok) {
-      const errMsg = (data.error ?? data.message ?? '请求失败') as string;
-      throw new Error(errMsg);
+      let errMsg = (data.error ?? data.message ?? '请求失败') as string;
+
+      // 后端权限收紧后的业务态分层提示
+      if (endpoint.includes('/api/sync/history')) {
+        if (res.status === 403) errMsg = '无权限查看云端历史记录';
+        if (res.status === 404) errMsg = '历史记录不存在或已被清理';
+      }
+      if (endpoint.includes('/api/sync/rollback')) {
+        if (res.status === 403) errMsg = '无权限回滚该记录';
+        if (res.status === 404) errMsg = '回滚目标不存在';
+      }
+
+      throw new ApiRequestError(errMsg, res.status, endpoint, data);
     }
     return data;
+  },
+
+  async fetchItemHistory(uuid: string, table: string) {
+    return this.request(`/api/sync/history?uuid=${encodeURIComponent(uuid)}&table=${encodeURIComponent(table)}`);
+  },
+
+  async rollbackItem(logId: number | string) {
+    return this.request('/api/sync/rollback', {
+      method: 'POST',
+      body: JSON.stringify({ log_id: logId })
+    });
   },
 
   async login(email: string, password: string) {

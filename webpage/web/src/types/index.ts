@@ -34,6 +34,11 @@ export interface TodoItem {
   creator_name?: string | null;
   collab_type?: number; // 0: Shared, 1: Independent
   reminder_minutes?: number | null;
+  category_id?: string | null;
+  is_all_day?: boolean | number;
+  isAllDay?: boolean | number;
+  has_conflict?: boolean | number;
+  conflict_data?: any;
 }
 
 export interface TodoGroup {
@@ -123,6 +128,7 @@ export interface JoinRequest {
 export interface TeamAnnouncement {
   uuid: string;
   team_uuid: string;
+  team_name?: string;
   creator_id: number;
   creator_name?: string;
   title: string;

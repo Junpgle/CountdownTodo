@@ -3,7 +3,7 @@ import {
   Users, Plus, LogOut, Trash2, X, User,
   Link as LinkIcon, ChevronRight, Loader2, AlertCircle,
   MessageSquare, UserPlus, ShieldCheck, Search,
-  Megaphone, Clock, Calendar, Eye, Activity, History
+  Megaphone, Clock, Activity
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import type { Team, TeamMember, JoinRequest, User as UserType, TeamAnnouncement } from '../types';
@@ -27,8 +27,7 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
   const [inviteCode, setInviteCode] = useState('');
   
   const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState('');
-  
+
   // Announcements
   const [announcements, setAnnouncements] = useState<TeamAnnouncement[]>([]);
   const [showAnnounceModal, setShowAnnounceModal] = useState(false);
@@ -59,7 +58,7 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       if (teamsRes.success) setTeams(teamsRes.teams as Team[]);
       if (invRes.success) setInvitations(invRes.invitations as JoinRequest[]);
     } catch (e: any) {
-      setError(e.message || '获取数据失败');
+      console.error(e?.message || '获取数据失败');
     } finally {
       setLoading(false);
     }
@@ -83,7 +82,7 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
   const fetchAnnouncements = async (teamUuid: string) => {
     try {
       const res = await ApiService.request(`/api/teams/announcements?team_uuid=${teamUuid}`);
-      if (res.success) setAnnouncements(res.announcements);
+      if (res.success) setAnnouncements((res.announcements ?? []) as TeamAnnouncement[]);
     } catch (e) {
       console.error('获取公告失败', e);
     }
@@ -92,7 +91,7 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
   const fetchActivityLogs = async (teamUuid: string) => {
     try {
       const res = await ApiService.request(`/api/teams/system_messages?team_uuid=${teamUuid}`);
-      if (res.success) setActivityLogs(res.messages);
+      if (res.success) setActivityLogs((res.messages ?? []) as any[]);
     } catch (e) {
       console.error('获取动态失败', e);
     }
@@ -113,7 +112,7 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         fetchInitialData();
       }
     } catch (e: any) {
-      setError(e.message);
+      alert(e?.message || '创建团队失败');
     } finally {
       setActionLoading(false);
     }
@@ -121,12 +120,13 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
 
   const handleJoinTeam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteCode.trim()) return;
+    const normalizedCode = inviteCode.trim().toUpperCase();
+    if (!normalizedCode) return;
     setActionLoading(true);
     try {
       const res = await ApiService.request('/api/teams/join', {
         method: 'POST',
-        body: JSON.stringify({ code: inviteCode.trim() })
+        body: JSON.stringify({ code: normalizedCode })
       });
       if (res.success) {
         setInviteCode('');
@@ -134,13 +134,17 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         alert(res.message || '申请已提交');
       }
     } catch (e: any) {
-      setError(e.message);
+      alert(e?.message || '加入团队失败');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleRespondInvitation = async (teamUuid: string, action: 'accept' | 'decline') => {
+    if (action !== 'accept' && action !== 'decline') {
+      alert('无效操作');
+      return;
+    }
     try {
       const res = await ApiService.request('/api/teams/respond_invitation', {
         method: 'POST',
@@ -156,6 +160,10 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
 
   const handleProcessRequest = async (targetUserId: number, action: 'approve' | 'reject') => {
     if (!activeTeamId) return;
+    if (action !== 'approve' && action !== 'reject') {
+      alert('无效操作');
+      return;
+    }
     try {
       const res = await ApiService.request('/api/teams/process_request', {
         method: 'POST',

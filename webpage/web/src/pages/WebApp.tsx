@@ -3,7 +3,7 @@ import {
   ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
   User as UserIcon, Calendar, AlertCircle, Users as UsersIcon, RotateCcw, Bell,
-  MessageSquare, Shield, Megaphone, Info
+  MessageSquare, Shield, Megaphone
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiService } from '../services/api';
@@ -111,7 +111,7 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
     try {
       const res = await ApiService.request('/api/teams/announcements/unread_priority');
       if (res.success) {
-        setPriorityAnns(res.announcements);
+        setPriorityAnns((res.announcements ?? []) as TeamAnnouncement[]);
       }
     } catch (e) {
       console.error('获取重要公告失败', e);

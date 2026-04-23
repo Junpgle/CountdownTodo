@@ -906,6 +906,11 @@ class ApiService {
 
   static Future<Map<String, dynamic>> requestJoinTeam(String code, {String message = ''}) async {
     try {
+      final normalizedCode = code.trim().toUpperCase();
+      if (normalizedCode.isEmpty) {
+        return {'success': false, 'error': '邀请码不能为空'};
+      }
+
       // 1. 获取挑战
       final challengeRes = await getPoWChallenge();
       if (challengeRes['success'] != true) return challengeRes;
@@ -922,7 +927,7 @@ class ApiService {
         Uri.parse('$_effectiveBaseUrl/api/teams/request_join'),
         headers: _getHeaders(),
         body: jsonEncode({
-          'invite_code': code,
+          'invite_code': normalizedCode,
           'message': message,
           'pow_challenge': challenge,
           'pow_nonce': nonce,
@@ -949,6 +954,11 @@ class ApiService {
 
   static Future<Map<String, dynamic>> processJoinRequest(String teamUuid, int targetUserId, String action) async {
     try {
+      const allowedActions = {'approve', 'reject'};
+      if (!allowedActions.contains(action)) {
+        return {'success': false, 'error': '无效操作: $action'};
+      }
+
       final response = await _client.post(
         Uri.parse('$_effectiveBaseUrl/api/teams/process_request'),
         headers: _getHeaders(),
@@ -979,6 +989,11 @@ class ApiService {
 
   static Future<Map<String, dynamic>> respondToInvitation(String teamUuid, String action) async {
     try {
+      const allowedActions = {'accept', 'decline'};
+      if (!allowedActions.contains(action)) {
+        return {'success': false, 'error': '无效操作: $action'};
+      }
+
       final response = await _client.post(
         Uri.parse('$_effectiveBaseUrl/api/teams/respond_invitation'),
         headers: _getHeaders(),
@@ -1113,6 +1128,11 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         combinedHistory.addAll(data['history'] ?? []);
+      } else if (response.statusCode == 403 || response.statusCode == 404) {
+        // 后端权限收紧后，这两种状态是业务态，不当作网络异常
+        debugPrint("🔒 云端历史访问受限(status=${response.statusCode})，继续展示本地历史");
+      } else {
+        debugPrint("⚠️ 云端历史接口异常(status=${response.statusCode})");
       }
     } catch (e) {
       debugPrint("🌐 云端历史不可用，切换至纯本地模式: $e");
@@ -1160,7 +1180,15 @@ class ApiService {
         headers: _getHeaders(),
         body: jsonEncode({'log_id': logId}),
       );
-      return jsonDecode(response.body);
+
+      final Map<String, dynamic> data = jsonDecode(response.body);
+      if (response.statusCode == 403 || response.statusCode == 404) {
+        return {
+          'success': false,
+          'error': data['error'] ?? '无权限或记录不存在，无法回滚',
+        };
+      }
+      return data;
     } catch (e) {
       return {'success': false, 'error': "网络错误，无法执行云端回滚"};
     }
