@@ -3,10 +3,10 @@ import {
   ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
   User as UserIcon, Calendar, AlertCircle, Users as UsersIcon, RotateCcw, Bell,
-  MessageSquare, Shield, Megaphone
+  MessageSquare, Shield, Megaphone, History as HistoryIcon
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
-import { ApiService } from '../services/api';
+import { ApiRequestError, ApiService } from '../services/api';
 import type { TodoItem, CountdownItem, User, TodoGroup, Team, TeamAnnouncement } from '../types';
 
 import {
@@ -63,6 +63,16 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
   // --- 网页版版本更新检查状态 ---
   const [updateInfo, setUpdateInfo] = useState<{ version: string, title: string, desc: string } | null>(null);
   const [priorityAnns, setPriorityAnns] = useState<TeamAnnouncement[]>([]);
+
+  // --- 版本历史/回滚 ---
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRollbackLoadingId, setHistoryRollbackLoadingId] = useState<number | string | null>(null);
+  const [historyError, setHistoryError] = useState('');
+  const [historyItems, setHistoryItems] = useState<Array<Record<string, unknown>>>([]);
+  const [localHistoryItems, setLocalHistoryItems] = useState<Array<Record<string, unknown>>>([]);
+  const [historyTab, setHistoryTab] = useState<'local' | 'cloud'>('cloud');
+  const [historyTarget, setHistoryTarget] = useState<{ uuid: string; table: string; title: string } | null>(null);
 
   useEffect(() => {
     loadLocalData();
@@ -167,6 +177,199 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
       console.error("同步失败", e);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const formatHistoryTime = (timestamp: unknown) => {
+    const ms = typeof timestamp === 'number' ? timestamp : Number(timestamp || 0);
+    if (!ms) return '未知时间';
+    return new Date(ms).toLocaleString('zh-CN', { hour12: false });
+  };
+
+  const getFieldValue = (obj: Record<string, unknown>, keys: string[]) => {
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        return obj[key];
+      }
+    }
+    return undefined;
+  };
+
+  const formatDiffValue = (field: string, val: unknown) => {
+    const toMs = (v: unknown) => {
+      if (v === null || v === undefined || v === '') return 0;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    if (field === 'recurrence') {
+      const names = ['不重复', '每天', '自定义天数', '每周', '每月', '每年', '工作日'];
+      const idx = Number(val ?? 0);
+      return names[idx] ?? String(val ?? '无');
+    }
+    if (field === 'is_all_day') {
+      return (val === 1 || val === true) ? '是' : '否';
+    }
+    if (field === 'collab_type') {
+      return Number(val ?? 0) === 1 ? '每个人独立完成' : '全员共同协作';
+    }
+    if (field === 'is_completed') {
+      return (val === 1 || val === true) ? '已完成' : '待办';
+    }
+    if (field === 'is_deleted') {
+      return (val === 1 || val === true) ? '已删除' : '正常';
+    }
+    if (field === 'reminder_minutes') {
+      const m = Number(val ?? -1);
+      return m < 0 ? '无' : `提前${m}分钟`;
+    }
+    if (field === 'due_date' || field === 'created_date' || field === 'target_time' || field === 'recurrence_end_date') {
+      const ms = toMs(val);
+      return ms > 0 ? formatHistoryTime(ms) : '无';
+    }
+    if (field === 'custom_interval_days') {
+      const n = Number(val ?? 0);
+      return n > 0 ? `每${n}天` : '无';
+    }
+    if (val === null || val === undefined || val === '') return '无';
+    return String(val);
+  };
+
+  const buildDiffRows = (item: Record<string, unknown>) => {
+    const before = (item.before_data && typeof item.before_data === 'object')
+      ? (item.before_data as Record<string, unknown>)
+      : null;
+    const after = (item.after_data && typeof item.after_data === 'object')
+      ? (item.after_data as Record<string, unknown>)
+      : null;
+
+    if (!before || !after || !historyTarget) return [] as Array<{ label: string; from: string; to: string }>;
+
+    const todoFields = [
+      { key: 'content', aliases: ['content', 'title'], label: '内容' },
+      { key: 'remark', aliases: ['remark'], label: '备注' },
+      { key: 'due_date', aliases: ['due_date', 'dueDate'], label: '截止时间' },
+      { key: 'created_date', aliases: ['created_date', 'createdDate'], label: '开始时间' },
+      { key: 'recurrence', aliases: ['recurrence'], label: '重复规则' },
+      { key: 'recurrence_end_date', aliases: ['recurrence_end_date', 'recurrenceEndDate'], label: '循环截止时间' },
+      { key: 'custom_interval_days', aliases: ['custom_interval_days', 'customIntervalDays'], label: '循环间隔' },
+      { key: 'reminder_minutes', aliases: ['reminder_minutes', 'reminderMinutes'], label: '提醒时间' },
+      { key: 'is_all_day', aliases: ['is_all_day', 'isAllDay'], label: '全天事件' },
+      { key: 'group_id', aliases: ['group_id', 'groupId'], label: '文件夹' },
+      { key: 'team_uuid', aliases: ['team_uuid', 'teamUuid'], label: '团队归属' },
+      { key: 'collab_type', aliases: ['collab_type', 'collabType'], label: '协作方式' },
+      { key: 'is_completed', aliases: ['is_completed', 'isDone'], label: '状态' },
+      { key: 'is_deleted', aliases: ['is_deleted'], label: '删除状态' },
+    ];
+
+    const countdownFields = [
+      { key: 'title', aliases: ['title', 'content'], label: '标题' },
+      { key: 'target_time', aliases: ['target_time', 'targetDate'], label: '目标时间' },
+      { key: 'is_deleted', aliases: ['is_deleted'], label: '删除状态' },
+    ];
+
+    const fields = historyTarget.table === 'countdowns' ? countdownFields : todoFields;
+
+    return fields
+      .map((f) => {
+        const bVal = getFieldValue(before, f.aliases);
+        const aVal = getFieldValue(after, f.aliases);
+        const from = formatDiffValue(f.key, bVal);
+        const to = formatDiffValue(f.key, aVal);
+        return { label: f.label, from, to };
+      })
+      .filter((r) => r.from !== r.to);
+  };
+
+  const buildLocalHistory = (uuid: string, table: string) => {
+    const lastSyncTime = SyncEngine.getLastSyncTime(user.id);
+    if (table === 'countdowns') {
+      const local = SyncEngine.getLocalCountdowns(user.id).find(c => c.uuid === uuid || c.id === uuid);
+      if (!local) return [] as Array<Record<string, unknown>>;
+      return [{
+        id: `local-${uuid}-${local.updated_at || Date.now()}`,
+        is_local: true,
+        op_type: 'LOCAL',
+        operator_name: '本地快照',
+        timestamp: local.updated_at || Date.now(),
+        before_data: null,
+        after_data: local,
+        is_pending_sync: (local.updated_at || 0) > lastSyncTime,
+      }];
+    }
+
+    const local = SyncEngine.getLocalTodos(user.id).find(t => t.uuid === uuid || t.id === uuid);
+    if (!local) return [] as Array<Record<string, unknown>>;
+    return [{
+      id: `local-${uuid}-${local.updated_at || Date.now()}`,
+      is_local: true,
+      op_type: 'LOCAL',
+      operator_name: '本地快照',
+      timestamp: local.updated_at || Date.now(),
+      before_data: null,
+      after_data: local,
+      is_pending_sync: (local.updated_at || 0) > lastSyncTime,
+    }];
+  };
+
+  const loadHistory = async (uuid: string, table: string, title: string) => {
+    setHistoryLoading(true);
+    setHistoryError('');
+    setHistoryItems([]);
+    const localRows = buildLocalHistory(uuid, table);
+    setLocalHistoryItems(localRows);
+    setHistoryTab(localRows.length > 0 ? 'local' : 'cloud');
+    setHistoryTarget({ uuid, table, title });
+    setShowHistoryModal(true);
+
+    try {
+      const res = await ApiService.fetchItemHistory(uuid, table);
+      const rows = Array.isArray(res.history) ? (res.history as Array<Record<string, unknown>>) : [];
+      setHistoryItems(rows);
+    } catch (e) {
+      if (e instanceof ApiRequestError) {
+        if (e.status === 403) {
+          setHistoryError('无权限查看该云端历史记录');
+        } else if (e.status === 404) {
+          setHistoryError('历史记录不存在或已被清理');
+        } else {
+          setHistoryError(e.message || '加载历史记录失败');
+        }
+      } else {
+        setHistoryError('网络异常，加载历史记录失败');
+      }
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleHistoryRollback = async (logId: number | string) => {
+    if (!window.confirm('确认回滚到该历史版本吗？')) return;
+    setHistoryRollbackLoadingId(logId);
+
+    try {
+      const res = await ApiService.rollbackItem(logId);
+      if (res.success) {
+        await handleSync();
+        if (historyTarget) {
+          await loadHistory(historyTarget.uuid, historyTarget.table, historyTarget.title);
+        }
+        alert((res.message as string) || '回滚成功');
+      }
+    } catch (e) {
+      if (e instanceof ApiRequestError) {
+        if (e.status === 403) {
+          alert('无权限回滚该记录');
+        } else if (e.status === 404) {
+          alert('回滚目标不存在');
+        } else {
+          alert(e.message || '回滚失败');
+        }
+      } else {
+        alert('网络异常，回滚失败');
+      }
+    } finally {
+      setHistoryRollbackLoadingId(null);
     }
   };
 
@@ -592,6 +795,13 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
 
           <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition">
             <button
+                onClick={() => loadHistory(todo.uuid, 'todos', todo.content)}
+                className="p-1.5 sm:p-2 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg sm:rounded-xl transition"
+                title="历史记录"
+            >
+              <HistoryIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+            <button
                 onClick={() => openEditModal(todo)}
                 className="p-1.5 sm:p-2 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg sm:rounded-xl transition"
                 title="编辑"
@@ -850,6 +1060,13 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                             <span className={`text-2xl font-black ${isPast ? 'text-slate-400' : 'text-indigo-600'}`}>{Math.abs(days)}</span>
                             <span className="text-[10px] font-bold text-slate-400 ml-0.5">天</span>
                           </div>
+                          <button
+                            onClick={() => loadHistory(c.uuid, 'countdowns', c.title)}
+                            className="absolute top-2 right-9 opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-amber-500 bg-white/80 rounded transition"
+                            title="历史记录"
+                          >
+                            <HistoryIcon className="w-4 h-4" />
+                          </button>
                           <button onClick={() => deleteCountdown(c.uuid)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 bg-white/80 rounded transition">
                             <X className="w-4 h-4" />
                           </button>
@@ -1320,6 +1537,115 @@ export const WebApp = ({ onBack, user, onLogout }: { onBack: () => void, user: U
                 >
                   保存修改
                 </button>
+              </div>
+            </div>
+        )}
+
+        {/* 历史记录/回滚弹窗 */}
+        {showHistoryModal && (
+            <div className="fixed inset-0 z-[65] bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+              <div className="bg-white w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-[2rem] p-6 sm:p-8 shadow-2xl animate-in zoom-in-95 duration-200 custom-scrollbar">
+                <div className="flex justify-between items-center mb-5 sticky top-0 bg-white z-10 py-2">
+                  <div className="min-w-0">
+                    <h4 className="font-black text-xl text-slate-800 truncate">版本历史</h4>
+                    <p className="text-xs text-slate-400 font-bold truncate">{historyTarget?.title || '未命名记录'}</p>
+                  </div>
+                  <button
+                      onClick={() => {
+                        setShowHistoryModal(false);
+                        setHistoryError('');
+                        setHistoryItems([]);
+                      }}
+                      className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="mb-4 flex items-center gap-2">
+                  <button
+                    onClick={() => setHistoryTab('local')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition ${historyTab === 'local' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  >
+                    本地 ({localHistoryItems.length})
+                  </button>
+                  <button
+                    onClick={() => setHistoryTab('cloud')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition ${historyTab === 'cloud' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  >
+                    云端 ({historyItems.length})
+                  </button>
+                </div>
+
+                {historyTab === 'cloud' && historyLoading ? (
+                    <div className="py-12 flex items-center justify-center text-slate-400 gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span className="text-sm font-bold">正在加载历史...</span>
+                    </div>
+                ) : historyTab === 'cloud' && historyError ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-700 text-sm font-medium">
+                      {historyError}
+                    </div>
+                ) : (historyTab === 'local' ? localHistoryItems : historyItems).length === 0 ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-slate-500 text-sm font-medium text-center">
+                      {historyTab === 'local' ? '暂无本地记录' : '暂无云端历史记录'}
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                      {(historyTab === 'local' ? localHistoryItems : historyItems).map((item, idx) => {
+                        const id = (item.id as number | string);
+                        const isFirst = idx === 0;
+                        const diffRows = buildDiffRows(item);
+                        return (
+                            <div key={`${id}_${idx}`} className="border border-slate-200 rounded-2xl p-4 bg-white">
+                              <div className="flex flex-wrap items-center gap-2 justify-between">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-wider">
+                                    {String(item.op_type || 'UPDATE')}
+                                  </span>
+                                  {item.is_pending_sync === true && (
+                                    <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-600 text-[10px] font-black uppercase tracking-wider">
+                                      待同步
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-slate-400 font-bold truncate">{String(item.operator_name || '系统')}</span>
+                                </div>
+                                <span className="text-[11px] text-slate-400 font-medium">{formatHistoryTime(item.timestamp)}</span>
+                              </div>
+
+                              {diffRows.length > 0 ? (
+                                <div className="mt-3 rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-2">
+                                  {diffRows.map((row, i) => (
+                                    <div key={`${id}_diff_${i}`} className="text-xs">
+                                      <div className="font-bold text-indigo-600 mb-0.5">{row.label}</div>
+                                      <div className="flex items-center gap-2 text-slate-500">
+                                        <span className="line-through text-slate-400">{row.from}</span>
+                                        <span>→</span>
+                                        <span className="text-slate-700 font-bold">{row.to}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="mt-3 text-xs text-slate-400 italic">无可展示的字段差异</div>
+                              )}
+
+                              <div className="mt-3 flex justify-end">
+                                {historyTab === 'cloud' && !isFirst && (
+                                    <button
+                                        onClick={() => handleHistoryRollback(id)}
+                                        disabled={historyRollbackLoadingId === id}
+                                        className="px-3 py-1.5 text-xs font-black rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition"
+                                    >
+                                      {historyRollbackLoadingId === id ? '回滚中...' : '回滚到此版本'}
+                                    </button>
+                                )}
+                              </div>
+                            </div>
+                        );
+                      })}
+                    </div>
+                )}
               </div>
             </div>
         )}
