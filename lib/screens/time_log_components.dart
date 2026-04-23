@@ -1293,7 +1293,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                     itemCount: allRecs.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 6),
                     itemBuilder: (ctx, i) {
-                      final r = allRecs[i];
+                      final r = allRecs.reversed.elementAt(i);
                       final s =
                           DateTime.fromMillisecondsSinceEpoch(r.startTime);
                       final e = DateTime.fromMillisecondsSinceEpoch(r.endTime);
@@ -1354,7 +1354,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
   }
 }
 
-class _MiniLineChart extends StatelessWidget {
+class _MiniLineChart extends StatefulWidget {
   final List<int> data;
   final List<String> xLabels;
   final Color color;
@@ -1373,32 +1373,73 @@ class _MiniLineChart extends StatelessWidget {
       required this.onTouch});
 
   @override
+  State<_MiniLineChart> createState() => _MiniLineChartState();
+}
+
+class _MiniLineChartState extends State<_MiniLineChart> {
+  late ScrollController _sc;
+
+  @override
+  void initState() {
+    super.initState();
+    _sc = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_sc.hasClients) {
+        _sc.jumpTo(_sc.position.maxScrollExtent);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_MiniLineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data.length != widget.data.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_sc.hasClients) {
+          _sc.animateTo(_sc.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _sc.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width - 40;
-    final itemW = data.length < 5 ? screenWidth / (data.length.toDouble().clamp(1, 5)) : 60.0;
-    final requiredWidth = max(screenWidth, data.length * itemW);
+    const double itemW = 55.0; // 固定间距
+    final double chartContentW = (widget.data.length - 1) * itemW + 40;
+    final double scrollWidth = max(screenWidth, chartContentW);
 
     return SizedBox(
-      height: height,
+      height: widget.height,
       width: double.infinity,
       child: GestureDetector(
-        onPanUpdate: (d) => onTouch(d.localPosition),
-        onPanEnd: (_) => onTouch(null),
-        onTapDown: (d) => onTouch(d.localPosition),
-        onTapUp: (_) => onTouch(null),
+        onPanUpdate: (d) => widget.onTouch(d.localPosition.translate(_sc.offset, 0)),
+        onPanEnd: (_) => widget.onTouch(null),
+        onTapDown: (d) => widget.onTouch(d.localPosition.translate(_sc.offset, 0)),
+        onTapUp: (_) => widget.onTouch(null),
         child: SingleChildScrollView(
+          controller: _sc,
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
           child: SizedBox(
-            width: requiredWidth,
-            height: height,
+            width: scrollWidth,
+            height: widget.height,
             child: CustomPaint(
                 painter: _LineChartPainter(
-                    data: data,
-                    xLabels: xLabels,
-                    color: color,
-                    formatLabel: formatLabel,
-                    touchPos: touchPos)),
+                    data: widget.data,
+                    xLabels: widget.xLabels,
+                    color: widget.color,
+                    formatLabel: widget.formatLabel,
+                    touchPos: widget.touchPos,
+                    itemW: itemW)),
           ),
         ),
       ),
@@ -1412,29 +1453,40 @@ class _LineChartPainter extends CustomPainter {
   final Color color;
   final String Function(int) formatLabel;
   final Offset? touchPos;
+  final double itemW;
 
   _LineChartPainter(
       {required this.data,
       required this.xLabels,
       required this.color,
       required this.formatLabel,
-      this.touchPos});
+      this.touchPos,
+      required this.itemW});
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (data.length < 2) return;
+    if (data.length < 1) return;
     final minV = data.reduce(min).toDouble();
     final maxV = data.reduce(max).toDouble();
-    final range = (maxV - minV) < 1 ? 10.0 : maxV - minV; // 增加默认Range防止除0
+    final range = (maxV - minV) < 1 ? 10.0 : maxV - minV;
 
     double calcY(double v) {
-      // 顶部预留30，底部预留30
       return size.height - 30 - ((v - minV) / range) * (size.height - 60);
     }
 
-    final double stepX = (size.width - 40) / (data.length - 1);
+    // 计算起始位置，如果数据点较少，则靠右排列，保持固定间距
+    final double totalPointsW = (data.length - 1) * itemW;
+    final double startX = max(20.0, size.width - 20 - totalPointsW);
+    
     final pts = List.generate(
-        data.length, (i) => Offset(i * stepX + 20, calcY(data[i].toDouble())));
+        data.length, (i) => Offset(startX + i * itemW, calcY(data[i].toDouble())));
+
+    if (data.length < 2) {
+      // 只有一个点的情况
+      final p = pts[0];
+      canvas.drawCircle(p, 6, Paint()..color = color);
+      return;
+    }
 
     // 1. 绘制面积渐变
     final fillPath = Path();
