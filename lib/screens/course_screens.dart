@@ -1699,7 +1699,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][now.weekday - 1];
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    List<TodoItem> todayAllDay = _allTodos.where((todo) {
+    List<TodoItem> todayAllDay = !_activeDataViews.contains('todos') ? [] : _allTodos.where((todo) {
       DateTime start = DateTime.fromMillisecondsSinceEpoch(
               todo.createdDate ?? todo.createdAt,
               isUtc: true)
@@ -1717,6 +1717,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
       if (!treatAsAllDay) return false;
+
+      // 如果开启了隐藏跨天，且该任务是跨天任务，则过滤掉
+      if (_activeDataViews.contains('hideCrossDay') && isCrossDay) return false;
 
       DateTime todayStart = DateTime(now.year, now.month, now.day);
       DateTime todayEnd =
@@ -1978,13 +1981,21 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             tooltip: '筛选显示内容',
             onSelected: (value) {
               setState(() {
-                if (_activeDataViews.contains(value)) {
-                  _activeDataViews.remove(value);
-                } else {
-                  _activeDataViews.add(value);
-                }
-                if (value == 'todos' || value == 'hideCrossDay') {
+                if (value == 'clearAll') {
+                  _activeDataViews.clear();
                   _updateWeekTodos();
+                } else if (value == 'selectAll') {
+                  _activeDataViews.addAll({'courses', 'todos', 'timeLogs', 'pomodoros'});
+                  _updateWeekTodos();
+                } else {
+                  if (_activeDataViews.contains(value)) {
+                    _activeDataViews.remove(value);
+                  } else {
+                    _activeDataViews.add(value);
+                  }
+                  if (value == 'todos' || value == 'hideCrossDay') {
+                    _updateWeekTodos();
+                  }
                 }
               });
             },
@@ -2058,6 +2069,27 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               : Colors.transparent),
                       const SizedBox(width: 8),
                       const Text('隐藏跨天待办'),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'selectAll',
+                  child: Row(
+                    children: [
+                      Icon(Icons.select_all, size: 16, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text('一键全选', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'clearAll',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.clear_all, size: 16, color: Colors.redAccent),
+                      const SizedBox(width: 8),
+                      const Text('一键清除', style: TextStyle(color: Colors.redAccent)),
                     ],
                   ),
                 ),
