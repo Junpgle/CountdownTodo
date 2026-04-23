@@ -41,12 +41,7 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDB(String filePath) async {
-    // 🚀 核心修复：桌面端 SQL 引擎逃生通道
-    if (!kIsWeb && Platform.isWindows) {
-      debugPrint("🛠️ Database: 检测到 Windows 平台，正在初始化 FFI 引擎...");
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
-    }
+    // 🚀 桌面端 SQL 引擎初始化已由 main.dart 统一处理
 
     final dbPath = await getDatabasesPath();
     // 🚀 根据环境动态选择前缀（隔离测试数据）

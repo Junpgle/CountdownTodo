@@ -10,6 +10,8 @@ import './unified_waterfall_screen.dart';
 import './conflict_inbox_screen.dart';
 import './team_message_center_screen.dart';
 import './team_announcement_screen.dart';
+import '../storage_service.dart';
+
 
 class TeamManagementScreen extends StatefulWidget {
   final String username;
@@ -1004,8 +1006,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              final res = await ApiService.leaveTeam(team.uuid);
+               final res = await ApiService.leaveTeam(team.uuid);
               if (res['success'] == true) {
+                // 🚀 核心修复：立即清理本地缓存的该团队数据，触发首页刷新
+                await StorageService.clearTeamItems(team.uuid);
                 _loadTeams();
                 _showSuccessToast('已退出团队');
               } else {
@@ -1030,8 +1034,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              final res = await ApiService.deleteTeam(team.uuid);
+               final res = await ApiService.deleteTeam(team.uuid);
               if (res['success'] == true) {
+                // 🚀 核心修复：立即清理本地缓存的该团队数据，触发首页刷新
+                await StorageService.clearTeamItems(team.uuid);
                 _loadTeams();
                 _showSuccessToast('团队已解散');
               } else {

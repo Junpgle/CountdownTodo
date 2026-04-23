@@ -331,10 +331,10 @@ class LanSyncService {
   }
 
   void _initEncryption() {
-    final keyBytes =
-        sha256.convert(utf8.encode('lan_sync_${_currentUserId}')).bytes;
+    // 使用固定的系统盐值确保所有设备（无论账号）都能解密初始握手和数据传输
+    final keyBytes = sha256.convert(utf8.encode('lan_sync_global_v1_key')).bytes;
     final ivBytes = sha256
-        .convert(utf8.encode('lan_sync_iv_${_currentUserId}'))
+        .convert(utf8.encode('lan_sync_global_v1_iv'))
         .bytes
         .sublist(0, 16);
     _encrypter = enc.Encrypter(enc.AES(enc.Key(Uint8List.fromList(keyBytes))));
@@ -395,7 +395,12 @@ class LanSyncService {
       debugPrint('[LanSync] Handle request error: $e');
       try {
         req.response.statusCode = HttpStatus.internalServerError;
-        req.response.write(jsonEncode({'error': e.toString()}));
+        final errBody = jsonEncode({'error': e.toString()});
+        // 即使出错也尝试返回加密结构，防止发送端报“未加密”错误
+        req.response.write(jsonEncode({
+          'encrypted': true,
+          'payload': _encrypt(errBody),
+        }));
         await req.response.close();
       } catch (_) {}
     }
@@ -419,7 +424,11 @@ class LanSyncService {
 
     if (encryptedData['encrypted'] != true) {
       req.response.statusCode = HttpStatus.badRequest;
-      req.response.write(jsonEncode({'error': 'encryption required'}));
+      final err = jsonEncode({'error': 'encryption required'});
+      req.response.write(jsonEncode({
+        'encrypted': true,
+        'payload': _encrypt(err),
+      }));
       await req.response.close();
       return;
     }
@@ -476,7 +485,11 @@ class LanSyncService {
 
       if (pendingDevice == null) {
         req.response.headers.contentType = ContentType.json;
-        req.response.write(jsonEncode({'error': 'no pending request'}));
+        final err = jsonEncode({'error': 'no pending request'});
+        req.response.write(jsonEncode({
+          'encrypted': true,
+          'payload': _encrypt(err),
+        }));
         await req.response.close();
         return;
       }
@@ -937,14 +950,22 @@ class LanSyncService {
       final body = await response.transform(utf8.decoder).join();
       final responseData = jsonDecode(body) as Map<String, dynamic>;
 
-      if (responseData['pending'] == true) {
-        _emitProgress('等待对方确认...');
-        return LanSyncResult(success: false, message: '等待对方确认');
+      String errorMsg = '连接被拒绝';
+      if (responseData['encrypted'] == true) {
+        final decryptedBody = _decrypt(responseData['payload']);
+        final data = jsonDecode(decryptedBody) as Map<String, dynamic>;
+        if (data['pending'] == true) {
+          _emitProgress('等待对方确认...');
+          return LanSyncResult(success: false, message: '等待对方确认');
+        }
+        if (data['error'] != null) {
+          errorMsg = data['error'];
+        }
       }
 
       client.close();
       _isSyncing = false;
-      return LanSyncResult(success: false, message: '连接被拒绝');
+      return LanSyncResult(success: false, message: errorMsg);
     } catch (e) {
       _isSyncing = false;
       return LanSyncResult(success: false, message: '连接失败: $e');

@@ -44,9 +44,6 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
             msg['team_name'] = team.name;
 
             final messageKey = _messageKey(msg);
-            if (msg['type'] == 'JOIN_REQUEST' && _handledJoinRequestKeys.contains(_joinRequestKey(msg))) {
-              continue;
-            }
             if (!seenMessageKeys.add(messageKey)) {
               continue;
             }
@@ -201,31 +198,55 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
                           ]
                         ],
                       ),
-                      if (type == 'JOIN_REQUEST') ...[
-                        const SizedBox(height: 12),
-                        const Divider(height: 1),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () => _handleJoinRequest(msg, 'reject'),
-                              child: const Text('拒绝', style: TextStyle(color: Colors.redAccent)),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blueAccent,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        if (msg['request_status'] == 0) ...[
+                          const SizedBox(height: 12),
+                          const Divider(height: 1),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => _handleJoinRequest(msg, 'reject'),
+                                child: const Text('拒绝', style: TextStyle(color: Colors.redAccent)),
                               ),
-                              onPressed: () => _handleJoinRequest(msg, 'approve'),
-                              child: const Text('同意'),
-                            ),
-                          ],
-                        )
-                      ]
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blueAccent,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: () => _handleJoinRequest(msg, 'approve'),
+                                child: const Text('同意'),
+                              ),
+                            ],
+                          ),
+                        ] else if (msg['request_status'] != null) ...[
+                          const SizedBox(height: 12),
+                          const Divider(height: 1),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: (msg['request_status'] == 1 ? Colors.green : Colors.grey).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  msg['request_status'] == 1 ? '已同意' : '已拒绝',
+                                  style: TextStyle(
+                                    color: msg['request_status'] == 1 ? Colors.green : Colors.grey.shade600,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ]
                     ],
                   ),
                 ),
@@ -254,22 +275,24 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     );
     
     if (res['success'] == true) {
-      _handledJoinRequestKeys.add(key);
-      if (mounted) {
-        setState(() {
-          _messages.removeWhere((m) => m['type'] == 'JOIN_REQUEST' && _joinRequestKey(m) == key);
-        });
-      }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(action == 'approve' ? '已批准入队' : '已拒绝申请'),
         backgroundColor: Colors.green,
       ));
       await _loadAllMessages();
     } else {
+      // 🚀 Uni-Sync 4.0: 处理 409 冲突（已在其他设备处理过）
+      final isHandled = res['error']?.toString().contains('已处理') == true || 
+                        res['error']?.toString().contains('并行处理') == true;
+      
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(res['error'] ?? '操作失败'),
-        backgroundColor: Colors.redAccent,
+        backgroundColor: isHandled ? Colors.orange : Colors.redAccent,
       ));
+
+      if (isHandled) {
+        await _loadAllMessages();
+      }
     }
 
     if (mounted) {

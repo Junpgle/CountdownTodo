@@ -842,26 +842,26 @@ class StorageService {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.database;
 
-      final List<Map<String, dynamic>> sqliteCount = await db.rawQuery('SELECT COUNT(*) as cnt FROM todos');
-      if (sqliteCount.first['cnt'] == 0) {
-        List<String> legacyJsonList = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+      final migrationKey = "migration_marker_${username}_v4";
+      bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
 
-        // 🚀 核心修复：极致兼容方案 - 如果用户专用 key 为空，尝试读取旧的全局 key (KEY_TODOS)
+      if (!alreadyMigrated) {
+        List<String> legacyJsonList = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
-          final String markerKey = "${KEY_TODOS}_${username}_migrated";
-          if (!(prefs.getBool(markerKey) ?? false)) {
-            legacyJsonList = prefs.getStringList(KEY_TODOS) ?? [];
-            if (legacyJsonList.isNotEmpty) {
-              await prefs.setBool(markerKey, true); // 记录此用户已完成全局迁移，防止跨号窃取
-            }
-          }
+          legacyJsonList = prefs.getStringList(KEY_TODOS) ?? [];
         }
 
         if (legacyJsonList.isNotEmpty) {
-          debugPrint("🚀 自动迁移老数据至 SQLite...");
-          List<Map<String, dynamic>> legacyData = legacyJsonList.map((e) => jsonDecode(e) as Map<String, dynamic>).toList();
-          await dbHelper.migrateFromPrefs(username, legacyData);
+          debugPrint("🚀 发现未迁移老数据，正在执行增量迁移...");
+          List<TodoItem> legacyItems = [];
+          for (var e in legacyJsonList) {
+            try { legacyItems.add(TodoItem.fromJson(jsonDecode(e))); } catch (_) {}
+          }
+          // 🚀 使用 saveTodos 触发迁移，这样会自动生成 op_logs 确保同步到云端
+          await saveTodos(username, legacyItems, sync: true, isSyncSource: false);
+          debugPrint("✅ 老数据增量迁移完成。");
         }
+        await prefs.setBool(migrationKey, true);
       }
 
       final List<Map<String, dynamic>> maps = await db.query('todos',
@@ -924,7 +924,8 @@ class StorageService {
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
 
-    // 1. 从 SQLite 删除
+    // 1. 从 SQLite 删除 (级联清理独立完成状态与核心业务表)
+    batch.execute('DELETE FROM todo_completions WHERE todo_uuid IN (SELECT uuid FROM todos WHERE team_uuid = ?)', [teamUuid]);
     batch.delete('todos', where: 'team_uuid = ?', whereArgs: [teamUuid]);
     batch.delete('todo_groups', where: 'team_uuid = ?', whereArgs: [teamUuid]);
     batch.delete('countdowns', where: 'team_uuid = ?', whereArgs: [teamUuid]);
@@ -954,6 +955,10 @@ class StorageService {
       await cleanCache(KEY_TODOS);
       await cleanCache(KEY_TODO_GROUPS);
       await cleanCache(KEY_COUNTDOWNS);
+      await cleanCache(KEY_TIME_LOGS);
+      // 🚀 补充清理：课程表与番茄记录缓存 (Key 映射已在 Service 中定义)
+      await cleanCache('course_schedule_json');
+      await cleanCache('pomodoro_records');
     }
 
     debugPrint("🧹 已清理团队 $teamUuid 的本地数据 (SQL + Cache)");
@@ -1644,8 +1649,14 @@ class StorageService {
         if (joinedTeamUuids != null) {
           final Set<String> currentTeams = joinedTeamUuids.map((e) => e.toString()).toSet();
 
-          // 获取本地所有存在的 team_uuid
-          final localTeamRows = await db.rawQuery('SELECT DISTINCT team_uuid FROM todos WHERE team_uuid IS NOT NULL');
+          // 获取本地所有存在的 team_uuid (联合查询：待办、倒计时、文件夹)
+          final localTeamRows = await db.rawQuery('''
+            SELECT DISTINCT team_uuid FROM todos WHERE team_uuid IS NOT NULL
+            UNION
+            SELECT DISTINCT team_uuid FROM countdowns WHERE team_uuid IS NOT NULL
+            UNION
+            SELECT DISTINCT team_uuid FROM todo_groups WHERE team_uuid IS NOT NULL
+          ''');
           bool teamChanged = false;
           for (var row in localTeamRows) {
             String? tUuid = row['team_uuid']?.toString();

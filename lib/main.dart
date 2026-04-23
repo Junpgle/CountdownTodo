@@ -8,6 +8,8 @@ import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 import 'package:video_player_win/video_player_win_plugin.dart'; // video_player_win plugin
 import 'package:webview_win_floating/webview_win_floating.dart'; // webview_win_floating plugin
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'update_service.dart';
 import 'utils/page_transitions.dart';
@@ -63,6 +65,14 @@ class MyHttpOverrides extends HttpOverrides {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🚀 核心修复：桌面端 SQL 引擎初始化 (解决 databaseFactory not initialized)
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+    debugPrint("🛠️ [Main] 检测到桌面平台，正在全局初始化 SQL FFI 引擎...");
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
   await PageTransitions.init();
 
   // If this engine was launched by desktop_multi_window for a secondary
