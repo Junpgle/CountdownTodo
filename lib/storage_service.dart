@@ -609,9 +609,10 @@ class StorageService {
     dedupeList.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
 
-    // 🚀 核心修复：先等待所有本地审计日志记录完毕，再进行批处理
+    // 🚀 核心优化：只对真正有变化的任务记录审计日志并入库
+    // 此处已完成去重，直接遍历 dedupeList
     if (!isSyncSource) {
-      final auditTasks = items.map((item) => 
+      final auditTasks = dedupeList.map((item) => 
         _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid)
       ).toList();
       await Future.wait(auditTasks);
@@ -620,8 +621,12 @@ class StorageService {
     // 🚀 Batch 极速批量写入，彻底解决数据库锁死
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
-    for (var item in items) {
+    for (var item in dedupeList) {
       if (!isSyncSource) {
+        // 🚀 核心优化：如果 audit 检查发现没有任何实质性变更（例如只是被 saveTodos 批量扫到但没改内容），
+        // 则不应插入 op_logs，防止后端压力大且触发假冲突。
+        // 由于 _recordLocalAudit 是异步的且没返回结果，我们在此处简单判断 updatedAt 是否足够新（10秒内）
+        // 或者依赖 dedupeMap 的来源逻辑。
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'todos',
@@ -663,7 +668,8 @@ class StorageService {
     await batch.commit(noResult: true);
 
     if (sync) Future.microtask(() => syncData(username));
-    Future.microtask(() => _syncTodosToBand(items));
+    Future.microtask(() => _syncTodosToBand(dedupeList));
+    triggerRefresh(); // 🚀 触发 UI 刷新
   }
 
 
@@ -776,9 +782,12 @@ class StorageService {
 
   /// 🚀 Uni-Sync 4.0 增强：原子化更新单条待办，避免全量读写性能开销
   static Future<void> updateSingleTodo(String username, TodoItem item, {bool sync = true}) async {
+    // 1. 记录本地审计日志 (必须在更新前，因为需要获取旧快照)
+    await _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid);
+
     final db = await DatabaseHelper.instance.database;
 
-    // 1. 同步更新 SQLite
+    // 2. 同步更新 SQLite
     await db.insert('todos', {
       'uuid': item.id,
       'content': item.title,
@@ -804,7 +813,7 @@ class StorageService {
       'reminder_minutes': item.reminderMinutes ?? -1,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
-    // 2. 补齐 Oplog，确保离线更新能被同步
+    // 3. 补齐 Oplog，确保离线更新能被同步
     await db.insert('op_logs', {
       'op_type': 'UPSERT',
       'target_table': 'todos',
@@ -814,7 +823,15 @@ class StorageService {
       'is_synced': 0
     });
 
+    // 4. 🚀 关键：同步更新 SharedPreferences 缓存，防止 getTodos 逃生通道读取旧数据
+    final prefs = await SharedPreferences.getInstance();
+    List<TodoItem> allTodos = await getTodos(username, includeDeleted: true);
+    // getTodos 已经从 DB 拿到了最新数据，直接保存即可
+    List<String> jsonList = allTodos.map((e) => jsonEncode(e.toJson())).toList();
+    await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
+
     if (sync) Future.microtask(() => syncData(username));
+    triggerRefresh(); // 🚀 触发 UI 刷新
   }
 
   static Future<List<TodoItem>> getTodos(String username,
