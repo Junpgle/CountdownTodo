@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
-import '../services/pomodoro_sync_service.dart';
 import '../models.dart';
 import 'dart:ui';
 
@@ -16,6 +15,9 @@ class TeamMessageCenterScreen extends StatefulWidget {
 class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   bool _isLoading = true;
   List<dynamic> _messages = [];
+  final Set<String> _handledJoinRequestKeys = <String>{};
+  final Set<String> _processingJoinRequestKeys = <String>{};
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -24,31 +26,51 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   }
 
   Future<void> _loadAllMessages() async {
-    setState(() => _isLoading = true);
-    List<dynamic> allMessages = [];
+    final int loadGeneration = ++_loadGeneration;
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
+
+    final List<dynamic> allMessages = [];
+    final Set<String> seenMessageKeys = <String>{};
     try {
       for (var team in widget.managedTeams) {
         final res = await ApiService.fetchTeamSystemMessages(team.uuid);
         if (res['success'] == true) {
-          // 注入团队名称以便显示
-          final msgs = res['messages'] as List;
+          final msgs = List<dynamic>.from(res['messages'] as List? ?? const []);
           for (var m in msgs) {
-            m['team_name'] = team.name;
+            if (m is! Map) continue;
+            final msg = Map<String, dynamic>.from(m);
+            msg['team_name'] = team.name;
+
+            final messageKey = _messageKey(msg);
+            if (msg['type'] == 'JOIN_REQUEST' && _handledJoinRequestKeys.contains(_joinRequestKey(msg))) {
+              continue;
+            }
+            if (!seenMessageKeys.add(messageKey)) {
+              continue;
+            }
+            allMessages.add(msg);
           }
-          allMessages.addAll(msgs);
         }
       }
       // 按时间倒序排列
-      allMessages.sort((a, b) => (b['timestamp'] as int).compareTo(a['timestamp'] as int));
+      allMessages.sort((a, b) {
+        final int aTs = _asInt(a['timestamp']);
+        final int bTs = _asInt(b['timestamp']);
+        return bTs.compareTo(aTs);
+      });
       
-      if (mounted) {
+      if (mounted && loadGeneration == _loadGeneration) {
         setState(() {
           _messages = allMessages;
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && loadGeneration == _loadGeneration) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -89,7 +111,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.mail_outline_rounded, size: 64, color: Colors.grey.withOpacity(0.3)),
+          Icon(Icons.mail_outline_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.3)),
           const SizedBox(height: 16),
           Text('暂无系统消息', style: TextStyle(color: Colors.grey.shade500)),
         ],
@@ -130,9 +152,9 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.white,
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
@@ -216,6 +238,15 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   }
 
   Future<void> _handleJoinRequest(dynamic msg, String action) async {
+    final key = _joinRequestKey(msg);
+    if (_processingJoinRequestKeys.contains(key)) return;
+
+    if (mounted) {
+      setState(() {
+        _processingJoinRequestKeys.add(key);
+      });
+    }
+
     final res = await ApiService.processJoinRequest(
       msg['team_uuid'],
       msg['user_id'],
@@ -223,16 +254,42 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     );
     
     if (res['success'] == true) {
+      _handledJoinRequestKeys.add(key);
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m['type'] == 'JOIN_REQUEST' && _joinRequestKey(m) == key);
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(action == 'approve' ? '已批准入队' : '已拒绝申请'),
         backgroundColor: Colors.green,
       ));
-      _loadAllMessages();
+      await _loadAllMessages();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(res['error'] ?? '操作失败'),
         backgroundColor: Colors.redAccent,
       ));
     }
+
+    if (mounted) {
+      setState(() {
+        _processingJoinRequestKeys.remove(key);
+      });
+    }
+  }
+
+  String _joinRequestKey(dynamic msg) {
+    return '${msg['team_uuid'] ?? ''}:${msg['user_id'] ?? ''}';
+  }
+
+  String _messageKey(dynamic msg) {
+    return '${msg['type'] ?? ''}:${msg['team_uuid'] ?? ''}:${msg['user_id'] ?? ''}:${_asInt(msg['timestamp'])}:${msg['message'] ?? ''}';
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 }

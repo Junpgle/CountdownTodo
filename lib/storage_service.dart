@@ -924,15 +924,39 @@ class StorageService {
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
 
-    // 1. 删除 Todos
+    // 1. 从 SQLite 删除
     batch.delete('todos', where: 'team_uuid = ?', whereArgs: [teamUuid]);
-    // 2. 删除 Todo Groups
     batch.delete('todo_groups', where: 'team_uuid = ?', whereArgs: [teamUuid]);
-    // 3. 删除 Countdowns
     batch.delete('countdowns', where: 'team_uuid = ?', whereArgs: [teamUuid]);
-
     await batch.commit(noResult: true);
-    debugPrint("🧹 已清理团队 $teamUuid 的本地数据");
+
+    // 2. 🚀 关键：同步清理 SharedPreferences 缓存，防止主页残余
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString(KEY_CURRENT_USER) ?? "";
+    if (username.isNotEmpty) {
+      final cleanCache = (String key) async {
+        List<String> list = prefs.getStringList("${key}_$username") ?? [];
+        if (list.isEmpty) return;
+        int originalLen = list.length;
+        list.removeWhere((jsonStr) {
+          try {
+            final map = jsonDecode(jsonStr);
+            return map['team_uuid'] == teamUuid || map['teamUuid'] == teamUuid;
+          } catch (_) {
+            return false;
+          }
+        });
+        if (list.length != originalLen) {
+          await prefs.setStringList("${key}_$username", list);
+        }
+      };
+
+      await cleanCache(KEY_TODOS);
+      await cleanCache(KEY_TODO_GROUPS);
+      await cleanCache(KEY_COUNTDOWNS);
+    }
+
+    debugPrint("🧹 已清理团队 $teamUuid 的本地数据 (SQL + Cache)");
     triggerRefresh(); // 🚀 触发 UI 刷新
   }
 
