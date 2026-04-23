@@ -1046,8 +1046,12 @@ class _TagDetailSheet extends StatefulWidget {
   State<_TagDetailSheet> createState() => _TagDetailSheetState();
 }
 
+enum _ChartScale { session, day, week, month }
+
 class _TagDetailSheetState extends State<_TagDetailSheet> {
   int _chartType = 0; // 0: 时长, 1: 开始时间, 2: 结束时间
+  _ChartScale _scale = _ChartScale.session;
+  Offset? _touchPos;
 
   Widget _buildChartTab(String title, int index, Color color) {
     final isSel = _chartType == index;
@@ -1070,6 +1074,32 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
     );
   }
 
+  Widget _buildScaleTab(String title, _ChartScale scale, Color color) {
+    final isSel = _scale == scale;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _scale = scale;
+        if (scale != _ChartScale.session) _chartType = 0; // 聚合模式仅限时长
+      }),
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSel ? color : _TC.inputFill(context),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: isSel ? color : _TC.divider(context), width: 1),
+        ),
+        child: Text(title,
+            style: TextStyle(
+              fontSize: 10,
+              color: isSel ? Colors.white : _TC.textSub(context),
+              fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
+            )),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tagLogs =
@@ -1077,6 +1107,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
     final tagPoms = widget.pomodoros
         .where((p) => p.tagUuids.contains(widget.tag.uuid))
         .toList();
+
     final allRecs = <_TagRecord>[
       ...tagLogs.map((l) => _TagRecord(
           isPomodoro: false,
@@ -1098,7 +1129,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
             id: p.uuid,
             isCompleted: p.isCompleted ?? false);
       }),
-    ]..sort((a, b) => b.startTime.compareTo(a.startTime));
+    ]..sort((a, b) => a.startTime.compareTo(b.startTime)); // 改为升序，方便聚合处理
 
     final totalMin = allRecs.fold(0, (s, r) => s + r.durationMin);
     final avgMin = allRecs.isEmpty ? 0 : totalMin ~/ allRecs.length;
@@ -1106,31 +1137,49 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
         allRecs.isEmpty ? 0 : allRecs.map((r) => r.durationMin).reduce(max);
     final c = hexColor(widget.tag.color);
 
-    // 取最近最多30条数据用于绘制图表，方便演示横向滑动
-    final chartRecs = allRecs.reversed.take(30).toList();
-
-    // 动态生成图表数据和标签格式化器
+    // ── 数据聚合处理逻辑 ─────────────────────────────────────
     List<int> chartData = [];
-    String Function(int) formatLabel;
+    List<String> xLabels = [];
+    String Function(int) formatLabel = (v) => '${v}m';
 
-    if (_chartType == 0) {
-      chartData = chartRecs.map((r) => r.durationMin).toList();
-      formatLabel = (v) => '${v}m';
-    } else {
-      chartData = chartRecs.map((r) {
-        final dt = DateTime.fromMillisecondsSinceEpoch(
-            _chartType == 1 ? r.startTime : r.endTime);
-        return dt.hour * 60 + dt.minute; // 转化为当天已过的分钟数
+    if (_scale == _ChartScale.session) {
+      final chartRecs = allRecs.length > 30 ? allRecs.sublist(allRecs.length - 30) : allRecs;
+      if (_chartType == 0) {
+        chartData = chartRecs.map((r) => r.durationMin).toList();
+        formatLabel = (v) => '${v}m';
+      } else {
+        chartData = chartRecs.map((r) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(
+              _chartType == 1 ? r.startTime : r.endTime);
+          return dt.hour * 60 + dt.minute;
+        }).toList();
+        formatLabel = (v) =>
+            '${(v ~/ 60).toString().padLeft(2, '0')}:${(v % 60).toString().padLeft(2, '0')}';
+      }
+      xLabels = chartRecs.map((r) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(r.startTime);
+        return DateFormat('MM/dd').format(dt);
       }).toList();
-      formatLabel = (v) =>
-          '${(v ~/ 60).toString().padLeft(2, '0')}:${(v % 60).toString().padLeft(2, '0')}';
+    } else {
+      // 按天/周/月聚合
+      final Map<String, int> grouped = {};
+      for (final r in allRecs) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(r.startTime);
+        String key;
+        if (_scale == _ChartScale.day) {
+          key = DateFormat('MM/dd').format(dt);
+        } else if (_scale == _ChartScale.week) {
+          final weekStart = dt.subtract(Duration(days: dt.weekday - 1));
+          key = 'W${DateFormat('MM/dd').format(weekStart)}';
+        } else {
+          key = DateFormat('yy/MM').format(dt);
+        }
+        grouped[key] = (grouped[key] ?? 0) + r.durationMin;
+      }
+      final sortedKeys = grouped.keys.toList(); // 已经按时间顺序
+      xLabels = sortedKeys.length > 20 ? sortedKeys.sublist(sortedKeys.length - 20) : sortedKeys;
+      chartData = xLabels.map((k) => grouped[k]!).toList();
     }
-
-    // 生成底部 X 轴的日期标签 (MM/dd)
-    final xLabels = chartRecs.map((r) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(r.startTime);
-      return DateFormat('MM/dd').format(dt);
-    }).toList();
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -1185,6 +1234,20 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
             ]),
             const SizedBox(height: 16),
             Row(children: [
+              Text('DIMENSIONS',
+                  style: TextStyle(
+                      fontSize: 9,
+                      color: _TC.textHint(context),
+                      letterSpacing: 2,
+                      fontWeight: FontWeight.w700)),
+              const Spacer(),
+              _buildScaleTab('按次', _ChartScale.session, c),
+              _buildScaleTab('日', _ChartScale.day, c),
+              _buildScaleTab('周', _ChartScale.week, c),
+              _buildScaleTab('月', _ChartScale.month, c),
+            ]),
+            const SizedBox(height: 12),
+            Row(children: [
               Text('TRENDS',
                   style: TextStyle(
                       fontSize: 9,
@@ -1193,17 +1256,21 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                       fontWeight: FontWeight.w700)),
               const Spacer(),
               _buildChartTab('时长', 0, c),
-              _buildChartTab('开始时间', 1, c),
-              _buildChartTab('结束时间', 2, c),
+              if (_scale == _ChartScale.session) ...[
+                _buildChartTab('开始', 1, c),
+                _buildChartTab('结束', 2, c),
+              ],
             ]),
             const SizedBox(height: 10),
-            if (chartRecs.length >= 2)
+            if (chartData.length >= 2)
               _MiniLineChart(
                   data: chartData,
                   xLabels: xLabels,
                   color: c,
-                  height: 120,
-                  formatLabel: formatLabel)
+                  height: 130,
+                  formatLabel: formatLabel,
+                  touchPos: _touchPos,
+                  onTouch: (p) => setState(() => _touchPos = p))
             else
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
@@ -1293,35 +1360,46 @@ class _MiniLineChart extends StatelessWidget {
   final Color color;
   final double height;
   final String Function(int) formatLabel;
+  final Offset? touchPos;
+  final ValueChanged<Offset?> onTouch;
 
   const _MiniLineChart(
       {required this.data,
       required this.xLabels,
       required this.color,
-      this.height = 120,
-      required this.formatLabel});
+      this.height = 130,
+      required this.formatLabel,
+      this.touchPos,
+      required this.onTouch});
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width - 40;
-    // 为每个节点分配 55 逻辑像素，保证底部的日期不会相互挤压重叠
-    final requiredWidth = max(screenWidth, data.length * 55.0);
+    final itemW = data.length < 5 ? screenWidth / (data.length.toDouble().clamp(1, 5)) : 60.0;
+    final requiredWidth = max(screenWidth, data.length * itemW);
 
     return SizedBox(
       height: height,
       width: double.infinity,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: SizedBox(
-          width: requiredWidth,
-          height: height,
-          child: CustomPaint(
-              painter: _LineChartPainter(
-                  data: data,
-                  xLabels: xLabels,
-                  color: color,
-                  formatLabel: formatLabel)),
+      child: GestureDetector(
+        onPanUpdate: (d) => onTouch(d.localPosition),
+        onPanEnd: (_) => onTouch(null),
+        onTapDown: (d) => onTouch(d.localPosition),
+        onTapUp: (_) => onTouch(null),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: SizedBox(
+            width: requiredWidth,
+            height: height,
+            child: CustomPaint(
+                painter: _LineChartPainter(
+                    data: data,
+                    xLabels: xLabels,
+                    color: color,
+                    formatLabel: formatLabel,
+                    touchPos: touchPos)),
+          ),
         ),
       ),
     );
@@ -1333,79 +1411,126 @@ class _LineChartPainter extends CustomPainter {
   final List<String> xLabels;
   final Color color;
   final String Function(int) formatLabel;
+  final Offset? touchPos;
 
   _LineChartPainter(
       {required this.data,
       required this.xLabels,
       required this.color,
-      required this.formatLabel});
+      required this.formatLabel,
+      this.touchPos});
 
   @override
   void paint(Canvas canvas, Size size) {
     if (data.length < 2) return;
     final minV = data.reduce(min).toDouble();
     final maxV = data.reduce(max).toDouble();
-    final range = (maxV - minV) < 1 ? 1.0 : maxV - minV;
+    final range = (maxV - minV) < 1 ? 10.0 : maxV - minV; // 增加默认Range防止除0
 
-    double calcY(int v) {
-      if (maxV == minV) return size.height / 2;
-      // 顶部预留24，底部预留28(容纳日期)
-      return size.height - 28 - ((v - minV) / range) * (size.height - 52);
+    double calcY(double v) {
+      // 顶部预留30，底部预留30
+      return size.height - 30 - ((v - minV) / range) * (size.height - 60);
     }
 
+    final double stepX = (size.width - 40) / (data.length - 1);
     final pts = List.generate(
-        data.length,
-        (i) => Offset(
-            (i / (data.length - 1)) * (size.width - 30) + 15, calcY(data[i])));
+        data.length, (i) => Offset(i * stepX + 20, calcY(data[i].toDouble())));
 
-    final path = Path()..moveTo(pts[0].dx, pts[0].dy);
-    for (int i = 1; i < pts.length; i++) path.lineTo(pts[i].dx, pts[i].dy);
+    // 1. 绘制面积渐变
+    final fillPath = Path();
+    fillPath.moveTo(pts[0].dx, size.height - 30);
+    fillPath.lineTo(pts[0].dx, pts[0].dy);
+    for (int i = 0; i < pts.length - 1; i++) {
+      final p1 = pts[i];
+      final p2 = pts[i + 1];
+      final control1 = Offset(p1.dx + (p2.dx - p1.dx) / 2, p1.dy);
+      final control2 = Offset(p1.dx + (p2.dx - p1.dx) / 2, p2.dy);
+      fillPath.cubicTo(
+          control1.dx, control1.dy, control2.dx, control2.dy, p2.dx, p2.dy);
+    }
+    fillPath.lineTo(pts.last.dx, size.height - 30);
+    fillPath.close();
 
+    final gradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [color.withOpacity(0.3), color.withOpacity(0.0)],
+    );
+    canvas.drawPath(fillPath,
+        Paint()..shader = gradient.createShader(Rect.fromLTWH(0, 0, size.width, size.height)));
+
+    // 2. 绘制平滑曲线
+    final path = Path();
+    path.moveTo(pts[0].dx, pts[0].dy);
+    for (int i = 0; i < pts.length - 1; i++) {
+      final p1 = pts[i];
+      final p2 = pts[i + 1];
+      final control1 = Offset(p1.dx + (p2.dx - p1.dx) / 2, p1.dy);
+      final control2 = Offset(p1.dx + (p2.dx - p1.dx) / 2, p2.dy);
+      path.cubicTo(
+          control1.dx, control1.dy, control2.dx, control2.dy, p2.dx, p2.dy);
+    }
     canvas.drawPath(
         path,
         Paint()
           ..color = color
-          ..strokeWidth = 2.5
+          ..strokeWidth = 3.0
           ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round);
+          ..strokeCap = StrokeCap.round);
+
+    // 3. 绘制坐标轴与点
+    int? activeIdx;
+    if (touchPos != null) {
+      double minD = 9999;
+      for (int i = 0; i < pts.length; i++) {
+        final d = (pts[i].dx - touchPos!.dx).abs();
+        if (d < minD) {
+          minD = d;
+          activeIdx = i;
+        }
+      }
+    }
 
     for (int i = 0; i < pts.length; i++) {
       final p = pts[i];
-      canvas.drawCircle(
-          p,
-          5,
-          Paint()
-            ..color = color.withOpacity(0.2)
-            ..style = PaintingStyle.fill);
-      canvas.drawCircle(p, 3, Paint()..color = color);
+      final isHover = i == activeIdx;
+      
+      // 节点点
+      canvas.drawCircle(p, isHover ? 6 : 4, Paint()..color = color);
+      if (isHover) {
+        canvas.drawCircle(p, 10, Paint()..color = color.withOpacity(0.2));
+      }
 
-      // 画上方数值标签
-      final text = formatLabel(data[i]);
-      final tp = TextPainter(
-        text: TextSpan(
-          text: text,
-          style:
-              TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w600),
-        ),
-        textDirection: ui.TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(p.dx - tp.width / 2, p.dy - 18));
-
-      // 画底部的日期标签
-      if (i < xLabels.length) {
-        final dateText = xLabels[i];
+      // X轴标签
+      if (i % (data.length > 10 ? 2 : 1) == 0) {
         final dateTp = TextPainter(
           text: TextSpan(
-            text: dateText,
-            style: TextStyle(
-                fontSize: 9,
-                color: color.withOpacity(0.55),
-                fontWeight: FontWeight.w500),
+            text: xLabels[i],
+            style: TextStyle(fontSize: 9, color: color.withOpacity(0.6), fontWeight: FontWeight.w500),
           ),
           textDirection: ui.TextDirection.ltr,
         )..layout();
-        dateTp.paint(canvas, Offset(p.dx - dateTp.width / 2, size.height - 14));
+        dateTp.paint(canvas, Offset(p.dx - dateTp.width / 2, size.height - 18));
+      }
+
+      // 活跃点的指示线和数值
+      if (isHover) {
+        final lineP = Paint()..color = color.withOpacity(0.5)..strokeWidth = 1.0;
+        canvas.drawLine(Offset(p.dx, 0), Offset(p.dx, size.height - 30), lineP);
+        
+        final valText = formatLabel(data[i]);
+        final valTp = TextPainter(
+          text: TextSpan(
+            text: valText,
+            style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          textDirection: ui.TextDirection.ltr,
+        )..layout();
+        
+        // 绘制气泡背景
+        final bgR = Rect.fromCenter(center: Offset(p.dx, p.dy - 25), width: valTp.width + 16, height: valTp.height + 8);
+        canvas.drawRRect(RRect.fromRectAndRadius(bgR, const Radius.circular(8)), Paint()..color = color);
+        valTp.paint(canvas, Offset(p.dx - valTp.width / 2, p.dy - 25 - valTp.height / 2));
       }
     }
   }
