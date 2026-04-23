@@ -171,9 +171,21 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       });
       if (res.success) {
         fetchTeamDetails(activeTeamId);
+        fetchAnnouncements(activeTeamId);
+        fetchActivityLogs(activeTeamId);
       }
     } catch (e: any) {
-      alert(e.message);
+      // 🚀 Uni-Sync 4.0: 处理 409 冲突（已在其他设备处理过）
+      const isHandled = e.status === 409 || e.message?.includes('已处理') || e.message?.includes('并行处理');
+      
+      if (isHandled) {
+        alert(e.message || '该申请已在其他设备处理');
+        fetchTeamDetails(activeTeamId);
+        fetchAnnouncements(activeTeamId);
+        fetchActivityLogs(activeTeamId);
+      } else {
+        alert(e.message || '操作失败');
+      }
     }
   };
 
@@ -662,17 +674,52 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
                       {activityLogs.length === 0 ? (
                         <p className="text-[10px] font-bold text-slate-400 text-center py-8 uppercase tracking-widest">暂无动态</p>
                       ) : (
-                        activityLogs.map((log, idx) => (
-                          <div key={idx} className="flex gap-3 items-start group">
-                            <div className="w-1 bg-slate-100 group-hover:bg-indigo-500 transition-colors h-12 rounded-full mt-1 shrink-0" />
-                            <div>
-                              <p className="text-xs font-bold text-slate-800 leading-snug">{log.message}</p>
-                              <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-tighter">
-                                {new Date(log.timestamp).toLocaleTimeString()} · {log.username}
-                              </p>
+                        activityLogs.map((log, idx) => {
+                          const isJoinRequest = log.type === 'JOIN_REQUEST';
+                          const isPending = isJoinRequest && log.request_status === 0;
+                          const isHandled = isJoinRequest && log.request_status !== 0 && log.request_status != null;
+
+                          return (
+                            <div key={idx} className="flex gap-3 items-start group">
+                              <div className={`w-1 transition-colors h-12 rounded-full mt-1 shrink-0 ${
+                                isPending ? 'bg-indigo-500 animate-pulse' : 'bg-slate-100 group-hover:bg-indigo-500'
+                              }`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-slate-800 leading-snug">{log.message}</p>
+                                <div className="flex items-center justify-between mt-1">
+                                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+                                    {new Date(log.timestamp).toLocaleTimeString()} · {log.username}
+                                  </p>
+                                  
+                                  {isHandled && (
+                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${
+                                      log.request_status === 1 ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'
+                                    }`}>
+                                      {log.request_status === 1 ? '已同意' : '已拒绝'}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {isPending && activeTeam?.role === 0 && (
+                                  <div className="flex gap-2 mt-2">
+                                    <button 
+                                      onClick={() => handleProcessRequest(log.user_id, 'approve')}
+                                      className="px-3 py-1 bg-indigo-600 text-white text-[9px] font-black rounded-lg hover:bg-indigo-700 transition uppercase tracking-widest"
+                                    >
+                                      同意
+                                    </button>
+                                    <button 
+                                      onClick={() => handleProcessRequest(log.user_id, 'reject')}
+                                      className="px-3 py-1 bg-slate-100 text-slate-600 text-[9px] font-black rounded-lg hover:bg-slate-200 transition uppercase tracking-widest"
+                                    >
+                                      拒绝
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
