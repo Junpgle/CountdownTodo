@@ -29,14 +29,30 @@ class VersionHistorySheet extends StatefulWidget {
   State<VersionHistorySheet> createState() => _VersionHistorySheetState();
 }
 
-class _VersionHistorySheetState extends State<VersionHistorySheet> {
+class _VersionHistorySheetState extends State<VersionHistorySheet>
+    with SingleTickerProviderStateMixin {
   List<dynamic> _history = [];
   bool _isLoading = true;
+  late final TabController _tabController;
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!mounted) return;
+      if (_currentTabIndex != _tabController.index) {
+        setState(() => _currentTabIndex = _tabController.index);
+      }
+    });
     _loadHistory();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadHistory() async {
@@ -97,6 +113,8 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final localHistory = _history.where((item) => item['is_local'] == true).toList();
+    final cloudHistory = _history.where((item) => item['is_local'] != true).toList();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
@@ -145,22 +163,35 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
                   ],
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: TabBar(
+                  controller: _tabController,
+                  tabs: [
+                    Tab(text: '本地 (${localHistory.length})'),
+                    Tab(text: '云端 (${cloudHistory.length})'),
+                  ],
+                ),
+              ),
               const Divider(height: 1),
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : _history.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.separated(
-                            controller: scrollController,
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _history.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final item = _history[index];
-                              return _buildHistoryItem(item, index);
-                            },
+                    : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildHistoryList(
+                            history: localHistory,
+                            emptyLabel: '暂无本地修改记录',
+                            scrollController: _currentTabIndex == 0 ? scrollController : null,
                           ),
+                          _buildHistoryList(
+                            history: cloudHistory,
+                            emptyLabel: '暂无云端修改记录',
+                            scrollController: _currentTabIndex == 1 ? scrollController : null,
+                          ),
+                        ],
+                      ),
               ),
             ],
           ),
@@ -169,16 +200,37 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState([String message = '暂无修改记录']) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.history_toggle_off, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.2)),
           const SizedBox(height: 16),
-          const Text('暂无修改记录', style: TextStyle(color: Colors.grey)),
+          Text(message, style: const TextStyle(color: Colors.grey)),
         ],
       ),
+    );
+  }
+
+  Widget _buildHistoryList({
+    required List<dynamic> history,
+    required String emptyLabel,
+    ScrollController? scrollController,
+  }) {
+    if (history.isEmpty) {
+      return _buildEmptyState(emptyLabel);
+    }
+
+    return ListView.separated(
+      controller: scrollController,
+      padding: const EdgeInsets.all(16),
+      itemCount: history.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final item = history[index];
+        return _buildHistoryItem(item, index);
+      },
     );
   }
 
