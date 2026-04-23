@@ -53,8 +53,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final allTodos = await StorageService.getTodos(widget.username);
-    final groups = await StorageService.getTodoGroups(widget.username);
+    final allTodos = await StorageService.getTodos(widget.username, includeDeleted: true);
+    final groups = await StorageService.getTodoGroups(widget.username, includeDeleted: true);
     final activeGroupIds = groups.where((g) => !g.isDeleted).map((g) => g.id).toSet();
 
     setState(() {

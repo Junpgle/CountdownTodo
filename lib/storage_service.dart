@@ -868,7 +868,7 @@ class StorageService {
           where: includeDeleted ? null : 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
       );
       if (maps.isNotEmpty) {
-        List<TodoItem> todos = maps.map((m) => TodoItem(
+      List<TodoItem> todos = maps.map((m) => TodoItem(
           id: m['uuid'],
           title: m['content'] ?? '',
           remark: m['remark'],
@@ -902,6 +902,9 @@ class StorageService {
               : null,
         )).toList();
         return await _handleRecurrenceLogic(username, todos);
+      } else {
+        // 🚀 核心逻辑：如果 SQLite 有表但查无结果（例如全部过滤了），直接返回空列表，不要触发逃生通道
+        return [];
       }
     } catch (e) {
       debugPrint("⚠️ SQL 引擎异常，启动逃生通道: $e");
@@ -1150,6 +1153,8 @@ class StorageService {
           creatorName: m['creator_name'],
         ))
             .toList();
+      } else {
+        return [];
       }
     } catch (e) {
       debugPrint("⚠️ TodoGroups SQL 引擎异常: $e");
