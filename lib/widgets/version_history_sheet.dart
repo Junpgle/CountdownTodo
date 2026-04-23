@@ -328,6 +328,21 @@ class _VersionHistorySheetState extends State<VersionHistorySheet> {
       addChange('重复规则', before?['recurrence'] ?? 0, after['recurrence'] ?? 0, contextFormatter: (v, ctx) => getRecurrenceName(v as int));
       addChange('全天事件', before?['is_all_day'] ?? 0, after['is_all_day'] ?? 0, contextFormatter: (v, ctx) => v == 1 ? '是' : '否');
       
+      // 🚀 新增：显示循环截止时间的变更
+      addChange('循环截止时间', before?['recurrence_end_date'], after['recurrence_end_date'], 
+        contextFormatter: (v, ctx) => formatTime(v));
+      
+      // 🚀 新增：显示自定义循环间隔的变更
+      addChange('循环间隔', before?['custom_interval_days'], after['custom_interval_days'], 
+        contextFormatter: (v, ctx) => v == null ? '无' : '每${v}天');
+      
+      // 🚀 新增：显示提醒时间的变更
+      addChange('提醒时间', before?['reminder_minutes'] ?? -1, after['reminder_minutes'] ?? -1, 
+        contextFormatter: (v, ctx) {
+          if (v == null || v == -1) return '无';
+          return '提前${v}分钟';
+        });
+      
       // 🚀 优化：使用 context 准确获取对应快照中的名称
       addChange('文件夹', before?['group_id'], after['group_id'], 
         contextFormatter: (v, ctx) => (v == null || v == '') ? '未分组' : (ctx?['group_name'] ?? v.toString()));

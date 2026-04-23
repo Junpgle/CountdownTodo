@@ -139,6 +139,7 @@ class TodoItem {
   bool hasConflict; 
   Map<String, dynamic>? serverVersionData; 
   bool isAllDay; 
+  String? categoryId; 
 
   TodoItem({
     String? id,
@@ -166,6 +167,7 @@ class TodoItem {
     this.hasConflict = false,
     this.serverVersionData,
     this.isAllDay = false,
+    this.categoryId,
   })  : this.id = id ?? const Uuid().v4(),
         this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -208,6 +210,7 @@ class TodoItem {
         'team_name': teamName,
         'collab_type': collabType,
         'is_all_day': isAllDay ? 1 : 0,
+        'category_id': categoryId,
         'has_conflict': hasConflict ? 1 : 0,
         'conflict_data': serverVersionData != null ? jsonEncode(serverVersionData) : null,
       };
@@ -268,6 +271,7 @@ class TodoItem {
       teamName: json['team_name'] ?? json['teamName'],
       collabType: json['collab_type'] ?? json['collabType'] ?? 0,
       isAllDay: json['is_all_day'] == 1 || json['isAllDay'] == true,
+      categoryId: json['category_id']?.toString() ?? json['categoryId']?.toString(),
       hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
       serverVersionData: json['conflict_data'] != null ? (json['conflict_data'] is String ? jsonDecode(json['conflict_data']) : json['conflict_data']) : null,
     );

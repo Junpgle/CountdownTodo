@@ -448,6 +448,14 @@ class StorageService {
       }
     }
 
+    // 🚀 核心修复：先等待所有本地审计日志记录完毕，再进行批处理
+    if (!isSyncSource) {
+      final auditTasks = dedupeMap.values.map((item) => 
+        _recordLocalAudit('countdowns', item.id, item.toJson(), item.teamUuid)
+      ).toList();
+      await Future.wait(auditTasks);
+    }
+
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
     for (var item in dedupeMap.values) {
@@ -460,11 +468,6 @@ class StorageService {
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'is_synced': 0
         });
-      }
-
-      // 🚀 Uni-Sync 4.0: 记录本地审计日志 (离线版本记录)
-      if (!isSyncSource) {
-        _recordLocalAudit('countdowns', item.id, item.toJson(), item.teamUuid);
       }
 
       batch.insert('countdowns', {
@@ -606,6 +609,14 @@ class StorageService {
     dedupeList.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
 
+    // 🚀 核心修复：先等待所有本地审计日志记录完毕，再进行批处理
+    if (!isSyncSource) {
+      final auditTasks = items.map((item) => 
+        _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid)
+      ).toList();
+      await Future.wait(auditTasks);
+    }
+
     // 🚀 Batch 极速批量写入，彻底解决数据库锁死
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
@@ -619,10 +630,6 @@ class StorageService {
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'is_synced': 0
         });
-      }
-      // 🚀 Uni-Sync 4.0: 记录本地审计日志 (离线版本记录)
-      if (!isSyncSource) {
-        _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid);
       }
 
       batch.insert('todos', {
@@ -666,23 +673,78 @@ class StorageService {
       final db = await DatabaseHelper.instance.database;
       // 1. 获取旧数据快照
       final List<Map<String, dynamic>> existing = await db.query(table, where: 'uuid = ?', whereArgs: [uuid]);
-      Map<String, dynamic>? beforeData = existing.isNotEmpty ? Map<String, dynamic>.from(existing.first) : null;
+      if (existing.isEmpty) {
+        // 新增操作，直接记录
+        await DatabaseHelper.instance.insertLocalAuditLog(
+          userId: ApiService.currentUserId ?? 0,
+          targetTable: table,
+          targetUuid: uuid,
+          opType: 'INSERT',
+          beforeData: null,
+          afterData: afterData,
+          teamUuid: teamUuid,
+          operatorName: '本人(离线)',
+        );
+        return;
+      }
+
+      Map<String, dynamic> beforeData = Map<String, dynamic>.from(existing.first);
+      
+      // 🚀 核心优化：实质性变更检测
+      // 排除掉 version, updated_at 等会自动变动的字段，只对比业务字段
+      bool hasSubstantialChange = false;
+      final businessFields = [
+        'content', 'title', 'remark', 'is_completed', 'is_deleted', 
+        'due_date', 'target_time', 'group_id', 'category_id', 
+        'recurrence', 'is_all_day', 'reminder_minutes',
+        'recurrence_end_date', 'custom_interval_days'
+      ];
+
+      for (var field in businessFields) {
+        if (afterData.containsKey(field) || beforeData.containsKey(field)) {
+          var valA = afterData[field];
+          var valB = beforeData[field];
+          
+          // 🚀 核心修复：全面的值归一化处理
+          // 处理 null 和 0/""/"false" 的等价性
+          // 特别处理 reminder_minutes: -1 和 null 的等价性
+          bool isAEmpty = valA == null || valA == 0 || valA == "" || valA == false || 
+                         (field == 'reminder_minutes' && valA == -1);
+          bool isBEmpty = valB == null || valB == 0 || valB == "" || valB == false ||
+                         (field == 'reminder_minutes' && valB == -1);
+          
+          if (isAEmpty && isBEmpty) continue; // 两个都是"空"，认为相同
+          if (isAEmpty || isBEmpty) {
+            // 一个是空，一个不是空，判断为有变更（除非都是0的情况）
+            if ((valA == 0 || valB == 0) && (valA ?? valB) == 0) continue;
+            hasSubstantialChange = true;
+            break;
+          }
+          
+          // 两个都不是"空"，直接比较
+          if (valA != valB) {
+            hasSubstantialChange = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasSubstantialChange) return; // 没有实质性变化，不记录日志
+
       Map<String, dynamic> enrichedAfter = Map<String, dynamic>.from(afterData);
 
       // 🚀 核心优化：本地名称解析 - 让离线历史也显示人类可读的名称
       Future<String?> lookupName(String targetTable, String? targetUuid) async {
         if (targetUuid == null || targetUuid.isEmpty) return null;
-        final List<Map<String, dynamic>> res = await db.query(targetTable, 
-            columns: ['name'], where: 'uuid = ?', whereArgs: [targetUuid]);
-        return res.isNotEmpty ? res.first['name'] as String? : null;
+        try {
+          final List<Map<String, dynamic>> res = await db.query(targetTable, 
+              columns: ['name'], where: 'uuid = ?', whereArgs: [targetUuid]);
+          return res.isNotEmpty ? res.first['name'] as String? : null;
+        } catch (_) { return null; }
       }
 
-      // 补全 before_data 的名称
-      if (beforeData != null) {
-        if (beforeData['group_id'] != null) beforeData['group_name'] = await lookupName('todo_groups', beforeData['group_id']);
-        if (beforeData['team_uuid'] != null) beforeData['team_name'] = await lookupName('teams', beforeData['team_uuid']);
-      }
-      // 补全 after_data 的名称
+      if (beforeData['group_id'] != null) beforeData['group_name'] = await lookupName('todo_groups', beforeData['group_id']);
+      if (beforeData['team_uuid'] != null) beforeData['team_name'] = await lookupName('teams', beforeData['team_uuid']);
       if (enrichedAfter['group_id'] != null) enrichedAfter['group_name'] = await lookupName('todo_groups', enrichedAfter['group_id']);
       if (enrichedAfter['team_uuid'] != null) enrichedAfter['team_name'] = await lookupName('teams', enrichedAfter['team_uuid']);
 
@@ -691,12 +753,13 @@ class StorageService {
         userId: ApiService.currentUserId ?? 0,
         targetTable: table,
         targetUuid: uuid,
-        opType: beforeData == null ? 'INSERT' : 'UPDATE',
+        opType: 'UPDATE',
         beforeData: beforeData,
         afterData: enrichedAfter,
         teamUuid: teamUuid,
         operatorName: '本人(离线)',
       );
+
     } catch (e) {
       debugPrint("⚠️ 记录本地审计失败: $e");
     }
