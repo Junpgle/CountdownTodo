@@ -9,6 +9,8 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/course_service.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 class LanDevice {
   final String deviceId;
@@ -149,6 +151,7 @@ class LanSyncService {
   final _syncProgressCtrl = StreamController<String>.broadcast();
   final _incomingRequestCtrl = StreamController<LanDevice>.broadcast();
   final _syncProgressValueCtrl = StreamController<double>.broadcast();
+  final _fileReceivedCtrl = StreamController<Map<String, String>>.broadcast();
 
   final Map<String, LanDevice> _pendingRequests = {};
   final Map<String, String> _pendingTokens = {};
@@ -159,13 +162,26 @@ class LanSyncService {
   Stream<String> get onSyncProgress => _syncProgressCtrl.stream;
   Stream<LanDevice> get onIncomingRequest => _incomingRequestCtrl.stream;
   Stream<double> get onProgressChanged => _syncProgressValueCtrl.stream;
+  Stream<Map<String, String>> get onFileReceived => _fileReceivedCtrl.stream;
 
   final Map<String, LanDevice> _devices = {};
   bool _isRunning = false;
   bool _isSyncing = false;
+  bool _discoverAllDevices = false;
 
   bool get isRunning => _isRunning;
   bool get isSyncing => _isSyncing;
+  bool get discoverAllDevices => _discoverAllDevices;
+
+  set discoverAllDevices(bool value) {
+    if (_discoverAllDevices != value) {
+      _discoverAllDevices = value;
+      _devices.clear();
+      _emitDevices();
+      triggerDiscovery();
+    }
+  }
+
   List<LanDevice> get devices => _devices.values.toList();
 
   String? _currentUserId;
@@ -175,6 +191,9 @@ class LanSyncService {
   enc.Encrypter? _encrypter;
   enc.IV? _iv;
 
+  String? get currentUserId => _currentUserId;
+  String? get currentDeviceId => _currentDeviceId;
+  String? get currentDeviceName => _currentDeviceName;
   String? get localIp => _localIp;
 
   void triggerDiscovery() {
@@ -248,7 +267,7 @@ class LanSyncService {
       final data = jsonDecode(body) as Map<String, dynamic>;
 
       if (data['deviceId'] != _currentDeviceId &&
-          data['userId'] == _currentUserId) {
+          (_discoverAllDevices || data['userId'] == _currentUserId)) {
         final device = LanDevice(
           deviceId: data['deviceId'],
           userId: data['userId'],
@@ -363,6 +382,8 @@ class LanSyncService {
       final path = req.uri.path;
       if (path == '/sync' && req.method == 'POST') {
         await _handleSyncRequest(req);
+      } else if (path == '/file' && req.method == 'POST') {
+        await _handleFileRequest(req);
       } else if (path == '/discover' && req.method == 'GET') {
         await _handleDiscoverRequest(req);
       } else {
@@ -411,7 +432,7 @@ class LanSyncService {
     final remoteDeviceName = data['deviceName'] ?? '';
     final action = data['action'] ?? 'request';
 
-    if (remoteUserId != _currentUserId) {
+    if (remoteUserId != _currentUserId && !_discoverAllDevices) {
       req.response.statusCode = HttpStatus.forbidden;
       final errResp = _encrypt(jsonEncode({'error': 'account mismatch'}));
       req.response.write(jsonEncode({'encrypted': true, 'payload': errResp}));
@@ -838,8 +859,8 @@ class LanSyncService {
       final data =
           jsonDecode(utf8.decode(datagram.data)) as Map<String, dynamic>;
       if (data['type'] == 'discovery' &&
-          data['userId'] == _currentUserId &&
-          data['deviceId'] != _currentDeviceId) {
+          data['deviceId'] != _currentDeviceId &&
+          (_discoverAllDevices || data['userId'] == _currentUserId)) {
         final device = LanDevice(
           deviceId: data['deviceId'],
           userId: data['userId'],
@@ -1072,6 +1093,101 @@ class LanSyncService {
       return LanSyncResult(success: false, message: '连接失败: $e');
     } finally {
       _isSyncing = false;
+    }
+  }
+
+  Future<void> _handleFileRequest(HttpRequest req) async {
+    try {
+      String fileName = req.uri.queryParameters['name'] ?? 'unknown_file';
+      // 移除可能导致路径遍历或非法的文件名字符
+      fileName = fileName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      
+      final deviceName = req.uri.queryParameters['device'] ?? '未知设备';
+
+      _emitProgress('正在接收来自 $deviceName 的文件: $fileName');
+      _emitProgressValue(0.1);
+
+      final tempDir = await getTemporaryDirectory();
+      if (!await tempDir.exists()) {
+        await tempDir.create(recursive: true);
+      }
+      final file = File(p.join(tempDir.path, fileName));
+      final sink = file.openWrite();
+
+      int received = 0;
+      final total = req.contentLength;
+
+      await for (var chunk in req) {
+        sink.add(chunk);
+        received += chunk.length;
+        if (total > 0) {
+          _emitProgressValue(0.1 + (received / total) * 0.9);
+        }
+      }
+      await sink.close();
+
+      _emitProgress('文件接收完成: $fileName');
+      _emitProgressValue(1.0);
+
+      _fileReceivedCtrl.add({
+        'name': fileName,
+        'path': file.path,
+        'from': deviceName,
+      });
+
+      req.response.statusCode = HttpStatus.ok;
+      req.response.write(jsonEncode({'success': true}));
+      await req.response.close();
+    } catch (e) {
+      debugPrint('[LanSync] File receive error: $e');
+      req.response.statusCode = HttpStatus.internalServerError;
+      await req.response.close();
+    }
+  }
+
+  Future<LanSyncResult> sendFile(LanDevice device, File file) async {
+    if (_isSyncing) return LanSyncResult(success: false, message: '同步进行中');
+    _isSyncing = true;
+    _emitProgressValue(0);
+
+    try {
+      final fileName = p.basename(file.path);
+      _emitProgress('正在发送文件到 ${device.deviceName}: $fileName');
+
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 10);
+
+      final uri = Uri.parse('http://${device.ip}:${device.port}/file').replace(
+        queryParameters: {
+          'name': fileName,
+          'device': _currentDeviceName ?? '未知设备',
+        },
+      );
+
+      final request = await client.postUrl(uri);
+      final fileStream = file.openRead();
+      final total = await file.length();
+      int sent = 0;
+
+      await request.addStream(fileStream.map((chunk) {
+        sent += chunk.length;
+        _emitProgressValue((sent / total) * 0.95);
+        return chunk;
+      }));
+
+      final response = await request.close();
+      _isSyncing = false;
+
+      if (response.statusCode == HttpStatus.ok) {
+        _emitProgressValue(1.0);
+        _emitProgress('文件发送成功');
+        return LanSyncResult(success: true, message: '文件发送成功');
+      } else {
+        return LanSyncResult(success: false, message: '服务器响应错误: ${response.statusCode}');
+      }
+    } catch (e) {
+      _isSyncing = false;
+      return LanSyncResult(success: false, message: '发送失败: $e');
     }
   }
 

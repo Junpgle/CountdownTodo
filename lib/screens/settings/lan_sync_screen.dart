@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:open_file/open_file.dart';
 import '../../services/lan_sync_service.dart';
 
 class LanSyncScreen extends StatefulWidget {
@@ -15,6 +18,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
   String _progress = '';
   double _progressValue = 0;
   bool _isLoading = false;
+  bool _discoverAll = false;
 
   @override
   void initState() {
@@ -32,8 +36,39 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
       if (mounted) setState(() => _progressValue = value);
     });
     _service.onIncomingRequest.listen(_showIncomingRequestDialog);
+    _service.onFileReceived.listen(_showFileReceivedDialog);
+
     _devices = _service.devices;
     _status = _service.isRunning ? '运行中' : '已停止';
+    _discoverAll = _service.discoverAllDevices;
+  }
+
+  void _showFileReceivedDialog(Map<String, String> data) {
+    if (!mounted) return;
+    final name = data['name'] ?? '';
+    final path = data['path'] ?? '';
+    final from = data['from'] ?? '未知设备';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('收到文件'),
+        content: Text('来自 $from 的文件: $name\n是否立即查看？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('稍后'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              OpenFile.open(path);
+            },
+            child: const Text('查看'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showIncomingRequestDialog(LanDevice device) {
@@ -134,7 +169,11 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                 if (isAccept) {
                   _confirmSync(device, config);
                 } else {
-                  _requestSync(device, config);
+                  if (device.userId != _service.currentUserId) {
+                    _showCrossAccountWarning(device, config);
+                  } else {
+                    _requestSync(device, config);
+                  }
                 }
               },
               child: const Text('确认'),
@@ -178,6 +217,29 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
     }
   }
 
+  void _showCrossAccountWarning(LanDevice device, LanSyncConfig config) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('账号不匹配'),
+        content: const Text('该设备登录的是其他账号，数据同步（加密）可能会失败。是否继续尝试？\n\n提示：\n1. 建议跨账号使用“发送文件”功能。\n2. 若要同步，请确保对方设备也将“搜索范围”设置为“所有设备”，否则连接会被拒绝。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _requestSync(device, config);
+            },
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _requestSync(LanDevice device, LanSyncConfig config) async {
     setState(() => _isLoading = true);
     final result = await _service.syncWithDevice(device, config: config);
@@ -190,6 +252,36 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 3),
           ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickAndSendFile(LanDevice device) async {
+    try {
+      final result = await FilePicker.platform.pickFiles();
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        setState(() => _isLoading = true);
+        final syncResult = await _service.sendFile(device, file);
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _progressValue = 0;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(syncResult.message),
+              backgroundColor: syncResult.success ? Colors.green : Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('选择文件失败: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -253,6 +345,40 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
     );
   }
 
+  Widget _buildFilterBar() {
+    if (!_service.isRunning) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          const Text('搜索范围:', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 12),
+          ChoiceChip(
+            label: const Text('仅同账号'),
+            selected: !_discoverAll,
+            onSelected: (selected) {
+              if (selected) {
+                setState(() => _discoverAll = false);
+                _service.discoverAllDevices = false;
+              }
+            },
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text('所有设备'),
+            selected: _discoverAll,
+            onSelected: (selected) {
+              if (selected) {
+                setState(() => _discoverAll = true);
+                _service.discoverAllDevices = true;
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -275,6 +401,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
       body: Column(
         children: [
           _buildStatusCard(),
+          _buildFilterBar(),
           const Divider(height: 1),
           Expanded(
             child: _devices.isEmpty
@@ -289,7 +416,9 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          _service.isRunning ? '未发现同账号设备' : '请先启动服务',
+                          _service.isRunning
+                              ? (_discoverAll ? '未发现任何设备' : '未发现同账号设备')
+                              : '请先启动服务',
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 16,
@@ -395,30 +524,83 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isOnline ? Colors.blue : Colors.grey,
-          child: const Icon(Icons.devices, color: Colors.white),
-        ),
-        title: Text(device.deviceName),
-        subtitle: Text(
-          '${device.ip}:${device.port} • ${isOnline ? "在线" : "可能已离线"}',
-          style: TextStyle(
-            color: isOnline ? null : Colors.grey,
-            fontSize: 12,
-          ),
-        ),
-        trailing: _isLoading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : ElevatedButton(
-                onPressed:
-                    !isOnline ? null : () => _showSelectSyncTypeDialog(device),
-                child: const Text('请求连接'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: CircleAvatar(
+              backgroundColor: isOnline ? Colors.blue : Colors.grey,
+              child: const Icon(Icons.devices, color: Colors.white),
+            ),
+            title: Row(
+              children: [
+                Text(device.deviceName),
+                if (device.userId != _service.currentUserId) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.orange, width: 0.5),
+                    ),
+                    child: const Text(
+                      '其他账号',
+                      style: TextStyle(color: Colors.orange, fontSize: 10),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            subtitle: Text(
+              '${device.ip}:${device.port} • ${isOnline ? "在线" : "可能已离线"}',
+              style: TextStyle(
+                color: isOnline ? null : Colors.grey,
+                fontSize: 12,
               ),
+            ),
+            trailing: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 72, right: 16, bottom: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.file_upload, size: 18),
+                    label: const Text('发送文件'),
+                    onPressed:
+                        !isOnline ? null : () => _pickAndSendFile(device),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blue,
+                      side: const BorderSide(color: Colors.blue),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.sync, size: 18),
+                    label: const Text('同步数据'),
+                    onPressed: !isOnline
+                        ? null
+                        : (device.userId != _service.currentUserId
+                            ? () =>
+                                _showCrossAccountWarning(device, LanSyncConfig())
+                            : () => _showSelectSyncTypeDialog(device)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
