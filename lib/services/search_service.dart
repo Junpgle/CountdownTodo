@@ -9,7 +9,7 @@ import '../screens/home_settings_screen.dart';
 import '../screens/animation_settings_page.dart';
 import '../screens/settings/wallpaper_settings_page.dart';
 import '../screens/settings/llm_config_page.dart';
-import '../screens/course_screens.dart';
+
 import '../screens/band_sync_screen.dart';
 import '../screens/settings/lan_sync_screen.dart';
 import '../screens/settings/notification_settings_page.dart';
@@ -17,7 +17,7 @@ import '../utils/page_transitions.dart';
 import '../widgets/todo_section_widget.dart';
 import '../screens/pomodoro_screen.dart';
 import '../screens/time_log_screen.dart';
-import '../screens/home_dashboard.dart';
+
 
 class SearchResultWithScore {
   final SearchResult result;
@@ -275,12 +275,16 @@ class SearchService {
     }
 
     // 2. 数据库扫描
+    // 🚀 修复：DB 查询结果已经由 SQL LIKE/FTS 确认与 query 相关，
+    // 不能再用 _calculateScore 二次过滤（否则备注匹配但不在 subtitle 里的条目会被丢弃）。
+    // 用 score+10 保证 DB 结果优先展示，同时仍按标题相关度排序。
     try {
       final dbItems = await _searchDatabase(q);
       if (currentSearchId != _latestSearchId) return [];
       for (var item in dbItems) {
-        int score = _calculateScore(item.title.toLowerCase(), item.subtitle?.toLowerCase(), null, q);
-        if (score > 0) scoredResults.add(SearchResultWithScore(item, score + 10));
+        final score = _calculateScore(item.title.toLowerCase(), item.subtitle?.toLowerCase(), null, q);
+        // DB 已过滤，保底给 score=1，避免备注命中却被丢弃
+        scoredResults.add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
       }
     } catch (e) {
       debugPrint("Database search error: $e");
@@ -335,61 +339,133 @@ class SearchService {
     final dbItems = <SearchResult>[];
     final db = DatabaseHelper.instance;
 
+    // ── 待办事项 ──────────────────────────────────────────────────────────
     final todos = await db.searchTodos(query);
     for (var t in todos) {
+      // 构建副标题：备注（优先）+ 截止时间 + 归属团队
+      // 🚀 修复：备注始终显示在副标题第一行，而非仅作兜底
+      final metaParts = <String>[];
+      final dueDateMs = t['due_date'];
+      if (dueDateMs != null && dueDateMs != 0) {
+        metaParts.add('截止 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(dueDateMs is int ? dueDateMs : int.tryParse(dueDateMs.toString()) ?? 0))}');
+      }
+      final createdDateMs = t['created_date'];
+      if (createdDateMs != null && createdDateMs != 0) {
+        metaParts.add('开始 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(createdDateMs is int ? createdDateMs : int.tryParse(createdDateMs.toString()) ?? 0))}');
+      }
+      if (t['team_name'] != null && (t['team_name'] as String).isNotEmpty) {
+        metaParts.add('团队: ${t['team_name']}');
+      }
+      final remarkStr = t['remark']?.toString().trim();
+      // subtitle = 备注（若有）＋元信息（若有）
+      final subtitle = [
+        if (remarkStr != null && remarkStr.isNotEmpty) remarkStr,
+        if (metaParts.isNotEmpty) metaParts.join(' · '),
+      ].join('  |  ');
+      final displaySubtitle = subtitle.isNotEmpty ? subtitle : '个人待办';
+
       dbItems.add(SearchResult(
         id: 'db_todo_${t['uuid']}',
         title: t['content'] ?? '未命名任务',
-        subtitle: t['remark'] != null && t['remark'].isNotEmpty ? t['remark'] : '待办事项',
-        icon: Icons.check_circle_outline,
+        subtitle: displaySubtitle,
+        icon: t['is_completed'] == 1 ? Icons.check_circle : Icons.radio_button_unchecked,
         type: SearchResultType.todo,
-        extraData: {'uuid': t['uuid'], 'table': 'todos'},
+        extraData: {
+          'uuid': t['uuid'],
+          'table': 'todos',
+          'is_completed': t['is_completed'],
+          'due_date': dueDateMs,
+          'team_name': t['team_name'],
+          'remark': remarkStr,
+        },
       ));
     }
 
+    // ── 课程 ─────────────────────────────────────────────────────────────
     final courses = await db.searchCourses(query);
     for (var c in courses) {
+      // 构建时间描述：第几周 + 星期几 + 第几节
+      final weekIdx = c['week_index'];
+      final weekday = c['weekday'];
+      const weekdayNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      final weekdayStr = (weekday != null && weekday >= 1 && weekday <= 7) ? weekdayNames[weekday] : '';
+      final startSlot = c['start_time'];
+      final endSlot = c['end_time'];
+      final timePart = (startSlot != null && endSlot != null) ? '第 $startSlot-$endSlot 节' : '';
+      final weekPart = weekIdx != null ? '第 $weekIdx 周' : '';
+      final subtitle = [weekPart, weekdayStr, timePart, c['room_name'] ?? ''].where((s) => s.isNotEmpty).join(' · ');
+
       dbItems.add(SearchResult(
         id: 'db_course_${c['uuid']}',
         title: c['course_name'] ?? '未知课程',
-        subtitle: '${c['room_name'] ?? "未知地点"} | ${c['teacher_name'] ?? "未知教师"}',
+        subtitle: subtitle.isNotEmpty ? subtitle : (c['teacher_name'] ?? '未知教师'),
         icon: Icons.school,
         type: SearchResultType.course,
-        extraData: {'uuid': c['uuid'], 'table': 'courses'},
+        extraData: {
+          'uuid': c['uuid'],
+          'table': 'courses',
+          'teacher_name': c['teacher_name'],
+          'room_name': c['room_name'],
+          'week_index': weekIdx,
+          'weekday': weekday,
+        },
       ));
     }
 
+    // ── 倒计时 ────────────────────────────────────────────────────────────
     final countdowns = await db.searchCountdowns(query);
     for (var cd in countdowns) {
+      String subtitle = '未设置日期';
+      final targetMs = cd['target_time'];
+      if (targetMs != null) {
+        final target = DateTime.fromMillisecondsSinceEpoch(targetMs is int ? targetMs : int.tryParse(targetMs.toString()) ?? 0);
+        final now = DateTime.now();
+        final diff = target.difference(now).inDays;
+        final dateStr = DateFormat('yyyy/MM/dd').format(target);
+        subtitle = diff >= 0 ? '还有 $diff 天 · $dateStr' : '已过 ${-diff} 天 · $dateStr';
+      }
       dbItems.add(SearchResult(
         id: 'db_countdown_${cd['uuid']}',
         title: cd['title'] ?? '未命名倒计时',
-        subtitle: '目标日期: ${cd['target_time'] != null ? DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(cd['target_time'])) : "未设置"}',
-        icon: Icons.timer,
+        subtitle: subtitle,
+        icon: Icons.timer_outlined,
         type: SearchResultType.countdown,
         extraData: {'uuid': cd['uuid'], 'table': 'countdowns'},
       ));
     }
 
+    // ── 时间日志 ──────────────────────────────────────────────────────────
     final logs = await db.searchTimeLogs(query);
     for (var l in logs) {
+      final startMs = l['start_time'];
+      final endMs = l['end_time'];
+      String durationStr = '';
+      String dateStr = '';
+      if (startMs != null && endMs != null) {
+        final start = DateTime.fromMillisecondsSinceEpoch(startMs is int ? startMs : int.tryParse(startMs.toString()) ?? 0);
+        final end = DateTime.fromMillisecondsSinceEpoch(endMs is int ? endMs : int.tryParse(endMs.toString()) ?? 0);
+        final mins = end.difference(start).inMinutes;
+        durationStr = '$mins 分钟';
+        dateStr = DateFormat('MM/dd HH:mm').format(start);
+      }
       dbItems.add(SearchResult(
         id: 'db_log_${l['uuid']}',
-        title: l['title'] ?? '未命名专注',
-        subtitle: '时长: ${(l['duration'] ?? 0) ~/ 60} 分钟 | ${l['remark'] ?? ""}',
-        icon: Icons.history,
+        title: l['title']?.toString().isNotEmpty == true ? l['title'] : '未命名专注',
+        subtitle: [durationStr, dateStr, l['remark'] ?? ''].where((s) => s.isNotEmpty).join(' · '),
+        icon: Icons.history_edu_rounded,
         type: SearchResultType.log,
         extraData: {'uuid': l['uuid'], 'table': 'time_logs'},
       ));
     }
 
+    // ── 待办文件夹 ────────────────────────────────────────────────────────
     final groups = await db.searchTodoGroups(query);
     for (var g in groups) {
       dbItems.add(SearchResult(
         id: 'db_group_${g['uuid']}',
         title: g['name'] ?? '未命名文件夹',
-        subtitle: '待办文件夹 / 分类',
-        icon: Icons.folder_open,
+        subtitle: g['team_name'] != null ? '团队文件夹 · ${g['team_name']}' : '个人文件夹',
+        icon: Icons.folder_rounded,
         type: SearchResultType.todoGroup,
         extraData: {'uuid': g['uuid'], 'table': 'todo_groups'},
       ));
