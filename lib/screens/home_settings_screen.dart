@@ -269,6 +269,28 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  Widget _buildTile({
+    required BuildContext context,
+    required String targetId,
+    required Widget child,
+  }) {
+    final bool isHighlighted = _highlightTarget == targetId;
+    return Container(
+      key: _itemKeys[targetId],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        decoration: BoxDecoration(
+          color: isHighlighted
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: child,
+      ),
+    );
+  }
+
   void _loadAllData() {
     _courseImportHandler = CourseImportHandler(
       context: context,
