@@ -335,19 +335,47 @@ class SearchService {
 
     // ── 日期查询解析 (支持 "今天", "昨天", "04/24" 等) ────────────────────
     DateTime? targetDate;
-    if (q == '今天' || q == '今日' || q == 'today') {
+    if (q == '今天' || q == '今日' || q == '今' || q == 'today') {
       targetDate = DateTime.now();
-    } else if (q == '昨天' || q == 'yesterday') {
+    } else if (q == '昨天' || q == '昨日' || q == 'yesterday') {
       targetDate = DateTime.now().subtract(const Duration(days: 1));
-    } else if (q == '明天' || q == 'tomorrow') {
+    } else if (q == '前天') {
+      targetDate = DateTime.now().subtract(const Duration(days: 2));
+    } else if (q == '大前天') {
+      targetDate = DateTime.now().subtract(const Duration(days: 3));
+    } else if (q == '明天' || q == '明日' || q == 'tomorrow') {
       targetDate = DateTime.now().add(const Duration(days: 1));
+    } else if (q == '后天') {
+      targetDate = DateTime.now().add(const Duration(days: 2));
+    } else if (q == '大后天') {
+      targetDate = DateTime.now().add(const Duration(days: 3));
     } else {
-      final match = RegExp(r'^(\d{1,2})[/-](\d{1,2})$').firstMatch(q);
-      if (match != null) {
-        final m = int.tryParse(match.group(1)!) ?? 0;
-        final d = int.tryParse(match.group(2)!) ?? 0;
-        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-          targetDate = DateTime(DateTime.now().year, m, d);
+      final now = DateTime.now();
+      final patterns = <RegExp>[
+        RegExp(r'^(\d{4})[./\-/年](\d{1,2})[./\-/月](\d{1,2})[日号]?$'),
+        RegExp(r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$'),
+      ];
+
+      for (final pattern in patterns) {
+        final match = pattern.firstMatch(q);
+        if (match == null) continue;
+
+        int? year;
+        int month;
+        int day;
+        if (match.groupCount == 3 && match.group(1)!.length == 4) {
+          year = int.tryParse(match.group(1)!);
+          month = int.tryParse(match.group(2)!) ?? 0;
+          day = int.tryParse(match.group(3)!) ?? 0;
+        } else {
+          year = now.year;
+          month = int.tryParse(match.group(1)!) ?? 0;
+          day = int.tryParse(match.group(2)!) ?? 0;
+        }
+
+        if (year != null && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          targetDate = DateTime(year, month, day);
+          break;
         }
       }
     }
@@ -363,6 +391,9 @@ class SearchService {
         targetDateValue.year == now.year &&
         targetDateValue.month == now.month &&
         targetDateValue.day == now.day;
+    final dateQueryHint = isDateQuery && startOfDay != null
+        ? '搜索到${DateFormat('yyyy年M月d日').format(startOfDay)}的结果'
+        : null;
 
     // ── 待办事项 ──────────────────────────────────────────────────────────
     List<Map<String, dynamic>> todos = [];
@@ -418,7 +449,6 @@ class SearchService {
         if (metaParts.isNotEmpty) metaParts.join(' · '),
       ].join('  |  ');
       final displaySubtitle = subtitle.isNotEmpty ? subtitle : '个人待办';
-
       dbItems.add(SearchResult(
         id: 'db_todo_${t['uuid']}',
         title: t['content'] ?? '未命名任务',
@@ -432,6 +462,7 @@ class SearchService {
           'due_date': dueDateMs,
           'team_name': t['team_name'],
           'remark': remarkStr,
+          if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
         },
       ));
     }
@@ -464,6 +495,7 @@ class SearchService {
             'room_name': c['room_name'],
             'week_index': weekIdx,
             'weekday': weekday,
+            if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
           },
         ));
       }
@@ -489,7 +521,11 @@ class SearchService {
           subtitle: subtitle,
           icon: Icons.timer_outlined,
           type: SearchResultType.countdown,
-          extraData: {'uuid': cd['uuid'], 'table': 'countdowns'},
+          extraData: {
+            'uuid': cd['uuid'],
+            'table': 'countdowns',
+            if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+          },
         ));
       }
     } catch (e) {
@@ -520,7 +556,11 @@ class SearchService {
               '${l.remark?.isNotEmpty == true ? ' · ${l.remark}' : ''}',
           icon: Icons.history_edu_rounded,
           type: SearchResultType.log,
-          extraData: {'uuid': l.id, 'table': 'time_logs'},
+          extraData: {
+            'uuid': l.id,
+            'table': 'time_logs',
+            if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+          },
         ));
       }
     } catch (e) {
@@ -571,9 +611,7 @@ class SearchService {
             if (!matchesQuery) continue;
 
             seenApps.add(normalized);
-            final subtitle = includeAll
-                ? '屏幕使用时间 · 今日记录'
-                : '屏幕使用时间 · 点击查看应用详情';
+            final subtitle = '屏幕使用时间 · 点击查看应用详情';
 
             dbItems.add(SearchResult(
               id: 'db_app_$normalized',
@@ -584,6 +622,7 @@ class SearchService {
               extraData: {
                 'app_name': appName,
                 'route': '/screen_time/app',
+                if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
               },
             ));
           }
@@ -628,10 +667,14 @@ class SearchService {
           dbItems.add(SearchResult(
             id: 'db_pom_${p.uuid}',
             title: p.todoTitle?.isNotEmpty == true ? p.todoTitle! : '专注记录',
-            subtitle: '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
+                  subtitle: '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
             icon: Icons.timer_outlined,
             type: SearchResultType.log, // 与时间日志归在一组
-            extraData: {'uuid': p.uuid, 'table': 'pomodoro_records'},
+              extraData: {
+                'uuid': p.uuid,
+                'table': 'pomodoro_records',
+                if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+              },
           ));
         }
       } catch (e) {
@@ -646,7 +689,9 @@ class SearchService {
         dbItems.add(SearchResult(
           id: 'db_group_${g['uuid']}',
           title: g['name'] ?? '未命名文件夹',
-          subtitle: g['team_name'] != null ? '团队文件夹 · ${g['team_name']}' : '个人文件夹',
+          subtitle: g['team_name'] != null
+              ? '团队文件夹 · ${g['team_name']}'
+              : '个人文件夹',
           icon: Icons.folder_rounded,
           type: SearchResultType.todoGroup,
           extraData: {'uuid': g['uuid'], 'table': 'todo_groups'},

@@ -1,13 +1,24 @@
-# CountDownTodo — 跨平台效率工具套件
+# CountDownTodo / Uni-Sync — 全域协同效率工具套件
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-blue)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.1+-blue)](https://dart.dev)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20%7C%20Web-green)]()
-[![Version](https://img.shields.io/badge/Version-3.2.14-orange)]()
+[![Version](https://img.shields.io/badge/Version-4.0.0-orange)]()
 
-CountDownTodo 是一款跨平台的生产力与时间管理套件，集成待办事项、倒计时、番茄钟、数学测验、课程表、屏幕时间统计等功能，支持 Android / Windows / Web 多端数据同步。集成 AI 智能解析、手环互联等前沿特性。
+CountDownTodo (Uni-Sync 4.0) 是一款跨平台的生产力与时间管理套件。在 4.0 版本中，我们引入了全新的 **Uni-Sync 协同引擎**，支持团队协作、实时状态同步、多维数据看板及深度全局搜索，为个人及团队提供极致的生产力支撑。
 
 > **注意**：C++ 桌面悬浮组件 (`MathQuizLite/`) 位于独立仓库 [CountDownTodoLite](https://github.com/Junpgle/CountDownTodoLite)，本仓库仅包含 Flutter 移动端 + Cloudflare Workers 后端。
+
+---
+
+## 🌟 4.0 核心特性
+
+- 🏗️ **Uni-Sync 协同引擎**：基于 UUID + Logical Clock 的增量 Oplog 同步，支持冲突挂起裁决与全量程原子回滚。
+- 🤝 **团队协同广场**：支持多团队切换、管理员审批流、团队公告强制确认及阅读率监控。
+- 🔍 **Omni-Console 全局搜索**：毫秒级全文索引，支持日期语义搜索（“今天”、“昨天”）、设置项直达及屏幕时间深度跳转。
+- 📊 **多维看板分析**：采用 Smooth Bezier 曲线绘制高颜值专注热力图与负荷图，支持日/周/月多粒度聚合。
+- 🌐 **混合同步体系**：云端（Aliyun/Cloudflare）+ 局域网（LAN Sync）双链路备份，确保数据主权与同步韧性。
+- 📱 **全端原生体验**：Android 实时活动 (Live Activities)、Windows 灵动岛悬浮窗、手表端互联。
 
 ---
 
@@ -15,10 +26,11 @@ CountDownTodo 是一款跨平台的生产力与时间管理套件，集成待办
 
 | 层级 | 技术栈 | 职责 |
 |------|--------|------|
-| **表现层** | Flutter Widgets + Material3 | UI 渲染、主题切换、响应式布局 |
-| **业务层** | Dart Services | 番茄钟状态机、增量同步引擎、LLM 解析 |
-| **持久层** | SharedPreferences + REST API | 本地缓存 + Cloudflare Workers 后端 |
-| **原生层** | MethodChannel + Win32 FFI | 屏幕时间采集、桌面灵动岛、通知推送 |
+| **表现层** | Flutter 3.x + Material3 | 多端自适应布局、高级动效 (Pulse/Shake/Flip) |
+| **同步层** | Delta Sync Engine (LWW) | 增量数据对齐、版本冲突裁决、本地审计追踪 (Audit Logs) |
+| **检索层** | SQLite FTS4 + Semantic Parser | 全局全文搜索、日期语义解析、设置项注册表 |
+| **通信层** | Cloudflare Zero Trust + HTTP/HTTPS | 混合云架构、私有化隧道、Zero Trust 安全准入 |
+| **原生层** | Win32 FFI / MethodChannel | 屏幕时间统计、灵动岛渲染、系统级通知推送 |
 
 ---
 
@@ -128,5 +140,5 @@ npx wrangler deploy
 
 ---
 
-*最后更新：2026-04-13*
-*版本：v3.2.14*
+*最后更新：2026-04-24*
+*版本：v4.0.0 (Uni-Sync Edition)*

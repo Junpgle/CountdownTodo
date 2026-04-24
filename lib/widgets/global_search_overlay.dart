@@ -363,6 +363,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       return _buildEmptyState(colorScheme, isDark);
     }
 
+    final dateQueryHint = _extractDateQueryHint();
+
     final groups = _groupResults();
     final sections = <_SearchSectionLayoutItem>[];
 
@@ -397,12 +399,42 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final banner = dateQueryHint == null
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF2C2C2E)
+                          : colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.12),
+                      ),
+                    ),
+                    child: Text(
+                      dateQueryHint,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                );
+
           final useTwoColumns = !isCompact && constraints.maxWidth >= 960;
           if (!useTwoColumns) {
             return SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: sections.map((section) => section.widget).toList(),
+                children: [
+                  banner,
+                  ...sections.map((section) => section.widget),
+                ],
               ),
             );
           }
@@ -439,18 +471,32 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           }
 
           return SingleChildScrollView(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(width: columnWidth, child: buildColumn(leftColumn)),
-                const SizedBox(width: 12),
-                SizedBox(width: columnWidth, child: buildColumn(rightColumn)),
+                banner,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: columnWidth, child: buildColumn(leftColumn)),
+                    const SizedBox(width: 12),
+                    SizedBox(width: columnWidth, child: buildColumn(rightColumn)),
+                  ],
+                ),
               ],
             ),
           );
         },
       ),
     );
+  }
+
+  String? _extractDateQueryHint() {
+    for (final result in _results) {
+      final hint = result.extraData?['date_query_hint']?.toString().trim();
+      if (hint != null && hint.isNotEmpty) return hint;
+    }
+    return null;
   }
 
 
