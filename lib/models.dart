@@ -599,6 +599,10 @@ class CourseItem {
   final String roomName;
   final String? lessonType;
   String? teamUuid;
+  int version;
+  int updatedAt;
+  int createdAt;
+  bool isDeleted;
 
   CourseItem({
     String? uuid,
@@ -612,7 +616,13 @@ class CourseItem {
     required this.roomName,
     this.lessonType,
     this.teamUuid,
-  }) : this.uuid = uuid ?? const Uuid().v4();
+    this.version = 1,
+    int? updatedAt,
+    int? createdAt,
+    this.isDeleted = false,
+  }) : this.uuid = uuid ?? const Uuid().v4(),
+       this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+       this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   String get formattedStartTime => '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
   String get formattedEndTime => '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
@@ -629,20 +639,28 @@ class CourseItem {
     'roomName': roomName,
     'lessonType': lessonType,
     'team_uuid': teamUuid,
+    'version': version,
+    'updated_at': updatedAt,
+    'created_at': createdAt,
+    'is_deleted': isDeleted ? 1 : 0,
   };
 
   factory CourseItem.fromJson(Map<String, dynamic> json) => CourseItem(
     uuid: json['uuid'] ?? json['id'],
-    courseName: json['courseName'] ?? '未知课程',
-    teacherName: json['teacherName'] ?? '未知教师',
+    courseName: json['courseName'] ?? json['course_name'] ?? '未知课程',
+    teacherName: json['teacherName'] ?? json['teacher_name'] ?? '未知教师',
     date: json['date'] ?? '',
     weekday: json['weekday'] ?? 1,
-    startTime: json['startTime'] ?? 0,
-    endTime: json['endTime'] ?? 0,
-    weekIndex: json['weekIndex'] ?? 1,
-    roomName: json['roomName'] ?? '未知地点',
-    lessonType: json['lessonType'],
+    startTime: json['startTime'] ?? json['start_time'] ?? 0,
+    endTime: json['endTime'] ?? json['end_time'] ?? 0,
+    weekIndex: json['weekIndex'] ?? json['week_index'] ?? 1,
+    roomName: json['roomName'] ?? json['room_name'] ?? '未知地点',
+    lessonType: json['lessonType'] ?? json['lesson_type'],
     teamUuid: json['team_uuid'] ?? json['teamUuid'],
+    version: (json['version'] as num?)?.toInt() ?? 1,
+    updatedAt: (json['updated_at'] as num?)?.toInt(),
+    createdAt: (json['created_at'] as num?)?.toInt(),
+    isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
   );
 }
 

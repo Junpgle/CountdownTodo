@@ -71,11 +71,12 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final ScrollController _scrollController = ScrollController(); // 🚀 新增：滚动控制
-  // 🚀 记录各分区的 GlobalKey 用于精确定位
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _accountSectionKey = GlobalKey();
   final GlobalKey _preferenceSectionKey = GlobalKey();
   final GlobalKey _advancedSectionKey = GlobalKey();
   final GlobalKey _systemSectionKey = GlobalKey();
+  String? _highlightTarget;
   static const platform =
       MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   final ReceivePort _port = ReceivePort();
@@ -157,31 +158,38 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _scrollToTarget(String target) {
     GlobalKey? targetKey;
-    // 映射逻辑：根据 target 字符串找到对应的 Key
-    switch (target) {
-      case 'theme':
-      case 'server_choice':
-      case 'sync_interval':
-      case 'float_window_style':
+    setState(() {
+      if (['theme', 'server_choice', 'sync_interval', 'float_window_style', 'llm_retry'].contains(target)) {
+        _preferenceExpanded = true;
         targetKey = _preferenceSectionKey;
-        break;
-      case 'lan_sync':
-      case 'cache':
-      case 'migration':
+      } else if (['lan_sync', 'cache', 'migration'].contains(target)) {
+        _advancedExpanded = true;
         targetKey = _advancedSectionKey;
-        break;
-      case 'about':
+      } else if (target == 'about') {
+        _aboutExpanded = true;
         targetKey = _systemSectionKey;
-        break;
-    }
+      }
+      _highlightTarget = target;
+    });
 
-    if (targetKey != null && targetKey.currentContext != null) {
-      Scrollable.ensureVisible(
-        targetKey.currentContext!,
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeInOutCubic,
-      );
-    }
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (targetKey != null && targetKey!.currentContext != null) {
+        Scrollable.ensureVisible(
+          targetKey!.currentContext!,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.1,
+        );
+      }
+    });
+
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) {
+        setState(() {
+          _highlightTarget = null;
+        });
+      }
+    });
   }
 
   void _loadAllData() {
@@ -1106,21 +1114,24 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         _buildAnnouncementPanel(),
         const SizedBox(height: 8),
-        _buildExpandableSection(
-          title: '账户管理',
-          icon: Icons.person_outline,
-          expanded: _accountExpanded,
-          onToggle: () => setState(() => _accountExpanded = !_accountExpanded),
-          child: AccountSection(
-            username: _username,
-            userId: _userId,
-            userTier: _userTier,
-            syncProgress: _syncProgress,
-            isLoadingStatus: _isLoadingStatus,
-            onRefreshStatus: _fetchAccountStatus,
-            onForceFullSync: _forceFullSync,
-            onLogout: () => _handleLogout(force: false),
-            onChangePassword: _showChangePasswordDialog,
+        Container(
+          key: _accountSectionKey,
+          child: _buildExpandableSection(
+            title: '账户管理',
+            icon: Icons.person_outline,
+            expanded: _accountExpanded,
+            onToggle: () => setState(() => _accountExpanded = !_accountExpanded),
+            child: AccountSection(
+              username: _username,
+              userId: _userId,
+              userTier: _userTier,
+              syncProgress: _syncProgress,
+              isLoadingStatus: _isLoadingStatus,
+              onRefreshStatus: _fetchAccountStatus,
+              onForceFullSync: _forceFullSync,
+              onLogout: () => _handleLogout(force: false),
+              onChangePassword: _showChangePasswordDialog,
+            ),
           ),
         ),
         _buildExpandableSection(
@@ -1168,105 +1179,109 @@ class _SettingsPageState extends State<SettingsPage> {
             onFetchFromCloud: _fetchCoursesFromCloud,
           ),
         ),
-        _buildExpandableSection(
-          title: '偏好设置',
-          icon: Icons.settings_outlined,
-          expanded: _preferenceExpanded,
-          onToggle: () =>
-              setState(() => _preferenceExpanded = !_preferenceExpanded),
-          child: PreferenceSection(
-            syncInterval: _syncInterval,
-            onSyncIntervalChanged: (val) {
-              if (val != null) {
-                setState(() => _syncInterval = val);
-                StorageService.saveAppSetting(
-                    StorageService.KEY_SYNC_INTERVAL, val);
-              }
-            },
-            serverChoice: _serverChoice,
-            onServerChoiceTap: () {
-              Navigator.push(
-                context,
-                PageTransitions.slideHorizontal(
-                  ServerChoicePage(
-                    initialServerChoice: _serverChoice,
+        Container(
+          key: _preferenceSectionKey,
+          child: _buildExpandableSection(
+            title: '偏好设置',
+            icon: Icons.settings_outlined,
+            expanded: _preferenceExpanded,
+            onToggle: () =>
+                setState(() => _preferenceExpanded = !_preferenceExpanded),
+            child: PreferenceSection(
+              highlightTarget: _highlightTarget,
+              syncInterval: _syncInterval,
+              onSyncIntervalChanged: (val) {
+                if (val != null) {
+                  setState(() => _syncInterval = val);
+                  StorageService.saveAppSetting(
+                      StorageService.KEY_SYNC_INTERVAL, val);
+                }
+              },
+              serverChoice: _serverChoice,
+              onServerChoiceTap: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    ServerChoicePage(
+                      initialServerChoice: _serverChoice,
+                    ),
                   ),
-                ),
-              );
-            },
-            themeMode: _themeMode,
-            onThemeModeChanged: (val) {
-              if (val != null) {
-                setState(() => _themeMode = val);
-                StorageService.saveAppSetting(
-                    StorageService.KEY_THEME_MODE, val);
-                StorageService.themeNotifier.value = val;
-              }
-            },
-            taiDbPath: _taiDbPath,
-            onPickTaiDatabase: _pickTaiDatabase,
-            floatWindowStyle: _floatWindowStyle,
-            onFloatWindowStyleChanged: Platform.isWindows
-                ? (val) async {
-                    if (val == null) return;
-                    setState(() => _floatWindowStyle = val);
-                    final prefs = await SharedPreferences.getInstance();
-                    final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
-                    if (username != null && username.isNotEmpty) {
-                       await prefs.setInt('float_window_style_$username', val);
-                    }
-                    await prefs.setInt('float_window_style', val);
-                    if (val == 2) {
-                      try {
-                        IslandDataProvider().invalidateCache();
-                        IslandManager().clearIslandCache('island-1');
-                      } catch (e) {}
-                    } else {
-                      debugPrint('[Settings] Creating island (ON)');
-                      try {
-                        IslandDataProvider().invalidateCache();
-                        IslandManager().clearIslandCache('island-1');
-                        final winId =
-                            await IslandManager().createIsland('island-1');
-                        debugPrint('[Settings] Island created, winId: $winId');
-                      } catch (e) {
-                        debugPrint('[Settings] Create error: $e');
+                );
+              },
+              themeMode: _themeMode,
+              onThemeModeChanged: (val) {
+                if (val != null) {
+                  setState(() => _themeMode = val);
+                  StorageService.saveAppSetting(
+                      StorageService.KEY_THEME_MODE, val);
+                  StorageService.themeNotifier.value = val;
+                }
+              },
+              taiDbPath: _taiDbPath,
+              onPickTaiDatabase: _pickTaiDatabase,
+              floatWindowStyle: _floatWindowStyle,
+              onFloatWindowStyleChanged: Platform.isWindows
+                  ? (val) async {
+                      if (val == null) return;
+                      setState(() => _floatWindowStyle = val);
+                      final prefs = await SharedPreferences.getInstance();
+                      final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+                      if (username != null && username.isNotEmpty) {
+                         await prefs.setInt('float_window_style_$username', val);
                       }
+                      await prefs.setInt('float_window_style', val);
+                      if (val == 2) {
+                        try {
+                          IslandDataProvider().invalidateCache();
+                          IslandManager().clearIslandCache('island-1');
+                        } catch (e) {}
+                      } else {
+                        debugPrint('[Settings] Creating island (ON)');
+                        try {
+                          IslandDataProvider().invalidateCache();
+                          IslandManager().clearIslandCache('island-1');
+                          final winId =
+                              await IslandManager().createIsland('island-1');
+                          debugPrint('[Settings] Island created, winId: $winId');
+                        } catch (e) {
+                          debugPrint('[Settings] Create error: $e');
+                        }
+                        try {
+                          await FloatWindowService.update(forceReset: true);
+                          debugPrint(
+                              '[Settings] FloatWindowService.update called');
+                        } catch (e) {
+                          debugPrint('[Settings] Update error: $e');
+                        }
+                      }
+                    }
+                  : null,
+              onForceRefreshPressed: Platform.isWindows
+                  ? () async {
+                      try {
+                        await StorageService.saveIslandBounds('island-1', {});
+                      } catch (_) {}
+                      try {
+                        IslandDataProvider().invalidateCache();
+                      } catch (_) {}
+                      try {
+                        IslandManager().clearIslandCache('island-1');
+                      } catch (_) {}
                       try {
                         await FloatWindowService.update(forceReset: true);
-                        debugPrint(
-                            '[Settings] FloatWindowService.update called');
-                      } catch (e) {
-                        debugPrint('[Settings] Update error: $e');
-                      }
+                      } catch (_) {}
                     }
-                  }
-                : null,
-            onForceRefreshPressed: Platform.isWindows
-                ? () async {
-                    try {
-                      await StorageService.saveIslandBounds('island-1', {});
-                    } catch (_) {}
-                    try {
-                      IslandDataProvider().invalidateCache();
-                    } catch (_) {}
-                    try {
-                      IslandManager().clearIslandCache('island-1');
-                    } catch (_) {}
-                    try {
-                      await FloatWindowService.update(forceReset: true);
-                    } catch (_) {}
-                  }
-                : null,
-            onIslandPriorityPressed:
-                Platform.isWindows ? _showIslandPriorityDialog : null,
-            llmRetryCount: _llmRetryCount,
-            onLLMRetryCountChanged: (val) {
-              if (val != null) {
-                setState(() => _llmRetryCount = val);
-                StorageService.setLLMRetryCount(val);
-              }
-            },
+                  : null,
+              onIslandPriorityPressed:
+                  Platform.isWindows ? _showIslandPriorityDialog : null,
+              llmRetryCount: _llmRetryCount,
+              onLLMRetryCountChanged: (val) {
+                if (val != null) {
+                  setState(() => _llmRetryCount = val);
+                  StorageService.setLLMRetryCount(val);
+                }
+              },
+            ),
           ),
         ),
         _buildExpandableSection(
@@ -1345,31 +1360,35 @@ class _SettingsPageState extends State<SettingsPage> {
           expanded: _advancedExpanded,
           onToggle: () =>
               setState(() => _advancedExpanded = !_advancedExpanded),
-          child: AdvancedSection(
-            onShowMigrationDialog: _showMigrationDialog,
-            onTestCourseNotification: _testCourseNotification,
-            liveUpdatesStatus: _liveUpdatesStatus,
-            onCheckAndOpenLiveUpdates: _checkAndOpenLiveUpdates,
-            islandStatus: _islandStatus,
-            onCheckIslandSupport: _checkIslandSupport,
-            onOpenBandSync: Platform.isAndroid
-                ? () {
-                    Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                        const BandSyncScreen(),
-                      ),
-                    );
-                  }
-                : null,
-            onOpenLanSync: () {
-              Navigator.push(
-                context,
-                PageTransitions.slideHorizontal(
-                  const LanSyncScreen(),
-                ),
-              );
-            },
+          child: Container(
+            key: _advancedSectionKey,
+            child: AdvancedSection(
+              highlightTarget: _highlightTarget,
+              onShowMigrationDialog: _showMigrationDialog,
+              onTestCourseNotification: _testCourseNotification,
+              liveUpdatesStatus: _liveUpdatesStatus,
+              onCheckAndOpenLiveUpdates: _checkAndOpenLiveUpdates,
+              islandStatus: _islandStatus,
+              onCheckIslandSupport: _checkIslandSupport,
+              onOpenBandSync: Platform.isAndroid
+                  ? () {
+                      Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                          const BandSyncScreen(),
+                        ),
+                      );
+                    }
+                  : null,
+              onOpenLanSync: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    const LanSyncScreen(),
+                  ),
+                );
+              },
+            ),
           ),
         ),
         _buildExpandableSection(
@@ -1377,21 +1396,25 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.devices_outlined,
           expanded: _systemExpanded,
           onToggle: () => setState(() => _systemExpanded = !_systemExpanded),
-          child: SystemSection(
-            onOpenFeatureGuide: () {
-              Navigator.push(
-                context,
-                PageTransitions.slideHorizontal(
-                  const FeatureGuideScreen(isManualReview: true),
-                ),
-              );
-            },
-            cacheSizeStr: _cacheSizeStr,
-            onClearCache: _storageManagementHandler.clearCache,
-            onShowStorageAnalysis:
-                _storageManagementHandler.showStorageAnalysis,
-            isCheckingUpdate: _isCheckingUpdate,
-            onCheckUpdates: _checkUpdatesAndNotices,
+          child: Container(
+            key: _systemSectionKey,
+            child: SystemSection(
+              highlightTarget: _highlightTarget,
+              onOpenFeatureGuide: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    const FeatureGuideScreen(isManualReview: true),
+                  ),
+                );
+              },
+              cacheSizeStr: _cacheSizeStr,
+              onClearCache: _storageManagementHandler.clearCache,
+              onShowStorageAnalysis:
+                  _storageManagementHandler.showStorageAnalysis,
+              isCheckingUpdate: _isCheckingUpdate,
+              onCheckUpdates: _checkUpdatesAndNotices,
+            ),
           ),
         ),
         _buildExpandableSection(
@@ -1545,8 +1568,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    PreferenceSection(
-                      syncInterval: _syncInterval,
+                    Container(
+                      key: _preferenceSectionKey,
+                      child: PreferenceSection(
+                        highlightTarget: _highlightTarget,
+                        syncInterval: _syncInterval,
                       onSyncIntervalChanged: (val) {
                         if (val != null) {
                           setState(() => _syncInterval = val);
@@ -1645,6 +1671,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         }
                       },
                     ),
+                  ),
                     Card(
                       elevation: 1,
                       shape: RoundedRectangleBorder(
@@ -1696,37 +1723,45 @@ class _SettingsPageState extends State<SettingsPage> {
                       onRequestOrOpenPermission:
                           _permissionHandler.requestOrOpenPermission,
                     ),
-                    AdvancedSection(
-                      onShowMigrationDialog: _showMigrationDialog,
-                      onTestCourseNotification: _testCourseNotification,
-                      liveUpdatesStatus: _liveUpdatesStatus,
-                      onCheckAndOpenLiveUpdates: _checkAndOpenLiveUpdates,
-                      islandStatus: _islandStatus,
-                      onCheckIslandSupport: _checkIslandSupport,
-                      onOpenLanSync: () {
-                        Navigator.push(
-                          context,
-                          PageTransitions.slideHorizontal(
-                            const LanSyncScreen(),
-                          ),
-                        );
-                      },
+                    Container(
+                      key: _advancedSectionKey,
+                      child: AdvancedSection(
+                        highlightTarget: _highlightTarget,
+                        onShowMigrationDialog: _showMigrationDialog,
+                        onTestCourseNotification: _testCourseNotification,
+                        liveUpdatesStatus: _liveUpdatesStatus,
+                        onCheckAndOpenLiveUpdates: _checkAndOpenLiveUpdates,
+                        islandStatus: _islandStatus,
+                        onCheckIslandSupport: _checkIslandSupport,
+                        onOpenLanSync: () {
+                          Navigator.push(
+                            context,
+                            PageTransitions.slideHorizontal(
+                              const LanSyncScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                    SystemSection(
-                      onOpenFeatureGuide: () {
-                        Navigator.push(
-                          context,
-                          PageTransitions.slideHorizontal(
-                            const FeatureGuideScreen(isManualReview: true),
-                          ),
-                        );
-                      },
-                      cacheSizeStr: _cacheSizeStr,
-                      onClearCache: _storageManagementHandler.clearCache,
-                      onShowStorageAnalysis:
-                          _storageManagementHandler.showStorageAnalysis,
-                      isCheckingUpdate: _isCheckingUpdate,
-                      onCheckUpdates: _checkUpdatesAndNotices,
+                    Container(
+                      key: _systemSectionKey,
+                      child: SystemSection(
+                        highlightTarget: _highlightTarget,
+                        onOpenFeatureGuide: () {
+                          Navigator.push(
+                            context,
+                            PageTransitions.slideHorizontal(
+                              const FeatureGuideScreen(isManualReview: true),
+                            ),
+                          );
+                        },
+                        cacheSizeStr: _cacheSizeStr,
+                        onClearCache: _storageManagementHandler.clearCache,
+                        onShowStorageAnalysis:
+                            _storageManagementHandler.showStorageAnalysis,
+                        isCheckingUpdate: _isCheckingUpdate,
+                        onCheckUpdates: _checkUpdatesAndNotices,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Card(

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 class SystemSection extends StatelessWidget {
+  final String? highlightTarget; // 🚀 新增
   final VoidCallback onOpenFeatureGuide;
   final String cacheSizeStr;
   final VoidCallback onClearCache;
@@ -11,6 +12,7 @@ class SystemSection extends StatelessWidget {
 
   const SystemSection({
     Key? key,
+    this.highlightTarget,
     required this.onOpenFeatureGuide,
     required this.cacheSizeStr,
     required this.onClearCache,
@@ -18,6 +20,25 @@ class SystemSection extends StatelessWidget {
     required this.isCheckingUpdate,
     required this.onCheckUpdates,
   }) : super(key: key);
+
+  Widget _buildTile({
+    required BuildContext context,
+    required String targetId,
+    required Widget child,
+  }) {
+    final bool isHighlighted = highlightTarget == targetId;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        color: isHighlighted 
+            ? Theme.of(context).colorScheme.primary.withOpacity(0.2) 
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,15 +68,19 @@ class SystemSection extends StatelessWidget {
               ),
               if (!Platform.isWindows) ...[
                 const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.cleaning_services,
-                      color: Colors.blueAccent),
-                  title: const Text('深度清理缓存与冗余'),
-                  subtitle: const Text('包含更新残留包与深度图片缓存'),
-                  trailing: Text(cacheSizeStr,
-                      style: const TextStyle(
-                          color: Colors.grey, fontWeight: FontWeight.bold)),
-                  onTap: onClearCache,
+                _buildTile(
+                  context: context,
+                  targetId: 'cache',
+                  child: ListTile(
+                    leading: const Icon(Icons.cleaning_services,
+                        color: Colors.blueAccent),
+                    title: const Text('深度清理缓存与冗余'),
+                    subtitle: const Text('包含更新残留包与深度图片缓存'),
+                    trailing: Text(cacheSizeStr,
+                        style: const TextStyle(
+                            color: Colors.grey, fontWeight: FontWeight.bold)),
+                    onTap: onClearCache,
+                  ),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
@@ -67,16 +92,20 @@ class SystemSection extends StatelessWidget {
                 ),
               ],
               const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: const Icon(Icons.system_update, color: Colors.green),
-                title: const Text('检查新版本'),
-                trailing: isCheckingUpdate
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.chevron_right),
-                onTap: isCheckingUpdate ? null : onCheckUpdates,
+              _buildTile(
+                context: context,
+                targetId: 'about',
+                child: ListTile(
+                  leading: const Icon(Icons.system_update, color: Colors.green),
+                  title: const Text('检查新版本'),
+                  trailing: isCheckingUpdate
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.chevron_right),
+                  onTap: isCheckingUpdate ? null : onCheckUpdates,
+                ),
               ),
             ],
           ),

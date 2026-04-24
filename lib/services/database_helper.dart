@@ -51,7 +51,7 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 15, // 🚀 V15: 为 op_logs 添加 sync_error 字段
+        version: 16, // 🚀 V16: 为 courses 添加同步元数据 (is_deleted, updated_at 等)
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 3) {
@@ -315,6 +315,25 @@ class DatabaseHelper {
               }
             } catch (e) {
               debugPrint("⚠️ Database: 升级 V15 失败: $e");
+            }
+          }
+          if (oldVersion < 16) {
+            try {
+              final columns = [
+                {'name': 'is_deleted', 'type': 'INTEGER DEFAULT 0'},
+                {'name': 'version', 'type': 'INTEGER DEFAULT 1'},
+                {'name': 'updated_at', 'type': 'INTEGER'},
+                {'name': 'created_at', 'type': 'INTEGER'},
+              ];
+              for (var col in columns) {
+                final info = await db.rawQuery("PRAGMA table_info(courses)");
+                if (!info.any((row) => row['name'] == col['name'])) {
+                  await db.execute("ALTER TABLE courses ADD COLUMN ${col['name']} ${col['type']};");
+                  debugPrint("✅ Database: 修复字段 courses.${col['name']} (V16)");
+                }
+              }
+            } catch (e) {
+              debugPrint("⚠️ Database: 升级 V16 失败: $e");
             }
           }
         }
@@ -602,7 +621,11 @@ class DatabaseHelper {
         week_index $integerType,
         room_name $jsonType,
         lesson_type $jsonType,
-        team_uuid $jsonType
+        team_uuid $jsonType,
+        is_deleted $boolType DEFAULT 0,
+        version $integerType DEFAULT 1,
+        updated_at $integerType,
+        created_at $integerType
       )
     ''');
 
@@ -760,11 +783,12 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> searchCourses(String query) async {
     final db = await instance.database;
-    // 课程数据量通常较小，使用索引优化的 LIKE 查询
-    // 修正：courses 表目前没有 is_deleted 字段，直接按课程名、教师、地点搜索
+    // 🚀 Uni-Sync 4.0: 现已补全 courses 字段，启用过滤与排序
     return await db.rawQuery('''
       SELECT * FROM courses 
-      WHERE course_name LIKE ? OR teacher_name LIKE ? OR room_name LIKE ?
+      WHERE is_deleted = 0 
+      AND (course_name LIKE ? OR teacher_name LIKE ? OR room_name LIKE ?)
+      ORDER BY updated_at DESC
       LIMIT 15
     ''', ['%$query%', '%$query%', '%$query%']);
   }

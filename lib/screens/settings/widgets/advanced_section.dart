@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 class AdvancedSection extends StatelessWidget {
+  final String? highlightTarget; // 🚀 新增
   final VoidCallback onShowMigrationDialog;
   final VoidCallback onTestCourseNotification;
   final String liveUpdatesStatus;
@@ -13,6 +14,7 @@ class AdvancedSection extends StatelessWidget {
 
   const AdvancedSection({
     super.key,
+    this.highlightTarget,
     required this.onShowMigrationDialog,
     required this.onTestCourseNotification,
     required this.liveUpdatesStatus,
@@ -22,6 +24,25 @@ class AdvancedSection extends StatelessWidget {
     this.onOpenBandSync,
     this.onOpenLanSync,
   });
+
+  Widget _buildTile({
+    required BuildContext context,
+    required String targetId,
+    required Widget child,
+  }) {
+    final bool isHighlighted = highlightTarget == targetId;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        color: isHighlighted 
+            ? Theme.of(context).colorScheme.primary.withOpacity(0.2) 
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,28 +63,32 @@ class AdvancedSection extends StatelessWidget {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(
             children: [
-              ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                minLeadingWidth: 36,
-                leading: const CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Colors.blueAccent,
-                    child: Icon(Icons.rocket_launch,
-                        size: 18, color: Colors.white)),
-                title: const Text('从 Cloudflare 后端一键全量迁移',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                subtitle: Text('自动将 D1 上您的整套账户(密码)、待办、番茄钟打包移植至当前阿里云节点',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                trailing: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(60, 32),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20))),
-                    onPressed: onShowMigrationDialog,
-                    child: const Text('开始', style: TextStyle(fontSize: 12))),
+              _buildTile(
+                context: context,
+                targetId: 'migration',
+                child: ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                  minLeadingWidth: 36,
+                  leading: const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.blueAccent,
+                      child: Icon(Icons.rocket_launch,
+                          size: 18, color: Colors.white)),
+                  title: const Text('从 Cloudflare 后端一键全量迁移',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: Text('自动将 D1 上您的整套账户(密码)、待办、番茄钟打包移植至当前阿里云节点',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  trailing: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(60, 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20))),
+                      onPressed: onShowMigrationDialog,
+                      child: const Text('开始', style: TextStyle(fontSize: 12))),
+                ),
               ),
               if (Platform.isAndroid) ...[
                 const Divider(height: 1, indent: 56),
@@ -159,28 +184,32 @@ class AdvancedSection extends StatelessWidget {
               ],
               if (onOpenLanSync != null) ...[
                 const Divider(height: 1, indent: 56),
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 4.0),
-                  minLeadingWidth: 36,
-                  leading: const CircleAvatar(
-                      radius: 18,
-                      backgroundColor: Colors.cyan,
-                      child: Icon(Icons.wifi_tethering,
-                          size: 18, color: Colors.white)),
-                  title: const Text('局域网同步',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  subtitle: const Text('同账号设备间局域网同步数据',
-                      style: TextStyle(fontSize: 12)),
-                  trailing: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                          minimumSize: const Size(60, 32),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20))),
-                      onPressed: onOpenLanSync,
-                      child: const Text('进入', style: TextStyle(fontSize: 12))),
+                _buildTile(
+                  context: context,
+                  targetId: 'lan_sync',
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 4.0),
+                    minLeadingWidth: 36,
+                    leading: const CircleAvatar(
+                        radius: 18,
+                        backgroundColor: Colors.cyan,
+                        child: Icon(Icons.wifi_tethering,
+                            size: 18, color: Colors.white)),
+                    title: const Text('局域网同步',
+                        style:
+                            TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: const Text('同账号设备间局域网同步数据',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(60, 32),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20))),
+                        onPressed: onOpenLanSync,
+                        child: const Text('进入', style: TextStyle(fontSize: 12))),
+                  ),
                 ),
               ],
             ],

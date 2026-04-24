@@ -43,6 +43,10 @@ class CourseService {
           'room_name': c.roomName,
           'lesson_type': c.lessonType,
           'team_uuid': c.teamUuid,
+          'is_deleted': c.isDeleted ? 1 : 0,
+          'version': c.version,
+          'updated_at': c.updatedAt,
+          'created_at': c.createdAt,
         });
       }
       await batch.commit(noResult: true);
