@@ -96,6 +96,17 @@ class _SettingsPageState extends State<SettingsPage> {
     'storage': GlobalKey(),
     'update': GlobalKey(),
     'about': GlobalKey(),
+    // 🚀 新增：课表与学期
+    'no_course_behavior': GlobalKey(),
+    'webview_import': GlobalKey(),
+    'smart_import': GlobalKey(),
+    'course_sync': GlobalKey(),
+    'course_upload': GlobalKey(),
+    'course_adapt': GlobalKey(),
+    'semester_progress': GlobalKey(),
+    'semester_start': GlobalKey(),
+    'semester_end': GlobalKey(),
+    'semester_sync': GlobalKey(),
   };
 
   String? _highlightTarget;
@@ -186,6 +197,12 @@ class _SettingsPageState extends State<SettingsPage> {
       if (['theme', 'server_choice', 'sync_interval', 'float_window_style', 'llm_retry'].contains(target)) {
         _preferenceExpanded = true;
         sectionKey = _preferenceSectionKey;
+      } else if (['no_course_behavior', 'webview_import', 'smart_import', 'course_sync', 'course_upload', 'course_adapt'].contains(target)) {
+        _courseExpanded = true;
+        sectionKey = _courseSectionKey;
+      } else if (['semester_progress', 'semester_start', 'semester_end', 'semester_sync'].contains(target)) {
+        _semesterExpanded = true;
+        sectionKey = _semesterSectionKey;
       } else if (['animations_enabled', 'motion_blur', 'layer_blur', 'animation_duration'].contains(target)) {
         _animationExpanded = true;
         sectionKey = _animationSectionKey;
@@ -1195,6 +1212,8 @@ class _SettingsPageState extends State<SettingsPage> {
             expanded: _courseExpanded,
             onToggle: () => setState(() => _courseExpanded = !_courseExpanded),
             child: CourseSection(
+              highlightTarget: _highlightTarget,
+              itemKeys: _itemKeys, // 🚀 传递子项 Key
               onUploadCourses: _uploadCoursesToCloud,
               onSmartImport: _courseImportHandler.smartImportCourse,
               onWebViewImport: _courseImportHandler.importFromWebView,
@@ -1225,6 +1244,8 @@ class _SettingsPageState extends State<SettingsPage> {
             onToggle: () =>
                 setState(() => _semesterExpanded = !_semesterExpanded),
             child: SemesterSection(
+              highlightTarget: _highlightTarget,
+              itemKeys: _itemKeys, // 🚀 传递子项 Key
               semesterEnabled: _semesterEnabled,
               onSemesterEnabledChanged: (val) {
                 setState(() => _semesterEnabled = val);
@@ -1604,6 +1625,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChangePassword: _showChangePasswordDialog,
                     ),
                     CourseSection(
+                      highlightTarget: _highlightTarget,
+                      itemKeys: _itemKeys, // 🚀 传递子项 Key
                       onUploadCourses: _uploadCoursesToCloud,
                       onSmartImport: _courseImportHandler.smartImportCourse,
                       onWebViewImport: Platform.isWindows
@@ -1620,6 +1643,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       },
                     ),
                     SemesterSection(
+                      highlightTarget: _highlightTarget,
+                      itemKeys: _itemKeys, // 🚀 传递子项 Key
                       semesterEnabled: _semesterEnabled,
                       onSemesterEnabledChanged: (val) {
                         setState(() => _semesterEnabled = val);
