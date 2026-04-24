@@ -85,7 +85,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-              color: colorScheme.primary.withOpacity(0.05),
+              color: colorScheme.primary.withValues(alpha: 0.05),
               child: Column(
                 children: [
                   const Icon(Icons.school_rounded,
@@ -117,13 +117,13 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          colorScheme.primary.withOpacity(0.1),
-                          colorScheme.primary.withOpacity(0.05)
+                          colorScheme.primary.withValues(alpha: 0.1),
+                          colorScheme.primary.withValues(alpha: 0.05)
                         ],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       border:
-                          Border.all(color: colorScheme.primary.withOpacity(0.2)),
+                          Border.all(color: colorScheme.primary.withValues(alpha: 0.2)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,7 +181,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
+                            color: Colors.black.withValues(alpha: 0.2),
                             blurRadius: 15,
                             offset: const Offset(0, 8))
                       ],
@@ -300,7 +300,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                 Expanded(
                   child: Container(
                     width: 2,
-                    color: colorScheme.primary.withOpacity(0.2),
+                    color: colorScheme.primary.withValues(alpha: 0.2),
                   ),
                 ),
             ],
@@ -335,9 +335,9 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withOpacity(0.2)),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
           ),
           child: Column(
             children: [
@@ -349,7 +349,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
               const SizedBox(height: 4),
               Text(value,
                   style:
-                      TextStyle(fontSize: 11, color: color.withOpacity(0.8))),
+                      TextStyle(fontSize: 11, color: color.withValues(alpha: 0.8))),
             ],
           ),
         ),
