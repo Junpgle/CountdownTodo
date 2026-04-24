@@ -99,7 +99,6 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           <Hero 
             version={androidData.info.version} 
             date={androidData.changelog[0]?.date} 
-            changelog={androidData.changelog[0]?.items}
           />
           <Features />
           <CollaborationSearchShowcase />
