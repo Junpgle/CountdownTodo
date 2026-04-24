@@ -1338,7 +1338,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     Navigator.push(
       context,
       ContainerTransformRoute(
-        page: _TodoEditScreen(
+        page: TodoEditScreen(
           todo: todo,
           todos: widget.todos,
           onTodosChanged: widget.onTodosChanged,
@@ -3039,25 +3039,26 @@ class _IndependentStatusDialogState extends State<_IndependentStatusDialog> {
   }
 }
 
-class _TodoEditScreen extends StatefulWidget {
+class TodoEditScreen extends StatefulWidget {
   final TodoItem todo;
   final List<TodoItem> todos;
   final Function(List<TodoItem>) onTodosChanged;
   final List<TodoGroup> todoGroups;
   final Function(List<TodoGroup>) onGroupsChanged;
   final String username;
-  const _TodoEditScreen(
+  const TodoEditScreen(
       {required this.todo,
       required this.todos,
       required this.onTodosChanged,
       required this.todoGroups,
       required this.onGroupsChanged,
-      required this.username});
+      required this.username,
+      super.key});
   @override
-  State<_TodoEditScreen> createState() => _TodoEditScreenState();
+  State<TodoEditScreen> createState() => TodoEditScreenState();
 }
 
-class _TodoEditScreenState extends State<_TodoEditScreen> {
+class TodoEditScreenState extends State<TodoEditScreen> {
   late TextEditingController _titleCtrl;
   late TextEditingController _remarkCtrl;
   late TextEditingController _customDaysCtrl;

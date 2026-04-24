@@ -691,10 +691,17 @@ class DatabaseHelper {
             uuid UNINDEXED, content, remark, team_name, tokenize='unicode61' 
           )
         ''');
+        // 🚀 核心修复：将存量数据导入 FTS 索引
+        await db.execute('''
+          INSERT INTO todos_fts(uuid, content, remark, team_name)
+          SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0
+        ''');
         await _createFtsTriggers(db);
-        debugPrint("✅ Database: FTS5 搜索引擎就绪");
+        debugPrint("✅ Database: FTS5 搜索引擎就绪并已同步存量数据");
         return;
-      } catch (_) {}
+      } catch (e) {
+        debugPrint("⚠️ Database: FTS5 初始化失败: $e");
+      }
     }
 
     // 2. 尝试 FTS4 (主动探测)
@@ -712,10 +719,17 @@ class DatabaseHelper {
             uuid, content, remark, team_name, tokenize=unicode61
           )
         ''');
+        // 🚀 核心修复：将存量数据导入 FTS 索引
+        await db.execute('''
+          INSERT INTO todos_fts(uuid, content, remark, team_name)
+          SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0
+        ''');
         await _createFtsTriggers(db);
-        debugPrint("✅ Database: FTS4 搜索引擎就绪");
+        debugPrint("✅ Database: FTS4 搜索引擎就绪并已同步存量数据");
         return;
-      } catch (_) {}
+      } catch (e) {
+        debugPrint("⚠️ Database: FTS4 初始化失败: $e");
+      }
     }
 
     debugPrint("❌ Database: 硬件/系统不支持 FTS 索引，已切换至 LIKE 模式");
@@ -756,34 +770,78 @@ class DatabaseHelper {
     });
   }
 
+  Future<Map<String, dynamic>?> getTodoByUuid(String uuid) async {
+    final db = await instance.database;
+    final results = await db.query('todos', where: 'uuid = ?', whereArgs: [uuid], limit: 1);
+    return results.isNotEmpty ? results.first : null;
+  }
+
   Future<List<Map<String, dynamic>>> searchTodos(String query) async {
     final db = await instance.database;
-    final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'");
+    final Map<String, Map<String, dynamic>> resultsMap = {};
 
+    // 1. 尝试 FTS 搜索引擎 (高性能前缀匹配)
+    final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'");
     if (tables.isNotEmpty) {
       try {
-        return await db.rawQuery('''
+        final ftsCount = Sqflite.firstIntValue(await db.rawQuery("SELECT COUNT(*) FROM todos_fts")) ?? 0;
+        final actualCount = Sqflite.firstIntValue(await db.rawQuery("SELECT COUNT(*) FROM todos WHERE is_deleted = 0")) ?? 0;
+        if (ftsCount == 0 && actualCount > 0) {
+          await db.execute("INSERT INTO todos_fts(uuid, content, remark, team_name) SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0");
+        }
+
+        final ftsQuery = query.split(' ').where((s) => s.isNotEmpty).map((s) => '$s*').join(' ');
+        final ftsResults = await db.rawQuery('''
           SELECT t.* FROM todos t
           JOIN todos_fts f ON t.uuid = f.uuid
           WHERE todos_fts MATCH ?
           AND t.is_deleted = 0
-        ''', [query]);
+          LIMIT 20
+        ''', [ftsQuery]);
+        
+        for (var r in ftsResults) {
+          resultsMap[r['uuid'].toString()] = r;
+        }
       } catch (e) {
-        debugPrint("FTS error, falling back to LIKE: $e");
+        debugPrint("FTS error: $e");
       }
     }
 
+    // 2. 补全 LIKE 搜索 (解决中文分词无法匹配中间词的问题)
+    // 如果 FTS 结果不足，或者包含中文字符，则使用 LIKE 增强召回
+    if (resultsMap.length < 20) {
+      final likeResults = await db.rawQuery('''
+        SELECT * FROM todos 
+        WHERE is_deleted = 0 
+        AND (content LIKE ? OR remark LIKE ?)
+        ORDER BY updated_at DESC
+        LIMIT 20
+      ''', ['%$query%', '%$query%']);
+      
+      for (var r in likeResults) {
+        resultsMap[r['uuid'].toString()] = r;
+      }
+    }
+
+    final finalResults = resultsMap.values.toList();
+    // 按更新时间降序排序
+    finalResults.sort((a, b) => (b['updated_at'] ?? 0).compareTo(a['updated_at'] ?? 0));
+    return finalResults.take(20).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> searchTodoGroups(String query) async {
+    final db = await instance.database;
     return await db.rawQuery('''
-      SELECT * FROM todos 
+      SELECT * FROM todo_groups 
       WHERE is_deleted = 0 
-      AND (content LIKE ? OR remark LIKE ?)
+      AND name LIKE ?
       ORDER BY updated_at DESC
-    ''', ['%$query%', '%$query%']);
+      LIMIT 10
+    ''', ['%$query%']);
   }
 
   Future<List<Map<String, dynamic>>> searchCourses(String query) async {
     final db = await instance.database;
-    // 🚀 Uni-Sync 4.0: 现已补全 courses 字段，启用过滤与排序
     return await db.rawQuery('''
       SELECT * FROM courses 
       WHERE is_deleted = 0 
@@ -798,10 +856,10 @@ class DatabaseHelper {
     return await db.rawQuery('''
       SELECT * FROM countdowns 
       WHERE is_deleted = 0 
-      AND title LIKE ?
+      AND (title LIKE ? OR team_name LIKE ?)
       ORDER BY updated_at DESC
-      LIMIT 15
-    ''', ['%$query%']);
+      LIMIT 10
+    ''', ['%$query%', '%$query%']);
   }
 
   Future<List<Map<String, dynamic>>> searchTimeLogs(String query) async {

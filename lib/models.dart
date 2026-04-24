@@ -810,7 +810,7 @@ class TeamAnnouncement {
 // 🔍 5. 全局搜索模型 (Global Search)
 // ==========================================
 
-enum SearchResultType { todo, countdown, course, log, setting, action }
+enum SearchResultType { todo, todoGroup, countdown, course, log, setting, action }
 
 class SearchResult {
   final String id;
