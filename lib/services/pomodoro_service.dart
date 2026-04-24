@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:CountDownTodo/services/database_helper.dart';
+import '../storage_service.dart';
 import 'api_service.dart';
 
 // ============================================================
@@ -444,50 +447,72 @@ class PomodoroService {
   // ── 标签（本地 + 云端 Delta Sync）───────────────────────
 
   static Future<List<PomodoroTag>> getTags() async {
+    // 1. 优先 SQL
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final List<Map<String, dynamic>> maps = await db.query('pomodoro_tags', where: 'is_deleted = 0');
+      if (maps.isNotEmpty) {
+        return maps.map((m) => PomodoroTag.fromJson(m)).toList();
+      }
+    } catch (e) {
+      debugPrint("⚠️ Tag SQL 读取异常: $e");
+    }
+
+    // 2. 迁移逻辑
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyTags);
-    String? s = prefs.getString(scopedKey);
+    final migrationKey = "tags_migration_done_${scopedKey}";
+    
+    if (!(prefs.getBool(migrationKey) ?? false)) {
+      String? s = prefs.getString(scopedKey);
+      if (s == null) {
+        final username = prefs.getString('current_user');
+        if (username != null) s = prefs.getString(_keyTags);
+      }
 
-    // 迁移检查
-    if (s == null) {
-      final String? username = prefs.getString('current_user');
-      if (username != null && username.isNotEmpty) {
-        final markerKey = "${_keyTags}_${username}_migrated";
-        if (!(prefs.getBool(markerKey) ?? false)) {
-          s = prefs.getString(_keyTags);
-          if (s != null) {
-            await prefs.setString(scopedKey, s);
-            await prefs.setBool(markerKey, true);
+      if (s != null) {
+        debugPrint("🚀 [Tags] 正在执行 Prefs -> SQL 迁移...");
+        try {
+          final List<dynamic> decoded = jsonDecode(s);
+          final legacyTags = decoded.map((e) => PomodoroTag.fromJson(e)).toList();
+          if (legacyTags.isNotEmpty) {
+            await _saveTagsToSql(legacyTags);
           }
-        }
+          await prefs.setBool(migrationKey, true);
+          return legacyTags.where((t) => !t.isDeleted).toList();
+        } catch (_) {}
       }
     }
 
-    if (s == null) return [];
-    try {
-      return (jsonDecode(s) as List)
-          .map((e) => PomodoroTag.fromJson(e))
-          .where((t) => !t.isDeleted)
-          .toList();
-    } catch (_) {
-      return [];
+    return [];
+  }
+
+  static Future<void> _saveTagsToSql(List<PomodoroTag> tags) async {
+    final db = await DatabaseHelper.instance.database;
+    final batch = db.batch();
+    for (var t in tags) {
+      batch.insert('pomodoro_tags', {
+        'uuid': t.uuid,
+        'name': t.name,
+        'color': t.color,
+        'is_deleted': t.isDeleted ? 1 : 0,
+        'version': t.version,
+        'created_at': t.createdAt,
+        'updated_at': t.updatedAt,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
+    await batch.commit(noResult: true);
   }
 
   /// 保存标签（自动检测丢失的项并转化为墓碑，防止云端同步时复活）
-  static Future<void> saveTags(List<PomodoroTag> tagsToSave) async {
+  static Future<void> saveTags(List<PomodoroTag> tagsToSave, {bool isSyncSource = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyTags);
-    final s = prefs.getString(scopedKey);
     
-    List<PomodoroTag> allLocal = [];
-    if (s != null) {
-      try {
-        allLocal = (jsonDecode(s) as List)
-            .map((e) => PomodoroTag.fromJson(e))
-            .toList();
-      } catch (_) {}
-    }
+    // 1. 获取全量（包含已删除）用于 Tombstone 处理
+    final db = await DatabaseHelper.instance.database;
+    final List<Map<String, dynamic>> maps = await db.query('pomodoro_tags');
+    final List<PomodoroTag> allLocal = maps.map((m) => PomodoroTag.fromJson(m)).toList();
 
     // 将本次要保存的活动标签存入 Map
     final Map<String, PomodoroTag> newMap = {
@@ -498,42 +523,85 @@ class PomodoroService {
     for (var old in allLocal) {
       if (!newMap.containsKey(old.uuid)) {
         if (!old.isDeleted) {
-          // 💡 核心修复：原来是正常的，现在不见了，说明在 UI 里被删了。
-          // 我们给它打上墓碑标记，而不是彻底扔掉。
           old.isDeleted = true;
           old.updatedAt = DateTime.now().millisecondsSinceEpoch;
           old.version += 1;
         }
-        // 把墓碑塞回 Map 中一起保存
         newMap[old.uuid] = old;
       }
     }
 
+    final finalTags = newMap.values.toList();
+    // 2. 写入 SQL & OpLog
+    final batch = db.batch();
+    for (var t in finalTags) {
+      if (!isSyncSource) {
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'pomodoro_tags',
+          'target_uuid': t.uuid,
+          'data_json': jsonEncode(t.toJson()),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0
+        });
+      }
+      batch.insert('pomodoro_tags', {
+        'uuid': t.uuid,
+        'name': t.name,
+        'color': t.color,
+        'is_deleted': t.isDeleted ? 1 : 0,
+        'version': t.version,
+        'created_at': t.createdAt,
+        'updated_at': t.updatedAt,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+
+    // 3. 补齐 Prefs 备份
     await prefs.setString(
-        scopedKey, jsonEncode(newMap.values.map((t) => t.toJson()).toList()));
+        scopedKey, jsonEncode(finalTags.map((t) => t.toJson()).toList()));
   }
 
   /// 软删除一个标签（打上 tombstone 标记），以便同步时告诉云端删除
   static Future<void> deleteTag(String uuid) async {
-    final prefs = await SharedPreferences.getInstance();
-    final scopedKey = await _getScopedKey(_keyTags);
-    final s = prefs.getString(scopedKey);
-    if (s == null) return;
+    final db = await DatabaseHelper.instance.database;
+    final List<Map<String, dynamic>> maps = await db.query('pomodoro_tags', where: 'uuid = ?', whereArgs: [uuid]);
+    
+    if (maps.isNotEmpty) {
+      final tag = PomodoroTag.fromJson(maps.first);
+      if (!tag.isDeleted) {
+        tag.isDeleted = true;
+        tag.updatedAt = DateTime.now().millisecondsSinceEpoch;
+        tag.version += 1;
+        
+        final batch = db.batch();
+        // 记录 OpLog
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'pomodoro_tags',
+          'target_uuid': tag.uuid,
+          'data_json': jsonEncode(tag.toJson()),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0
+        });
+        // 更新 SQL
+        batch.update('pomodoro_tags', {
+          'is_deleted': 1,
+          'updated_at': tag.updatedAt,
+          'version': tag.version
+        }, where: 'uuid = ?', whereArgs: [uuid]);
+        await batch.commit(noResult: true);
 
-    final allTags =
-        (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
+        // 更新 Prefs 备份
+        final activeTags = await getTags();
+        await saveTags(activeTags, isSyncSource: true);
 
-    final idx = allTags.indexWhere((t) => t.uuid == uuid);
-    if (idx != -1 && !allTags[idx].isDeleted) {
-      allTags[idx].isDeleted = true;
-      allTags[idx].updatedAt = DateTime.now().millisecondsSinceEpoch;
-      allTags[idx].version += 1;
-
-      await prefs.setString(
-          scopedKey, jsonEncode(allTags.map((t) => t.toJson()).toList()));
-
-      // 立即触发一次云端同步，让云端也跟着删掉
-      syncTagsToCloud().catchError((_) {});
+        // 立即触发同步
+        final username = await SharedPreferences.getInstance().then((p) => p.getString('current_user') ?? '');
+        if (username.isNotEmpty) {
+          StorageService.syncData(username);
+        }
+      }
     }
   }
 
@@ -581,45 +649,116 @@ class PomodoroService {
     return all.where((r) => !r.isDeleted).toList();
   }
 
+  static Future<void> _saveRecordsToSql(List<PomodoroRecord> records) async {
+    final db = await DatabaseHelper.instance.database;
+    final batch = db.batch();
+    for (var r in records) {
+      batch.insert('pomodoro_records', {
+        'uuid': r.uuid,
+        'todo_uuid': r.todoUuid,
+        'todo_title': r.todoTitle,
+        'tag_uuids': jsonEncode(r.tagUuids),
+        'start_time': r.startTime,
+        'end_time': r.endTime,
+        'planned_duration': r.plannedDuration,
+        'actual_duration': r.actualDuration,
+        'status': _statusStr(r.status),
+        'device_id': r.deviceId,
+        'is_deleted': r.isDeleted ? 1 : 0,
+        'version': r.version,
+        'created_at': r.createdAt,
+        'updated_at': r.updatedAt,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
   static Future<void> _saveRecords(List<PomodoroRecord> records) async {
+    // 🚀 双轨存储：优先 SQL
+    await _saveRecordsToSql(records);
+    
+    // 保持 Prefs 缓存作为备份
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyRecords);
     await prefs.setString(
         scopedKey, jsonEncode(records.map((r) => r.toJson()).toList()));
   }
 
-  /// 添加一条专注记录，本地保存后立即尝试上传云端；失败时保留本地记录等待下次 syncRecordsToCloud 补传
-  static Future<void> addRecord(PomodoroRecord record) async {
+  /// 添加一条专注记录，本地保存后立即尝试上传云端
+  static Future<void> addRecord(PomodoroRecord record, {bool isSyncSource = false}) async {
+    // 1. 写入 SQLite & OpLog
+    final db = await DatabaseHelper.instance.database;
+    final batch = db.batch();
+    
+    if (!isSyncSource) {
+      batch.insert('op_logs', {
+        'op_type': 'UPSERT',
+        'target_table': 'pomodoro_records',
+        'target_uuid': record.uuid,
+        'data_json': jsonEncode(record.toJson()),
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'is_synced': 0
+      });
+    }
+
+    batch.insert('pomodoro_records', {
+      'uuid': record.uuid,
+      'todo_uuid': record.todoUuid,
+      'todo_title': record.todoTitle,
+      'tag_uuids': jsonEncode(record.tagUuids),
+      'start_time': record.startTime,
+      'end_time': record.endTime,
+      'planned_duration': record.plannedDuration,
+      'actual_duration': record.actualDuration,
+      'status': _statusStr(record.status),
+      'device_id': record.deviceId,
+      'is_deleted': record.isDeleted ? 1 : 0,
+      'version': record.version,
+      'created_at': record.createdAt,
+      'updated_at': record.updatedAt,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    
+    await batch.commit(noResult: true);
+
+    // 2. 补齐备份缓存
     final all = await _getAllRecordsRaw();
     final idx = all.indexWhere((r) => r.uuid == record.uuid);
-    if (idx >= 0) {
-      all[idx] = record;
-    } else {
-      all.insert(0, record);
-    }
-    await _saveRecords(all);
-    debugPrint(
-        '[PomodoroService] addRecord OK, uuid=${record.uuid}, total=${all.length}');
-    // 立即尝试上传（静默失败，本地已保存）
-    try {
-      final ok = await ApiService.uploadPomodoroRecord(record.toJson());
-      debugPrint('[PomodoroService] upload result: $ok');
-      if (ok) {
-        final prefs = await SharedPreferences.getInstance();
-        final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
-        final now = DateTime.now().millisecondsSinceEpoch;
-        // 兼容读取旧全局水位线，但只写当前账号隔离 key
-        final current = prefs.getInt(lastUploadKey) ?? prefs.getInt(_keyLastRecordUpload) ?? 0;
-        if (now > current) await prefs.setInt(lastUploadKey, now);
+    if (idx >= 0) all[idx] = record; else all.insert(0, record);
+    
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_keyRecords);
+    await prefs.setString(scopedKey, jsonEncode(all.map((r) => r.toJson()).toList()));
+
+    debugPrint('[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
+
+    // 3. 立即尝试同步
+    if (!isSyncSource) {
+      final username = prefs.getString('current_user') ?? '';
+      if (username.isNotEmpty) {
+        StorageService.syncData(username);
       }
-    } catch (e) {
-      debugPrint('[PomodoroService] upload error (local saved): $e');
     }
   }
 
   /// 按时间范围查询（仅有效）
   static Future<List<PomodoroRecord>> getRecordsInRange(
       DateTime from, DateTime to) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'pomodoro_records',
+        where: 'is_deleted = 0 AND start_time >= ? AND start_time <= ?',
+        whereArgs: [from.millisecondsSinceEpoch, to.millisecondsSinceEpoch],
+        orderBy: 'start_time DESC'
+      );
+      if (maps.isNotEmpty) {
+        return maps.map((m) => PomodoroRecord.fromJson(m)).toList();
+      }
+    } catch (e) {
+      debugPrint("⚠️ Pomodoro SQL 范围查询异常: $e");
+    }
+
+    // 逃生通道：Dart 内存过滤
     final all = await getRecords();
     final fromMs = from.millisecondsSinceEpoch;
     final toMs = to.millisecondsSinceEpoch;
@@ -781,36 +920,46 @@ class PomodoroService {
     }
   }
 
-  /// 读取全量（含已删除）内部方法
+  /// 读取全量（含已删除）内部方法 —— 包含自动迁移逻辑
   static Future<List<PomodoroRecord>> _getAllRecordsRaw() async {
+    final db = await DatabaseHelper.instance.database;
+    final List<Map<String, dynamic>> maps = await db.query('pomodoro_records', orderBy: 'start_time DESC');
+    
+    if (maps.isNotEmpty) {
+      return maps.map((m) => PomodoroRecord.fromJson(m)).toList();
+    }
+
+    // 🚀 核心迁移：如果 SQL 为空，尝试从 Prefs 迁移
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyRecords);
-    String? s = prefs.getString(scopedKey);
+    final migrationKey = "pomo_migration_done_${scopedKey}";
+    
+    if (!(prefs.getBool(migrationKey) ?? false)) {
+      String? s = prefs.getString(scopedKey);
+      // 兜底旧全局 Key
+      if (s == null) {
+        final username = prefs.getString('current_user');
+        if (username != null) s = prefs.getString(_keyRecords);
+      }
 
-    // 迁移检查
-    if (s == null) {
-      final String? username = prefs.getString('current_user');
-      if (username != null && username.isNotEmpty) {
-        final markerKey = "${_keyRecords}_${username}_migrated";
-        if (!(prefs.getBool(markerKey) ?? false)) {
-          s = prefs.getString(_keyRecords);
-          if (s != null) {
-            await prefs.setString(scopedKey, s);
-            await prefs.setBool(markerKey, true);
+      if (s != null) {
+        debugPrint("🚀 [Pomodoro] 正在执行 Prefs -> SQL 增量迁移...");
+        try {
+          final List<dynamic> decoded = jsonDecode(s);
+          final legacyRecords = decoded.map((e) => PomodoroRecord.fromJson(e)).toList();
+          if (legacyRecords.isNotEmpty) {
+            await _saveRecordsToSql(legacyRecords);
+            debugPrint("✅ [Pomodoro] 成功迁移 ${legacyRecords.length} 条记录至 SQL");
           }
+          await prefs.setBool(migrationKey, true);
+          return legacyRecords;
+        } catch (e) {
+          debugPrint("❌ [Pomodoro] 迁移失败: $e");
         }
       }
     }
 
-    if (s == null) return [];
-    try {
-      return (jsonDecode(s) as List)
-          .map((e) => PomodoroRecord.fromJson(e))
-          .toList();
-    } catch (e) {
-      debugPrint('[PomodoroService] _getAllRecordsRaw parse error: $e');
-      return [];
-    }
+    return [];
   }
 
   /// 今日专注记录（本地，不含已删除）
@@ -892,4 +1041,15 @@ class PomodoroService {
   // 统计页面兼容别名
   static Future<void> updateSession(PomodoroRecord s) => updateRecord(s);
   static Future<void> deleteSession(String uuid) => deleteRecord(uuid);
+
+  static String _statusStr(PomodoroRecordStatus s) {
+    switch (s) {
+      case PomodoroRecordStatus.completed:
+        return 'completed';
+      case PomodoroRecordStatus.interrupted:
+        return 'interrupted';
+      case PomodoroRecordStatus.switched:
+        return 'switched';
+    }
+  }
 }

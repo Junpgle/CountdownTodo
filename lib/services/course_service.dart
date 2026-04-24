@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
+import 'package:CountDownTodo/services/database_helper.dart';
 import '../services/api_service.dart';
 import '../storage_service.dart';
 
@@ -22,8 +24,35 @@ class CourseService {
 
   // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
   static Future<void> saveCourses(String username, List<CourseItem> courses) async {
+    // 1. 🚀 写入 SQL
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final batch = db.batch();
+      // 先清空旧课表（课表通常是覆盖式导入）
+      batch.delete('courses'); 
+      for (var c in courses) {
+        batch.insert('courses', {
+          'uuid': c.uuid,
+          'course_name': c.courseName,
+          'teacher_name': c.teacherName,
+          'date': c.date,
+          'weekday': c.weekday,
+          'start_time': c.startTime,
+          'end_time': c.endTime,
+          'week_index': c.weekIndex,
+          'room_name': c.roomName,
+          'lesson_type': c.lessonType,
+          'team_uuid': c.teamUuid,
+        });
+      }
+      await batch.commit(noResult: true);
+      debugPrint("✅ [Course] SQL 保存成功: ${courses.length} 条");
+    } catch (e) {
+      debugPrint("❌ [Course] SQL 保存失败: $e");
+    }
+
+    // 2. 补齐 Prefs 备份
     final prefs = await SharedPreferences.getInstance();
-    // 统一转换为标准的 List<Map> JSON 字符串，极大地提升后续读取效率
     final String encodedData = jsonEncode(courses.map((c) => c.toJson()).toList());
     await prefs.setString("${_keyCourseData}_$username", encodedData);
   }
@@ -135,21 +164,30 @@ class CourseService {
 
   // 4. 获取所有解析后的课程对象
   static Future<List<CourseItem>> getAllCourses(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    String? data = prefs.getString("${_keyCourseData}_$username");
+    // 1. 优先从 SQL 读取
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final List<Map<String, dynamic>> maps = await db.query('courses', orderBy: 'date ASC, start_time ASC');
+      if (maps.isNotEmpty) {
+        return maps.map((m) => CourseItem.fromJson(m)).toList();
+      }
+    } catch (e) {
+      debugPrint("⚠️ Course SQL 读取异常: $e");
+    }
 
-    // 🚀 核心修复：无缝向上兼容（仅执行一次迁移，防止多账号共用该全局数据）
+    // 2. 🚀 核心迁移逻辑：如果 SQL 为空，从 Prefs 迁移
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = "${_keyCourseData}_$username";
+    String? data = prefs.getString(scopedKey);
+
+    // 向上兼容旧全局 Key
     if ((data == null || data.isEmpty) && username.isNotEmpty) {
       final String legacyKey = _keyCourseData;
-      final String markerKey = "${legacyKey}_${username}_migrated";
-      
+      final String markerKey = "${legacyKey}_${username}_migrated_v2";
       if (!(prefs.getBool(markerKey) ?? false)) {
-        final String? legacyData = prefs.getString(legacyKey);
-        if (legacyData != null && legacyData.isNotEmpty) {
-          print("🚚 [Isolation] Migrating legacy course data to user scoped key: $username");
-          await prefs.setString("${_keyCourseData}_$username", legacyData);
-          data = legacyData;
-          // 标记已迁移，防止下一个切换进来的账号再次非法“继承”这批数据
+        data = prefs.getString(legacyKey);
+        if (data != null && data.isNotEmpty) {
+          await prefs.setString(scopedKey, data);
           await prefs.setBool(markerKey, true);
         }
       }
@@ -159,21 +197,22 @@ class CourseService {
 
     try {
       final decoded = jsonDecode(data);
-
+      List<CourseItem> courses = [];
       if (decoded is List) {
-        // 🚀 核心修复：必须显式声明泛型 <CourseItem> 并在 fromJson 前对 Map 强转
-        return decoded.map<CourseItem>((item) => CourseItem.fromJson(Map<String, dynamic>.from(item))).toList();
+        courses = decoded.map<CourseItem>((item) => CourseItem.fromJson(Map<String, dynamic>.from(item))).toList();
       } else {
-        // 无缝兼容旧数据
-        return HfutScheduleParser.parse(data);
+        courses = HfutScheduleParser.parse(data);
       }
+
+      // 执行增量同步到 SQL
+      if (courses.isNotEmpty) {
+        debugPrint("🚀 [Course] 正在从 Prefs 迁移 ${courses.length} 条数据至 SQL...");
+        await saveCourses(username, courses);
+      }
+      return courses;
     } catch (e) {
-      print("读取所有课表时发生崩溃: $e");
-      try {
-        return HfutScheduleParser.parse(data);
-      } catch (e2) {
-        return [];
-      }
+      debugPrint("读取所有课表时发生崩溃: $e");
+      return [];
     }
   }
 

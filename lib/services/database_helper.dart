@@ -51,7 +51,7 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 10, // 🚀 升级至 10，支持离线审计日志 (Offline Version History)
+        version: 14, // 🚀 升级至 14，修正时间日志字段名对齐后端
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 3) {
@@ -190,6 +190,131 @@ class DatabaseHelper {
               debugPrint("✅ Database: 创建 local_audit_logs 表");
             } catch (e) {
               debugPrint("⚠️ Database: 创建 local_audit_logs 失败: $e");
+            }
+          }
+          if (oldVersion < 11) {
+            try {
+              // 1. 创建番茄钟记录表
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS pomodoro_records (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT UNIQUE,
+                  todo_uuid TEXT,
+                  todo_title TEXT,
+                  tag_uuids TEXT,
+                  start_time INTEGER,
+                  end_time INTEGER,
+                  planned_duration INTEGER,
+                  actual_duration INTEGER,
+                  status TEXT,
+                  device_id TEXT,
+                  is_deleted INTEGER DEFAULT 0,
+                  version INTEGER DEFAULT 1,
+                  created_at INTEGER,
+                  updated_at INTEGER
+                )
+              ''');
+              // 2. 创建课表表
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS courses (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT UNIQUE,
+                  course_name TEXT,
+                  teacher_name TEXT,
+                  date TEXT,
+                  weekday INTEGER,
+                  start_time INTEGER,
+                  end_time INTEGER,
+                  week_index INTEGER,
+                  room_name TEXT,
+                  lesson_type TEXT,
+                  team_uuid TEXT
+                )
+              ''');
+              debugPrint("✅ Database: 创建 pomodoro_records 与 courses 表");
+            } catch (e) {
+              debugPrint("⚠️ Database: 创建新业务表失败: $e");
+            }
+          }
+
+          if (oldVersion < 12) {
+            try {
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS time_logs (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT UNIQUE,
+                  task_name TEXT,
+                  category TEXT,
+                  start_time INTEGER,
+                  end_time INTEGER,
+                  notes TEXT,
+                  color TEXT,
+                  is_deleted INTEGER DEFAULT 0,
+                  version INTEGER DEFAULT 1,
+                  updated_at INTEGER
+                )
+              ''');
+              debugPrint("✅ Database: 创建 time_logs 表");
+            } catch (e) {
+              debugPrint("⚠️ Database: 创建 time_logs 失败: $e");
+            }
+          }
+
+          if (oldVersion < 13) {
+            try {
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS pomodoro_tags (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT UNIQUE,
+                  name TEXT,
+                  color TEXT,
+                  is_deleted INTEGER DEFAULT 0,
+                  version INTEGER DEFAULT 1,
+                  created_at INTEGER,
+                  updated_at INTEGER
+                )
+              ''');
+              debugPrint("✅ Database: 创建 pomodoro_tags 表");
+            } catch (e) {
+              debugPrint("⚠️ Database: 创建 pomodoro_tags 失败: $e");
+            }
+          }
+
+          if (oldVersion < 14) {
+            try {
+              // 修正时间日志表字段
+              await db.execute("DROP TABLE IF EXISTS time_logs");
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS time_logs (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT UNIQUE,
+                  title TEXT,
+                  tag_uuids TEXT,
+                  start_time INTEGER,
+                  end_time INTEGER,
+                  remark TEXT,
+                  is_deleted INTEGER DEFAULT 0,
+                  version INTEGER DEFAULT 1,
+                  updated_at INTEGER,
+                  created_at INTEGER,
+                  device_id TEXT,
+                  team_uuid TEXT
+                )
+              ''');
+              debugPrint("✅ Database: 重新创建 time_logs 表 (V14)");
+            } catch (e) {
+              debugPrint("⚠️ Database: 升级 V14 失败: $e");
+            }
+          }
+          if (oldVersion < 15) {
+            try {
+              final info = await db.rawQuery("PRAGMA table_info(op_logs)");
+              if (!info.any((row) => row['name'] == 'sync_error')) {
+                await db.execute("ALTER TABLE op_logs ADD COLUMN sync_error TEXT;");
+                debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V15)");
+              }
+            } catch (e) {
+              debugPrint("⚠️ Database: 升级 V15 失败: $e");
             }
           }
         }
@@ -441,6 +566,78 @@ class DatabaseHelper {
 
     // 🚀 Uni-Sync 核心：初始化 FTS 搜索引擎 (带嗅探)
     await _setupFts(db);
+
+    // 8. 创建番茄钟记录表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pomodoro_records (
+        id $idType,
+        uuid $textType UNIQUE,
+        todo_uuid $jsonType,
+        todo_title $jsonType,
+        tag_uuids $jsonType,
+        start_time $integerType,
+        end_time $integerType,
+        planned_duration $integerType,
+        actual_duration $integerType,
+        status $textType,
+        device_id $jsonType,
+        is_deleted $boolType DEFAULT 0,
+        version $integerType DEFAULT 1,
+        created_at $integerType,
+        updated_at $integerType
+      )
+    ''');
+
+    // 9. 创建课表表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS courses (
+        id $idType,
+        uuid $textType UNIQUE,
+        course_name $textType,
+        teacher_name $jsonType,
+        date $textType,
+        weekday $integerType,
+        start_time $integerType,
+        end_time $integerType,
+        week_index $integerType,
+        room_name $jsonType,
+        lesson_type $jsonType,
+        team_uuid $jsonType
+      )
+    ''');
+
+    // 10. 创建时间日志表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS time_logs (
+        id $idType,
+        uuid $textType UNIQUE,
+        title $textType,
+        tag_uuids $jsonType,
+        start_time $integerType,
+        end_time $integerType,
+        remark $jsonType,
+        is_deleted $boolType DEFAULT 0,
+        version $integerType DEFAULT 1,
+        updated_at $integerType,
+        created_at $integerType,
+        device_id $textType,
+        team_uuid $textType
+      )
+    ''');
+
+    // 11. 创建番茄钟标签表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pomodoro_tags (
+        id $idType,
+        uuid $textType UNIQUE,
+        name $textType,
+        color $jsonType,
+        is_deleted $boolType DEFAULT 0,
+        version $integerType DEFAULT 1,
+        created_at $integerType,
+        updated_at $integerType
+      )
+    ''');
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)

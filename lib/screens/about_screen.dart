@@ -10,6 +10,8 @@ import '../../utils/page_transitions.dart';
 import 'settings/device_version_detail_page.dart';
 import 'login_screen.dart';
 import '../storage_service.dart';
+import 'dart:async';
+import '../services/local_migration_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AboutScreen extends StatefulWidget {
@@ -33,6 +35,17 @@ class _AboutScreenState extends State<AboutScreen> {
   String _deviceModel = '';
   String _osVersion = '';
 
+  // 🚀 Uni-Sync 4.0 迁移状态
+  bool _needsMigration = false;
+  bool _isMigrating = false;
+  double _migrationProgress = 0.0;
+  String _migrationStage = '';
+  bool _migrationCompleted = false;
+  List<String> _migrationErrors = [];
+  int _migrationSuccessCount = 0;
+  StreamSubscription? _migrationSub;
+  List<Map<String, dynamic>> _syncFailures = [];
+
   static const String PRIVACY_RAW_URL =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
 
@@ -43,6 +56,55 @@ class _AboutScreenState extends State<AboutScreen> {
     _fetchReleases();
     _fetchPrivacyPolicy();
     _loadDeviceInfo();
+    _checkMigration();
+    _loadSyncFailures();
+  }
+
+  void _checkMigration() async {
+    final needs = await LocalMigrationService.needsMigration();
+    if (mounted) {
+      setState(() => _needsMigration = needs);
+    }
+  }
+
+  Future<void> _loadSyncFailures() async {
+    final failures = await StorageService.getSyncFailures();
+    if (mounted) {
+      setState(() => _syncFailures = failures);
+    }
+  }
+
+  @override
+  void dispose() {
+    _migrationSub?.cancel();
+    super.dispose();
+  }
+
+  void _startMigration() async {
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString('current_user') ?? '';
+
+    setState(() {
+      _isMigrating = true;
+      _migrationProgress = 0.0;
+      _migrationStage = '启动迁移...';
+    });
+
+    _migrationSub = LocalMigrationService.performMigration(username).listen((p) {
+      if (mounted) {
+        setState(() {
+          _migrationProgress = p.progress;
+          _migrationStage = p.stage;
+          _migrationErrors = p.errors;
+          _migrationSuccessCount = p.totalSuccess;
+          if (p.isCompleted) {
+            _migrationCompleted = true;
+            _isMigrating = false;
+            _needsMigration = false;
+          }
+        });
+      }
+    });
   }
 
   Future<void> _loadDeviceInfo() async {
@@ -302,9 +364,95 @@ class _AboutScreenState extends State<AboutScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildChangelogCard(context),
+            // 🚀 Uni-Sync 4.0 迁移面板
+            if (_needsMigration || _isMigrating || _migrationCompleted)
+              _buildMigrationPanel(context),
+            if (_syncFailures.isNotEmpty) _buildSyncIssueCenter(context),
+
             const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSyncIssueCenter(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, right: 16, top: 16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.errorContainer.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: colorScheme.error.withOpacity(0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.sync_problem_rounded,
+                    color: colorScheme.error, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  '同步异常中心 (${_syncFailures.length})',
+                  style: TextStyle(
+                    color: colorScheme.error,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    final username = prefs.getString('current_user') ?? '';
+                    await StorageService.syncData(username, forceFullSync: true);
+                    _loadSyncFailures();
+                  },
+                  child: const Text('重试全部'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: _syncFailures.length > 5 ? 5 : _syncFailures.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final failure = _syncFailures[index];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(
+                      '${failure['target_table']} | ${failure['op_type']}',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: Text(
+                      failure['sync_error'] ?? '原因未知',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.chevron_right, size: 16),
+                  );
+                },
+              ),
+            ),
+            if (_syncFailures.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Center(
+                  child: Text(
+                    '还有 ${_syncFailures.length - 5} 条异常未列出',
+                    style: TextStyle(fontSize: 11, color: colorScheme.outline),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -619,6 +767,154 @@ class _AboutScreenState extends State<AboutScreen> {
                         ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildMigrationPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, right: 16, top: 16),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              colorScheme.primaryContainer.withOpacity(0.4),
+              colorScheme.secondaryContainer.withOpacity(0.2),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: colorScheme.primary.withOpacity(0.1)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.auto_awesome,
+                      color: Colors.white, size: 18),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    '升级至 Uni-Sync 4.0',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+                if (_migrationCompleted)
+                  const Icon(Icons.check_circle, color: Colors.green, size: 24),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!_isMigrating && !_migrationCompleted) ...[
+              const Text(
+                '您的数据目前存储在旧版引擎中。升级到 Uni-Sync 4.0 (SQLite) 将获得极速搜索、离线同步和更稳定的数据保护。',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _startMigration,
+                  icon: const Icon(Icons.rocket_launch_rounded),
+                  label: const Text('立即开始极速迁移'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ] else if (_isMigrating || _migrationCompleted) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _migrationStage,
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  Text(
+                    '成功: $_migrationSuccessCount | 失败: ${_migrationErrors.length}',
+                    style: TextStyle(fontSize: 11, color: colorScheme.outline),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: _migrationProgress,
+                  minHeight: 8,
+                  backgroundColor: colorScheme.primary.withOpacity(0.1),
+                ),
+              ),
+              if (_migrationErrors.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: Colors.orange, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            '迁移发现 ${_migrationErrors.length} 条异常',
+                            style: const TextStyle(
+                                color: Colors.orange,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _migrationErrors.take(3).join('\n'),
+                        style: const TextStyle(
+                            color: Colors.orange,
+                            fontSize: 10,
+                            fontFamily: 'monospace'),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (_migrationErrors.length > 3)
+                        const Text('...',
+                            style: TextStyle(color: Colors.orange)),
+                    ],
+                  ),
+                ),
+              ],
+              if (_migrationCompleted && _migrationErrors.isEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  '数据已成功迁移至 SQLite 极速引擎！',
+                  style: TextStyle(fontSize: 13, height: 1.4),
+                ),
+              ],
+            ],
+          ],
         ),
       ),
     );

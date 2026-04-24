@@ -1717,8 +1717,11 @@ class StorageService {
       }
 
       if (response['success'] == true) {
-        // 🚀 全部上报成功后，标记 op_logs 为已同步
-        await db.update('op_logs', {'is_synced': 1}, where: 'is_synced = 0');
+        // 🚀 全部上报成功后，标记 op_logs 为已同步，并清空之前的错误
+        await db.update('op_logs', {
+          'is_synced': 1,
+          'sync_error': null
+        }, where: 'is_synced = 0');
 
         // 🚀 处理独立待办完成情况
         final List<dynamic>? indCompletions = response['independent_completions'];
@@ -1767,7 +1770,12 @@ class StorageService {
           }
         }
       } else {
-        throw Exception("${response['message'] ?? '同步失败'}");
+        final errorMsg = response['message'] ?? '同步失败';
+        // 🚀 记录同步失败的原因，方便用户查看
+        await db.update('op_logs', {
+          'sync_error': errorMsg
+        }, where: 'is_synced = 0');
+        throw Exception(errorMsg);
       }
 
       // 解析服务器返回的实时冲突
@@ -2536,5 +2544,10 @@ class StorageService {
     final prefs = await StorageService.prefs;
     await prefs.setString(
         "${KEY_CATEGORY_REMINDER_MINUTES}_$username", jsonEncode(data));
+  }
+
+  static Future<List<Map<String, dynamic>>> getSyncFailures() async {
+    final db = await DatabaseHelper.instance.database;
+    return await db.query('op_logs', where: 'sync_error IS NOT NULL AND is_synced = 0', orderBy: 'timestamp DESC');
   }
 }

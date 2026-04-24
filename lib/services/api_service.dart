@@ -267,8 +267,9 @@ class ApiService {
     List<Map<String, dynamic>> todoGroupsChanges = const [],
     Map<String, dynamic>? screenTime,
     bool forceFullSync = false,
-    List<Map<String, dynamic>> timeLogsChanges =
-        const [], // 🚀 1. 新增命名参数，默认为空列表
+    List<Map<String, dynamic>> timeLogsChanges = const [],
+    List<Map<String, dynamic>> pomodoroChanges = const [],
+    List<Map<String, dynamic>> tagChanges = const [],
   }) async {
     try {
       final Map<String, dynamic> body = {
@@ -278,7 +279,9 @@ class ApiService {
         'todos': todosChanges,
         'todo_groups': todoGroupsChanges,
         'countdowns': countdownsChanges,
-        'time_logs_changes': timeLogsChanges, // 🚀 2. 将数据加入到 JSON Payload 中
+        'time_logs_changes': timeLogsChanges,
+        'pomodoro_records_changes': pomodoroChanges,
+        'pomodoro_tags_changes': tagChanges,
         'force_full_sync': forceFullSync,
       };
 
@@ -306,6 +309,8 @@ class ApiService {
           'server_countdowns': data['server_countdowns'] ?? [],
           'new_sync_time': data['new_sync_time'],
           'server_time_logs': data['server_time_logs'] ?? [],
+          'server_pomodoros': data['server_pomodoro_records'] ?? [],
+          'server_tags': data['server_pomodoro_tags'] ?? [],
           'status': data['status'],
         };
       } else if (response.statusCode == 429) {
