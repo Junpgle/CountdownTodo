@@ -1,10 +1,13 @@
-import { Monitor, Smartphone, CloudLightning, Brain, MessageSquare, BellRing } from 'lucide-react';
+import { Monitor, Smartphone, CloudLightning, Brain, MessageSquare, BellRing, Search, Users, Wifi } from 'lucide-react';
 
 export const Features = () => {
   const features = [
     { title: "桌面端 (Win32)", desc: "C++17 原生开发。Layered Window 透明渲染，极低内存占用 (<30MB)，常驻桌面不打扰。", icon: <Monitor className="w-6 h-6" />, color: "bg-blue-50 text-blue-600" },
     { title: "移动端 (Flutter)", desc: "Material 3 规范与沉浸式交互。三级应用分类分析，动态壁纸切换，Android 16 实时通知完美适配。", icon: <Smartphone className="w-6 h-6" />, color: "bg-purple-50 text-purple-600" },
     { title: "云端同步 (D1)", desc: "创新引入 Batch 批量同步与 Delta 增量合并策略。跨设备毫秒级分发，确保极端网络下的数据一致性。", icon: <CloudLightning className="w-6 h-6" />, color: "bg-amber-50 text-amber-600" },
+    { title: "全局搜索", desc: "毫秒级全维度索引。支持自然语言日期解析，一键触达任务详情、时间统计与应用历史。", icon: <Search className="w-6 h-6" />, color: "bg-rose-50 text-rose-600" },
+    { title: "团队协作", desc: "实时共享清单。内置 LWW 冲突解决算法与操作审计，让团队配合从未如此简单、透明。", icon: <Users className="w-6 h-6" />, color: "bg-indigo-50 text-indigo-600" },
+    { title: "局域网同步", desc: "免流量 P2P 极速传输。只要在同一网络，即可实现免外网的数据瞬间对齐与文件互传。", icon: <Wifi className="w-6 h-6" />, color: "bg-emerald-50 text-emerald-600" },
   ];
 
   return (

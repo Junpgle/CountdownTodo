@@ -13,6 +13,8 @@ import { LiveUpdatesShowcase } from './landing/LiveUpdatesShowcase';
 import { WindowsIslandShowcase } from './landing/WindowsIslandShowcase';
 import { BandShowcase } from './landing/BandShowcase';
 import { AnalyticsPreview } from './landing/AnalyticsPreview';
+import { CollaborationSearchShowcase } from './landing/CollaborationSearchShowcase';
+import { LANSyncShowcase } from './landing/LANSyncShowcase';
 import { DownloadSection } from './landing/DownloadSection';
 import { Footer } from './landing/Footer';
 
@@ -96,6 +98,8 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           <Navbar />
           <Hero />
           <Features />
+          <CollaborationSearchShowcase />
+          <LANSyncShowcase />
           <WindowsShowcase />
           <AndroidShowcase />
           <WebShowcase onOpenWeb={onOpenWeb} />

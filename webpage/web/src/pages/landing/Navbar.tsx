@@ -13,10 +13,9 @@ export const Navbar = () => {
 
   const navLinks = [
     { name: '核心特性', href: '#features' },
-    { name: '桌面端', href: '#desktop' },
-    { name: '移动端', href: '#mobile' },
-    { name: '网页版', href: '#web' },
-    { name: '手环端', href: '#band' },
+    { name: '协作与搜索', href: '#collaboration-search' },
+    { name: '局域网同步', href: '#lan-sync' },
+    { name: '平台体验', href: '#desktop' },
     { name: '获取软件', href: '#download' },
   ];
 
