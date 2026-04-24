@@ -83,6 +83,7 @@ class HomeAppBar extends StatefulWidget {
   final bool isSyncing;
   final VoidCallback onSync;
   final VoidCallback onSettings;
+  final VoidCallback? onSearch; // 🚀 新增：搜索回调
   final GlobalKey? settingsKey;
   final GlobalKey? courseKey;
   final bool showCourseButton;
@@ -97,6 +98,7 @@ class HomeAppBar extends StatefulWidget {
     required this.isSyncing,
     required this.onSync,
     required this.onSettings,
+    this.onSearch,
     this.settingsKey,
     this.courseKey,
     this.showCourseButton = true,
@@ -251,6 +253,11 @@ class _HomeAppBarState extends State<HomeAppBar>
             },
             buttonKey: widget.courseKey,
           ),
+        _buildActionButton(
+          context,
+          icon: Icons.search_rounded,
+          onPressed: widget.onSearch ?? () {},
+        ),
         _buildActionButton(
           context,
           icon: Icons.cloud_sync_rounded,

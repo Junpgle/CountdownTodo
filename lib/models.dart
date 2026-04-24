@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -785,4 +786,30 @@ class TeamAnnouncement {
     'is_priority': isPriority ? 1 : 0,
     'is_read': isRead ? 1 : 0,
   };
+}
+
+// ==========================================
+// 🔍 5. 全局搜索模型 (Global Search)
+// ==========================================
+
+enum SearchResultType { todo, countdown, course, log, setting, action }
+
+class SearchResult {
+  final String id;
+  final String title;
+  final String? subtitle;
+  final IconData icon;
+  final SearchResultType type;
+  final Map<String, dynamic>? extraData; // 用于存储跳转参数
+  final String? breadcrumb; // 仅设置项使用，显示路径如 "设置 > 视觉"
+
+  SearchResult({
+    required this.id,
+    required this.title,
+    this.subtitle,
+    required this.icon,
+    required this.type,
+    this.extraData,
+    this.breadcrumb,
+  });
 }

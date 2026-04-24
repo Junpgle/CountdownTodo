@@ -735,35 +735,59 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> searchTodos(String query) async {
     final db = await instance.database;
-
-    // 1. 动态探测 FTS 虚表是否存在
     final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'");
 
     if (tables.isNotEmpty) {
       try {
-        // 🚀 深度防御：先尝试执行一个极简的 MATCH 探测虚表是否真的可用
-        await db.rawQuery("SELECT 1 FROM todos_fts WHERE todos_fts MATCH 'test' LIMIT 0");
-
-        // 2. 优先尝试 FTS 搜索 (FTS5 支持 rank，FTS4 仅支持 content 检索)
-        final hasRank = (await db.rawQuery("PRAGMA table_info(todos_fts)")).any((col) => col['name'] == 'rank');
-
         return await db.rawQuery('''
           SELECT t.* FROM todos t
           JOIN todos_fts f ON t.uuid = f.uuid
           WHERE todos_fts MATCH ?
-          ${hasRank ? 'ORDER BY rank' : ''}
+          AND t.is_deleted = 0
         ''', [query]);
       } catch (e) {
-        debugPrint("⚠️ FTS 查询异常，退化为 LIKE 模式: $e");
+        debugPrint("FTS error, falling back to LIKE: $e");
       }
     }
 
-    // 3. 兜底方案：使用标准 SQL LIKE 模糊查询
     return await db.rawQuery('''
       SELECT * FROM todos 
       WHERE is_deleted = 0 
       AND (content LIKE ? OR remark LIKE ?)
       ORDER BY updated_at DESC
+    ''', ['%$query%', '%$query%']);
+  }
+
+  Future<List<Map<String, dynamic>>> searchCourses(String query) async {
+    final db = await instance.database;
+    // 课程数据量通常较小，使用索引优化的 LIKE 查询
+    // 修正：courses 表目前没有 is_deleted 字段，直接按课程名、教师、地点搜索
+    return await db.rawQuery('''
+      SELECT * FROM courses 
+      WHERE course_name LIKE ? OR teacher_name LIKE ? OR room_name LIKE ?
+      LIMIT 15
+    ''', ['%$query%', '%$query%', '%$query%']);
+  }
+
+  Future<List<Map<String, dynamic>>> searchCountdowns(String query) async {
+    final db = await instance.database;
+    return await db.rawQuery('''
+      SELECT * FROM countdowns 
+      WHERE is_deleted = 0 
+      AND title LIKE ?
+      ORDER BY updated_at DESC
+      LIMIT 15
+    ''', ['%$query%']);
+  }
+
+  Future<List<Map<String, dynamic>>> searchTimeLogs(String query) async {
+    final db = await instance.database;
+    return await db.rawQuery('''
+      SELECT * FROM time_logs 
+      WHERE is_deleted = 0 
+      AND (title LIKE ? OR remark LIKE ?)
+      ORDER BY start_time DESC
+      LIMIT 15
     ''', ['%$query%', '%$query%']);
   }
 

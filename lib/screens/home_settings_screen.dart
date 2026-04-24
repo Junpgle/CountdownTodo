@@ -63,13 +63,19 @@ void downloadCallback(String id, int status, int progress) {
 }
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({Key? key}) : super(key: key);
+  final String? initialTarget; // 🚀 新增：初始跳转目标
+  const SettingsPage({Key? key, this.initialTarget}) : super(key: key);
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final ScrollController _scrollController = ScrollController(); // 🚀 新增：滚动控制
+  // 🚀 记录各分区的 GlobalKey 用于精确定位
+  final GlobalKey _preferenceSectionKey = GlobalKey();
+  final GlobalKey _advancedSectionKey = GlobalKey();
+  final GlobalKey _systemSectionKey = GlobalKey();
   static const platform =
       MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   final ReceivePort _port = ReceivePort();
@@ -139,6 +145,46 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    _loadAllData();
+
+    // 🚀 核心：实现搜索直达滚动
+    if (widget.initialTarget != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToTarget(widget.initialTarget!);
+      });
+    }
+  }
+
+  void _scrollToTarget(String target) {
+    GlobalKey? targetKey;
+    // 映射逻辑：根据 target 字符串找到对应的 Key
+    switch (target) {
+      case 'theme':
+      case 'server_choice':
+      case 'sync_interval':
+      case 'float_window_style':
+        targetKey = _preferenceSectionKey;
+        break;
+      case 'lan_sync':
+      case 'cache':
+      case 'migration':
+        targetKey = _advancedSectionKey;
+        break;
+      case 'about':
+        targetKey = _systemSectionKey;
+        break;
+    }
+
+    if (targetKey != null && targetKey.currentContext != null) {
+      Scrollable.ensureVisible(
+        targetKey.currentContext!,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOutCubic,
+      );
+    }
+  }
+
+  void _loadAllData() {
     _courseImportHandler = CourseImportHandler(
       context: context,
       username: _username,

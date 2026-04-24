@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
+import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
 
 // 引入服务和模型
@@ -52,6 +53,7 @@ import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
 import 'pomodoro_screen.dart';
 import 'unified_waterfall_screen.dart'; // 🚀 引入
 import 'conflict_inbox_screen.dart'; // 🚀 引入
+import '../widgets/global_search_overlay.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -254,6 +256,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (mounted) _checkUpcomingEvents();
       });
       _checkAndNavigateToPomodoro();
+      // 🚀 预热搜索索引，确保首次点击秒开
+      SearchService.instance.warmup();
       // 🚀 清理 7 天前的过期图片
       TodoItem.cleanupAnalysisImages();
     });
@@ -2332,6 +2336,44 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
+  void _showGlobalSearch() {
+    showGeneralPage(
+      context: context,
+      pageBuilder: (ctx, anim1, anim2) => const GlobalSearchOverlay(),
+      transitionBuilder: (ctx, anim1, anim2, child) {
+        return FadeTransition(
+          opacity: anim1,
+          child: child,
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 200),
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      barrierLabel: 'Search',
+    );
+  }
+
+  // 辅助方法：显示通用全屏层 (透明背景)
+  static void showGeneralPage({
+    required BuildContext context,
+    required RoutePageBuilder pageBuilder,
+    RouteTransitionsBuilder? transitionBuilder,
+    Duration transitionDuration = const Duration(milliseconds: 200),
+    bool barrierDismissible = true,
+    Color barrierColor = Colors.transparent,
+    String? barrierLabel,
+  }) {
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      barrierDismissible: barrierDismissible,
+      barrierColor: barrierColor,
+      barrierLabel: barrierLabel,
+      pageBuilder: pageBuilder,
+      transitionsBuilder: transitionBuilder ?? (ctx, anim1, anim2, child) => child,
+      transitionDuration: transitionDuration,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -2402,6 +2444,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     isLight: isLight,
                     isSyncing: _isSyncing,
                     onSync: _showSyncOptionsDialog,
+                    onSearch: _showGlobalSearch,
                     settingsKey: _settingsButtonKey,
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,
