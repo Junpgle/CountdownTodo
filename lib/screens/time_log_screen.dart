@@ -109,8 +109,9 @@ enum _DayMode { view, edit }
 // ══════════════════════════════════════════════════════════
 class TimeLogScreen extends StatefulWidget {
   final String username;
+  final String? initialTagUuid; // 🚀 从搜索跳转时，自动打开对应标签的统计面板
 
-  const TimeLogScreen({Key? key, required this.username}) : super(key: key);
+  const TimeLogScreen({Key? key, required this.username, this.initialTagUuid}) : super(key: key);
 
   @override
   State<TimeLogScreen> createState() => _TimeLogScreenState();
@@ -170,13 +171,21 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     final tags = await PomodoroService.getTags();
     final logs = await StorageService.getTimeLogs(widget.username);
     final pomodoros = await PomodoroService.getRecords();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _tags = tags;
         _allLogs = logs.where((l) => !l.isDeleted).toList();
         _allPomodoros = pomodoros;
         _isLoading = false;
       });
+      // 🚀 如果从搜索跳转并指定了标签，数据加载完成后自动弹出统计面板
+      if (widget.initialTagUuid != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final tag = _tags.where((t) => t.uuid == widget.initialTagUuid).firstOrNull;
+          if (tag != null && mounted) _showTagDetail(tag);
+        });
+      }
+    }
   }
 
   void _addLog(TimeLogItem log) {

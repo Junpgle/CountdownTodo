@@ -4,12 +4,12 @@ import '../screens/about_screen.dart';
 import '../screens/team_management_screen.dart';
 import '../storage_service.dart';
 import 'database_helper.dart';
+import 'pomodoro_service.dart';
 import 'package:intl/intl.dart';
 import '../screens/home_settings_screen.dart';
 import '../screens/animation_settings_page.dart';
 import '../screens/settings/wallpaper_settings_page.dart';
 import '../screens/settings/llm_config_page.dart';
-
 import '../screens/band_sync_screen.dart';
 import '../screens/settings/lan_sync_screen.dart';
 import '../screens/settings/notification_settings_page.dart';
@@ -17,7 +17,7 @@ import '../utils/page_transitions.dart';
 import '../widgets/todo_section_widget.dart';
 import '../screens/pomodoro_screen.dart';
 import '../screens/time_log_screen.dart';
-
+import '../screens/screen_time_detail_screen.dart';
 
 class SearchResultWithScore {
   final SearchResult result;
@@ -338,9 +338,60 @@ class SearchService {
   Future<List<SearchResult>> _searchDatabase(String query) async {
     final dbItems = <SearchResult>[];
     final db = DatabaseHelper.instance;
+    final username = await StorageService.getLoginSession() ?? 'default';
+    final q = query.toLowerCase().trim();
+
+    // ── 日期查询解析 (支持 "今天", "昨天", "04/24" 等) ────────────────────
+    DateTime? targetDate;
+    if (q == '今天' || q == '今日' || q == 'today') {
+      targetDate = DateTime.now();
+    } else if (q == '昨天' || q == 'yesterday') {
+      targetDate = DateTime.now().subtract(const Duration(days: 1));
+    } else if (q == '明天' || q == 'tomorrow') {
+      targetDate = DateTime.now().add(const Duration(days: 1));
+    } else {
+      final match = RegExp(r'^(\d{1,2})[/-](\d{1,2})$').firstMatch(q);
+      if (match != null) {
+        final m = int.tryParse(match.group(1)!) ?? 0;
+        final d = int.tryParse(match.group(2)!) ?? 0;
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          targetDate = DateTime(DateTime.now().year, m, d);
+        }
+      }
+    }
+
+    final isDateQuery = targetDate != null;
+    final startOfDay = targetDate != null ? DateTime(targetDate.year, targetDate.month, targetDate.day) : null;
+    final endOfDay = startOfDay?.add(const Duration(days: 1));
 
     // ── 待办事项 ──────────────────────────────────────────────────────────
-    final todos = await db.searchTodos(query);
+    List<Map<String, dynamic>> todos = [];
+    if (isDateQuery) {
+      final allTodos = await StorageService.getTodos(username);
+      final matchedTodos = allTodos.where((t) {
+        if (t.isDeleted) return false;
+        if (t.dueDate != null && t.dueDate!.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && t.dueDate!.isBefore(endOfDay!)) return true;
+        if (t.createdDate != null) {
+          final cd = DateTime.fromMillisecondsSinceEpoch(t.createdDate!);
+          if (cd.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && cd.isBefore(endOfDay!)) return true;
+        }
+        return false;
+      }).take(20).toList();
+      
+      todos = matchedTodos.map((t) => {
+        'uuid': t.id,
+        'content': t.title,
+        'is_completed': t.isDone ? 1 : 0,
+        'is_deleted': 0,
+        'due_date': t.dueDate?.millisecondsSinceEpoch,
+        'created_date': t.createdDate,
+        'team_name': t.teamName,
+        'remark': t.remark,
+      }).toList();
+    } else {
+      todos = await db.searchTodos(query);
+    }
+    
     for (var t in todos) {
       // 构建副标题：备注（优先）+ 截止时间 + 归属团队
       // 🚀 修复：备注始终显示在副标题第一行，而非仅作兜底
@@ -435,27 +486,110 @@ class SearchService {
     }
 
     // ── 时间日志 ──────────────────────────────────────────────────────────
-    final logs = await db.searchTimeLogs(query);
-    for (var l in logs) {
-      final startMs = l['start_time'];
-      final endMs = l['end_time'];
-      String durationStr = '';
-      String dateStr = '';
-      if (startMs != null && endMs != null) {
-        final start = DateTime.fromMillisecondsSinceEpoch(startMs is int ? startMs : int.tryParse(startMs.toString()) ?? 0);
-        final end = DateTime.fromMillisecondsSinceEpoch(endMs is int ? endMs : int.tryParse(endMs.toString()) ?? 0);
-        final mins = end.difference(start).inMinutes;
-        durationStr = '$mins 分钟';
-        dateStr = DateFormat('MM/dd HH:mm').format(start);
+    // 🚀 修复：时间日志存在 SharedPreferences，统一用 StorageService
+    final allLogs = await StorageService.getTimeLogs(username);
+    final matchedLogs = allLogs.where((l) {
+      if (l.isDeleted) return false;
+      if (isDateQuery) {
+          final start = DateTime.fromMillisecondsSinceEpoch(l.startTime);
+      return start.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && start.isBefore(endOfDay!);
       }
-      dbItems.add(SearchResult(
-        id: 'db_log_${l['uuid']}',
-        title: l['title']?.toString().isNotEmpty == true ? l['title'] : '未命名专注',
-        subtitle: [durationStr, dateStr, l['remark'] ?? ''].where((s) => s.isNotEmpty).join(' · '),
-        icon: Icons.history_edu_rounded,
-        type: SearchResultType.log,
-        extraData: {'uuid': l['uuid'], 'table': 'time_logs'},
+      return l.title.toLowerCase().contains(q) || (l.remark?.toLowerCase().contains(q) ?? false);
+    }).take(15).toList();
+
+    for (var l in matchedLogs) {
+        final start = DateTime.fromMillisecondsSinceEpoch(l.startTime);
+        final end = DateTime.fromMillisecondsSinceEpoch(l.endTime);
+        final mins = end.difference(start).inMinutes;
+        dbItems.add(SearchResult(
+          id: 'db_log_${l.id}',
+          title: l.title.isNotEmpty ? l.title : '未命名专注',
+          subtitle: '$mins 分钟 · ${DateFormat('MM/dd HH:mm').format(start)}'
+              '${l.remark?.isNotEmpty == true ? ' · ${l.remark}' : ''}',
+          icon: Icons.history_edu_rounded,
+          type: SearchResultType.log,
+        extraData: {'uuid': l.id, 'table': 'time_logs'},
       ));
+    }
+
+    // ── 时间日志标签 ─────────────────────────────────────────────────────
+    // 搜索标签名，点击可跳转到该标签的折线图统计界面
+    try {
+      final allTags = await PomodoroService.getTags();
+      final q = query.toLowerCase();
+      final matchedTags = allTags.where((t) => t.name.toLowerCase().contains(q));
+      for (var tag in matchedTags) {
+        dbItems.add(SearchResult(
+          id: 'db_tag_${tag.uuid}',
+          title: tag.name,
+          subtitle: '专注标签 · 点击查看折线图统计',
+          icon: Icons.label_rounded,
+          type: SearchResultType.tag,
+          extraData: {
+            'tag_uuid': tag.uuid,
+            'tag_name': tag.name,
+            'tag_color': tag.color,
+            'route': '/time_log/tag',
+          },
+        ));
+      }
+    } catch (e) {
+      debugPrint('Tag search error: $e');
+    }
+
+    // ── 番茄钟 (仅日期搜索时展示) ──────────────────────────────────────────
+    if (isDateQuery) {
+      try {
+        final allPoms = await PomodoroService.getRecords();
+        final matchedPoms = allPoms.where((p) {
+          final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
+          return start.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && start.isBefore(endOfDay!);
+        }).take(15).toList();
+        for (var p in matchedPoms) {
+          final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
+          final end = p.endTime != null ? DateTime.fromMillisecondsSinceEpoch(p.endTime!) : start.add(Duration(minutes: p.effectiveDuration ~/ 60));
+          final mins = p.effectiveDuration ~/ 60;
+          dbItems.add(SearchResult(
+            id: 'db_pom_${p.uuid}',
+            title: p.todoTitle?.isNotEmpty == true ? p.todoTitle! : '专注记录',
+            subtitle: '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
+            icon: Icons.timer_outlined,
+            type: SearchResultType.log, // 与时间日志归在一组
+            extraData: {'uuid': p.uuid, 'table': 'pomodoro_records'},
+          ));
+        }
+      } catch (e) {
+        debugPrint('Pomodoro search error: $e');
+      }
+    }
+
+    // ── 屏幕使用时间 (App 搜索) ─────────────────────────────────────────
+    if (!isDateQuery && q.isNotEmpty) {
+      try {
+        final screenTimeCache = await StorageService.getScreenTimeCache();
+        final Set<String> matchedApps = {};
+        for (var item in screenTimeCache) {
+          final appName = item['app_name']?.toString() ?? '';
+          if (appName.toLowerCase().contains(q)) {
+            if (!matchedApps.contains(appName)) {
+              matchedApps.add(appName);
+              dbItems.add(SearchResult(
+                id: 'db_app_$appName',
+                title: appName,
+                subtitle: '屏幕使用时间 · 点击查看应用详情',
+                icon: Icons.smartphone_rounded,
+                type: SearchResultType.app,
+                extraData: {
+                  'app_name': appName,
+                  'route': '/screen_time/app',
+                },
+              ));
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Screen time search error: $e');
+      }
     }
 
     // ── 待办文件夹 ────────────────────────────────────────────────────────
@@ -597,6 +731,31 @@ class SearchNavigationHandler {
     final target = data['target'] as String?;
     Widget? page;
     final username = await StorageService.getLoginSession() ?? 'default';
+
+    if (route == '/time_log/tag') {
+      final tagUuid = data['tag_uuid'];
+      if (tagUuid != null) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        Navigator.push(context, MaterialPageRoute(builder: (_) => TimeLogScreen(username: username, initialTagUuid: tagUuid)));
+      }
+      return;
+    }
+    
+    if (route == '/screen_time/app') {
+      final appName = data['app_name'];
+      if (appName != null) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        final history = await StorageService.getScreenTimeHistory();
+        final local = await StorageService.getLocalScreenTime();
+        history[DateFormat('yyyy-MM-dd').format(DateTime.now())] = local;
+        Navigator.push(context, MaterialPageRoute(builder: (_) => AppDetailScreen(
+          appName: appName,
+          historyStats: history,
+          filter: DeviceFilter.all,
+        )));
+      }
+      return;
+    }
 
     switch (route) {
       case '/pomodoro/stats':
