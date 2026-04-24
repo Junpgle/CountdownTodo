@@ -2336,7 +2336,10 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
+  bool _isSearchOpen = false; // 🚀 记录搜索层是否打开
+
   void _showGlobalSearch() {
+    setState(() => _isSearchOpen = true);
     showGeneralPage(
       context: context,
       pageBuilder: (ctx, anim1, anim2) => const GlobalSearchOverlay(),
@@ -2350,11 +2353,15 @@ class _HomeDashboardState extends State<HomeDashboard>
       barrierDismissible: true,
       barrierColor: Colors.transparent,
       barrierLabel: 'Search',
-    );
+    ).then((_) async {
+      // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (mounted) setState(() => _isSearchOpen = false);
+    });
   }
 
   // 辅助方法：显示通用全屏层 (透明背景)
-  static void showGeneralPage({
+  static Future<T?> showGeneralPage<T>({
     required BuildContext context,
     required RoutePageBuilder pageBuilder,
     RouteTransitionsBuilder? transitionBuilder,
@@ -2363,7 +2370,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     Color barrierColor = Colors.transparent,
     String? barrierLabel,
   }) {
-    Navigator.of(context).push(PageRouteBuilder(
+    return Navigator.of(context).push<T>(PageRouteBuilder(
       opaque: false,
       barrierDismissible: barrierDismissible,
       barrierColor: barrierColor,
@@ -2383,6 +2390,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     return Scaffold(
       extendBody: true,
+      resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
       backgroundColor: showWallpaper
           ? Colors.transparent
           : Theme.of(context).colorScheme.surface,
