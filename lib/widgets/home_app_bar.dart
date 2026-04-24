@@ -144,10 +144,19 @@ class _HomeAppBarState extends State<HomeAppBar>
       required VoidCallback onPressed,
       bool isLoading = false,
       int badgeCount = 0,
+      EdgeInsetsGeometry? margin,
+      bool isSmall = false,
       Key? buttonKey}) {
+    final double iconSize = isSmall ? 18.0 : 24.0;
+    final double padding = isSmall ? 4.0 : 8.0;
+    final double? containerSize = isSmall ? 34.0 : null;
+
     return Container(
       key: buttonKey,
-      margin: const EdgeInsets.only(right: 8, top: 4, bottom: 4),
+      width: containerSize,
+      height: containerSize,
+      alignment: Alignment.center,
+      margin: margin ?? const EdgeInsets.only(right: 8, top: 4, bottom: 4),
       decoration: BoxDecoration(
         color: widget.isLight
             ? Colors.white.withOpacity(0.15)
@@ -158,15 +167,20 @@ class _HomeAppBarState extends State<HomeAppBar>
         alignment: Alignment.center,
         children: [
           IconButton(
+            iconSize: iconSize,
+            padding: EdgeInsets.all(padding),
+            constraints: isSmall ? const BoxConstraints() : null,
             icon: isLoading
                 ? RotationTransition(
                     turns: _syncRotationController,
                     child: Icon(icon,
+                        size: iconSize,
                         color: widget.isLight
                             ? Colors.white
                             : Theme.of(context).colorScheme.primary),
                   )
                 : Icon(icon,
+                    size: iconSize,
                     color: widget.isLight
                         ? Colors.white
                         : Theme.of(context).colorScheme.onSurface),
@@ -174,15 +188,20 @@ class _HomeAppBarState extends State<HomeAppBar>
           ),
           if (badgeCount > 0)
             Positioned(
-              right: 6,
-              top: 6,
+              right: isSmall ? 0 : 6,
+              top: isSmall ? 0 : 6,
               child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                padding: EdgeInsets.all(isSmall ? 2 : 4),
+                decoration: const BoxDecoration(
+                    color: Colors.redAccent, shape: BoxShape.circle),
+                constraints: BoxConstraints(
+                    minWidth: isSmall ? 12 : 16, minHeight: isSmall ? 12 : 16),
                 child: Text(
                   badgeCount > 9 ? '9+' : badgeCount.toString(),
-                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: isSmall ? 7 : 8,
+                      fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -196,10 +215,47 @@ class _HomeAppBarState extends State<HomeAppBar>
   Widget build(BuildContext context) {
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
+    final bool isTablet = MediaQuery.of(context).size.width >= 768;
     final toolbarH = isLandscape ? 64.0 : 100.0;
     final titleSize = isLandscape ? 18.0 : 22.0;
     final dateSize = isLandscape ? 12.0 : 13.0;
     final greetingSize = isLandscape ? 11.0 : 12.0;
+
+    final bool isMobileGrid = !isTablet && !isLandscape;
+
+    // 🚀 定义各个操作按钮，以便在不同布局中复用
+    final searchBtn = _buildActionButton(
+      context,
+      icon: Icons.search_rounded,
+      onPressed: widget.onSearch ?? () {},
+      isSmall: isMobileGrid,
+      margin: isMobileGrid ? EdgeInsets.zero : null,
+    );
+    final syncBtn = _buildActionButton(
+      context,
+      icon: Icons.cloud_sync_rounded,
+      isLoading: widget.isSyncing,
+      onPressed: widget.onSync,
+      isSmall: isMobileGrid,
+      margin: isMobileGrid ? EdgeInsets.zero : null,
+    );
+    final teamsBtn = _buildActionButton(
+      context,
+      icon: Icons.people_rounded,
+      onPressed: () => Navigator.pushNamed(context, '/teams'),
+      badgeCount: widget.teamPendingCount,
+      isSmall: isMobileGrid,
+      margin: isMobileGrid ? EdgeInsets.zero : null,
+    );
+    final settingsBtn = _buildActionButton(
+      context,
+      icon: Icons.settings_rounded,
+      onPressed: widget.onSettings,
+      buttonKey: widget.settingsKey,
+      isSmall: isMobileGrid,
+      margin: isMobileGrid ? EdgeInsets.zero : null,
+    );
+
     return AppBar(
       backgroundColor: widget.isLight ? Colors.transparent : null,
       elevation: 0,
@@ -240,42 +296,52 @@ class _HomeAppBarState extends State<HomeAppBar>
         ],
       ),
       actions: [
-        if (widget.showCourseButton)
-          _buildActionButton(
-            context,
-            icon: Icons.calendar_month_rounded,
-            onPressed: () async {
-              await PageTransitions.pushFromRect(
-                context: context,
-                page: WeeklyCourseScreen(username: widget.username),
-                sourceKey: widget.courseKey ?? GlobalKey(),
-              );
-            },
-            buttonKey: widget.courseKey,
+        if (isTablet || isLandscape) ...[
+          if (widget.showCourseButton)
+            _buildActionButton(
+              context,
+              icon: Icons.calendar_month_rounded,
+              onPressed: () async {
+                await PageTransitions.pushFromRect(
+                  context: context,
+                  page: WeeklyCourseScreen(username: widget.username),
+                  sourceKey: widget.courseKey ?? GlobalKey(),
+                );
+              },
+              buttonKey: widget.courseKey,
+            ),
+          searchBtn,
+          syncBtn,
+          teamsBtn,
+          settingsBtn,
+        ] else ...[
+          // 🚀 手机端纵屏：2*2 矩阵排列，位置自定义：团队(TL), 设置(TR), 搜索(BL), 同步(BR)
+          Padding(
+            padding: const EdgeInsets.only(right: 12), // 移除 top: 4 以节省空间，防止溢出
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    teamsBtn, // 团队放在左上角
+                    const SizedBox(width: 8),
+                    settingsBtn, // 设置放在右上角
+                  ],
+                ),
+                const SizedBox(height: 4), // 缩小行间距
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    searchBtn, // 搜索放在左下角
+                    const SizedBox(width: 8),
+                    syncBtn, // 同步放在右下角
+                  ],
+                ),
+              ],
+            ),
           ),
-        _buildActionButton(
-          context,
-          icon: Icons.search_rounded,
-          onPressed: widget.onSearch ?? () {},
-        ),
-        _buildActionButton(
-          context,
-          icon: Icons.cloud_sync_rounded,
-          isLoading: widget.isSyncing,
-          onPressed: widget.onSync,
-        ),
-        _buildActionButton(
-          context,
-          icon: Icons.people_rounded,
-          onPressed: () => Navigator.pushNamed(context, '/teams'),
-          badgeCount: widget.teamPendingCount,
-        ),
-        _buildActionButton(
-          context,
-          icon: Icons.settings_rounded,
-          onPressed: widget.onSettings,
-          buttonKey: widget.settingsKey,
-        ),
+        ],
         const SizedBox(width: 8),
       ],
     );
