@@ -593,8 +593,8 @@ class SearchService {
     }
 
     // ── 屏幕使用时间 (App 搜索) ─────────────────────────────────────────
-    // 兼容桌面同步缓存与移动端本地缓存；今日查询时直接展示当天使用过的应用。
-    if (!isDateQuery || isTodayQuery) {
+    // 日期查询时：直接展示目标日期的聚合屏幕时间；普通关键词查询时：按应用名匹配历史缓存。
+    if (isDateQuery) {
       try {
         final seenApps = <String>{};
 
@@ -628,24 +628,60 @@ class SearchService {
           }
         }
 
+        final history = await StorageService.getScreenTimeHistory();
+        final targetDateKey = DateFormat('yyyy-MM-dd').format(startOfDay!);
+        final targetDayStats = history[targetDateKey];
+
+        if (targetDayStats != null && targetDayStats.isNotEmpty) {
+          addScreenTimeApps(targetDayStats, includeAll: true);
+        } else if (isTodayQuery) {
+          final screenTimeCache = await StorageService.getScreenTimeCache();
+          if (screenTimeCache.isNotEmpty) {
+            addScreenTimeApps(screenTimeCache, includeAll: true);
+          }
+        }
+      } catch (e) {
+        debugPrint('Screen time search error: $e');
+      }
+    } else {
+      try {
+        final seenApps = <String>{};
+
+        void addScreenTimeApps(List<dynamic> stats) {
+          for (var item in stats) {
+            if (item is! Map) continue;
+            final appName = item['app_name']?.toString().trim() ?? '';
+            if (appName.isEmpty) continue;
+
+            final normalized = appName.toLowerCase();
+            if (seenApps.contains(normalized)) continue;
+            if (!normalized.contains(q)) continue;
+
+            seenApps.add(normalized);
+            dbItems.add(SearchResult(
+              id: 'db_app_$normalized',
+              title: appName,
+              subtitle: '屏幕使用时间 · 点击查看应用详情',
+              icon: Icons.smartphone_rounded,
+              type: SearchResultType.app,
+              extraData: {
+                'app_name': appName,
+                'route': '/screen_time/app',
+              },
+            ));
+          }
+        }
+
         final screenTimeCache = await StorageService.getScreenTimeCache();
         if (screenTimeCache.isNotEmpty) {
-          addScreenTimeApps(screenTimeCache, includeAll: isTodayQuery);
+          addScreenTimeApps(screenTimeCache);
         }
 
         final history = await StorageService.getScreenTimeHistory();
-        if (isTodayQuery) {
-          final todayKey = DateFormat('yyyy-MM-dd').format(now);
-          final todayStats = history[todayKey];
-          if (todayStats != null && todayStats.isNotEmpty) {
-            addScreenTimeApps(todayStats, includeAll: true);
-          }
-        } else {
-          for (final dayEntry in history.entries) {
-            final dayStats = dayEntry.value;
-            if (dayStats.isEmpty) continue;
-            addScreenTimeApps(dayStats, includeAll: false);
-          }
+        for (final dayEntry in history.entries) {
+          final dayStats = dayEntry.value;
+          if (dayStats.isEmpty) continue;
+          addScreenTimeApps(dayStats);
         }
       } catch (e) {
         debugPrint('Screen time search error: $e');
