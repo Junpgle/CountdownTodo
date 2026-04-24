@@ -8,6 +8,15 @@
   .pb-safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 1rem);
   }
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  .rotate-y-10 {
+    transform: rotateY(10deg);
+  }
+  .-rotate-y-10 {
+    transform: rotateY(-10deg);
+  }
 }
 
 @keyframes bounce-subtle { 

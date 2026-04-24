@@ -82,7 +82,7 @@ export const Hero = () => {
 
           {/* Right Column: Visual Mockup */}
           <div className="flex-1 relative w-full max-w-[600px] lg:max-w-none perspective-1000">
-            <div className="relative z-10 animate-float transform rotate-y-[-10deg] rotate-x-[5deg] hover:rotate-0 transition-transform duration-1000 ease-out">
+            <div className="relative z-10 animate-float transform -rotate-y-10 rotate-x-2 hover:rotate-0 transition-transform duration-1000 ease-out">
                {/* Main UI Card Mockup */}
                <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-200 overflow-hidden aspect-[4/3] relative">
                   <div className="absolute top-0 left-0 w-full h-12 bg-slate-50 border-b border-slate-100 flex items-center px-6 gap-2">
