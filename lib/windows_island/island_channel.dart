@@ -146,8 +146,9 @@ class IslandChannel {
     } catch (_) {
       if (windowId != null && _readyCompleters.containsKey(windowId)) {
         _readyCompleters[windowId]?.remove(completer);
-        if (_readyCompleters[windowId]!.isEmpty)
+        if (_readyCompleters[windowId]!.isEmpty) {
           _readyCompleters.remove(windowId);
+        }
       } else if (windowId == null) {
         _anonReadyQueue.remove(completer);
       }

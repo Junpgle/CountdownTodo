@@ -514,9 +514,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   Widget _buildBulletItem(String item, ColorScheme scheme,
       {double textAlpha = 0.75, double fontSize = 13.5}) {
     Color dotColor = scheme.onSurface.withValues(alpha: 0.4);
-    if (item.startsWith('【新增】'))
+    if (item.startsWith('【新增】')) {
       dotColor = Colors.green;
-    else if (item.startsWith('【优化】'))
+    } else if (item.startsWith('【优化】'))
       dotColor = Colors.blue;
     else if (item.startsWith('【修复】'))
       dotColor = Colors.orange;
@@ -556,10 +556,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       children: [
         InkWell(
           onTap: () => setState(() {
-            if (isExpanded)
+            if (isExpanded) {
               _expandedVersions.remove(entry.versionName);
-            else
+            } else {
               _expandedVersions.add(entry.versionName);
+            }
           }),
           borderRadius: BorderRadius.circular(12),
           child: Container(
@@ -1085,18 +1086,20 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (picked != null) {
       if (!mounted) return;
       setState(() {
-        if (isStart)
+        if (isStart) {
           _semesterStart = picked;
-        else
+        } else {
           _semesterEnd = picked;
+        }
       });
       final prefs = await SharedPreferences.getInstance();
-      if (isStart)
+      if (isStart) {
         await prefs.setString(
             StorageService.KEY_SEMESTER_START, picked.toIso8601String());
-      else
+      } else {
         await prefs.setString(
             StorageService.KEY_SEMESTER_END, picked.toIso8601String());
+      }
     }
   }
 

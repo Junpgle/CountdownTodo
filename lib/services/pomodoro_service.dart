@@ -461,7 +461,7 @@ class PomodoroService {
     // 2. 迁移逻辑
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyTags);
-    final migrationKey = "tags_migration_done_${scopedKey}";
+    final migrationKey = "tags_migration_done_$scopedKey";
     
     if (!(prefs.getBool(migrationKey) ?? false)) {
       String? s = prefs.getString(scopedKey);
@@ -723,7 +723,11 @@ class PomodoroService {
     // 2. 补齐备份缓存
     final all = await _getAllRecordsRaw();
     final idx = all.indexWhere((r) => r.uuid == record.uuid);
-    if (idx >= 0) all[idx] = record; else all.insert(0, record);
+    if (idx >= 0) {
+      all[idx] = record;
+    } else {
+      all.insert(0, record);
+    }
     
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyRecords);
@@ -932,7 +936,7 @@ class PomodoroService {
     // 🚀 核心迁移：如果 SQL 为空，尝试从 Prefs 迁移
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyRecords);
-    final migrationKey = "pomo_migration_done_${scopedKey}";
+    final migrationKey = "pomo_migration_done_$scopedKey";
     
     if (!(prefs.getBool(migrationKey) ?? false)) {
       String? s = prefs.getString(scopedKey);

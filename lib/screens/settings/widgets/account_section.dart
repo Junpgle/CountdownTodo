@@ -12,7 +12,7 @@ class AccountSection extends StatelessWidget {
   final VoidCallback onChangePassword;
 
   const AccountSection({
-    Key? key,
+    super.key,
     required this.username,
     required this.userId,
     required this.userTier,
@@ -22,7 +22,7 @@ class AccountSection extends StatelessWidget {
     required this.onForceFullSync,
     required this.onLogout,
     required this.onChangePassword,
-  }) : super(key: key);
+  });
 
   Color getTierColor(String tier) {
     switch (tier.toLowerCase()) {

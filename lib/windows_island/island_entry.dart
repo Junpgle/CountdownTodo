@@ -271,16 +271,16 @@ Future<void> islandMain(List<String> args) async {
                     final phyH = (height * scale).ceil();
                     final phyLeft = (left * scale).toInt();
                     final phyTop = (top * scale).toInt();
-                    const int HWND_TOPMOST = -1;
-                    const int SWP_NOACTIVATE = 0x0010;
+                    const int hwndTopmost = -1;
+                    const int swpNoactivate = 0x0010;
                     using((arena) {
                       final rectPtr = arena<RECT>();
                       rectPtr.ref.left = phyLeft;
                       rectPtr.ref.top = phyTop;
                       rectPtr.ref.right = phyLeft + phyW;
                       rectPtr.ref.bottom = phyTop + phyH;
-                      SetWindowPos(hw, HWND_TOPMOST, rectPtr.ref.left,
-                          rectPtr.ref.top, phyW, phyH, SWP_NOACTIVATE);
+                      SetWindowPos(hw, hwndTopmost, rectPtr.ref.left,
+                          rectPtr.ref.top, phyW, phyH, swpNoactivate);
                     });
                     break;
                   }

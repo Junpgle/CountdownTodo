@@ -197,14 +197,14 @@ class _MenuCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _MenuCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.subtitle,
     required this.colorStart,
     required this.colorEnd,
     required this.icon,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

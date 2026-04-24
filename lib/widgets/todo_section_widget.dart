@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -78,7 +76,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   final Set<String> _animatedTodoIds = {};
 
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
-  Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
+  final Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
 
   @override
   void initState() {
@@ -329,7 +327,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       ),
                     ),
                     value: isAllDay,
-                    activeColor: Theme.of(context).colorScheme.primary,
+                    activeThumbColor: Theme.of(context).colorScheme.primary,
                     onChanged: (val) {
                       setDialogState(() {
                         isAllDay = val;
@@ -466,7 +464,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   ),
                   const Divider(),
                   DropdownButtonFormField<RecurrenceType>(
-                    value: recurrence,
+                    initialValue: recurrence,
                     decoration: InputDecoration(
                       labelText: "循环设置 (可选)",
                       border: OutlineInputBorder(
@@ -549,7 +547,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     ),
                   const Divider(),
                   DropdownButtonFormField<int>(
-                    value: reminderMinutes,
+                    initialValue: reminderMinutes,
                     decoration: InputDecoration(
                       labelText: "温馨提醒 (提前量)",
                       prefixIcon:
@@ -617,7 +615,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               const Spacer(),
                               TextButton(
                                 onPressed: () =>
-                                    _showFullImage(context, sharedImagePath!),
+                                    _showFullImage(context, sharedImagePath),
                                 child: const Text("查看大图"),
                               ),
                             ],
@@ -625,11 +623,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                           const SizedBox(height: 8),
                           GestureDetector(
                             onTap: () =>
-                                _showFullImage(context, sharedImagePath!),
+                                _showFullImage(context, sharedImagePath),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: Image.file(
-                                File(sharedImagePath!),
+                                File(sharedImagePath),
                                 height: 150,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
@@ -2258,7 +2256,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           expanded: _isPastTodosExpanded,
           child: Column(
             children: pastItems.map((item) {
-              final todo = item!.todo;
+              final todo = item.todo;
               if (todo != null) {
                 return _buildTodoItemCard(todo,
                     isPast: true,
@@ -2443,12 +2441,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               final t = widget.todos[i];
                               if (_isHistoricalTodo(t) ||
                                   t.isDeleted ||
-                                  t.groupId != null) continue;
+                                  t.groupId != null) {
+                                continue;
+                              }
                               if (t.dueDate == null ||
                                   (t.dueDate!.year == today.year &&
                                       t.dueDate!.month == today.month &&
-                                      t.dueDate!.day == today.day))
+                                      t.dueDate!.day == today.day)) {
                                 todayIndices.add(i);
+                              }
                             }
                             final reordered =
                                 List<_SortedDisplayItem>.from(todayItems);
@@ -2463,14 +2464,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             for (int i = 0;
                                 i < todayIndices.length &&
                                     i < reorderedTodos.length;
-                                i++)
+                                i++) {
                               updatedList[todayIndices[i]] = reorderedTodos[i];
+                            }
                             widget.onTodosChanged(updatedList);
                           },
                           children: todayItems.asMap().entries.map((entry) {
                             final int index = entry.key;
                             final item = entry.value;
-                            if (item.todo != null)
+                            if (item.todo != null) {
                               return ReorderableDelayedDragStartListener(
                                   key:
                                       _getTodoDismissKey('drag', item.todo!.id),
@@ -2480,6 +2482,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                       isFuture: false,
                                       key: _getTodoDismissKey(
                                           'dismiss', item.todo!.id)));
+                            }
                             return Container(
                                 key: ValueKey('group_${item.group!.id}'),
                                 child: item.widget);
@@ -2502,7 +2505,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           expanded: _isFutureExpanded,
           child: Column(
                children: futureItems.map((item) {
-                final todo = item!.todo;
+                final todo = item.todo;
                 if (todo != null) {
                   return _buildTodoItemCard(todo,
                       isPast: false,
@@ -3293,8 +3296,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 onTap: () async {
                   final pickedDate = await showDatePicker(context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: _createdDate);
                   if (pickedDate != null) {
-                    if (_isAllDay) setState(() => _createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
-                    else {
+                    if (_isAllDay) {
+                      setState(() => _createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
+                    } else {
                       final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_createdDate));
                       if (pickedTime != null) setState(() => _createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
                     }
@@ -3310,8 +3314,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 onTap: () async {
                   final pickedDate = await showDatePicker(context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: _dueDate ?? _createdDate);
                   if (pickedDate != null) {
-                    if (_isAllDay) setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
-                    else {
+                    if (_isAllDay) {
+                      setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
+                    } else {
                       final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
                       if (pickedTime != null) setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
                     }
@@ -3395,8 +3400,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     items: [const PopupMenuItem<String>(value: "__none__", child: Text("未分类")), ...availableGroups.map((g) => PopupMenuItem(value: g.id, child: Text(g.name)))],
                     onSelected: (v) => setState(() {
                       _selectedGroupId = v == "__none__" ? null : v;
-                      if (_selectedGroupId != null && _categoryReminderDefaults.containsKey(_selectedGroupId)) _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
-                      else if (_selectedGroupId == null) _reminderMinutes = 5;
+                      if (_selectedGroupId != null && _categoryReminderDefaults.containsKey(_selectedGroupId)) {
+                        _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
+                      } else if (_selectedGroupId == null) _reminderMinutes = 5;
                     }),
                   )),
                 if (availableGroups.isNotEmpty && _teams.isNotEmpty) const SizedBox(width: 12),
@@ -3621,7 +3627,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     return Container(
       height: 36,
       decoration: BoxDecoration(
-        color: colorScheme.surfaceVariant.withOpacity(0.5),
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(

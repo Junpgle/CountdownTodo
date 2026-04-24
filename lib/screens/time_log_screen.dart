@@ -56,7 +56,7 @@ class _TC {
 
   static Color card(BuildContext c) => Theme.of(c).brightness == Brightness.dark
       ? const Color(0xFF1A1A1A)
-      : Theme.of(c).colorScheme.surfaceVariant;
+      : Theme.of(c).colorScheme.surfaceContainerHighest;
 
   static Color topBar(BuildContext c) =>
       Theme.of(c).brightness == Brightness.dark
@@ -66,7 +66,7 @@ class _TC {
   static Color inputFill(BuildContext c) =>
       Theme.of(c).brightness == Brightness.dark
           ? const Color(0xFF181818)
-          : Theme.of(c).colorScheme.surfaceVariant;
+          : Theme.of(c).colorScheme.surfaceContainerHighest;
 
   static Color text(BuildContext c) => Theme.of(c).colorScheme.onSurface;
 
@@ -81,7 +81,7 @@ class _TC {
   static Color btnBg(BuildContext c) =>
       Theme.of(c).brightness == Brightness.dark
           ? const Color(0xFF222222)
-          : Theme.of(c).colorScheme.surfaceVariant;
+          : Theme.of(c).colorScheme.surfaceContainerHighest;
 
   static Color btnBorder(BuildContext c) =>
       Theme.of(c).brightness == Brightness.dark
@@ -111,7 +111,7 @@ class TimeLogScreen extends StatefulWidget {
   final String username;
   final String? initialTagUuid; // 🚀 从搜索跳转时，自动打开对应标签的统计面板
 
-  const TimeLogScreen({Key? key, required this.username, this.initialTagUuid}) : super(key: key);
+  const TimeLogScreen({super.key, required this.username, this.initialTagUuid});
 
   @override
   State<TimeLogScreen> createState() => _TimeLogScreenState();
@@ -163,9 +163,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         await StorageService.syncData(widget.username,
             syncTimeLogs: true, syncTodos: false, syncCountdowns: false);
       } catch (e) {
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context)
               .showSnackBar(SnackBar(content: Text('同步失败: $e')));
+        }
       }
     }
     final tags = await PomodoroService.getTags();
@@ -269,11 +270,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     final acts = <Widget>[];
     if (_view == _ViewMode.day) {
       // 只保留标签管理，不再有切换图标
-      if (_dayMode == _DayMode.edit)
+      if (_dayMode == _DayMode.edit) {
         acts.add(IconButton(
             icon: const Icon(Icons.label_outline, size: 20),
             onPressed: _showTagManager,
             tooltip: '标签管理'));
+      }
     }
     acts.add(IconButton(
         icon: const Icon(Icons.refresh, size: 20),
@@ -318,8 +320,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                     label: '日',
                     selected: _view == _ViewMode.day,
                     onTap: () {
-                      if (_view != _ViewMode.day)
+                      if (_view != _ViewMode.day) {
                         _goDay(DateTime.now(), mode: _DayMode.view);
+                      }
                     }),
               ]),
             ),
@@ -787,10 +790,11 @@ class _WeekViewState extends State<_WeekView>
                           syncTodos: true,
                           syncCountdowns: true,
                           syncTimeLogs: true);
-                      if (bCtx.mounted)
+                      if (bCtx.mounted) {
                         ScaffoldMessenger.of(bCtx).showSnackBar(const SnackBar(
                             content: Text('🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面'),
                             duration: Duration(seconds: 4)));
+                      }
                     },
                   )),
         ]),
@@ -887,7 +891,7 @@ class _WeekViewState extends State<_WeekView>
                           (h) => Positioned(
                               top: h * hourH - 8,
                               right: 4,
-                              child: Text('${h.toString().padLeft(2, '0')}',
+                              child: Text(h.toString().padLeft(2, '0'),
                                   style: TextStyle(
                                       fontSize: (tW * 0.16).clamp(7.0, 11.0),
                                       color: _TC.timeLabel(ctx2,
@@ -1289,12 +1293,14 @@ class _DayGridViewState extends State<_DayGridView> {
 
     final Map<String, int> tagMinMap = {};
     for (final l in dLogs)
-      for (final uid in l.tagUuids)
+      for (final uid in l.tagUuids) {
         tagMinMap[uid] =
             (tagMinMap[uid] ?? 0) + (l.endTime - l.startTime) ~/ 60000;
+      }
     for (final p in dPoms)
-      for (final uid in p.tagUuids)
+      for (final uid in p.tagUuids) {
         tagMinMap[uid] = (tagMinMap[uid] ?? 0) + p.effectiveDuration ~/ 60;
+      }
 
     return Column(children: [
       _buildSummary(context, totalMin, logMin, pomMin, tagMinMap),
@@ -1489,10 +1495,11 @@ class _GridCanvas extends StatelessWidget {
         final pe =
             pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
         PomodoroTag? tag;
-        if (pom.tagUuids.isNotEmpty)
+        if (pom.tagUuids.isNotEmpty) {
           tag = tags.cast<PomodoroTag?>().firstWhere(
               (t) => pom.tagUuids.contains(t?.uuid),
               orElse: () => null);
+        }
         final base = tag != null ? hexColor(tag.color) : Colors.redAccent;
         final title = tag?.name ?? '专注';
         return _buildEventBlocks(
@@ -1512,10 +1519,11 @@ class _GridCanvas extends StatelessWidget {
       // 补录日志
       ...dLogs.expand((log) {
         PomodoroTag? tag;
-        if (log.tagUuids.isNotEmpty)
+        if (log.tagUuids.isNotEmpty) {
           tag = tags.cast<PomodoroTag?>().firstWhere(
               (t) => log.tagUuids.contains(t?.uuid),
               orElse: () => null);
+        }
         final base =
             tag != null ? hexColor(tag.color) : const Color(0xFF3B82F6);
         final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
@@ -1727,9 +1735,9 @@ class _GridBgPainter extends CustomPainter {
     for (int c = 0; c <= kTotalCols; c++) {
       final x = c * colW;
       final Paint p;
-      if (c % kColsPerH == 0)
+      if (c % kColsPerH == 0) {
         p = colHour;
-      else if (c % 5 == 0)
+      } else if (c % 5 == 0)
         p = colHalf;
       else
         p = colCell;

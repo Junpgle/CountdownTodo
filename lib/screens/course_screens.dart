@@ -15,8 +15,7 @@ import '../utils/timezone_utils.dart';
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
   final String username;
-  const WeeklyCourseScreen({Key? key, required this.username})
-      : super(key: key);
+  const WeeklyCourseScreen({super.key, required this.username});
 
   @override
   State<WeeklyCourseScreen> createState() => _WeeklyCourseScreenState();
@@ -42,14 +41,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   List<PomodoroTag> _pomodoroTags = [];
   Map<int, List<TimeLogItem>> _timeLogsPerDay = {};
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
-  Set<String> _activeDataViews = {'courses', 'todos', 'timeLogs', 'pomodoros'};
+  final Set<String> _activeDataViews = {'courses', 'todos', 'timeLogs', 'pomodoros'};
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
   DateTime _selectedMonth = DateTime.now();
   List<CourseItem> _allCourses = [];
-  double _baseScale = 1.0;
-  double _currentScale = 1.0;
+  final double _baseScale = 1.0;
+  final double _currentScale = 1.0;
   bool _isNextSlide = true;
   double _dragOffset = 0.0; // 实时跟踪滑动位移
   DateTime? _selectedMonthDay; // 平板模式下月视图选中的日期
@@ -69,7 +68,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   GlobalKey _getCourseCardKey(String courseName, int weekday, int startTime) {
     // Include current week to avoid key collisions while AnimatedSwitcher keeps
     // both previous and next week grids in the tree during transition.
-    final keyStr = 'w${_currentWeek}_${courseName}_${weekday}_${startTime}';
+    final keyStr = 'w${_currentWeek}_${courseName}_${weekday}_$startTime';
     return _courseCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
@@ -116,7 +115,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   DateTime? _lastModeSwitch;
-  double _lastScale = 1.0;
+  final double _lastScale = 1.0;
 
   @override
   void dispose() {
@@ -898,8 +897,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   Widget _buildAllDayHeaderRow(DateTime? monday) {
-    if (monday == null || !_activeDataViews.contains('todos'))
+    if (monday == null || !_activeDataViews.contains('todos')) {
       return const SizedBox.shrink();
+    }
 
     bool hasAnyAllDay =
         _allDayTodosPerDay.values.any((list) => list.isNotEmpty);
@@ -2140,10 +2140,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           if (_dragOffset.abs() > threshold || details.primaryVelocity!.abs() > 300) {
                             if (_dragOffset > 0 || (details.primaryVelocity ?? 0) > 300) {
                               // 向右滑动 -> 上一个
-                              if (_viewMode == 2) _changeMonth(-1); else _changeWeek(-1);
+                              if (_viewMode == 2) {
+                                _changeMonth(-1);
+                              } else {
+                                _changeWeek(-1);
+                              }
                             } else {
                               // 向左滑动 -> 下一个
-                              if (_viewMode == 2) _changeMonth(1); else _changeWeek(1);
+                              if (_viewMode == 2) {
+                                _changeMonth(1);
+                              } else {
+                                _changeWeek(1);
+                              }
                             }
                             HapticFeedback.lightImpact();
                           }
@@ -2529,7 +2537,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
 class CourseDetailScreen extends StatelessWidget {
   final CourseItem course;
-  const CourseDetailScreen({Key? key, required this.course}) : super(key: key);
+  const CourseDetailScreen({super.key, required this.course});
 
   @override
   Widget build(BuildContext context) {
@@ -2592,7 +2600,7 @@ class CourseDetailScreen extends StatelessWidget {
 
 class TodoDetailScreen extends StatelessWidget {
   final TodoItem todo;
-  const TodoDetailScreen({Key? key, required this.todo}) : super(key: key);
+  const TodoDetailScreen({super.key, required this.todo});
 
   @override
   Widget build(BuildContext context) {
@@ -2725,8 +2733,7 @@ class TodoDetailScreen extends StatelessWidget {
 class TimeLogDetailScreen extends StatelessWidget {
   final TimeLogItem log;
   final List<PomodoroTag> tags;
-  const TimeLogDetailScreen({Key? key, required this.log, required this.tags})
-      : super(key: key);
+  const TimeLogDetailScreen({super.key, required this.log, required this.tags});
 
   Color _hexToColor(String hex) {
     String clean = hex.replaceAll('#', '');
@@ -2819,8 +2826,7 @@ class PomodoroDetailScreen extends StatelessWidget {
   final PomodoroRecord record;
   final List<PomodoroTag> tags;
   const PomodoroDetailScreen(
-      {Key? key, required this.record, required this.tags})
-      : super(key: key);
+      {super.key, required this.record, required this.tags});
 
   Color _hexToColor(String hex) {
     String clean = hex.replaceAll('#', '');

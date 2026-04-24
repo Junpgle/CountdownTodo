@@ -14,7 +14,7 @@ class CourseSection extends StatelessWidget {
   final ValueChanged<String?> onNoCourseBehaviorChanged;
 
   const CourseSection({
-    Key? key,
+    super.key,
     this.highlightTarget,
     this.itemKeys,
     required this.onUploadCourses,
@@ -23,7 +23,7 @@ class CourseSection extends StatelessWidget {
     required this.onFetchFromCloud,
     required this.noCourseBehavior,
     required this.onNoCourseBehaviorChanged,
-  }) : super(key: key);
+  });
 
   Widget _buildTile({
     required BuildContext context,

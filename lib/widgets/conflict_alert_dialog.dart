@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 class ConflictAlertDialog extends StatelessWidget {
   final List<ConflictInfo> conflicts;
 
-  const ConflictAlertDialog({Key? key, required this.conflicts}) : super(key: key);
+  const ConflictAlertDialog({super.key, required this.conflicts});
 
   static void show(BuildContext context, List<ConflictInfo> conflicts) {
     if (conflicts.isEmpty) return;
@@ -25,7 +25,7 @@ class ConflictAlertDialog extends StatelessWidget {
           Text('发现日程冲突'),
         ],
       ),
-      content: Container(
+      content: SizedBox(
         width: double.maxFinite,
         child: ListView.separated(
           shrinkWrap: true,

@@ -88,13 +88,14 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                       lastDate: DateTime(2100),
                       initialDate: selectedDate,
                     );
-                    if (picked != null)
+                    if (picked != null) {
                       setDialogState(() => selectedDate = picked);
+                    }
                   },
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String?>(
-                  value: selectedTeamUuid,
+                  initialValue: selectedTeamUuid,
                   decoration: InputDecoration(
                     labelText: '关联团队 (可选)',
                     border: OutlineInputBorder(

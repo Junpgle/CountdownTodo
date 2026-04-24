@@ -12,7 +12,7 @@ class SystemSection extends StatelessWidget {
   final VoidCallback onCheckUpdates;
 
   const SystemSection({
-    Key? key,
+    super.key,
     this.highlightTarget,
     this.itemKeys,
     required this.onOpenFeatureGuide,
@@ -21,7 +21,7 @@ class SystemSection extends StatelessWidget {
     required this.onShowStorageAnalysis,
     required this.isCheckingUpdate,
     required this.onCheckUpdates,
-  }) : super(key: key);
+  });
 
   Widget _buildTile({
     required BuildContext context,

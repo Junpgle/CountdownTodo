@@ -137,36 +137,39 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     final mappings = await StorageService.getAppMappings();
     String todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
     history[todayStr] = widget.todayStats;
-    if (mounted)
+    if (mounted) {
       setState(() {
         _historyStats = history;
         _cloudMappings = mappings;
         _isLoading = false;
       });
+    }
   }
 
   // ─── 静态工具 ───
   static String formatHM(int s) {
     if (s == 0) return "0分钟";
     int h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
-    if (h > 0) return "${h}小时 ${m}分钟";
-    if (m > 0) return "${m}分钟";
-    return "${sec}秒";
+    if (h > 0) return "$h小时 $m分钟";
+    if (m > 0) return "$m分钟";
+    return "$sec秒";
   }
 
   static String formatShortHM(int s) {
     if (s == 0) return "0分";
     int h = s ~/ 3600, m = (s % 3600) ~/ 60;
-    if (h > 0) return "${h}时${m}分";
-    if (m > 0) return "${m}分";
-    return "${s}秒";
+    if (h > 0) return "$h时$m分";
+    if (m > 0) return "$m分";
+    return "$s秒";
   }
 
   static String simplifyDeviceName(String device) {
     if (device.isEmpty) return "未知设备";
     if (RegExp(
             r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
-        .hasMatch(device)) return "未知设备(旧)";
+        .hasMatch(device)) {
+      return "未知设备(旧)";
+    }
     return device
         .replaceAll("(Phone)", "(手机)")
         .replaceAll("(Tablet)", "(平板)")
@@ -179,14 +182,19 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     if (l.contains("phone") ||
         l.contains("手机") ||
         l.contains("ios") ||
-        l.contains("android")) return Icons.smartphone_rounded;
-    if (l.contains("tablet") || l.contains("平板") || l.contains("ipad"))
+        l.contains("android")) {
+      return Icons.smartphone_rounded;
+    }
+    if (l.contains("tablet") || l.contains("平板") || l.contains("ipad")) {
       return Icons.tablet_android_rounded;
+    }
     if (l.contains("windows") ||
         l.contains("pc") ||
         l.contains("lapt") ||
         l.contains("mac") ||
-        l.contains("电脑")) return Icons.laptop_windows_rounded;
+        l.contains("电脑")) {
+      return Icons.laptop_windows_rounded;
+    }
     return Icons.devices_rounded;
   }
 
@@ -219,57 +227,75 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
 
   static String getCategoryForApp(
       String appName, String? backendCategory, Map<String, String> mappings) {
-    if (mappings.containsKey(appName) && mappings[appName] != '未分类')
+    if (mappings.containsKey(appName) && mappings[appName] != '未分类') {
       return mappings[appName]!;
-    if (backendCategory != null && backendCategory != '未分类')
+    }
+    if (backendCategory != null && backendCategory != '未分类') {
       return backendCategory;
+    }
     String l = appName.toLowerCase();
     if (l.contains('微信') ||
         l.contains('qq') ||
         l.contains('小红书') ||
         l.contains('短信') ||
-        l.contains('微博')) return '社交通讯';
+        l.contains('微博')) {
+      return '社交通讯';
+    }
     if (l.contains('抖音') ||
         l.contains('哔哩') ||
         l.contains('bilibili') ||
         l.contains('音乐') ||
         l.contains('视频') ||
-        l.contains('直播')) return '影音娱乐';
+        l.contains('直播')) {
+      return '影音娱乐';
+    }
     if (l.contains('豆包') ||
         l.contains('千问') ||
         l.contains('word') ||
         l.contains('excel') ||
         l.contains('studio') ||
         l.contains('笔记') ||
-        l.contains('工大')) return '学习办公';
+        l.contains('工大')) {
+      return '学习办公';
+    }
     if (l.contains('计算器') ||
         l.contains('天气') ||
         l.contains('浏览') ||
         l.contains('edge') ||
         l.contains('chrome') ||
         l.contains('管家') ||
-        l.contains('设置')) return '实用工具';
+        l.contains('设置')) {
+      return '实用工具';
+    }
     if (l.contains('淘宝') ||
         l.contains('拼多多') ||
         l.contains('京东') ||
         l.contains('支付宝') ||
         l.contains('闲鱼') ||
-        l.contains('美团')) return '购物支付';
+        l.contains('美团')) {
+      return '购物支付';
+    }
     if (l.contains('地图') ||
         l.contains('12306') ||
         l.contains('出行') ||
         l.contains('导航') ||
-        l.contains('公交')) return '导航出行';
+        l.contains('公交')) {
+      return '导航出行';
+    }
     if (l.contains('游戏') ||
         l.contains('原神') ||
         l.contains('王者') ||
         l.contains('米游') ||
-        l.contains('启动器')) return '游戏与辅助';
+        l.contains('启动器')) {
+      return '游戏与辅助';
+    }
     if (l.contains('健康') || l.contains('运动') || l.contains('手环')) return '健康运动';
     if (l.contains('桌面') ||
         l.contains('系统') ||
         l.contains('小爱') ||
-        l.contains('账号')) return '系统应用';
+        l.contains('账号')) {
+      return '系统应用';
+    }
     return '未分类';
   }
 
@@ -280,8 +306,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       String appName = item['app_name'] ?? "未知应用";
       String deviceName = item['device_name'] ?? "未知设备";
       int duration = item['duration'] ?? 0;
-      if (!grouped.containsKey(appName))
+      if (!grouped.containsKey(appName)) {
         grouped[appName] = {'total': 0, 'devices': <String, int>{}};
+      }
       grouped[appName]!['total'] =
           (grouped[appName]!['total'] as int) + duration;
       (grouped[appName]!['devices'] as Map<String, int>)[deviceName] =
@@ -386,16 +413,18 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
 
     List<Map<String, dynamic>> finalCategories = [];
     if (catDurs.length <= 6) {
-      for (var e in catDurs)
+      for (var e in catDurs) {
         finalCategories.add(
             {'name': e.key, 'duration': e.value, 'items': catGroups[e.key]});
+      }
     } else {
-      for (int i = 0; i < 5; i++)
+      for (int i = 0; i < 5; i++) {
         finalCategories.add({
           'name': catDurs[i].key,
           'duration': catDurs[i].value,
           'items': catGroups[catDurs[i].key]
         });
+      }
       int otherDur = 0;
       List<dynamic> otherItems = [];
       for (int i = 5; i < catDurs.length; i++) {
@@ -1219,8 +1248,9 @@ class AppDetailScreen extends StatelessWidget {
           int dayIndex = 6 - i;
           deviceTrends[device]![dayIndex] += duration;
           total7Days += duration;
-          if (i == 0)
+          if (i == 0) {
             deviceToday[device] = (deviceToday[device] ?? 0) + duration;
+          }
         }
       }
     }
@@ -1518,8 +1548,9 @@ class LineChartPainter extends CustomPainter {
             ));
 
     Path linePath = Path()..moveTo(points.first.dx, points.first.dy);
-    for (int i = 1; i < points.length; i++)
+    for (int i = 1; i < points.length; i++) {
       linePath.lineTo(points[i].dx, points[i].dy);
+    }
 
     Path areaPath = Path.from(linePath)
       ..lineTo(points.last.dx, size.height - bottomPadding)

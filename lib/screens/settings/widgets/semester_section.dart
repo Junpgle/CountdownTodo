@@ -12,7 +12,7 @@ class SemesterSection extends StatelessWidget {
   final VoidCallback onFetchFromCloud;
 
   const SemesterSection({
-    Key? key,
+    super.key,
     this.highlightTarget,
     this.itemKeys,
     required this.semesterEnabled,
@@ -21,7 +21,7 @@ class SemesterSection extends StatelessWidget {
     required this.semesterEnd,
     required this.onPickSemesterDate,
     required this.onFetchFromCloud,
-  }) : super(key: key);
+  });
 
   Widget _buildTile({
     required BuildContext context,

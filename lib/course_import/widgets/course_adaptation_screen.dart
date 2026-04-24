@@ -5,7 +5,7 @@ import 'package:video_player/video_player.dart';
 
 /// 适配请求二级界面 - 经过美化重构
 class CourseAdaptationScreen extends StatefulWidget {
-  const CourseAdaptationScreen({Key? key}) : super(key: key);
+  const CourseAdaptationScreen({super.key});
 
   @override
   State<CourseAdaptationScreen> createState() => _CourseAdaptationScreenState();

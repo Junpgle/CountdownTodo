@@ -5,10 +5,9 @@ import 'dart:io'; // 用于 Platform Check
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
-import 'package:video_player_win/video_player_win_plugin.dart'; // video_player_win plugin
-import 'package:webview_win_floating/webview_win_floating.dart'; // webview_win_floating plugin
+// video_player_win plugin
+// webview_win_floating plugin
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'update_service.dart';
@@ -21,7 +20,6 @@ import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
 import 'widgets/privacy_policy_dialog.dart';
 import 'storage_service.dart';
-import 'services/api_service.dart';
 import 'services/float_window_service.dart';
 import 'services/window_service.dart';
 import 'services/band_sync_service.dart';

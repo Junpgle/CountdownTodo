@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import '../models.dart';
-import '../services/course_service.dart';
 import '../storage_service.dart';
 import 'notification_service.dart';
 

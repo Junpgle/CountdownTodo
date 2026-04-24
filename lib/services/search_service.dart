@@ -892,7 +892,7 @@ class SearchNavigationHandler {
       }
 
       // 🚀 核心修复：due_date 在 DB 中是 TEXT (jsonType)，需要安全转 int
-      int? _toInt(dynamic v) {
+      int? toInt(dynamic v) {
         if (v == null) return null;
         if (v is int) return v == 0 ? null : v;
         final parsed = int.tryParse(v.toString());
@@ -907,16 +907,16 @@ class SearchNavigationHandler {
         version: (todoMap['version'] is int) ? todoMap['version'] : int.tryParse(todoMap['version'].toString()) ?? 1,
         updatedAt: (todoMap['updated_at'] is int) ? todoMap['updated_at'] : int.tryParse(todoMap['updated_at'].toString()),
         createdAt: (todoMap['created_at'] is int) ? todoMap['created_at'] : int.tryParse(todoMap['created_at'].toString()),
-        createdDate: _toInt(todoMap['created_date']),
-        dueDate: _toInt(todoMap['due_date']) != null
-            ? DateTime.fromMillisecondsSinceEpoch(_toInt(todoMap['due_date'])!)
+        createdDate: toInt(todoMap['created_date']),
+        dueDate: toInt(todoMap['due_date']) != null
+            ? DateTime.fromMillisecondsSinceEpoch(toInt(todoMap['due_date'])!)
             : null,
         remark: todoMap['remark']?.toString(),
         groupId: todoMap['group_id']?.toString(),
         teamUuid: todoMap['team_uuid']?.toString(),
         teamName: todoMap['team_name']?.toString(),
         collabType: (todoMap['collab_type'] is int) ? todoMap['collab_type'] : int.tryParse(todoMap['collab_type'].toString()) ?? 0,
-        reminderMinutes: _toInt(todoMap['reminder_minutes']),
+        reminderMinutes: toInt(todoMap['reminder_minutes']),
       );
 
       final allTodos = await StorageService.getTodos(username);

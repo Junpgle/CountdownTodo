@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -215,10 +213,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       return;
     }
     _isInitProcessing = true;
-    final _initStart = DateTime.now();
+    final initStart = DateTime.now();
     debugPrint(
-        '[PomodoroWorkbench] _init start: ${_initStart.toIso8601String()}');
-    Timer? _initWatchdog = Timer(const Duration(seconds: 6), () {});
+        '[PomodoroWorkbench] _init start: ${initStart.toIso8601String()}');
+    Timer? initWatchdog = Timer(const Duration(seconds: 6), () {});
 
     try {
       _settings = await PomodoroService.getSettings();
@@ -227,7 +225,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       try {
         final info = await PackageInfo.fromPlatform();
         _appVersion = info.version;
-      } catch (e, st) {}
+      } catch (e) {}
 
       //debugPrint('[PomodoroWorkbench] StorageService.getTodos() start');
       try {
@@ -240,7 +238,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         final groupsRaw = await StorageService.getTodoGroups(widget.username)
             .timeout(const Duration(seconds: 5), onTimeout: () => <TodoGroup>[]);
         _todoGroups = groupsRaw.where((g) => !g.isDeleted).toList();
-      } catch (e, st) {
+      } catch (e) {
         _todos = [];
         _todoGroups = [];
       }
@@ -251,7 +249,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
             .timeout(const Duration(seconds: 5));
       } on TimeoutException catch (_) {
         saved = null;
-      } catch (e, st) {
+      } catch (e) {
         saved = null;
       }
 
@@ -260,14 +258,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
           try {
             await _recoverState(saved).timeout(const Duration(seconds: 5));
           } on TimeoutException catch (_) {}
-        } catch (e, st) {}
+        } catch (e) {}
       } else {
         try {
           SharedPreferences? prefs;
           try {
             prefs = await SharedPreferences.getInstance()
                 .timeout(const Duration(seconds: 5));
-          } catch (e, st) {
+          } catch (e) {
             prefs = null;
           }
           if (prefs != null) {
@@ -307,14 +305,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
               _syncService.setLocalFocusing(false);
             }
           }
-        } catch (e, st) {}
+        } catch (e) {}
       }
 
       try {
         try {
           await _connectCrossDevice().timeout(const Duration(seconds: 5));
         } on TimeoutException catch (_) {}
-      } catch (e, st) {}
+      } catch (e) {}
 
       await Future.delayed(const Duration(milliseconds: 400));
 
@@ -331,14 +329,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
                   .forceReconnect(_userId, 'flutter_$_deviceId')
                   .timeout(const Duration(seconds: 5));
             } on TimeoutException catch (_) {}
-          } catch (e, st) {}
+          } catch (e) {}
         }
       }
-    } catch (e, st) {
     } finally {
       _isInitProcessing = false;
-      _initWatchdog?.cancel();
-      final elapsed = DateTime.now().difference(_initStart).inMilliseconds;
+      initWatchdog.cancel();
+      final elapsed = DateTime.now().difference(initStart).inMilliseconds;
     }
   }
 
@@ -412,10 +409,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       case 'SYNC_FOCUS':
       case 'RECONNECT_SYNC':
         if (signal.sessionUuid != null &&
-            signal.sessionUuid == _currentSessionUuid) break;
+            signal.sessionUuid == _currentSessionUuid) {
+          break;
+        }
         if (_phase == PomodoroPhase.focusing ||
             _phase == PomodoroPhase.breaking ||
-            _phase == PomodoroPhase.finished) break;
+            _phase == PomodoroPhase.finished) {
+          break;
+        }
 
         final isCountUp = signal.mode == 1;
         final endMs = signal.targetEndMs ?? 0;
@@ -953,8 +954,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
       // debugPrint('[Ticker] Tick fired, _isPaused: $_isPaused, _phase: $_phase');
       if (!mounted) return;
-      if (_phase != PomodoroPhase.focusing && _phase != PomodoroPhase.breaking)
+      if (_phase != PomodoroPhase.focusing && _phase != PomodoroPhase.breaking) {
         return;
+      }
       if (_isPaused) {
         // debugPrint('[Ticker] Skipping tick because _isPaused is true');
         return;
@@ -1198,9 +1200,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     final h = totalSeconds ~/ 3600;
     final m = (totalSeconds % 3600) ~/ 60;
     final s = totalSeconds % 60;
-    if (h > 0) return '$h小时${m > 0 ? "${m}分" : ""}';
-    if (m > 0) return '$m分${s > 0 ? "${s}秒" : ""}';
-    return '${s}秒';
+    if (h > 0) return '$h小时${m > 0 ? "$m分" : ""}';
+    if (m > 0) return '$m分${s > 0 ? "$s秒" : ""}';
+    return '$s秒';
   }
 
   Future<void> _startFocus() async {
@@ -1526,13 +1528,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         }
       });
       final localIdx = _todos.indexWhere((t) => t.id == _boundTodo!.id);
-      if (localIdx != -1 && mounted)
+      if (localIdx != -1 && mounted) {
         setState(() => _todos[localIdx].isDone = true);
-      if (mounted)
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('✅ "${_boundTodo!.title}" 已标记完成'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating));
+      }
     }
     return completed ?? false;
   }
@@ -1594,11 +1598,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       widget.onPhaseChanged(_phase);
       PomodoroService.clearRunState();
       await _persistIdleBoundTodo(_boundTodo);
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('☕ 休息结束，准备开始下一轮！'),
             duration: Duration(seconds: 3),
             behavior: SnackBarBehavior.floating));
+      }
     } finally {
       _isHandlingEnd = false;
     }
@@ -2400,18 +2405,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
                       borderRadius: BorderRadius.circular(20)),
                   onSelected: (val) async {
                     setState(() {
-                      if (val)
+                      if (val) {
                         _selectedTagUuids.add(tag.uuid);
-                      else
+                      } else {
                         _selectedTagUuids.remove(tag.uuid);
+                      }
                     });
                     await _persistIdleBoundTodo(_boundTodo);
                     _showLocalFloat();
-                    if (_phase == PomodoroPhase.focusing)
+                    if (_phase == PomodoroPhase.focusing) {
                       _syncService.sendUpdateTagsSignal(_allTags
                           .where((t) => _selectedTagUuids.contains(t.uuid))
                           .map((t) => t.name)
                           .toList());
+                    }
                   },
                 );
               }).toList())),

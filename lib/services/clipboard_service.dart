@@ -176,7 +176,7 @@ class ClipboardService {
 
         _lastClipboardContent = content;
         debugPrint(
-            '[ClipboardService] New content detected: ${content.length > 50 ? content.substring(0, 50) + "..." : content}');
+            '[ClipboardService] New content detected: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}');
 
         if (_isValidUrl(content)) {
           final displayUrl = _truncateForDisplay(content);

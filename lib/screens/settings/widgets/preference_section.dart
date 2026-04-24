@@ -24,7 +24,7 @@ class PreferenceSection extends StatelessWidget {
   final ValueChanged<int?>? onLLMRetryCountChanged;
 
   const PreferenceSection({
-    Key? key,
+    super.key,
     this.highlightTarget,
     this.itemKeys,
     required this.syncInterval,
@@ -41,7 +41,7 @@ class PreferenceSection extends StatelessWidget {
     this.onIslandPriorityPressed,
     this.llmRetryCount = 3,
     this.onLLMRetryCountChanged,
-  }) : super(key: key);
+  });
 
   // 🚀 辅助方法：构建带高亮动画的 Tile
   Widget _buildTile({
@@ -257,7 +257,7 @@ class PreferenceSection extends StatelessWidget {
                     subtitle: const Text('开启灵动岛式浮动窗口'),
                     trailing: Switch(
                       value: floatWindowStyle != 2,
-                      activeColor: Colors.indigo,
+                      activeThumbColor: Colors.indigo,
                       onChanged: (val) {
                         if (onFloatWindowStyleChanged != null) {
                           onFloatWindowStyleChanged!(val ? 1 : 2);

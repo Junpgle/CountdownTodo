@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
-import '../services/course_service.dart';
 import 'home_sections.dart';
 
 import '../screens/course_screens.dart';

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:intl/intl.dart' hide TextDirection;
-import '../../models.dart';
 
 /// 通用的板块标题
 class SectionHeader extends StatelessWidget {
@@ -318,9 +317,9 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
       Map<String, int> deviceMap = {};
       for (var item in widget.stats) {
         String d = item['device_name'] ?? "未知设备";
-        if (d.contains("Phone"))
+        if (d.contains("Phone")) {
           d = "手机";
-        else if (d.contains("Tablet"))
+        } else if (d.contains("Tablet"))
           d = "平板";
         else if (d.contains("Windows") ||
             d.contains("PC") ||
@@ -547,8 +546,9 @@ class PieChartPainter extends CustomPainter {
           final y = center.dy + textRadius * math.sin(middleAngle);
 
           String displayLabel = label;
-          if (displayLabel.length > 6)
+          if (displayLabel.length > 6) {
             displayLabel = "${displayLabel.substring(0, 5)}..";
+          }
 
           double fontSize = minDimension > 200 ? 12 : 10;
 
@@ -596,7 +596,7 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     Color bgColor = isLight
         ? Colors.white.withOpacity(0.1)
-        : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3);
+        : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3);
     Color textColor = isLight ? Colors.white70 : Colors.grey.shade600;
 
     return Container(
@@ -729,7 +729,7 @@ class MathStatsCard extends StatelessWidget {
                                 tween: IntTween(begin: 0, end: bestTimeVal),
                                 builder: (context, value, child) {
                                   return Text(
-                                      bestTimeVal > 0 ? "${value}秒" : "--",
+                                      bestTimeVal > 0 ? "$value秒" : "--",
                                       style: TextStyle(
                                           fontSize: isTablet ? 26 : 20,
                                           fontWeight: FontWeight.w900,
@@ -754,7 +754,7 @@ class MathStatsCard extends StatelessWidget {
                                 curve: Curves.easeOutCubic,
                                 tween: IntTween(begin: 0, end: accuracyInt),
                                 builder: (context, value, child) {
-                                  return Text("${value}.0%",
+                                  return Text("$value.0%",
                                       style: TextStyle(
                                           fontSize: isTablet ? 26 : 20,
                                           fontWeight: FontWeight.w900));

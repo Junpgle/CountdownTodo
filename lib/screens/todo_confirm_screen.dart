@@ -72,14 +72,14 @@ class TodoConfirmScreen extends StatefulWidget {
   final String? initialTeamName;
 
   const TodoConfirmScreen({
-    Key? key,
+    super.key,
     required this.llmResults,
     this.imagePath,
     this.originalText,
     this.onConfirm,
     this.initialTeamUuid,
     this.initialTeamName,
-  }) : super(key: key);
+  });
 
   @override
   State<TodoConfirmScreen> createState() => _TodoConfirmScreenState();
@@ -383,7 +383,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   ),
                   const Divider(),
                   DropdownButtonFormField<String?>(
-                    value: selectedGroupId,
+                    initialValue: selectedGroupId,
                     decoration: InputDecoration(
                       labelText: '归类到文件夹 (可选)',
                       prefixIcon: const Icon(Icons.folder_outlined),
@@ -413,7 +413,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<int>(
-                    value: reminderMinutes,
+                    initialValue: reminderMinutes,
                     decoration: InputDecoration(
                       labelText: '温馨提醒 (提前量)',
                       prefixIcon: const Icon(Icons.notifications_active_outlined),
@@ -441,7 +441,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   if (todo.teamUuid != null) ...[
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
-                      value: collabType,
+                      initialValue: collabType,
                       decoration: InputDecoration(
                         labelText: "团队协作方式",
                         prefixIcon: const Icon(Icons.hub_outlined),
@@ -460,7 +460,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   ],
                   const Divider(),
                   DropdownButtonFormField<RecurrenceType>(
-                    value: recurrence,
+                    initialValue: recurrence,
                     decoration: InputDecoration(
                       labelText: '循环设置 (可选)',
                       prefixIcon: const Icon(Icons.replay_rounded),

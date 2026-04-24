@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
 
 // ==========================================
@@ -169,9 +168,9 @@ class TodoItem {
     this.serverVersionData,
     this.isAllDay = false,
     this.categoryId,
-  })  : this.id = id ?? const Uuid().v4(),
-        this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-        this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  })  : id = id ?? const Uuid().v4(),
+        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   // 🚀 核心方法：每次本地对任务的修改，都必须调用此方法！
   void markAsChanged() {
@@ -222,8 +221,9 @@ class TodoItem {
     // 优先读取后端的 uuid 字段，如果没有再尝试 id 字段，最后才兜底生成
     String parsedId =
         json['uuid']?.toString() ?? json['id']?.toString() ?? const Uuid().v4();
-    if (!parsedId.contains('-'))
+    if (!parsedId.contains('-')) {
       parsedId = const Uuid().v4(); // 如果旧数据是自增ID，强制转UUID
+    }
 
     return TodoItem(
       id: parsedId,
@@ -337,9 +337,9 @@ class CountdownItem {
     this.creatorName,
     this.hasConflict = false,
     this.conflictData,
-  })  : this.id = id ?? const Uuid().v4(),
-        this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-        this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  })  : id = id ?? const Uuid().v4(),
+        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   // 🚀 核心方法：每次本地对倒计时的修改，都必须调用此方法！
   void markAsChanged() {
@@ -398,7 +398,7 @@ class CountdownItem {
 }
 
 // ==========================================
-// 📁 待办组模型 (Todo Group)
+// Todo Group Model
 // ==========================================
 
 class TodoGroup {
@@ -413,6 +413,8 @@ class TodoGroup {
   String? teamName;
   String? creatorId;
   String? creatorName;
+  bool hasConflict;
+  Map<String, dynamic>? conflictData;
 
   TodoGroup({
     String? id,
@@ -426,6 +428,8 @@ class TodoGroup {
     this.teamName,
     this.creatorId,
     this.creatorName,
+    this.hasConflict = false,
+    this.conflictData,
   })  : id = id ?? const Uuid().v4(),
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -448,6 +452,8 @@ class TodoGroup {
         'team_name': teamName,
         'creator_id': creatorId,
         'creator_name': creatorName,
+        'has_conflict': hasConflict ? 1 : 0,
+        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
       };
 
   factory TodoGroup.fromSql(Map<String, dynamic> map) => TodoGroup.fromJson(map);
@@ -467,6 +473,8 @@ class TodoGroup {
       teamName: json['team_name']?.toString(),
       creatorId: json['creator_id']?.toString(),
       creatorName: json['creator_name']?.toString(),
+      hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
+      conflictData: json['conflict_data'] != null ? (json['conflict_data'] is String ? jsonDecode(json['conflict_data']) : json['conflict_data']) : null,
     );
   }
 }
@@ -503,8 +511,9 @@ DateTime? _parseDateField(dynamic val) {
       ms = n;
       } else {
         final dt = DateTime.tryParse(trimmed);
-      if (dt != null)
+      if (dt != null) {
         return dt.toUtc().millisecondsSinceEpoch > 0 ? dt.toLocal() : null;
+      }
       return null;
     }
   } else {
@@ -620,9 +629,9 @@ class CourseItem {
     int? updatedAt,
     int? createdAt,
     this.isDeleted = false,
-  }) : this.uuid = uuid ?? const Uuid().v4(),
-       this.updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-       this.createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   String get formattedStartTime => '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
   String get formattedEndTime => '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';

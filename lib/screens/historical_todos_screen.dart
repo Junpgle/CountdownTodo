@@ -5,8 +5,7 @@ import '../storage_service.dart';
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
-  const HistoricalTodosScreen({Key? key, required this.username})
-      : super(key: key);
+  const HistoricalTodosScreen({super.key, required this.username});
 
   @override
   State<HistoricalTodosScreen> createState() => _HistoricalTodosScreenState();

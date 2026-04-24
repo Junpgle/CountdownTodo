@@ -300,7 +300,7 @@ class IslandSlotProvider {
       if (active.isNotEmpty) {
         final c = active.first;
         final days = c.targetDate.difference(now).inDays;
-        final info = '${days}天';
+        final info = '$days天';
         final display = isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
         debugPrint('[IslandSlotProvider] countdown display: $display');
         return IslandSlotData(
@@ -308,7 +308,7 @@ class IslandSlotProvider {
           type: 'countdown',
           detailTitle: c.title,
           detailTime: DateFormat('yyyy-MM-dd').format(c.targetDate),
-          detailNote: '还有${days}天',
+          detailNote: '还有$days天',
         );
       }
     } catch (e) {

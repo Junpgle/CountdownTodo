@@ -75,7 +75,7 @@ class CourseService {
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
-      await saveCourses(username!, parsedCourses);
+      await saveCourses(username, parsedCourses);
       return true;
     } catch (e) {
       print("解析工大课表出错: $e");

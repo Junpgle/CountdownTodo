@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../models.dart';
-import 'dart:ui';
 
 class TeamAnnouncementScreen extends StatefulWidget {
   final Team team;
-  const TeamAnnouncementScreen({Key? key, required this.team}) : super(key: key);
+  const TeamAnnouncementScreen({super.key, required this.team});
 
   @override
   _TeamAnnouncementScreenState createState() => _TeamAnnouncementScreenState();
@@ -112,7 +111,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                       const Text('重要置顶', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange)),
                       Switch(
                         value: isPriority,
-                        activeColor: Colors.orange,
+                        activeThumbColor: Colors.orange,
                         onChanged: (val) => setModalState(() => isPriority = val),
                       ),
                     ],

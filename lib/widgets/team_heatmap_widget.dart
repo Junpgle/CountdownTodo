@@ -49,8 +49,9 @@ class TeamHeatmapWidget extends StatelessWidget {
                     final date = today.subtract(Duration(days: ((weeks - 1 - weekIdx) * 7 + (6 - dayIdx)).toInt()));
                     final count = density[DateTime(date.year, date.month, date.day)] ?? 0;
                     int intensity = 0;
-                    if (count > 0 && count <= 2) intensity = 1;
-                    else if (count > 2 && count <= 5) intensity = 2;
+                    if (count > 0 && count <= 2) {
+                      intensity = 1;
+                    } else if (count > 2 && count <= 5) intensity = 2;
                     else if (count > 5 && count <= 9) intensity = 3;
                     else if (count > 9) intensity = 4;
 

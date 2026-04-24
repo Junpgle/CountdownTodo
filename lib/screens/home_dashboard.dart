@@ -51,8 +51,8 @@ import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
 import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
 import 'pomodoro_screen.dart';
-import 'unified_waterfall_screen.dart'; // 🚀 引入
-import 'conflict_inbox_screen.dart'; // 🚀 引入
+// 🚀 引入
+// 🚀 引入
 import '../widgets/global_search_overlay.dart';
 
 class HomeDashboard extends StatefulWidget {
@@ -1095,7 +1095,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     if (hasUpcomingCourse) return;
 
-    String _detectTodoType(String title) {
+    String detectTodoType(String title) {
       final lowerTitle = title.toLowerCase();
       if (lowerTitle.contains('快递') ||
           lowerTitle.contains('取件') ||
@@ -1141,7 +1141,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final specialTodosToday = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
-      final todoType = _detectTodoType(t.title);
+      final todoType = detectTodoType(t.title);
       if (todoType == 'default') return false;
       return _isSameDay(t.dueDate!.toLocal(), now);
     }).toList();
@@ -1154,7 +1154,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final upcomingRegularTodos = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
-      final todoType = _detectTodoType(t.title);
+      final todoType = detectTodoType(t.title);
       if (todoType != 'default') return false;
 
       // 排除全天待办 (00:00 - 23:59)
@@ -1182,7 +1182,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final allDayTodos = _todos.where((t) {
       if (t.isDone) return false;
       if (t.dueDate == null) return false;
-      final todoType = _detectTodoType(t.title);
+      final todoType = detectTodoType(t.title);
       if (todoType != 'default') return false;
       DateTime localDueDate = t.dueDate!.toLocal();
       if (!_isSameDay(localDueDate, now)) return false;
@@ -1282,7 +1282,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     final saved = await PomodoroService.loadRunState();
     if (saved == null) return;
     if (saved.phase != PomodoroPhase.focusing &&
-        saved.phase != PomodoroPhase.breaking) return;
+        saved.phase != PomodoroPhase.breaking) {
+      return;
+    }
     // 确认倒计时还没结束
     final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
     if (saved.mode == TimerMode.countdown && remaining <= 0) return;
@@ -1491,24 +1493,24 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     setState(() {
       currentTodo!.isDone = true;
-      currentTodo!.markAsChanged();
+      currentTodo.markAsChanged();
       _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
     });
 
     setState(() {
       currentTodo!.isDone = true;
-      currentTodo!.markAsChanged();
+      currentTodo.markAsChanged();
       _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
     });
 
     // 🚀 跨端联动：完成待办的同时，告知云端停止对应的番茄钟（如果有设备在观察的话）
     PomodoroSyncService().sendStopSignal(
-      todoUuid: currentTodo!.id,
+      todoUuid: currentTodo.id,
       sessionUuid: _localPomodoro?.sessionUuid,
     );
     
     // 🚀 Uni-Sync 4.0 优化：改用单条原子化更新，性能提升显著
-    await StorageService.updateSingleTodo(widget.username, currentTodo!);
+    await StorageService.updateSingleTodo(widget.username, currentTodo);
 
     // 注意：共享文件的更新逻辑可保持异步，不阻塞主线程交互
     Future.microtask(() async {
@@ -2303,8 +2305,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Widget _buildSemesterProgressBar(bool isLight) {
-    if (!_semesterEnabled || _semesterStart == null || _semesterEnd == null)
+    if (!_semesterEnabled || _semesterStart == null || _semesterEnd == null) {
       return const SizedBox.shrink();
+    }
 
     double progress = _calculateSemesterProgress();
 
@@ -2559,10 +2562,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                           for (var newT in _todos) {
                             int idx =
                                 allTodos.indexWhere((x) => x.id == newT.id);
-                            if (idx != -1)
+                            if (idx != -1) {
                               allTodos[idx] = newT;
-                            else
+                            } else {
                               allTodos.add(newT);
+                            }
                           }
                           await StorageService.saveTodos(
                               widget.username, allTodos);

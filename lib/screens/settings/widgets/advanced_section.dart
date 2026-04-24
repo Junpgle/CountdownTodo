@@ -14,7 +14,7 @@ class AdvancedSection extends StatelessWidget {
   final VoidCallback? onOpenLanSync;
 
   const AdvancedSection({
-    Key? key,
+    super.key,
     this.highlightTarget,
     this.itemKeys,
     required this.onShowMigrationDialog,
@@ -25,7 +25,7 @@ class AdvancedSection extends StatelessWidget {
     required this.onCheckIslandSupport,
     this.onOpenBandSync,
     this.onOpenLanSync,
-  }) : super(key: key);
+  });
 
   Widget _buildTile({
     required BuildContext context,

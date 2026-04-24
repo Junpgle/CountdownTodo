@@ -16,7 +16,7 @@ import '../storage_service.dart';
 class TeamManagementScreen extends StatefulWidget {
   final String username;
   final String? initialTarget; // 🚀 新增：跳转目标
-  const TeamManagementScreen({Key? key, required this.username, this.initialTarget}) : super(key: key);
+  const TeamManagementScreen({super.key, required this.username, this.initialTarget});
 
   @override
   _TeamManagementScreenState createState() => _TeamManagementScreenState();
@@ -636,7 +636,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               )
             ],
           ),
-        )).toList(),
+        )),
         const SizedBox(height: 16),
       ],
     );

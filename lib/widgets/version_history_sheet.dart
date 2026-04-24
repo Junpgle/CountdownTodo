@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../storage_service.dart';
-import '../services/environment_service.dart';
 
 class VersionHistorySheet extends StatefulWidget {
   final String uuid;
@@ -386,13 +385,13 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
       
       // 🚀 新增：显示自定义循环间隔的变更
       addChange('循环间隔', before?['custom_interval_days'], after['custom_interval_days'], 
-        contextFormatter: (v, ctx) => v == null ? '无' : '每${v}天');
+        contextFormatter: (v, ctx) => v == null ? '无' : '每$v天');
       
       // 🚀 新增：显示提醒时间的变更
       addChange('提醒时间', before?['reminder_minutes'] ?? -1, after['reminder_minutes'] ?? -1, 
         contextFormatter: (v, ctx) {
           if (v == null || v == -1) return '无';
-          return '提前${v}分钟';
+          return '提前$v分钟';
         });
       
       // 🚀 优化：使用 context 准确获取对应快照中的名称

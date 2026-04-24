@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../storage_service.dart';
 
 class WallpaperSettingsPage extends StatefulWidget {
-  const WallpaperSettingsPage({Key? key}) : super(key: key);
+  const WallpaperSettingsPage({super.key});
 
   @override
   State<WallpaperSettingsPage> createState() => _WallpaperSettingsPageState();

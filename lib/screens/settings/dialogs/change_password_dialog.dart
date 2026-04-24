@@ -6,10 +6,10 @@ class ChangePasswordDialog extends StatefulWidget {
   final Function(bool force) onLogout;
 
   const ChangePasswordDialog({
-    Key? key,
+    super.key,
     required this.userId,
     required this.onLogout,
-  }) : super(key: key);
+  });
 
   @override
   State<ChangePasswordDialog> createState() => _ChangePasswordDialogState();

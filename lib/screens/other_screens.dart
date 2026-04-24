@@ -114,8 +114,9 @@ class _LeaderboardListState extends State<_LeaderboardList> {
             itemBuilder: (ctx, i) {
               var item = list[i];
               Color? rankColor;
-              if (i == 0) rankColor = Colors.amber; // 金
-              else if (i == 1) rankColor = Colors.grey[400]; // 银
+              if (i == 0) {
+                rankColor = Colors.amber; // 金
+              } else if (i == 1) rankColor = Colors.grey[400]; // 银
               else if (i == 2) rankColor = Colors.orange[300]; // 铜
 
               // 兼容云端字段 (duration) 和 本地字段 (time)
@@ -130,7 +131,7 @@ class _LeaderboardListState extends State<_LeaderboardList> {
                   child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
                 title: Text(item['username'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text("用时: ${timeStr}秒"),
+                subtitle: Text("用时: $timeStr秒"),
                 trailing: Text("${item['score']}分",
                     style: const TextStyle(fontSize: 20, color: Colors.indigo, fontWeight: FontWeight.bold)),
               );

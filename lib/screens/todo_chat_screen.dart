@@ -330,8 +330,9 @@ $folderList
         int closeBrackets = 0;
         
         for (int i = 0; i < formattedJson.length; i++) {
-          if (formattedJson[i] == '{') openBraces++;
-          else if (formattedJson[i] == '}') closeBraces++;
+          if (formattedJson[i] == '{') {
+            openBraces++;
+          } else if (formattedJson[i] == '}') closeBraces++;
           else if (formattedJson[i] == '[') openBrackets++;
           else if (formattedJson[i] == ']') closeBrackets++;
         }
@@ -1934,7 +1935,7 @@ $folderList
                   ],
                 ),
               );
-            }).toList(),
+            }),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
               child: SizedBox(

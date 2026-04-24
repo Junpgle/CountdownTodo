@@ -54,20 +54,27 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     bool? predictiveBack,
     int? duration,
   }) async {
-    if (enabled != null)
+    if (enabled != null) {
       await AnimationConfigService.setAnimationsEnabled(enabled);
-    if (motionBlur != null)
+    }
+    if (motionBlur != null) {
       await AnimationConfigService.setMotionBlurEnabled(motionBlur);
-    if (layerBlur != null)
+    }
+    if (layerBlur != null) {
       await AnimationConfigService.setLayerBlurEnabled(layerBlur);
-    if (lazyLoad != null)
+    }
+    if (lazyLoad != null) {
       await AnimationConfigService.setLazyLoadEnabled(lazyLoad);
-    if (screenRadius != null)
+    }
+    if (screenRadius != null) {
       await AnimationConfigService.setScreenRadiusEnabled(screenRadius);
-    if (predictiveBack != null)
+    }
+    if (predictiveBack != null) {
       await AnimationConfigService.setPredictiveBackEnabled(predictiveBack);
-    if (duration != null)
+    }
+    if (duration != null) {
       await AnimationConfigService.setAnimationDuration(duration);
+    }
     await PageTransitions.init();
   }
 
@@ -95,7 +102,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('开启/关闭所有页面过渡动画'),
                   value: _animationsEnabled,
-                  activeColor: colorScheme.primary,
+                  activeThumbColor: colorScheme.primary,
                   onChanged: (val) {
                     setState(() => _animationsEnabled = val);
                     _update(enabled: val);
@@ -109,7 +116,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('动画进行中再渲染页面内容，提升流畅度'),
                   value: _lazyLoadEnabled,
-                  activeColor: colorScheme.primary,
+                  activeThumbColor: colorScheme.primary,
                   onChanged: (val) {
                     setState(() => _lazyLoadEnabled = val);
                     _update(lazyLoad: val);
@@ -123,7 +130,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('动画过程中适配设备屏幕圆角'),
                   value: _screenRadiusEnabled,
-                  activeColor: colorScheme.primary,
+                  activeThumbColor: colorScheme.primary,
                   onChanged: (val) {
                     setState(() => _screenRadiusEnabled = val);
                     _update(screenRadius: val);
@@ -137,7 +144,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('支持 Android 14+ 预测性返回手势动画'),
                   value: _predictiveBackEnabled,
-                  activeColor: colorScheme.primary,
+                  activeThumbColor: colorScheme.primary,
                   onChanged: (val) {
                     setState(() => _predictiveBackEnabled = val);
                     _update(predictiveBack: val);
@@ -151,7 +158,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('页面滑动时添加动态模糊效果（可能影响性能）'),
                   value: _motionBlurEnabled,
-                  activeColor: colorScheme.primary,
+                  activeThumbColor: colorScheme.primary,
                   onChanged: (val) {
                     setState(() => _motionBlurEnabled = val);
                     _update(motionBlur: val);
@@ -165,7 +172,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('前景页面清晰，背景页面模糊（可能影响性能）'),
                   value: _layerBlurEnabled,
-                  activeColor: colorScheme.primary,
+                  activeThumbColor: colorScheme.primary,
                   onChanged: (val) {
                     setState(() => _layerBlurEnabled = val);
                     _update(layerBlur: val);

@@ -155,8 +155,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final groupFillProgress = allDone ? 1.0 : _getGroupProgress(groupTodos);
 
     return DragTarget<String>(
-      onWillAccept: (data) => data != null,
-      onAccept: (todoId) => widget.onTodoDropped(todoId),
+      onWillAcceptWithDetails: (_) => true,
+      onAcceptWithDetails: (details) => widget.onTodoDropped(details.data),
       builder: (context, candidateData, rejectedData) {
         final isHovering = candidateData.isNotEmpty;
 

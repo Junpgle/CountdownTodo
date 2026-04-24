@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart' show appNavigatorKey;
 import '../storage_service.dart';
@@ -56,7 +54,7 @@ class FloatWindowService {
   static int _lastPauseStartMs = 0;
 
   // Island creation throttling
-  static int _lastIslandCreateAttemptMs = 0;
+  static final int _lastIslandCreateAttemptMs = 0;
   static Future<String?>? _creatingIsland; // 互斥锁, 防止并发创建
 
   // Data provider with caching
@@ -258,7 +256,7 @@ class FloatWindowService {
     }
 
     SnoozeDialog.show(context).then((minutes) async {
-      if (minutes != null && minutes is int) {
+      if (minutes != null) {
         debugPrint('[FloatWindow] Schedule snooze: $minutes minutes');
         try {
           await IslandManager().sendStructuredPayload('island-1', {

@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ffi';
 import 'package:ffi/ffi.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
@@ -10,7 +8,6 @@ import 'package:win32/win32.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import '../windows_island/island_manager.dart';
 import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
 import '../main.dart';
@@ -207,10 +204,10 @@ class WindowService with WindowListener, TrayListener {
   }
 
   int _showNativeMessageBox() {
-    const MB_YESNO = 0x00000004;
-    const MB_DEFBUTTON2 = 0x00000100;
-    const MB_TOPMOST = 0x00040000;
-    const MB_ICONQUESTION = 0x00000020;
+    const mbYesno = 0x00000004;
+    const mbDefbutton2 = 0x00000100;
+    const mbTopmost = 0x00040000;
+    const mbIconquestion = 0x00000020;
     const IDYES = 6;
 
     final hwnd = GetForegroundWindow();
@@ -221,7 +218,7 @@ class WindowService with WindowListener, TrayListener {
       hwnd,
       message,
       title,
-      MB_YESNO | MB_DEFBUTTON2 | MB_TOPMOST | MB_ICONQUESTION,
+      mbYesno | mbDefbutton2 | mbTopmost | mbIconquestion,
     );
 
     calloc.free(title);

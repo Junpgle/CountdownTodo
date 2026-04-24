@@ -803,22 +803,25 @@ class LanSyncService {
 
   bool _lwwWins(TodoItem remote, TodoItem local) {
     if (remote.version > local.version) return true;
-    if (remote.version == local.version && remote.updatedAt > local.updatedAt)
+    if (remote.version == local.version && remote.updatedAt > local.updatedAt) {
       return true;
+    }
     return false;
   }
 
   bool _lwwWinsCountdown(CountdownItem remote, CountdownItem local) {
     if (remote.version > local.version) return true;
-    if (remote.version == local.version && remote.updatedAt > local.updatedAt)
+    if (remote.version == local.version && remote.updatedAt > local.updatedAt) {
       return true;
+    }
     return false;
   }
 
   bool _lwwWinsTimeLog(TimeLogItem remote, TimeLogItem local) {
     if (remote.version > local.version) return true;
-    if (remote.version == local.version && remote.updatedAt > local.updatedAt)
+    if (remote.version == local.version && remote.updatedAt > local.updatedAt) {
       return true;
+    }
     return false;
   }
 

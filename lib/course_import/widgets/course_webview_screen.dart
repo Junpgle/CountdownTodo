@@ -6,7 +6,6 @@ import 'package:webview_flutter_android/webview_flutter_android.dart' as wv_andr
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 // Import for Windows features.
 import 'package:webview_win_floating/webview_win_floating.dart';
-import 'dart:io';
 import 'dart:convert'; // 🚀 添加了 jsonDecode 必需的包
 import '../../storage_service.dart';
 
@@ -15,9 +14,9 @@ class CourseWebViewScreen extends StatefulWidget {
   final String initialUrl;
 
   const CourseWebViewScreen({
-    Key? key,
+    super.key,
     this.initialUrl = 'https://www.bing.com', // Default to a search engine if none provided
-  }) : super(key: key);
+  });
 
   @override
   State<CourseWebViewScreen> createState() => _CourseWebViewScreenState();
@@ -261,7 +260,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
           height: 40,
           margin: const EdgeInsets.only(right: 8),
           decoration: BoxDecoration(
-            color: colorScheme.surfaceVariant.withOpacity(0.5),
+            color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
             borderRadius: BorderRadius.circular(20),
           ),
           child: TextField(

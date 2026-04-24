@@ -9,10 +9,10 @@ class AboutSection extends StatefulWidget {
   final VoidCallback onCheckUpdates;
 
   const AboutSection({
-    Key? key,
+    super.key,
     required this.isCheckingUpdate,
     required this.onCheckUpdates,
-  }) : super(key: key);
+  });
 
   @override
   State<AboutSection> createState() => _AboutSectionState();

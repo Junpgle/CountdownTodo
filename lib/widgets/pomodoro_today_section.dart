@@ -194,7 +194,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     ? Colors.white.withOpacity(0.1)
                     : Theme.of(context)
                         .colorScheme
-                        .surfaceVariant
+                        .surfaceContainerHighest
                         .withOpacity(0.3),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
@@ -205,7 +205,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
               child: Column(
                 children: [
                   Icon(Icons.timer_outlined,
-                      size: 32, color: subColor?.withOpacity(0.5)),
+                      size: 32, color: subColor.withOpacity(0.5)),
                   const SizedBox(height: 8),
                   Text('暂无专注记录，开始你的第一个番茄钟吧！',
                       style: TextStyle(

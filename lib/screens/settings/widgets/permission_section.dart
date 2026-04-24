@@ -10,13 +10,13 @@ class PermissionSection extends StatelessWidget {
   final Function(String) onRequestOrOpenPermission;
 
   const PermissionSection({
-    Key? key,
+    super.key,
     required this.permissionDefs,
     required this.permissionStatuses,
     required this.isCheckingPermissions,
     required this.onCheckAllPermissions,
     required this.onRequestOrOpenPermission,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

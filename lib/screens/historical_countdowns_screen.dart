@@ -5,8 +5,7 @@ import '../storage_service.dart';
 
 class HistoricalCountdownsScreen extends StatefulWidget {
   final String username;
-  const HistoricalCountdownsScreen({Key? key, required this.username})
-      : super(key: key);
+  const HistoricalCountdownsScreen({super.key, required this.username});
 
   @override
   State<HistoricalCountdownsScreen> createState() =>

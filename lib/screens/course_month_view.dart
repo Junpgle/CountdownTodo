@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
-import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
-import '../utils/page_transitions.dart';
-import 'course_screens.dart';
 
 class CourseMonthView extends StatelessWidget {
   final DateTime selectedMonth;
@@ -23,7 +20,7 @@ class CourseMonthView extends StatelessWidget {
   final DateTime? currentWeekMonday;
 
   const CourseMonthView({
-    Key? key,
+    super.key,
     required this.selectedMonth,
     required this.courseMap,
     required this.todoMap,
@@ -38,7 +35,7 @@ class CourseMonthView extends StatelessWidget {
     this.viewMode = 2,
     this.onGanttTodoTap,
     this.currentWeekMonday,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -63,24 +60,24 @@ class CourseMonthView extends StatelessWidget {
 
     // 2. 预计算所有全局数据 (应用筛选逻辑)
     final Map<String, int> densityMap = {};
-    void _addDensity(String? dStr, int weight) {
+    void addDensity(String? dStr, int weight) {
       if (dStr != null && dStr.isNotEmpty) {
         densityMap[dStr] = (densityMap[dStr] ?? 0) + weight;
       }
     }
 
     if (activeDataViews.contains('courses')) {
-      courseMap.forEach((date, list) => _addDensity(date, 3 * list.length));
+      courseMap.forEach((date, list) => addDensity(date, 3 * list.length));
     }
     if (activeDataViews.contains('todos')) {
-      todoMap.forEach((date, list) => _addDensity(date, 1 * list.length));
-      crossDayTodoMap.forEach((date, list) => _addDensity(date, 1 * list.length));
+      todoMap.forEach((date, list) => addDensity(date, 1 * list.length));
+      crossDayTodoMap.forEach((date, list) => addDensity(date, 1 * list.length));
     }
     if (activeDataViews.contains('timeLogs')) {
-      logMap.forEach((date, list) => _addDensity(date, 2 * list.length));
+      logMap.forEach((date, list) => addDensity(date, 2 * list.length));
     }
     if (activeDataViews.contains('pomodoros')) {
-      pomMap.forEach((date, list) => _addDensity(date, 2 * list.length));
+      pomMap.forEach((date, list) => addDensity(date, 2 * list.length));
     }
 
     final List<TodoItem> ganttTodos = activeDataViews.contains('todos')

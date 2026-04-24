@@ -130,9 +130,13 @@ class SystemControlService {
 
     _lastSentVolSteps = newSteps;
     if (diff > 0) {
-      for (var i = 0; i < diff; i++) _sendKey(_VK_VOLUME_UP);
+      for (var i = 0; i < diff; i++) {
+        _sendKey(_VK_VOLUME_UP);
+      }
     } else {
-      for (var i = 0; i < -diff; i++) _sendKey(_VK_VOLUME_DOWN);
+      for (var i = 0; i < -diff; i++) {
+        _sendKey(_VK_VOLUME_DOWN);
+      }
     }
   }
 
@@ -146,9 +150,13 @@ class SystemControlService {
     if (diff == 0) return;
     _lastSentVolSteps = newSteps;
     if (diff > 0) {
-      for (var i = 0; i < diff; i++) _sendKey(_VK_VOLUME_UP);
+      for (var i = 0; i < diff; i++) {
+        _sendKey(_VK_VOLUME_UP);
+      }
     } else {
-      for (var i = 0; i < -diff; i++) _sendKey(_VK_VOLUME_DOWN);
+      for (var i = 0; i < -diff; i++) {
+        _sendKey(_VK_VOLUME_DOWN);
+      }
     }
   }
 

@@ -40,14 +40,14 @@ class XidianScheduleParser {
         if (summary != null && dtStart != null && dtEnd != null) {
 
           // 1. 提取课程名 (ICS中通常是 "课程名 @ 地点")
-          String courseName = summary!.split('@').first.trim();
+          String courseName = summary.split('@').first.trim();
 
           // 2. 提取地点
           String roomName = location ?? '';
           if (roomName.isEmpty || roomName.toLowerCase() == 'null') {
             // 如果 LOCATION 为空，尝试从 SUMMARY 提取
-            if (summary!.contains('@')) {
-              roomName = summary!.split('@').last.trim();
+            if (summary.contains('@')) {
+              roomName = summary.split('@').last.trim();
             } else {
               roomName = '未知地点';
             }
@@ -55,8 +55,8 @@ class XidianScheduleParser {
           if (roomName.toLowerCase() == 'null') roomName = '未知地点';
 
           // 3. 将 UTC 时间转为设备本地时间 (北京时间)
-          DateTime localStart = dtStart!.toLocal();
-          DateTime localEnd = dtEnd!.toLocal();
+          DateTime localStart = dtStart.toLocal();
+          DateTime localEnd = dtEnd.toLocal();
 
           String dateStr = DateFormat('yyyy-MM-dd').format(localStart);
           int weekday = localStart.weekday;

@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../models.dart';
-import 'dart:ui';
 
 class TeamMessageCenterScreen extends StatefulWidget {
   final List<Team> managedTeams;
-  const TeamMessageCenterScreen({Key? key, required this.managedTeams}) : super(key: key);
+  const TeamMessageCenterScreen({super.key, required this.managedTeams});
 
   @override
   _TeamMessageCenterScreenState createState() => _TeamMessageCenterScreenState();

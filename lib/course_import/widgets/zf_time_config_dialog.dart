@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class ZfTimeConfigDialog extends StatefulWidget {
-  const ZfTimeConfigDialog({Key? key}) : super(key: key);
+  const ZfTimeConfigDialog({super.key});
 
   @override
   State<ZfTimeConfigDialog> createState() => _ZfTimeConfigDialogState();

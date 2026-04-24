@@ -677,8 +677,9 @@ class ApiService {
       final response = await _client.get(uri, headers: _getHeaders());
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        if (data['active'] == true)
+        if (data['active'] == true) {
           return data['record'] as Map<String, dynamic>?;
+        }
       }
       return null;
     } catch (_) {

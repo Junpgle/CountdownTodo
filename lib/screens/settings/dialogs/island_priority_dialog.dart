@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class IslandPriorityDialog extends StatefulWidget {
-  const IslandPriorityDialog({Key? key}) : super(key: key);
+  const IslandPriorityDialog({super.key});
 
   @override
   State<IslandPriorityDialog> createState() => _IslandPriorityDialogState();

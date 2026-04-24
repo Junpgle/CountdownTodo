@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../screens/course_screens.dart';
-import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
 
 class ShimmerWidget extends StatefulWidget {
@@ -160,7 +159,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       decoration: BoxDecoration(
         color: widget.isLight
             ? Colors.white.withOpacity(0.15)
-            : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+            : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
         shape: BoxShape.circle,
       ),
       child: Stack(

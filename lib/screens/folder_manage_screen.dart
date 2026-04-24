@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../storage_service.dart';
 import '../models.dart';
-import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'add_todo_screen.dart';
 
@@ -14,13 +13,13 @@ class FolderManageScreen extends StatefulWidget {
   final ValueChanged<List<TodoItem>> onTodosChanged;
 
   const FolderManageScreen({
-    Key? key,
+    super.key,
     required this.username,
     required this.todoGroups,
     required this.onGroupsChanged,
     required this.allTodos,
     required this.onTodosChanged,
-  }) : super(key: key);
+  });
 
   @override
   _FolderManageScreenState createState() => _FolderManageScreenState();
@@ -56,14 +55,14 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   }
 
   void _showCreateOrEditDialog([TodoGroup? existing]) {
-    final TextEditingController _ctrl = TextEditingController(text: existing?.name ?? "");
+    final TextEditingController ctrl = TextEditingController(text: existing?.name ?? "");
     showDialog(
       context: context,
       builder: (ctx) {
         return AlertDialog(
           title: Text(existing == null ? '新建文件夹' : '修改文件夹名称'),
           content: TextField(
-            controller: _ctrl,
+            controller: ctrl,
             autofocus: true,
             decoration: const InputDecoration(
               hintText: '输入文件夹名称',
@@ -76,7 +75,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                final txt = _ctrl.text.trim();
+                final txt = ctrl.text.trim();
                 if (txt.isNotEmpty) {
                   Navigator.pop(ctx);
                   if (existing == null) {

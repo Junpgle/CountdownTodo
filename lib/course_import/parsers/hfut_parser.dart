@@ -255,8 +255,9 @@ class HfutScheduleParser {
         int depth = 1;
         int j = i + 1;
         while (j < text.length && depth > 0) {
-          if (text[j] == '(' || text[j] == '（') depth++;
-          else if (text[j] == ')' || text[j] == '）') depth--;
+          if (text[j] == '(' || text[j] == '（') {
+            depth++;
+          } else if (text[j] == ')' || text[j] == '）') depth--;
           j++;
         }
         final content = text.substring(i + 1, j - 1);
@@ -279,8 +280,9 @@ class HfutScheduleParser {
         int depth = 1;
         int j = i + 1;
         while (j < text.length && depth > 0) {
-          if (text[j] == '(' || text[j] == '（') depth++;
-          else if (text[j] == ')' || text[j] == '）') depth--;
+          if (text[j] == '(' || text[j] == '（') {
+            depth++;
+          } else if (text[j] == ')' || text[j] == '）') depth--;
           j++;
         }
         final content = text.substring(i + 1, j - 1);

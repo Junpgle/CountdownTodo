@@ -132,14 +132,14 @@ double getIslandScaleFactor(int hwnd) {
 /// Apply frameless transparent style to a window
 void applyFramelessTransparent(int hwnd) {
   try {
-    const WS_CAPTION = 0x00C00000;
-    const WS_THICKFRAME = 0x00040000;
-    const WS_SYSMENU = 0x00080000;
+    const wsCaption = 0x00C00000;
+    const wsThickframe = 0x00040000;
+    const wsSysmenu = 0x00080000;
 
     var style = GetWindowLongPtr(hwnd, GWL_STYLE);
-    style &= ~WS_CAPTION;
-    style &= ~WS_THICKFRAME;
-    style &= ~WS_SYSMENU;
+    style &= ~wsCaption;
+    style &= ~wsThickframe;
+    style &= ~wsSysmenu;
     SetWindowLongPtr(hwnd, GWL_STYLE, style);
 
     var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
@@ -202,11 +202,11 @@ void resizeCurrentWindow(int targetW, int targetH) {
         if (curW > 0 && curW != physicalW) {
           newX = curX - ((physicalW - curW) ~/ 2);
         }
-        const int HWND_TOPMOST = -1;
-        const int SWP_NOACTIVATE = 0x0010;
+        const int hwndTopmost = -1;
+        const int swpNoactivate = 0x0010;
 
-        SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH,
-            SWP_NOACTIVATE);
+        SetWindowPos(hwnd, hwndTopmost, newX, newY, physicalW, physicalH,
+            swpNoactivate);
       }
     });
   } catch (e) {
@@ -230,12 +230,12 @@ void moveCurrentWindow(int targetX, int targetY) {
         final curW = rectPtr.ref.right - rectPtr.ref.left;
         final curH = rectPtr.ref.bottom - rectPtr.ref.top;
 
-        const int HWND_TOPMOST = -1;
-        const int SWP_NOACTIVATE = 0x0010;
-        const int SWP_NOSIZE = 0x0001;
+        const int hwndTopmost = -1;
+        const int swpNoactivate = 0x0010;
+        const int swpNosize = 0x0001;
 
-        SetWindowPos(hwnd, HWND_TOPMOST, physicalX, physicalY, curW, curH,
-            SWP_NOACTIVATE | SWP_NOSIZE);
+        SetWindowPos(hwnd, hwndTopmost, physicalX, physicalY, curW, curH,
+            swpNoactivate | swpNosize);
       }
     });
   } catch (e) {
@@ -277,10 +277,10 @@ void startWindowDragging() {
   try {
     final hwnd = getSmallestFlutterWindow();
     if (hwnd != null) {
-      const int WM_NCLBUTTONDOWN = 0x00A1;
+      const int wmNclbuttondown = 0x00A1;
       const int HTCAPTION = 2;
       ReleaseCapture();
-      PostMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+      PostMessage(hwnd, wmNclbuttondown, HTCAPTION, 0);
     }
   } catch (e) {
     debugPrint('[IslandWin32] startWindowDragging error: $e');

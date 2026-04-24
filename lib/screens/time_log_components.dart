@@ -245,10 +245,11 @@ class _DayViewState extends State<_DayView> {
                                               onPressed: () {
                                                 Navigator.pop(dCtx);
                                                 widget.onDeleteLog(log.id);
-                                                if (dayLogs.length <= 1)
+                                                if (dayLogs.length <= 1) {
                                                   Navigator.pop(ctx);
-                                                else
+                                                } else {
                                                   setModal(() {});
+                                                }
                                               },
                                               child: const Text('删除',
                                                   style: TextStyle(
@@ -381,11 +382,12 @@ class _DayViewState extends State<_DayView> {
       return GestureDetector(
         onPanStart: (d) {
           final i = _getIndex(d.localPosition, w, hourH);
-          if (i != null)
+          if (i != null) {
             setState(() {
               _dragStart = i;
               _dragEnd = i;
             });
+          }
         },
         onPanUpdate: (d) {
           final i = _getIndex(d.localPosition, w, hourH);
@@ -393,11 +395,12 @@ class _DayViewState extends State<_DayView> {
         },
         onTapDown: (d) {
           final i = _getIndex(d.localPosition, w, hourH);
-          if (i != null)
+          if (i != null) {
             setState(() {
               _dragStart = i;
               _dragEnd = i;
             });
+          }
         },
         child: Stack(children: [
           SizedBox(
@@ -437,10 +440,11 @@ class _DayViewState extends State<_DayView> {
       int eH = endF.floor();
       if (eH > sH && endF == eH.toDouble()) eH--;
       PomodoroTag? tag;
-      if (pom.tagUuids.isNotEmpty)
+      if (pom.tagUuids.isNotEmpty) {
         tag = widget.tags.cast<PomodoroTag?>().firstWhere(
             (t) => pom.tagUuids.contains(t?.uuid),
             orElse: () => null);
+      }
       final isDark = Theme.of(context).brightness == Brightness.dark;
       final base = tag != null ? hexColor(tag.color) : Colors.redAccent;
       final fill = base.withOpacity(isDark ? 0.35 : 0.45);
@@ -644,10 +648,11 @@ class _DayGridPainter extends CustomPainter {
       final eIdx = ((eMs - gsMs - 1) ~/ (60000 * minutesPerBlock))
           .clamp(0, 24 * bpr - 1);
       PomodoroTag? tag;
-      if (log.tagUuids.isNotEmpty)
+      if (log.tagUuids.isNotEmpty) {
         tag = tags.cast<PomodoroTag?>().firstWhere(
             (t) => log.tagUuids.contains(t?.uuid),
             orElse: () => null);
+      }
       final fill = tag != null
           ? hexColor(tag.color, opacity: isDark ? 0.14 : 0.10)
           : (isDark ? const Color(0x18888888) : const Color(0x0F000000));
@@ -779,11 +784,12 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
         initialTime: TimeOfDay.fromDateTime(isStart ? _start : _end));
     if (t == null) return;
     setState(() {
-      if (isStart)
+      if (isStart) {
         _start =
             DateTime(_start.year, _start.month, _start.day, t.hour, t.minute);
-      else
+      } else {
         _end = DateTime(_end.year, _end.month, _end.day, t.hour, t.minute);
+      }
     });
   }
 
@@ -795,10 +801,11 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
         lastDate: DateTime.now().add(const Duration(days: 1)));
     if (d == null) return;
     setState(() {
-      if (isStart)
+      if (isStart) {
         _start = DateTime(d.year, d.month, d.day, _start.hour, _start.minute);
-      else
+      } else {
         _end = DateTime(d.year, d.month, d.day, _end.hour, _end.minute);
+      }
     });
   }
 
@@ -1465,7 +1472,7 @@ class _LineChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (data.length < 1) return;
+    if (data.isEmpty) return;
     final minV = data.reduce(min).toDouble();
     final maxV = data.reduce(max).toDouble();
     final range = (maxV - minV) < 1 ? 10.0 : maxV - minV;
@@ -1970,8 +1977,7 @@ class _TinyButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool primary;
-  const _TinyButton(
-      {required this.label, required this.onTap, this.primary = false});
+  const _TinyButton({required this.label, required this.onTap, required this.primary});
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;

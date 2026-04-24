@@ -2500,7 +2500,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 } else if (diff == 2) {
                   dateLabel = '后天';
                 } else {
-                  dateLabel = '${diff}天后';
+                  dateLabel = '$diff天后';
                 }
               } catch (_) {
                 dateLabel = dashboardCourses['title']?.toString() ?? '课程';
@@ -2539,7 +2539,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         final hours = todayFocusSeconds ~/ 3600;
         final minutes = (todayFocusSeconds % 3600) ~/ 60;
         final timeStr = todayFocusSeconds > 0
-            ? (hours > 0 ? '${hours}时${minutes}分' : '$minutes分钟')
+            ? (hours > 0 ? '$hours时$minutes分' : '$minutes分钟')
             : '0分钟';
         _cards.add({
           'type': 'focus',

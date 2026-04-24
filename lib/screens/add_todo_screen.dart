@@ -592,7 +592,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bgColor = theme.brightness == Brightness.light ? const Color(0xFFF2F2F7) : theme.colorScheme.background;
+    final bgColor = theme.brightness == Brightness.light ? const Color(0xFFF2F2F7) : theme.colorScheme.surface;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -982,7 +982,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: TextField(

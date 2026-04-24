@@ -31,9 +31,6 @@ import 'settings/widgets/account_section.dart';
 import '../course_import/widgets/course_section.dart';
 import 'settings/widgets/semester_section.dart';
 import 'settings/server_choice_page.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'settings/wallpaper_settings_page.dart';
 import 'settings/widgets/preference_section.dart';
 import 'settings/widgets/permission_section.dart';
 import 'settings/widgets/advanced_section.dart';
@@ -64,7 +61,7 @@ void downloadCallback(String id, int status, int progress) {
 
 class SettingsPage extends StatefulWidget {
   final String? initialTarget; // 🚀 新增：初始跳转目标
-  const SettingsPage({Key? key, this.initialTarget}) : super(key: key);
+  const SettingsPage({super.key, this.initialTarget});
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -414,18 +411,20 @@ class _SettingsPageState extends State<SettingsPage> {
           });
         }
       } else {
-        if (mounted)
+        if (mounted) {
           setState(() {
             _userTier = "Free";
             _isLoadingStatus = false;
           });
+        }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _userTier = "未知";
           _isLoadingStatus = false;
         });
+      }
     }
   }
 

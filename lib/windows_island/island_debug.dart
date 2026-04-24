@@ -24,7 +24,7 @@ class _IslandDebugPageState extends State<IslandDebugPage> {
               child: Text(_shown ? 'Hide island (in-layout)' : 'Show island (in-layout)'),
             ),
             const SizedBox(height: 12),
-            if (_shown) Container(width: 360, height: 120, child: IslandUI(initialPayload: {'endMs': DateTime.now().millisecondsSinceEpoch + 60000, 'title': 'Debug Focus'})),
+            if (_shown) SizedBox(width: 360, height: 120, child: IslandUI(initialPayload: {'endMs': DateTime.now().millisecondsSinceEpoch + 60000, 'title': 'Debug Focus'})),
           ],
         ),
       ),

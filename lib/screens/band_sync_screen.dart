@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../services/band_sync_service.dart';
@@ -12,7 +11,7 @@ import '../update_service.dart';
 
 /// 手环同步界面
 class BandSyncScreen extends StatefulWidget {
-  const BandSyncScreen({Key? key}) : super(key: key);
+  const BandSyncScreen({super.key});
 
   @override
   State<BandSyncScreen> createState() => _BandSyncScreenState();
@@ -933,7 +932,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       final endH = c.endTime ~/ 100;
       final endM = c.endTime % 100;
       return {
-        'id': '${c.courseName}_${c.date}_${startH}${startM}',
+        'id': '${c.courseName}_${c.date}_$startH$startM',
         'name': c.courseName,
         'courseName': c.courseName,
         'teacher': c.teacherName,
@@ -1066,7 +1065,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       final jsonStr = jsonEncode(chunk);
       final sizeKb = (jsonStr.length / 1024).toStringAsFixed(1);
       _logs.add(
-          '发送 ${type} 第 $batchNum/$totalBatches 批 (${chunk.length}条, ${sizeKb}KB)...');
+          '发送 $type 第 $batchNum/$totalBatches 批 (${chunk.length}条, ${sizeKb}KB)...');
 
       bool success = false;
       int retries = 2;

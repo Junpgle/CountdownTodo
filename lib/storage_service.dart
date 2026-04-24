@@ -103,7 +103,7 @@ class StorageService {
 
   static bool _isSyncing = false;
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
-  static bool _hasInitedFTS = false;
+  static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
   /// 🚀 Uni-Sync: 全局数据刷新通知器
@@ -384,7 +384,9 @@ class StorageService {
           DateTime date = DateTime.parse(map['date']);
           if (date.year == now.year &&
               date.month == now.month &&
-              date.day == now.day) todayCount++;
+              date.day == now.day) {
+            todayCount++;
+          }
         }
         totalQuestions += 10;
         totalCorrect += (score ~/ 10);
@@ -1027,7 +1029,7 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     final username = prefs.getString(KEY_CURRENT_USER) ?? "";
     if (username.isNotEmpty) {
-      final cleanCache = (String key) async {
+      Future<Null> cleanCache(String key) async {
         List<String> list = prefs.getStringList("${key}_$username") ?? [];
         if (list.isEmpty) return;
         int originalLen = list.length;
@@ -1042,7 +1044,7 @@ class StorageService {
         if (list.length != originalLen) {
           await prefs.setStringList("${key}_$username", list);
         }
-      };
+      }
 
       await cleanCache(KEY_TODOS);
       await cleanCache(KEY_TODO_GROUPS);
@@ -1211,7 +1213,9 @@ class StorageService {
         'is_deleted': item.isDeleted ? 1 : 0,
         'version': item.version,
         'updated_at': item.updatedAt,
-        'created_at': item.createdAt
+        'created_at': item.createdAt,
+        'has_conflict': item.hasConflict ? 1 : 0,
+        'conflict_data': item.conflictData != null ? jsonEncode(item.conflictData) : null
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
@@ -1272,6 +1276,8 @@ class StorageService {
           teamName: m['team_name'],
           creatorId: m['creator_id'],
           creatorName: m['creator_name'],
+          hasConflict: m['has_conflict'] == 1,
+          conflictData: m['conflict_data'] != null ? jsonDecode(m['conflict_data']) : null,
         ))
             .toList();
       } else {
@@ -1533,9 +1539,10 @@ class StorageService {
     final String? username = prefs.getString(KEY_CURRENT_USER);
     int? timestamp = prefs.getInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username));
     timestamp ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
-    if (timestamp != null)
+    if (timestamp != null) {
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();
+    }
     return null;
   }
 
@@ -1595,8 +1602,9 @@ class StorageService {
         bool syncPomodoro = true,
       }) async {
     // 1. 状态锁：防止重复进入
-    if (!syncTodos && !syncCountdowns && !syncTimeLogs && !syncPomodoro)
+    if (!syncTodos && !syncCountdowns && !syncTimeLogs && !syncPomodoro) {
       return {'success': false, 'hasChanges': false};
+    }
     if (_isSyncing) {
       return {'success': false, 'hasChanges': false, 'error': '同步进行中，请稍后重试'};
     }
@@ -1672,7 +1680,7 @@ class StorageService {
             'device_name': friendlyName,
             'record_date': finalDate,
             'apps': localScreenStats
-                .where((e) => e is Map)
+                .whereType<Map>()
                 .map((e) => {
               'app_name': e['app_name']?.toString() ?? 'Unknown',
               'duration': (e['duration'] is int) ? e['duration'] : 0,
@@ -1815,7 +1823,8 @@ class StorageService {
 
           if (sItem.isDeleted ||
               sItem.version > local.version ||
-              sItem.updatedAt > local.updatedAt) {
+              sItem.updatedAt > local.updatedAt ||
+              sItem.hasConflict != local.hasConflict) {
             allLocalTodos[idx] = sItem;
             hasChanges = true;
           } else if (sItem.groupId != local.groupId &&
@@ -1845,7 +1854,8 @@ class StorageService {
           final idx = groupsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||
               sItem.version > allLocalGroups[idx].version ||
-              sItem.updatedAt > allLocalGroups[idx].updatedAt) {
+              sItem.updatedAt > allLocalGroups[idx].updatedAt ||
+              sItem.hasConflict != allLocalGroups[idx].hasConflict) {
             allLocalGroups[idx] = sItem;
             hasChanges = true;
           }
@@ -1870,7 +1880,8 @@ class StorageService {
           final idx = countdownsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||
               sItem.version > allLocalCountdowns[idx].version ||
-              sItem.updatedAt > allLocalCountdowns[idx].updatedAt) {
+              sItem.updatedAt > allLocalCountdowns[idx].updatedAt ||
+              sItem.hasConflict != allLocalCountdowns[idx].hasConflict) {
             allLocalCountdowns[idx] = sItem;
             hasChanges = true;
           }
@@ -1974,7 +1985,7 @@ class StorageService {
       }
 
       final formattedApps = apps
-          .where((e) => e is Map)
+          .whereType<Map>()
           .map((e) => {
         'app_name': e['app_name']?.toString() ?? 'Unknown',
         'duration': (e['duration'] is int) ? e['duration'] : 0,
@@ -2119,9 +2130,10 @@ class StorageService {
   static Future<DateTime?> getLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
     int? timestamp = prefs.getInt("${KEY_LAST_AUTO_SYNC}_$username");
-    if (timestamp != null)
+    if (timestamp != null) {
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();
+    }
     return null;
   }
 

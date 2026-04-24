@@ -478,7 +478,7 @@ class ExternalShareHandler {
         // 如果不是最后一次，等待更长时间再重试（指数退避）
         if (attempt < maxRetries) {
           final waitSeconds = 5 * attempt; // 增加等待时间
-          debugPrint("等待${waitSeconds}秒后重试...");
+          debugPrint("等待$waitSeconds秒后重试...");
           await Future.delayed(Duration(seconds: waitSeconds));
         }
       }

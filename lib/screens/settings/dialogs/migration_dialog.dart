@@ -6,9 +6,9 @@ class MigrationDialog extends StatefulWidget {
   final VoidCallback onSuccess;
 
   const MigrationDialog({
-    Key? key,
+    super.key,
     required this.onSuccess,
-  }) : super(key: key);
+  });
 
   @override
   State<MigrationDialog> createState() => _MigrationDialogState();

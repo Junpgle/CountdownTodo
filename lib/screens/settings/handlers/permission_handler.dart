@@ -113,8 +113,9 @@ class PermissionHandler {
       case 'storage':
         if (Platform.isAndroid) {
           final status = await Permission.manageExternalStorage.request();
-          if (status.isPermanentlyDenied || status.isDenied)
+          if (status.isPermanentlyDenied || status.isDenied) {
             await openAppSettings();
+          }
         } else {
           final status = await Permission.storage.request();
           if (status.isPermanentlyDenied) await openAppSettings();
@@ -125,8 +126,9 @@ class PermissionHandler {
         break;
       case 'request_install':
         final status = await Permission.requestInstallPackages.request();
-        if (status.isPermanentlyDenied || status.isDenied)
+        if (status.isPermanentlyDenied || status.isDenied) {
           await openAppSettings();
+        }
         break;
       case 'exact_alarm':
         try {

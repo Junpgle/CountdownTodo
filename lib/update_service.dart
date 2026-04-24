@@ -5,8 +5,6 @@ import 'package:CountDownTodo/services/band_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
@@ -966,8 +964,9 @@ class UpdateService {
                                           backgroundColor: Colors.green,
                                           foregroundColor: Colors.white),
                                       onPressed: () {
-                                        if (_localPackagePath != null)
+                                        if (_localPackagePath != null) {
                                           installPackage(_localPackagePath!);
+                                        }
                                       },
                                     ),
                                     TextButton(

@@ -91,9 +91,9 @@ class WidgetService {
     final today = DateTime(now.year, now.month, now.day);
     final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
     final diffDays = dueDay.difference(today).inDays;
-    if (diffDays < 0)
+    if (diffDays < 0) {
       return '已逾期';
-    else if (diffDays == 0)
+    } else if (diffDays == 0)
       return '今天 ${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}';
     else if (diffDays == 1)
       return '明天';
@@ -141,9 +141,9 @@ class WidgetService {
       if (t.dueDate != null) {
         DateTime d =
             DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-        if (d.isBefore(today))
+        if (d.isBefore(today)) {
           pastTodos.add(t);
-        else if (d.isAfter(today))
+        } else if (d.isAfter(today))
           futureTodos.add(t);
         else
           todayTodos.add(t);
@@ -153,8 +153,9 @@ class WidgetService {
     }
     int startMs(TodoItem t) => t.createdDate ?? t.createdAt;
     int compareUrgency(TodoItem a, TodoItem b) {
-      if (a.dueDate != null && b.dueDate != null)
+      if (a.dueDate != null && b.dueDate != null) {
         return a.dueDate!.compareTo(b.dueDate!);
+      }
       if (a.dueDate != null && b.dueDate == null) return -1;
       if (a.dueDate == null && b.dueDate != null) return 1;
       return startMs(a).compareTo(startMs(b));
@@ -253,8 +254,9 @@ class WidgetService {
             DateTime cStart = courseDate.add(Duration(
                 hours: course.startTime ~/ 100,
                 minutes: course.startTime % 100));
-            if (cStart.isAfter(now) && cStart.difference(now).inMinutes <= 30)
+            if (cStart.isAfter(now) && cStart.difference(now).inMinutes <= 30) {
               urgentCourseId = courseId;
+            }
           }
         }
       }
@@ -420,7 +422,7 @@ class WidgetService {
         widgetWrites
             .add(HomeWidget.saveWidgetData('tl_tag_name_${i + 1}', name));
         widgetWrites
-            .add(HomeWidget.saveWidgetData('tl_tag_mins_${i + 1}', '${mins}分'));
+            .add(HomeWidget.saveWidgetData('tl_tag_mins_${i + 1}', '$mins分'));
       }
 
       // 清空条目
@@ -437,7 +439,7 @@ class WidgetService {
         widgetWrites
             .add(HomeWidget.saveWidgetData('tl_title_${i + 1}', displayTitle));
         widgetWrites
-            .add(HomeWidget.saveWidgetData('tl_time_${i + 1}', '${mins}分钟'));
+            .add(HomeWidget.saveWidgetData('tl_time_${i + 1}', '$mins分钟'));
       }
     } catch (e) {
       print('Widget focus merge error: $e');
@@ -480,8 +482,8 @@ class WidgetService {
           final h = seconds ~/ 3600;
           final m = (seconds % 3600) ~/ 60;
           final timerStr = isCountUp
-              ? (h > 0 ? '${h}小时 ${m}分钟' : '$m 分钟')
-              : (h > 0 ? '剩余 ${h}小时 ${m}分钟' : '剩余 $m 分钟');
+              ? (h > 0 ? '$h小时 $m分钟' : '$m 分钟')
+              : (h > 0 ? '剩余 $h小时 $m分钟' : '剩余 $m 分钟');
 
           widgetWrites.add(HomeWidget.saveWidgetData('focus_seconds', seconds));
           widgetWrites.add(HomeWidget.saveWidgetData('focus_timer', timerStr));
@@ -506,8 +508,9 @@ class WidgetService {
           widgetWrites.add(HomeWidget.saveWidgetData('focus_seconds', 0));
           widgetWrites.add(HomeWidget.saveWidgetData('focus_timer', ''));
           widgetWrites.add(HomeWidget.saveWidgetData('focus_tag_count', '0'));
-          for (int i = 1; i <= maxWidgetItems; i++)
+          for (int i = 1; i <= maxWidgetItems; i++) {
             widgetWrites.add(HomeWidget.saveWidgetData('focus_tag_$i', ''));
+          }
         }
       } catch (e) {
         print('Widget focus state read error: $e');

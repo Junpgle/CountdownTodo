@@ -208,7 +208,7 @@ class CourseImportHandler {
                     title: Text(e.key),
                     subtitle: Text(e.value, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
                     onTap: () => Navigator.pop(context, e.value),
-                  )).toList(),
+                  )),
                   if (lastUrl != null && !schoolUrls.values.contains(lastUrl))
                     ListTile(
                       leading: const Icon(Icons.history_rounded, color: Colors.orangeAccent),
