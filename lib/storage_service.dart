@@ -871,7 +871,8 @@ class StorageService {
     
     final batch = db.batch();
     for (var item in deletedItems) {
-      final uuid = item['uuid'] as String;
+      final uuid = item['uuid']?.toString();
+      if (uuid == null) continue;
       batch.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
       batch.insert('op_logs', {
         'op_type': 'DELETE',
@@ -1635,7 +1636,10 @@ class StorageService {
 
       for (var op in pendingOps) {
         final table = op['target_table'];
-        final data = jsonDecode(op['data_json'] as String);
+        final dataJson = op['data_json'];
+        if (dataJson == null) continue; // 🛡️ 跳过损坏的离线记录
+        final data = jsonDecode(dataJson.toString());
+
         if (table == 'todos') {
           data.remove('image_path');
           data.remove('imagePath');
@@ -1770,7 +1774,8 @@ class StorageService {
           }
         }
       } else {
-        final errorMsg = response['message'] ?? '同步失败';
+        final errorMsg = response['message']?.toString() ?? '同步失败';
+
         // 🚀 记录同步失败的原因，方便用户查看
         await db.update('op_logs', {
           'sync_error': errorMsg
@@ -1779,9 +1784,12 @@ class StorageService {
       }
 
       // 解析服务器返回的实时冲突
-      if (response['conflicts'] != null) {
-        conflicts = (response['conflicts'] as List).map((c) => ConflictInfo.fromJson(c)).toList();
+      if (response['conflicts'] is List) {
+        conflicts = (response['conflicts'] as List)
+            .map((c) => ConflictInfo.fromJson(c as Map<String, dynamic>))
+            .toList();
       }
+
 
       // 🛡️ 屏幕时间逻辑优化：上传成功后，务必清理“待上传”缓存
       if (screenPayload != null) {

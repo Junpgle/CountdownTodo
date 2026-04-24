@@ -244,10 +244,9 @@ class TodoItem {
               ? _parseTimestamp(json['createdDate'])
               : null),
 
-      recurrence: RecurrenceType.values[json['recurrence'] as int? ?? 0],
+      recurrence: RecurrenceType.values[int.tryParse(json['recurrence']?.toString() ?? '0') ?? 0],
       // 兼容两种字段名：后端列名 custom_interval_days 和本地存储名 customIntervalDays
-      customIntervalDays: json['customIntervalDays'] as int? ??
-          json['custom_interval_days'] as int?,
+      customIntervalDays: int.tryParse(json['customIntervalDays']?.toString() ?? json['custom_interval_days']?.toString() ?? ''),
       // 兼容两种字段名：后端列名 recurrence_end_date 和本地存储名 recurrenceEndDate
       recurrenceEndDate: _parseDateField(
           json['recurrenceEndDate'] ?? json['recurrence_end_date']),
@@ -501,8 +500,8 @@ DateTime? _parseDateField(dynamic val) {
     final n = int.tryParse(trimmed);
     if (n != null) {
       ms = n;
-    } else {
-      final dt = DateTime.tryParse(trimmed);
+      } else {
+        final dt = DateTime.tryParse(trimmed);
       if (dt != null)
         return dt.toUtc().millisecondsSinceEpoch > 0 ? dt.toLocal() : null;
       return null;
@@ -696,13 +695,13 @@ class Team {
   });
 
   factory Team.fromJson(Map<String, dynamic> json) => Team(
-    uuid: json['uuid'] as String,
-    name: json['name'] as String,
-    creatorId: json['creator_id'] as int,
+    uuid: json['uuid']?.toString() ?? '',
+    name: json['name']?.toString() ?? '未命名团队',
+    creatorId: int.tryParse(json['creator_id']?.toString() ?? '0') ?? 0,
     createdAt: _parseTimestamp(json['created_at']),
     userRole: (json['role'] == 0 || json['user_role'] == 0) ? TeamRole.admin : TeamRole.member,
-    memberCount: json['member_count'] as int? ?? 1,
-    inviteCode: json['invite_code'] as String?,
+    memberCount: int.tryParse(json['member_count']?.toString() ?? '1') ?? 1,
+    inviteCode: json['invite_code']?.toString(),
   );
 }
 
@@ -730,9 +729,9 @@ class ConflictInfo {
   });
 
   factory ConflictInfo.fromJson(Map<String, dynamic> json) => ConflictInfo(
-    type: json['type'] as String,
-    item: json['item'] as Map<String, dynamic>,
-    conflictWith: json['conflict_with'] as Map<String, dynamic>,
+    type: json['type']?.toString() ?? 'unknown',
+    item: (json['item'] as Map?)?.cast<String, dynamic>() ?? {},
+    conflictWith: (json['conflict_with'] as Map?)?.cast<String, dynamic>() ?? {},
   );
 }
 class TeamAnnouncement {

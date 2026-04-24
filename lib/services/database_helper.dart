@@ -51,7 +51,7 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 14, // 🚀 升级至 14，修正时间日志字段名对齐后端
+        version: 15, // 🚀 V15: 为 op_logs 添加 sync_error 字段
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 3) {
