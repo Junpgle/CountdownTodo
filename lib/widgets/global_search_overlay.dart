@@ -243,6 +243,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             _buildSearchInput(colorScheme, isDark),
+                            const SizedBox(height: 8),
+                            _buildSearchScopeHint(colorScheme, isDark),
                             const SizedBox(height: 12),
                             if (_controller.text.isNotEmpty)
                               _buildResultsPanel(colorScheme, isDark, size),
@@ -308,6 +310,46 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 20),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSearchScopeHint(ColorScheme colorScheme, bool isDark) {
+    final items = ['待办', '倒计时', '番茄钟', '时间日志', '屏幕时间', '团队', '设置'];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Icon(Icons.tips_and_updates_outlined,
+              size: 15, color: isDark ? Colors.white54 : Colors.black45),
+          Text(
+            '支持搜索：',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.white54 : Colors.black54,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          for (final item in items)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: isDark ? 0.14 : 0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                item,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -745,7 +787,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           ),
           const SizedBox(height: 10),
           Text(
-            '尝试换个词搜搜，或询问 AI 助手',
+            '旅行者，你将去往何方？',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: isDark ? Colors.white54 : Colors.black45,

@@ -314,14 +314,6 @@ class SearchService {
       ));
     }
 
-    finalResults.add(SearchResult(
-      id: 'ai_search_helper',
-      title: '询问 AI 助手...',
-      subtitle: '基于 "$query" 寻找更多智能建议',
-      icon: Icons.auto_awesome,
-      type: SearchResultType.action,
-      extraData: {'action': 'ai_query', 'query': query},
-    ));
 
     return finalResults;
   }
@@ -597,11 +589,6 @@ class SearchService {
           }
         }
 
-        final localScreenTime = await StorageService.getLocalScreenTime();
-        if (localScreenTime.isNotEmpty) {
-          addScreenTimeApps(localScreenTime, includeAll: isTodayQuery);
-        }
-
         final screenTimeCache = await StorageService.getScreenTimeCache();
         if (screenTimeCache.isNotEmpty) {
           addScreenTimeApps(screenTimeCache, includeAll: isTodayQuery);
@@ -810,8 +797,13 @@ class SearchNavigationHandler {
       if (appName != null) {
         Navigator.of(context).popUntil((route) => route.isFirst);
         final history = await StorageService.getScreenTimeHistory();
-        final local = await StorageService.getLocalScreenTime();
-        history[DateFormat('yyyy-MM-dd').format(DateTime.now())] = local;
+        final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        if (history[todayKey] == null || history[todayKey]!.isEmpty) {
+          final cachedToday = await StorageService.getScreenTimeCache();
+          if (cachedToday.isNotEmpty) {
+            history[todayKey] = cachedToday;
+          }
+        }
         Navigator.push(context, MaterialPageRoute(builder: (_) => AppDetailScreen(
           appName: appName,
           historyStats: history,
