@@ -73,9 +73,31 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _accountSectionKey = GlobalKey();
+  final GlobalKey _courseSectionKey = GlobalKey();
+  final GlobalKey _semesterSectionKey = GlobalKey();
   final GlobalKey _preferenceSectionKey = GlobalKey();
+  final GlobalKey _animationSectionKey = GlobalKey();
+  final GlobalKey _notificationSectionKey = GlobalKey();
+  final GlobalKey _permissionSectionKey = GlobalKey();
   final GlobalKey _advancedSectionKey = GlobalKey();
   final GlobalKey _systemSectionKey = GlobalKey();
+  final GlobalKey _aboutSectionKey = GlobalKey();
+  
+  // 🚀 细粒度定位 Key (用于丝滑滚动到具体选项)
+  final Map<String, GlobalKey> _itemKeys = {
+    'theme': GlobalKey(),
+    'server_choice': GlobalKey(),
+    'sync_interval': GlobalKey(),
+    'float_window_style': GlobalKey(),
+    'llm_retry': GlobalKey(),
+    'lan_sync': GlobalKey(),
+    'cache': GlobalKey(),
+    'migration': GlobalKey(),
+    'storage': GlobalKey(),
+    'update': GlobalKey(),
+    'about': GlobalKey(),
+  };
+
   String? _highlightTarget;
   static const platform =
       MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
@@ -157,37 +179,66 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _scrollToTarget(String target) {
-    GlobalKey? targetKey;
+    GlobalKey? sectionKey;
+    GlobalKey? itemKey = _itemKeys[target];
+
     setState(() {
       if (['theme', 'server_choice', 'sync_interval', 'float_window_style', 'llm_retry'].contains(target)) {
         _preferenceExpanded = true;
-        targetKey = _preferenceSectionKey;
+        sectionKey = _preferenceSectionKey;
+      } else if (['animations_enabled', 'motion_blur', 'layer_blur', 'animation_duration'].contains(target)) {
+        _animationExpanded = true;
+        sectionKey = _animationSectionKey;
+      } else if (target == 'notifications') {
+        _notificationExpanded = true;
+        sectionKey = _notificationSectionKey;
+      } else if (target == 'permissions') {
+        _permissionExpanded = true;
+        sectionKey = _permissionSectionKey;
       } else if (['lan_sync', 'cache', 'migration'].contains(target)) {
         _advancedExpanded = true;
-        targetKey = _advancedSectionKey;
+        sectionKey = _advancedSectionKey;
+      } else if (target == 'storage' || target == 'update') {
+        _systemExpanded = true;
+        sectionKey = _systemSectionKey;
       } else if (target == 'about') {
         _aboutExpanded = true;
-        targetKey = _systemSectionKey;
+        sectionKey = _aboutSectionKey;
       }
       _highlightTarget = target;
     });
 
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (targetKey != null && targetKey!.currentContext != null) {
+    // 🚀 核心改进：两步走滚动 (手机端丝滑定位)
+    // 增加延迟，确保布局重绘完成
+    Future.delayed(const Duration(milliseconds: 200), () {
+      // 第一步：先滚到分区头部，确保分区展开且子项进入树
+      if (sectionKey != null && sectionKey!.currentContext != null) {
         Scrollable.ensureVisible(
-          targetKey!.currentContext!,
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeInOutCubic,
-          alignment: 0.1,
+          sectionKey!.currentContext!,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOutQuart,
+          alignment: 0.0, // 强制置顶，确保万无一失
         );
       }
+
+      // 第二步：等待展开动画后，精准定位到子项
+      Future.delayed(const Duration(milliseconds: 550), () {
+        // 重新获取 context，防止在动画过程中失效
+        final targetContext = itemKey?.currentContext ?? sectionKey?.currentContext;
+        if (targetContext != null) {
+          Scrollable.ensureVisible(
+            targetContext,
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeInOutCubic,
+            alignment: 0.15, // 稍微靠上一点，视觉更舒服
+          );
+        }
+      });
     });
 
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    Future.delayed(const Duration(milliseconds: 3000), () {
       if (mounted) {
-        setState(() {
-          _highlightTarget = null;
-        });
+        setState(() => _highlightTarget = null);
       }
     });
   }
@@ -1109,9 +1160,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ─── 窄屏：单列 ListView（原始布局）───────────────────────────────
   Widget _buildNarrowLayout() {
-    return ListView(
+    return SingleChildScrollView(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16.0),
-      children: [
+      child: Column(
+        children: [
         _buildAnnouncementPanel(),
         const SizedBox(height: 8),
         Container(
@@ -1134,49 +1187,55 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        _buildExpandableSection(
-          title: '课程管理',
-          icon: Icons.school_outlined,
-          expanded: _courseExpanded,
-          onToggle: () => setState(() => _courseExpanded = !_courseExpanded),
-          child: CourseSection(
-            onUploadCourses: _uploadCoursesToCloud,
-            onSmartImport: _courseImportHandler.smartImportCourse,
-            onWebViewImport: _courseImportHandler.importFromWebView,
-            onFetchFromCloud: _fetchCoursesFromCloud,
-            noCourseBehavior: _noCourseBehavior,
-            onNoCourseBehaviorChanged: (val) {
-              if (val != null) {
-                setState(() => _noCourseBehavior = val);
-                SharedPreferences.getInstance().then(
-                    (prefs) {
-                       final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
-                       if (username != null && username.isNotEmpty) {
-                          prefs.setString('no_course_behavior_$username', val);
-                       }
-                       prefs.setString('no_course_behavior', val);
-                    });
-              }
-            },
+        Container(
+          key: _courseSectionKey,
+          child: _buildExpandableSection(
+            title: '课程管理',
+            icon: Icons.school_outlined,
+            expanded: _courseExpanded,
+            onToggle: () => setState(() => _courseExpanded = !_courseExpanded),
+            child: CourseSection(
+              onUploadCourses: _uploadCoursesToCloud,
+              onSmartImport: _courseImportHandler.smartImportCourse,
+              onWebViewImport: _courseImportHandler.importFromWebView,
+              onFetchFromCloud: _fetchCoursesFromCloud,
+              noCourseBehavior: _noCourseBehavior,
+              onNoCourseBehaviorChanged: (val) {
+                if (val != null) {
+                  setState(() => _noCourseBehavior = val);
+                  SharedPreferences.getInstance().then(
+                      (prefs) {
+                         final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+                         if (username != null && username.isNotEmpty) {
+                            prefs.setString('no_course_behavior_$username', val);
+                         }
+                         prefs.setString('no_course_behavior', val);
+                      });
+                }
+              },
+            ),
           ),
         ),
-        _buildExpandableSection(
-          title: '学期设置',
-          icon: Icons.date_range_outlined,
-          expanded: _semesterExpanded,
-          onToggle: () =>
-              setState(() => _semesterExpanded = !_semesterExpanded),
-          child: SemesterSection(
-            semesterEnabled: _semesterEnabled,
-            onSemesterEnabledChanged: (val) {
-              setState(() => _semesterEnabled = val);
-              StorageService.saveAppSetting(
-                  StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
-            },
-            semesterStart: _semesterStart,
-            semesterEnd: _semesterEnd,
-            onPickSemesterDate: _pickSemesterDate,
-            onFetchFromCloud: _fetchCoursesFromCloud,
+        Container(
+          key: _semesterSectionKey,
+          child: _buildExpandableSection(
+            title: '学期设置',
+            icon: Icons.date_range_outlined,
+            expanded: _semesterExpanded,
+            onToggle: () =>
+                setState(() => _semesterExpanded = !_semesterExpanded),
+            child: SemesterSection(
+              semesterEnabled: _semesterEnabled,
+              onSemesterEnabledChanged: (val) {
+                setState(() => _semesterEnabled = val);
+                StorageService.saveAppSetting(
+                    StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+              },
+              semesterStart: _semesterStart,
+              semesterEnd: _semesterEnd,
+              onPickSemesterDate: _pickSemesterDate,
+              onFetchFromCloud: _fetchCoursesFromCloud,
+            ),
           ),
         ),
         Container(
@@ -1189,6 +1248,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 setState(() => _preferenceExpanded = !_preferenceExpanded),
             child: PreferenceSection(
               highlightTarget: _highlightTarget,
+              itemKeys: _itemKeys, // 🚀 传递子项 Key
               syncInterval: _syncInterval,
               onSyncIntervalChanged: (val) {
                 if (val != null) {
@@ -1284,86 +1344,96 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        _buildExpandableSection(
-          title: '动画设置',
-          icon: Icons.animation_outlined,
-          expanded: _animationExpanded,
-          onToggle: () =>
-              setState(() => _animationExpanded = !_animationExpanded),
-          child: Card(
-            elevation: 1,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              leading: const Icon(Icons.animation_outlined, color: Colors.blue),
-              title: const Text('动画设置',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('页面切换动画、Container Transform、性能选项'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    const AnimationSettingsPage(),
-                  ),
-                );
-              },
+        Container(
+          key: _animationSectionKey,
+          child: _buildExpandableSection(
+            title: '动画设置',
+            icon: Icons.animation_outlined,
+            expanded: _animationExpanded,
+            onToggle: () =>
+                setState(() => _animationExpanded = !_animationExpanded),
+            child: Card(
+              elevation: 1,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: const Icon(Icons.animation_outlined, color: Colors.blue),
+                title: const Text('动画设置',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('页面切换动画、Container Transform、性能选项'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      const AnimationSettingsPage(),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
-        _buildExpandableSection(
-          title: '通知管理',
-          icon: Icons.notifications_outlined,
-          expanded: _notificationExpanded,
-          onToggle: () =>
-              setState(() => _notificationExpanded = !_notificationExpanded),
-          child: Card(
-            elevation: 2,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              leading: const Icon(Icons.notifications_outlined,
-                  color: Colors.blueAccent),
-              title: const Text('通知管理',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    const NotificationSettingsPage(),
-                  ),
-                );
-              },
+        Container(
+          key: _notificationSectionKey,
+          child: _buildExpandableSection(
+            title: '通知管理',
+            icon: Icons.notifications_outlined,
+            expanded: _notificationExpanded,
+            onToggle: () =>
+                setState(() => _notificationExpanded = !_notificationExpanded),
+            child: Card(
+              elevation: 2,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: const Icon(Icons.notifications_outlined,
+                    color: Colors.blueAccent),
+                title: const Text('通知管理',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      const NotificationSettingsPage(),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
-        _buildExpandableSection(
-          title: '权限管理',
-          icon: Icons.security_outlined,
-          expanded: _permissionExpanded,
-          onToggle: () =>
-              setState(() => _permissionExpanded = !_permissionExpanded),
-          child: PermissionSection(
-            permissionDefs: PermissionHandler.permissionDefs,
-            permissionStatuses: _permissionStatuses,
-            isCheckingPermissions: _isCheckingPermissions,
-            onCheckAllPermissions: _permissionHandler.checkAllPermissions,
-            onRequestOrOpenPermission:
-                _permissionHandler.requestOrOpenPermission,
+        Container(
+          key: _permissionSectionKey,
+          child: _buildExpandableSection(
+            title: '权限管理',
+            icon: Icons.security_outlined,
+            expanded: _permissionExpanded,
+            onToggle: () =>
+                setState(() => _permissionExpanded = !_permissionExpanded),
+            child: PermissionSection(
+              permissionDefs: PermissionHandler.permissionDefs,
+              permissionStatuses: _permissionStatuses,
+              isCheckingPermissions: _isCheckingPermissions,
+              onCheckAllPermissions: _permissionHandler.checkAllPermissions,
+              onRequestOrOpenPermission:
+                  _permissionHandler.requestOrOpenPermission,
+            ),
           ),
         ),
-        _buildExpandableSection(
-          title: '高级设置',
-          icon: Icons.tune_outlined,
-          expanded: _advancedExpanded,
-          onToggle: () =>
-              setState(() => _advancedExpanded = !_advancedExpanded),
-          child: Container(
-            key: _advancedSectionKey,
+        Container(
+          key: _advancedSectionKey,
+          child: _buildExpandableSection(
+            title: '高级设置',
+            icon: Icons.tune_outlined,
+            expanded: _advancedExpanded,
+            onToggle: () =>
+                setState(() => _advancedExpanded = !_advancedExpanded),
             child: AdvancedSection(
               highlightTarget: _highlightTarget,
+              itemKeys: _itemKeys, // 🚀 传递子项 Key
               onShowMigrationDialog: _showMigrationDialog,
               onTestCourseNotification: _testCourseNotification,
               liveUpdatesStatus: _liveUpdatesStatus,
@@ -1391,15 +1461,16 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        _buildExpandableSection(
-          title: '系统设置',
-          icon: Icons.devices_outlined,
-          expanded: _systemExpanded,
-          onToggle: () => setState(() => _systemExpanded = !_systemExpanded),
-          child: Container(
-            key: _systemSectionKey,
+        Container(
+          key: _systemSectionKey,
+          child: _buildExpandableSection(
+            title: '系统设置',
+            icon: Icons.devices_outlined,
+            expanded: _systemExpanded,
+            onToggle: () => setState(() => _systemExpanded = !_systemExpanded),
             child: SystemSection(
               highlightTarget: _highlightTarget,
+              itemKeys: _itemKeys, // 🚀 传递子项 Key
               onOpenFeatureGuide: () {
                 Navigator.push(
                   context,
@@ -1417,16 +1488,18 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        _buildExpandableSection(
-          title: '关于此应用',
-          icon: Icons.info_outline,
-          expanded: _aboutExpanded,
-          onToggle: () => setState(() => _aboutExpanded = !_aboutExpanded),
-          child: Card(
-            elevation: 1,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
+        Container(
+          key: _aboutSectionKey,
+          child: _buildExpandableSection(
+            title: '关于此应用',
+            icon: Icons.info_outline,
+            expanded: _aboutExpanded,
+            onToggle: () => setState(() => _aboutExpanded = !_aboutExpanded),
+            child: Card(
+              elevation: 1,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
               leading: const Icon(Icons.info_outline, color: Colors.blue),
               title: const Text('关于此应用'),
               subtitle: const Text('版本信息、更新日志、联系我们'),
@@ -1440,10 +1513,12 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
+      ),
         const SizedBox(height: 40),
       ],
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildExpandableSection({
     required String title,
@@ -1572,6 +1647,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       key: _preferenceSectionKey,
                       child: PreferenceSection(
                         highlightTarget: _highlightTarget,
+                        itemKeys: _itemKeys, // 🚀 传递子项 Key
                         syncInterval: _syncInterval,
                       onSyncIntervalChanged: (val) {
                         if (val != null) {
@@ -1672,61 +1748,71 @@ class _SettingsPageState extends State<SettingsPage> {
                       },
                     ),
                   ),
-                    Card(
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        leading: const Icon(Icons.animation_outlined,
-                            color: Colors.blue),
-                        title: const Text('动画设置',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: const Text('页面切换动画、Container Transform、性能选项'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            PageTransitions.slideHorizontal(
-                              const AnimationSettingsPage(),
-                            ),
-                          );
-                        },
+                    Container(
+                      key: _animationSectionKey,
+                      child: Card(
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          leading: const Icon(Icons.animation_outlined,
+                              color: Colors.blue),
+                          title: const Text('动画设置',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text('页面切换动画、Container Transform、性能选项'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              PageTransitions.slideHorizontal(
+                                const AnimationSettingsPage(),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                    Card(
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        leading: const Icon(Icons.notifications_outlined,
-                            color: Colors.blueAccent),
-                        title: const Text('通知管理',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            PageTransitions.slideHorizontal(
-                              const NotificationSettingsPage(),
-                            ),
-                          );
-                        },
+                    Container(
+                      key: _notificationSectionKey,
+                      child: Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          leading: const Icon(Icons.notifications_outlined,
+                              color: Colors.blueAccent),
+                          title: const Text('通知管理',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              PageTransitions.slideHorizontal(
+                                const NotificationSettingsPage(),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                    PermissionSection(
-                      permissionDefs: PermissionHandler.permissionDefs,
-                      permissionStatuses: _permissionStatuses,
-                      isCheckingPermissions: _isCheckingPermissions,
-                      onCheckAllPermissions:
-                          _permissionHandler.checkAllPermissions,
-                      onRequestOrOpenPermission:
-                          _permissionHandler.requestOrOpenPermission,
+                    Container(
+                      key: _permissionSectionKey,
+                      child: PermissionSection(
+                        permissionDefs: PermissionHandler.permissionDefs,
+                        permissionStatuses: _permissionStatuses,
+                        isCheckingPermissions: _isCheckingPermissions,
+                        onCheckAllPermissions:
+                            _permissionHandler.checkAllPermissions,
+                        onRequestOrOpenPermission:
+                            _permissionHandler.requestOrOpenPermission,
+                      ),
                     ),
                     Container(
                       key: _advancedSectionKey,
                       child: AdvancedSection(
                         highlightTarget: _highlightTarget,
+                        itemKeys: _itemKeys, // 🚀 传递子项 Key
                         onShowMigrationDialog: _showMigrationDialog,
                         onTestCourseNotification: _testCourseNotification,
                         liveUpdatesStatus: _liveUpdatesStatus,
@@ -1747,6 +1833,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       key: _systemSectionKey,
                       child: SystemSection(
                         highlightTarget: _highlightTarget,
+                        itemKeys: _itemKeys, // 🚀 传递子项 Key
                         onOpenFeatureGuide: () {
                           Navigator.push(
                             context,
@@ -1764,23 +1851,24 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Card(
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        leading:
-                            const Icon(Icons.info_outline, color: Colors.blue),
-                        title: const Text('关于此应用'),
-                        subtitle: const Text('版本信息、更新日志、联系我们'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            PageTransitions.slideHorizontal(
-                                const AboutScreen()),
-                          );
-                        },
+                    Container(
+                      key: _aboutSectionKey,
+                      child: Card(
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          leading: const Icon(Icons.info_outline, color: Colors.blue),
+                          title: const Text('关于此应用'),
+                          subtitle: const Text('版本信息、更新日志、联系我们'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              PageTransitions.slideHorizontal(const AboutScreen()),
+                            );
+                          },
+                        ),
                       ),
                     ),
                     const SizedBox(height: 40),

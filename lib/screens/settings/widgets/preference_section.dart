@@ -6,7 +6,8 @@ import '../llm_config_page.dart';
 import '../wallpaper_settings_page.dart';
 
 class PreferenceSection extends StatelessWidget {
-  final String? highlightTarget; // 🚀 新增：当前高亮目标
+  final String? highlightTarget;
+  final Map<String, GlobalKey>? itemKeys; // 🚀 新增：子项 Key 映射
   final int syncInterval;
   final ValueChanged<int?> onSyncIntervalChanged;
   final String serverChoice;
@@ -25,6 +26,7 @@ class PreferenceSection extends StatelessWidget {
   const PreferenceSection({
     Key? key,
     this.highlightTarget,
+    this.itemKeys,
     required this.syncInterval,
     required this.onSyncIntervalChanged,
     required this.serverChoice,
@@ -48,16 +50,19 @@ class PreferenceSection extends StatelessWidget {
     required Widget child,
   }) {
     final bool isHighlighted = highlightTarget == targetId;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-      decoration: BoxDecoration(
-        color: isHighlighted 
-            ? Theme.of(context).colorScheme.primary.withOpacity(0.2) 
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+    return Container(
+      key: itemKeys?[targetId],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        decoration: BoxDecoration(
+          color: isHighlighted 
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.2) 
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: child,
       ),
-      child: child,
     );
   }
 
@@ -262,15 +267,33 @@ class PreferenceSection extends StatelessWidget {
                   ),
                 ),
                 const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.refresh, color: Colors.indigo),
-                  title: const Text('强制刷新悬浮窗位置'),
-                  subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
-                  trailing: TextButton(
-                    onPressed: onForceRefreshPressed,
-                    child: const Text('强制刷新'),
+                _buildTile(
+                  context: context,
+                  targetId: 'force_refresh',
+                  child: ListTile(
+                    leading: const Icon(Icons.refresh, color: Colors.indigo),
+                    title: const Text('强制刷新悬浮窗位置'),
+                    subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
+                    trailing: TextButton(
+                      onPressed: onForceRefreshPressed,
+                      child: const Text('强制刷新'),
+                    ),
                   ),
                 ),
+                if (floatWindowStyle != 2) ...[
+                  const Divider(height: 1, indent: 56),
+                  _buildTile(
+                    context: context,
+                    targetId: 'island_priority',
+                    child: ListTile(
+                      leading: const Icon(Icons.priority_high, color: Colors.indigo),
+                      title: const Text('灵动岛优先级设置'),
+                      subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: onIslandPriorityPressed,
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
