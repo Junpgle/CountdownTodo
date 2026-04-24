@@ -194,9 +194,18 @@ class _SettingsPageState extends State<SettingsPage> {
     GlobalKey? itemKey = _itemKeys[target];
 
     setState(() {
-      if (['theme', 'server_choice', 'sync_interval', 'float_window_style', 'llm_retry'].contains(target)) {
+      if (['theme', 'server_choice', 'sync_interval', 'llm_retry'].contains(target)) {
         _preferenceExpanded = true;
         sectionKey = _preferenceSectionKey;
+      } else if (target == 'float_window_style') {
+        // 🚀 平台差异化定位
+        if (Platform.isAndroid) {
+          _advancedExpanded = true;
+          sectionKey = _advancedSectionKey;
+        } else {
+          _preferenceExpanded = true;
+          sectionKey = _preferenceSectionKey;
+        }
       } else if (['no_course_behavior', 'webview_import', 'smart_import', 'course_sync', 'course_upload', 'course_adapt'].contains(target)) {
         _courseExpanded = true;
         sectionKey = _courseSectionKey;
@@ -212,7 +221,7 @@ class _SettingsPageState extends State<SettingsPage> {
       } else if (target == 'permissions') {
         _permissionExpanded = true;
         sectionKey = _permissionSectionKey;
-      } else if (['lan_sync', 'cache', 'migration'].contains(target)) {
+      } else if (['lan_sync', 'cache', 'migration', 'live_updates', 'test_notification', 'band_sync'].contains(target)) {
         _advancedExpanded = true;
         sectionKey = _advancedSectionKey;
       } else if (target == 'storage' || target == 'update') {
@@ -1403,25 +1412,29 @@ class _SettingsPageState extends State<SettingsPage> {
             expanded: _notificationExpanded,
             onToggle: () =>
                 setState(() => _notificationExpanded = !_notificationExpanded),
-            child: Card(
-              elevation: 2,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: ListTile(
-                leading: const Icon(Icons.notifications_outlined,
-                    color: Colors.blueAccent),
-                title: const Text('通知管理',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      const NotificationSettingsPage(),
-                    ),
-                  );
-                },
+            child: _buildTile(
+              context: context,
+              targetId: 'notifications',
+              child: Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: ListTile(
+                  leading: const Icon(Icons.notifications_outlined,
+                      color: Colors.blueAccent),
+                  title: const Text('通知管理',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        const NotificationSettingsPage(),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
