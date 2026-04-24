@@ -15,7 +15,8 @@ import '../storage_service.dart';
 
 class TeamManagementScreen extends StatefulWidget {
   final String username;
-  const TeamManagementScreen({Key? key, required this.username}) : super(key: key);
+  final String? initialTarget; // 🚀 新增：跳转目标
+  const TeamManagementScreen({Key? key, required this.username, this.initialTarget}) : super(key: key);
 
   @override
   _TeamManagementScreenState createState() => _TeamManagementScreenState();
@@ -201,6 +202,46 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
+    }
+
+    // 🚀 核心：处理搜索直达逻辑
+    if (widget.initialTarget != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleInitialTarget(widget.initialTarget!);
+      });
+    }
+  }
+
+  void _handleInitialTarget(String target) {
+    if (!mounted) return;
+
+    switch (target) {
+      case 'messages':
+        final managedTeams =
+            _teams.where((t) => t.userRole == TeamRole.admin).toList();
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) =>
+                    TeamMessageCenterScreen(managedTeams: managedTeams)));
+        break;
+      case 'create':
+        _showCreateTeamDialog();
+        break;
+      case 'announcements':
+        if (_teams.isNotEmpty) {
+          // 如果只有一个团队，直接进入公告；否则可能需要更复杂的选择逻辑，这里默认选第一个
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => TeamAnnouncementScreen(team: _teams.first)));
+        }
+        break;
+      case 'members':
+        if (_teams.isNotEmpty) {
+          _showMembersSheet(_teams.first);
+        }
+        break;
     }
   }
 
