@@ -25,6 +25,12 @@ class _SearchSectionLayoutItem {
   });
 }
 
+class _TextMatch {
+  final int start;
+  final int end;
+  const _TextMatch(this.start, this.end);
+}
+
 const _typeMeta = <SearchResultType, _TypeMeta>{
   SearchResultType.todo:      _TypeMeta('待办事项',  Icons.check_circle_outline,   Color(0xFF007AFF)),
   SearchResultType.todoGroup: _TypeMeta('待办文件夹', Icons.folder_rounded,          Color(0xFFFF9500)),
@@ -289,7 +295,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           color: isDark ? Colors.white : Colors.black87,
         ),
         decoration: InputDecoration(
-          hintText: '关键字搜全应用',
+          hintText: '多关键词搜全应用',
           hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black38),
           prefixIcon:
               Icon(Icons.search_rounded, color: colorScheme.primary, size: 24),
@@ -774,39 +780,67 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _highlightText(String text, String query, TextStyle style) {
-    if (query.isEmpty || !text.toLowerCase().contains(query.toLowerCase())) {
+    final terms = query
+        .split(RegExp(r'[\s,，;；]+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    if (terms.isEmpty) {
       return Text(text, style: style, maxLines: 2, overflow: TextOverflow.ellipsis);
     }
+
     final lower = text.toLowerCase();
-    final lowerQ = query.toLowerCase();
+    final matches = <_TextMatch>[];
+    for (final term in terms) {
+      final lowerTerm = term.toLowerCase();
+      var start = 0;
+      while (true) {
+        final idx = lower.indexOf(lowerTerm, start);
+        if (idx == -1) break;
+        matches.add(_TextMatch(idx, idx + lowerTerm.length));
+        start = idx + lowerTerm.length;
+      }
+    }
+
+    if (matches.isEmpty) {
+      return Text(text, style: style, maxLines: 2, overflow: TextOverflow.ellipsis);
+    }
+
+    matches.sort((a, b) => a.start.compareTo(b.start));
+    final merged = <_TextMatch>[];
+    for (final m in matches) {
+      if (merged.isEmpty || m.start > merged.last.end) {
+        merged.add(m);
+      } else if (m.end > merged.last.end) {
+        merged[merged.length - 1] = _TextMatch(merged.last.start, m.end);
+      }
+    }
+
     final List<TextSpan> spans = [];
     int start = 0;
-    while (true) {
-      final idx = lower.indexOf(lowerQ, start);
-      if (idx == -1) {
-        spans.add(TextSpan(text: text.substring(start), style: style));
-        break;
-      }
-      if (idx > start) {
-        spans.add(TextSpan(text: text.substring(start, idx), style: style));
+    for (final m in merged) {
+      if (m.start > start) {
+        spans.add(TextSpan(text: text.substring(start, m.start), style: style));
       }
       spans.add(TextSpan(
-        text: text.substring(idx, idx + query.length),
+        text: text.substring(m.start, m.end),
         style: style.copyWith(
           color: const Color(0xFF007AFF),
           fontWeight: FontWeight.w900,
           backgroundColor: const Color(0xFF007AFF).withValues(alpha: 0.1),
         ),
       ));
-      start = idx + query.length;
-      if (start >= text.length) break;
+      start = m.end;
     }
+    if (start < text.length) spans.add(TextSpan(text: text.substring(start), style: style));
     return RichText(
       text: TextSpan(children: spans, style: style),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
     );
   }
+
 
   // ──────────────────────────────────────────────────────────────────────────
   // 空状态

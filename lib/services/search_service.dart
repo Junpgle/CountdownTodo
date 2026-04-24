@@ -266,11 +266,18 @@ class SearchService {
     
     final currentSearchId = ++_latestSearchId;
     final q = query.toLowerCase().trim();
+    final searchTerms = _extractSearchTerms(q);
     final scoredResults = <SearchResultWithScore>[];
 
     // 1. 静态索引扫描
     for (var s in _staticSettings) {
-      int score = _calculateScore(s.title.toLowerCase(), s.subtitle?.toLowerCase(), s.breadcrumb?.toLowerCase(), q);
+      int score = _calculateScore(
+        s.title.toLowerCase(),
+        s.subtitle?.toLowerCase(),
+        s.breadcrumb?.toLowerCase(),
+        q,
+        searchTerms,
+      );
       if (score > 0) scoredResults.add(SearchResultWithScore(s, score));
     }
 
@@ -279,10 +286,16 @@ class SearchService {
     // 不能再用 _calculateScore 二次过滤（否则备注匹配但不在 subtitle 里的条目会被丢弃）。
     // 用 score+10 保证 DB 结果优先展示，同时仍按标题相关度排序。
     try {
-      final dbItems = await _searchDatabase(q);
+      final dbItems = await _searchDatabase(q, searchTerms);
       if (currentSearchId != _latestSearchId) return [];
       for (var item in dbItems) {
-        final score = _calculateScore(item.title.toLowerCase(), item.subtitle?.toLowerCase(), null, q);
+        final score = _calculateScore(
+          item.title.toLowerCase(),
+          item.subtitle?.toLowerCase(),
+          null,
+          q,
+          searchTerms,
+        );
         // DB 已过滤，保底给 score=1，避免备注命中却被丢弃
         scoredResults.add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
       }
@@ -318,16 +331,54 @@ class SearchService {
     return finalResults;
   }
 
-  int _calculateScore(String title, String? subtitle, String? breadcrumb, String query) {
-    if (title == query) return 100;
-    if (title.startsWith(query)) return 80;
-    if (title.contains(query)) return 50;
-    if (subtitle?.contains(query) ?? false) return 20;
-    if (breadcrumb?.contains(query) ?? false) return 10;
-    return 0;
+  List<String> _extractSearchTerms(String query) {
+    return query
+        .split(RegExp(r'[\s,，;；]+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
   }
 
-  Future<List<SearchResult>> _searchDatabase(String query) async {
+  bool _matchesAllTerms(String text, List<String> terms) {
+    final lower = text.toLowerCase();
+    return terms.every((term) => lower.contains(term.toLowerCase()));
+  }
+
+  int _calculateScore(String title, String? subtitle, String? breadcrumb, String query, List<String> terms) {
+    if (terms.isEmpty) return 0;
+    if (terms.length == 1) {
+      final term = terms.first;
+      if (title == term) return 100;
+      if (title.startsWith(term)) return 80;
+      if (title.contains(term)) return 50;
+      if (subtitle?.contains(term) ?? false) return 20;
+      if (breadcrumb?.contains(term) ?? false) return 10;
+      return 0;
+    }
+
+    final haystack = '$title ${subtitle ?? ''} ${breadcrumb ?? ''}'.toLowerCase();
+    if (!_matchesAllTerms(haystack, terms)) return 0;
+
+    var score = 0;
+    for (final term in terms) {
+      if (title == term) {
+        score += 100;
+      } else if (title.startsWith(term)) {
+        score += 80;
+      } else if (title.contains(term)) {
+        score += 50;
+      } else if (subtitle?.contains(term) ?? false) {
+        score += 20;
+      } else if (breadcrumb?.contains(term) ?? false) {
+        score += 10;
+      } else {
+        score += 5;
+      }
+    }
+    return score + terms.length * 10;
+  }
+
+  Future<List<SearchResult>> _searchDatabase(String query, List<String> searchTerms) async {
     final dbItems = <SearchResult>[];
     final db = DatabaseHelper.instance;
     final username = await StorageService.getLoginSession() ?? 'default';
@@ -421,7 +472,20 @@ class SearchService {
           'remark': t.remark,
         }).toList();
       } else {
-        todos = await db.searchTodos(query);
+        final todoMap = <String, Map<String, dynamic>>{};
+        for (final term in searchTerms) {
+          for (final row in await db.searchTodos(term)) {
+            todoMap[row['uuid'].toString()] = row;
+          }
+        }
+        todos = todoMap.values.where((t) {
+          final haystack = [
+            t['content']?.toString(),
+            t['remark']?.toString(),
+            t['team_name']?.toString(),
+          ].where((s) => s != null && s.isNotEmpty).join(' ').toLowerCase();
+          return _matchesAllTerms(haystack, searchTerms);
+        }).toList();
       }
     } catch (e) {
       debugPrint('Todo search error: $e');
@@ -469,7 +533,20 @@ class SearchService {
 
     // ── 课程 ─────────────────────────────────────────────────────────────
     try {
-      final courses = await db.searchCourses(query);
+      final courseMap = <String, Map<String, dynamic>>{};
+      for (final term in searchTerms) {
+        for (final row in await db.searchCourses(term)) {
+          courseMap[row['uuid'].toString()] = row;
+        }
+      }
+      final courses = courseMap.values.where((c) {
+        final haystack = [c['course_name'], c['teacher_name'], c['room_name']]
+            .where((s) => s != null)
+            .map((s) => s.toString())
+            .join(' ')
+            .toLowerCase();
+        return _matchesAllTerms(haystack, searchTerms);
+      }).toList();
       for (var c in courses) {
         // 构建时间描述：第几周 + 星期几 + 第几节
         final weekIdx = c['week_index'];
@@ -505,7 +582,20 @@ class SearchService {
 
     // ── 倒计时 ────────────────────────────────────────────────────────────
     try {
-      final countdowns = await db.searchCountdowns(query);
+      final countdownMap = <String, Map<String, dynamic>>{};
+      for (final term in searchTerms) {
+        for (final row in await db.searchCountdowns(term)) {
+          countdownMap[row['uuid'].toString()] = row;
+        }
+      }
+      final countdowns = countdownMap.values.where((cd) {
+        final haystack = [cd['title'], cd['team_name']]
+            .where((s) => s != null)
+            .map((s) => s.toString())
+            .join(' ')
+            .toLowerCase();
+        return _matchesAllTerms(haystack, searchTerms);
+      }).toList();
       for (var cd in countdowns) {
         String subtitle = '未设置日期';
         final targetMs = cd['target_time'];
@@ -542,7 +632,8 @@ class SearchService {
           final start = DateTime.fromMillisecondsSinceEpoch(l.startTime);
           return start.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && start.isBefore(endOfDay!);
         }
-        return l.title.toLowerCase().contains(q) || (l.remark?.toLowerCase().contains(q) ?? false);
+        final haystack = [l.title, l.remark].whereType<String>().join(' ').toLowerCase();
+        return _matchesAllTerms(haystack, searchTerms);
       }).take(15).toList();
 
       for (var l in matchedLogs) {
@@ -571,8 +662,7 @@ class SearchService {
     // 搜索标签名，点击可跳转到该标签的折线图统计界面
     try {
       final allTags = await PomodoroService.getTags();
-      final q = query.toLowerCase();
-      final matchedTags = allTags.where((t) => t.name.toLowerCase().contains(q));
+      final matchedTags = allTags.where((t) => _matchesAllTerms(t.name.toLowerCase(), searchTerms));
       for (var tag in matchedTags) {
         dbItems.add(SearchResult(
           id: 'db_tag_${tag.uuid}',
@@ -607,7 +697,7 @@ class SearchService {
             final normalized = appName.toLowerCase();
             if (seenApps.contains(normalized)) continue;
 
-            final matchesQuery = includeAll || normalized.contains(q);
+            final matchesQuery = includeAll || _matchesAllTerms(normalized, searchTerms);
             if (!matchesQuery) continue;
 
             seenApps.add(normalized);
@@ -720,7 +810,20 @@ class SearchService {
 
     // ── 待办文件夹 ────────────────────────────────────────────────────────
     try {
-      final groups = await db.searchTodoGroups(query);
+      final groupMap = <String, Map<String, dynamic>>{};
+      for (final term in searchTerms) {
+        for (final row in await db.searchTodoGroups(term)) {
+          groupMap[row['uuid'].toString()] = row;
+        }
+      }
+      final groups = groupMap.values.where((g) {
+        final haystack = [g['name'], g['team_name']]
+            .where((s) => s != null)
+            .map((s) => s.toString())
+            .join(' ')
+            .toLowerCase();
+        return _matchesAllTerms(haystack, searchTerms);
+      }).toList();
       for (var g in groups) {
         dbItems.add(SearchResult(
           id: 'db_group_${g['uuid']}',
