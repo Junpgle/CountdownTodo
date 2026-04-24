@@ -872,7 +872,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Colors.deepPurple.withOpacity(0.1),
+                      color: Colors.deepPurple.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child:
@@ -1986,7 +1986,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     if (!isLoading)
                       Text(
                         isOk == true ? "服务运行正常" : "连接受阻，部分功能受限",
-                        style: TextStyle(fontSize: 11, color: isOk == true ? Colors.grey : Colors.redAccent.withOpacity(0.8)),
+                        style: TextStyle(fontSize: 11, color: isOk == true ? Colors.grey : Colors.redAccent.withValues(alpha: 0.8)),
                       ),
                   ],
                 ),
@@ -2003,7 +2003,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.05),
+        color: Colors.grey.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -2328,7 +2328,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                   color: (isLight
                           ? Colors.lightBlueAccent
                           : Theme.of(context).colorScheme.primary)
-                      .withOpacity(0.5),
+                      .withValues(alpha: 0.5),
                   blurRadius: 4,
                   offset: const Offset(0, 1),
                 )
@@ -2441,7 +2441,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             ),
           if (showWallpaper)
             Positioned.fill(
-                child: Container(color: Colors.black.withOpacity(0.4))),
+                child: Container(color: Colors.black.withValues(alpha: 0.4))),
           SafeArea(
             child: Column(
               children: [
@@ -2833,7 +2833,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: isLight
-                                              ? Colors.white.withOpacity(0.7)
+                                              ? Colors.white.withValues(alpha: 0.7)
                                               : Colors.grey[600],
                                           fontStyle: FontStyle.italic,
                                         ),
@@ -2960,7 +2960,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           style: TextStyle(
             fontSize: 12,
             color: isLight
-                ? Colors.white.withOpacity(0.7)
+                ? Colors.white.withValues(alpha: 0.7)
                 : Colors.grey[600],
             fontStyle: FontStyle.italic,
           ),
@@ -2979,10 +2979,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       height: 54 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6), // 进一步压缩高度
       margin: const EdgeInsets.fromLTRB(40, 0, 40, 12), // 增加左右间距以减小宽度
       decoration: BoxDecoration(
-        color: isDarkMode ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.2),
+        color: isDarkMode ? Colors.black.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(40), // 更圆润的边缘
         border: Border.all(
-          color: isDarkMode ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.2),
+          color: isDarkMode ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.2),
           width: 0.5,
         ),
       ),
@@ -3055,7 +3055,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: primary.withOpacity(0.3),
+              color: primary.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),

@@ -84,7 +84,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 20,
               offset: const Offset(0, -5),
             )
@@ -102,7 +102,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   height: 5,
                   margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.3),
+                    color: Colors.grey.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
@@ -112,7 +112,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.blueAccent.withOpacity(0.1),
+                      color: Colors.blueAccent.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.assignment_outlined, color: Colors.blueAccent),
@@ -121,7 +121,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   const Text("任务明细", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const Spacer(),
                   IconButton(
-                    style: IconButton.styleFrom(backgroundColor: Colors.grey.withOpacity(0.1)),
+                    style: IconButton.styleFrom(backgroundColor: Colors.grey.withValues(alpha: 0.1)),
                     icon: const Icon(Icons.close_rounded, size: 20),
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -137,9 +137,9 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   padding: const EdgeInsets.all(16),
                   margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.05),
+                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.grey.withOpacity(0.1)),
+                    border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,9 +175,9 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
+        color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.1)),
+        border: Border.all(color: color.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,7 +221,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
               pinned: true,
               expandedHeight: 60,
               elevation: 0,
-              backgroundColor: isDark ? Colors.black.withOpacity(0.65) : Colors.white.withOpacity(0.65),
+              backgroundColor: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.65),
               flexibleSpace: ClipRect(
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
@@ -253,7 +253,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
                   boxShadow: [
                     BoxShadow(
-                      color: isDark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.04),
+                      color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.04),
                       blurRadius: 24,
                       offset: const Offset(0, 8),
                     )
@@ -264,7 +264,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                     TeamHeatmapWidget(todos: _allCombinedTodos, viewDays: _viewDays == 30 ? 35 : _viewDays),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Divider(height: 1, color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1)),
+                      child: Divider(height: 1, color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1)),
                     ),
                     TeamGanttWidget(
                       todos: _allCombinedTodos,
@@ -300,7 +300,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.task_alt_rounded, size: 64, color: Colors.grey.withOpacity(0.3)),
+                    Icon(Icons.task_alt_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.3)),
                     const SizedBox(height: 16),
                     Text("暂无活跃的全景任务", style: TextStyle(fontSize: 16, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
                   ],
@@ -334,12 +334,12 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [color.withOpacity(isDark ? 0.2 : 0.08), color.withOpacity(isDark ? 0.05 : 0.02)],
+          colors: [color.withValues(alpha: isDark ? 0.2 : 0.08), color.withValues(alpha: isDark ? 0.05 : 0.02)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(isDark ? 0.3 : 0.2)),
+        border: Border.all(color: color.withValues(alpha: isDark ? 0.3 : 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,7 +389,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                       width: 2,
                       margin: const EdgeInsets.only(top: 4),
                       decoration: BoxDecoration(
-                        color: teamColor.withOpacity(0.2),
+                        color: teamColor.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(1),
                       ),
                     ),
@@ -409,7 +409,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                 border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
                 boxShadow: [
                   BoxShadow(
-                    color: isDark ? Colors.black.withOpacity(0.2) : Colors.black.withOpacity(0.03),
+                    color: isDark ? Colors.black.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.03),
                     blurRadius: 15,
                     offset: const Offset(0, 5),
                   )
@@ -424,7 +424,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: teamColor.withOpacity(0.1),
+                          color: teamColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(

@@ -83,7 +83,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   Widget build(BuildContext context) {
     final textColor = widget.isLight ? Colors.white : null;
     final subColor = widget.isLight
-        ? Colors.white.withOpacity(0.7)
+        ? Colors.white.withValues(alpha: 0.7)
         : Theme.of(context).colorScheme.onSurfaceVariant;
 
     return GestureDetector(
@@ -101,11 +101,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: widget.isLight
-                        ? Colors.white.withOpacity(0.15)
+                        ? Colors.white.withValues(alpha: 0.15)
                         : Theme.of(context)
                             .colorScheme
                             .primary
-                            .withOpacity(0.15),
+                            .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(Icons.bar_chart_rounded,
@@ -131,7 +131,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: widget.isLight
-                          ? Colors.white.withOpacity(0.2)
+                          ? Colors.white.withValues(alpha: 0.2)
                           : Theme.of(context).colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -153,7 +153,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     style: TextStyle(
                         fontSize: 15,
                         color: widget.isLight
-                            ? Colors.white.withOpacity(0.9)
+                            ? Colors.white.withValues(alpha: 0.9)
                             : Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.w800),
                   ),
@@ -191,21 +191,21 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: widget.isLight
-                    ? Colors.white.withOpacity(0.1)
+                    ? Colors.white.withValues(alpha: 0.1)
                     : Theme.of(context)
                         .colorScheme
                         .surfaceContainerHighest
-                        .withOpacity(0.3),
+                        .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                     color: widget.isLight
                         ? Colors.white24
-                        : Theme.of(context).dividerColor.withOpacity(0.5)),
+                        : Theme.of(context).dividerColor.withValues(alpha: 0.5)),
               ),
               child: Column(
                 children: [
                   Icon(Icons.timer_outlined,
-                      size: 32, color: subColor.withOpacity(0.5)),
+                      size: 32, color: subColor.withValues(alpha: 0.5)),
                   const SizedBox(height: 8),
                   Text('暂无专注记录，开始你的第一个番茄钟吧！',
                       style: TextStyle(
@@ -248,14 +248,14 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
         color: widget.isLight
-            ? Colors.white.withOpacity(0.1)
+            ? Colors.white.withValues(alpha: 0.1)
             : Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: widget.isLight
             ? []
             : [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 4))
               ],
@@ -304,7 +304,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                                               begin: Alignment.bottomCenter,
                                               end: Alignment.topCenter,
                                               colors: [
-                                                  primaryColor.withOpacity(0.5),
+                                                  primaryColor.withValues(alpha: 0.5),
                                                   primaryColor,
                                                 ])
                                           : null,
@@ -326,7 +326,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                             style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
-                                color: subColor?.withOpacity(0.6)),
+                                color: subColor?.withValues(alpha: 0.6)),
                           )
                         else
                           const SizedBox(height: 14),
@@ -367,14 +367,14 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
         color: widget.isLight
-            ? Colors.white.withOpacity(0.1)
+            ? Colors.white.withValues(alpha: 0.1)
             : Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: widget.isLight
             ? []
             : [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 4))
               ],
@@ -441,7 +441,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             decoration:
                 BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [
               BoxShadow(
-                  color: color.withOpacity(0.4),
+                  color: color.withValues(alpha: 0.4),
                   blurRadius: 4,
                   offset: const Offset(0, 2))
             ]),
@@ -463,7 +463,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
                 value: percent,
-                backgroundColor: color.withOpacity(0.15),
+                backgroundColor: color.withValues(alpha: 0.15),
                 valueColor: AlwaysStoppedAnimation<Color>(color),
                 minHeight: 8,
               ),

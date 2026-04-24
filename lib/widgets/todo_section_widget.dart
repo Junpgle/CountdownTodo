@@ -1412,8 +1412,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
     // ── 颜色层 ──
     final Color cardBg = todo.isDone
-        ? colorScheme.surfaceContainerHighest.withOpacity(isLight ? 0.25 : 0.08)
-        : colorScheme.surface.withOpacity(
+        ? colorScheme.surfaceContainerHighest.withValues(alpha: isLight ? 0.25 : 0.08)
+        : colorScheme.surface.withValues(alpha: 
             isPast
                 ? (isLight ? 0.9 : 0.45)
                 : isFuture
@@ -1422,9 +1422,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           );
 
     final Color titleColor = todo.isDone
-        ? colorScheme.onSurface.withOpacity(0.35)
+        ? colorScheme.onSurface.withValues(alpha: 0.35)
         : (isPast || isFuture
-            ? colorScheme.onSurface.withOpacity(0.65)
+            ? colorScheme.onSurface.withValues(alpha: 0.65)
             : colorScheme.onSurface);
 
     // ── 进度计算 ──
@@ -1459,7 +1459,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     // ── 时间徽章文本 ──
     String badge = "";
     Color badgeColor = colorScheme.primary;
-    Color badgeBg = colorScheme.primaryContainer.withOpacity(0.6);
+    Color badgeBg = colorScheme.primaryContainer.withValues(alpha: 0.6);
 
     if (todo.dueDate != null) {
       final DateTime d = DateTime(
@@ -1471,21 +1471,21 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       if (isPast) {
         badge = "已逾期";
         badgeColor = Colors.redAccent.shade200;
-        badgeBg = Colors.redAccent.withOpacity(0.12);
+        badgeBg = Colors.redAccent.withValues(alpha: 0.12);
       } else if (isFuture) {
         int days = d.difference(today).inDays;
         badge = "$days天后";
         badgeColor = colorScheme.secondary;
-        badgeBg = colorScheme.secondaryContainer.withOpacity(0.5);
+        badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);
       } else {
         badge = "今天截止";
         badgeColor = Colors.orange.shade700;
-        badgeBg = Colors.orange.withOpacity(0.12);
+        badgeBg = Colors.orange.withValues(alpha: 0.12);
       }
     } else {
       badge = DateFormat('MM/dd').format(cDate);
-      badgeColor = colorScheme.onSurface.withOpacity(0.45);
-      badgeBg = colorScheme.onSurface.withOpacity(0.06);
+      badgeColor = colorScheme.onSurface.withValues(alpha: 0.45);
+      badgeBg = colorScheme.onSurface.withValues(alpha: 0.06);
     }
 
     // ── 循环图标 ──
@@ -1494,7 +1494,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       recurrenceIcon = Icon(
         Icons.repeat_rounded,
         size: 11,
-        color: colorScheme.primary.withOpacity(0.6),
+        color: colorScheme.primary.withValues(alpha: 0.6),
       );
     }
 
@@ -1528,7 +1528,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             borderRadius: BorderRadius.circular(14),
           ),
           child: Text(todo.title,
-              style: TextStyle(color: titleColor.withOpacity(0.95), fontSize: 14.5)),
+              style: TextStyle(color: titleColor.withValues(alpha: 0.95), fontSize: 14.5)),
         ),
       ),
       child: VisibilityDetector(
@@ -1615,23 +1615,23 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     decoration: BoxDecoration(
                       color: todo.teamUuid != null
                           ? (isLight
-                              ? colorScheme.surface.withOpacity(0.92)
-                              : colorScheme.surfaceContainerHighest.withOpacity(0.4))
+                              ? colorScheme.surface.withValues(alpha: 0.92)
+                              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4))
                           : cardBg,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: todo.teamUuid != null
-                            ? colorScheme.primary.withOpacity(0.2)
+                            ? colorScheme.primary.withValues(alpha: 0.2)
                             : (isPast && !todo.isDone
-                                ? Colors.redAccent.withOpacity(0.25)
+                                ? Colors.redAccent.withValues(alpha: 0.25)
                                 : colorScheme.outline
-                                    .withOpacity(isLight ? 0.06 : 0.12)),
+                                    .withValues(alpha: isLight ? 0.06 : 0.12)),
                         width: todo.teamUuid != null ? 1.2 : 1,
                       ),
                       boxShadow: (!todo.isDone && isLight)
                           ? [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.03),
+                                color: Colors.black.withValues(alpha: 0.03),
                                 blurRadius: 6,
                                 offset: const Offset(0, 2),
                               ),
@@ -1659,8 +1659,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(
                                         colors: [
-                                          fillColor.withOpacity(isLight ? 0.32 : 0.18),
-                                          fillColor.withOpacity(isLight ? 0.15 : 0.08),
+                                          fillColor.withValues(alpha: isLight ? 0.32 : 0.18),
+                                          fillColor.withValues(alpha: isLight ? 0.15 : 0.08),
                                         ],
                                         begin: Alignment.centerLeft,
                                         end: Alignment.centerRight,
@@ -1762,8 +1762,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                         overflow: TextOverflow.ellipsis,
                                                         style: TextStyle(
                                                           decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                                                          decorationColor: colorScheme.onSurface.withOpacity(0.3),
-                                                          color: titleColor.withOpacity(0.95),
+                                                          decorationColor: colorScheme.onSurface.withValues(alpha: 0.3),
+                                                          color: titleColor.withValues(alpha: 0.95),
                                                           fontSize: 14.5,
                                                           fontWeight: todo.isDone || isPast || isFuture ? FontWeight.w500 : FontWeight.w600,
                                                           height: 1.2,
@@ -1778,12 +1778,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                     Container(
                                                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                                       decoration: BoxDecoration(
-                                                        color: todo.isDone ? colorScheme.onSurface.withOpacity(0.06) : badgeBg,
+                                                        color: todo.isDone ? colorScheme.onSurface.withValues(alpha: 0.06) : badgeBg,
                                                         borderRadius: BorderRadius.circular(6),
                                                       ),
                                                       child: Text(
                                                         badge,
-                                                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: todo.isDone ? colorScheme.onSurface.withOpacity(0.3) : badgeColor),
+                                                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: todo.isDone ? colorScheme.onSurface.withValues(alpha: 0.3) : badgeColor),
                                                       ),
                                                     ),
                                                   ],
@@ -1795,9 +1795,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                       Container(
                                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                         decoration: BoxDecoration(
-                                                            color: colorScheme.primary.withOpacity(0.18),
+                                                            color: colorScheme.primary.withValues(alpha: 0.18),
                                                           borderRadius: BorderRadius.circular(4),
-                                                            border: Border.all(color: colorScheme.primary.withOpacity(0.4), width: 0.8),
+                                                            border: Border.all(color: colorScheme.primary.withValues(alpha: 0.4), width: 0.8),
                                                         ),
                                                         child: Row(
                                                           mainAxisSize: MainAxisSize.min,
@@ -1820,9 +1820,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                            child: Container(
                                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                              decoration: BoxDecoration(
-                                                               color: Colors.green.withOpacity(0.15),
+                                                               color: Colors.green.withValues(alpha: 0.15),
                                                                borderRadius: BorderRadius.circular(4),
-                                                               border: Border.all(color: Colors.green.withOpacity(0.4), width: 0.8),
+                                                               border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 0.8),
                                                              ),
                                                              child: Row(
                                                                children: [
@@ -1840,14 +1840,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                 const SizedBox(height: 3),
                                                 Row(
                                                   children: [
-                                                    Icon(Icons.schedule_rounded, size: 11, color: colorScheme.onSurface.withOpacity(todo.isDone ? 0.65 : (isPast ? 0.75 : 0.65))),
+                                                    Icon(Icons.schedule_rounded, size: 11, color: colorScheme.onSurface.withValues(alpha: todo.isDone ? 0.65 : (isPast ? 0.75 : 0.65))),
                                                     const SizedBox(width: 3),
-                                                    Expanded(child: Text(_buildTimeLabel(todo, cDate, isPast, isFuture, now), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(todo.isDone ? 0.4 : isPast ? 0.75 : 0.65), height: 1.2))),
+                                                    Expanded(child: Text(_buildTimeLabel(todo, cDate, isPast, isFuture, now), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: todo.isDone ? 0.4 : isPast ? 0.75 : 0.65), height: 1.2))),
                                                   ],
                                                 ),
                                                 if (todo.remark != null && todo.remark!.isNotEmpty) ...[
                                                   const SizedBox(height: 2),
-                                                  Text(todo.remark!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(todo.isDone ? 0.22 : 0.4), height: 1.2)),
+                                                  Text(todo.remark!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: todo.isDone ? 0.22 : 0.4), height: 1.2)),
                                                 ],
                                               ],
                                             ),
@@ -1910,7 +1910,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             Icon(
               expanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
               size: 20,
-              color: (color ?? Theme.of(context).colorScheme.onSurface).withOpacity(0.5),
+              color: (color ?? Theme.of(context).colorScheme.onSurface).withValues(alpha: 0.5),
             ),
             const SizedBox(width: 8),
             if (icon != null) ...[
@@ -1922,7 +1922,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
-                color: (color ?? Theme.of(context).colorScheme.onSurface).withOpacity(0.8),
+                color: (color ?? Theme.of(context).colorScheme.onSurface).withValues(alpha: 0.8),
                 letterSpacing: 0.5,
               ),
             ),
@@ -2297,12 +2297,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   decoration: BoxDecoration(
                     color: widget.isLight
                         ? (isDarkTheme
-                            ? Colors.grey[850]!.withOpacity(0.95)
-                            : Colors.white.withOpacity(0.95))
+                            ? Colors.grey[850]!.withValues(alpha: 0.95)
+                            : Colors.white.withValues(alpha: 0.95))
                         : (allTodayDone
                             ? (isDarkTheme
-                                ? Colors.green.withOpacity(0.15)
-                                : Colors.green.withOpacity(0.08))
+                                ? Colors.green.withValues(alpha: 0.15)
+                                : Colors.green.withValues(alpha: 0.08))
                             : (isDarkTheme
                                 ? Colors.white.withValues(alpha: 0.08)
                                 : Theme.of(context)
@@ -2312,23 +2312,23 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: allTodayDone
-                          ? Colors.green.withOpacity(0.4)
+                          ? Colors.green.withValues(alpha: 0.4)
                           : (widget.isLight
                               ? (isDarkTheme
-                                  ? Colors.white.withOpacity(0.15)
-                                  : Colors.black.withOpacity(0.1))
+                                  ? Colors.white.withValues(alpha: 0.15)
+                                  : Colors.black.withValues(alpha: 0.1))
                               : (isDarkTheme
-                                  ? Colors.white.withOpacity(0.22)
+                                  ? Colors.white.withValues(alpha: 0.22)
                                   : Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.25))),
+                                      .withValues(alpha: 0.25))),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black
-                            .withOpacity(widget.isLight ? 0.15 : 0.08),
+                            .withValues(alpha: widget.isLight ? 0.15 : 0.08),
                         blurRadius: 12,
                         offset: const Offset(0, 5),
                       ),
@@ -2343,11 +2343,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                               color: allTodayDone
-                                  ? Colors.green.withOpacity(0.1)
+                                  ? Colors.green.withValues(alpha: 0.1)
                                   : Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                               shape: BoxShape.circle),
                           child: Icon(
                               allTodayDone
@@ -2375,9 +2375,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                   : Colors.black)
                                               : (isDarkTheme
                                                   ? Colors.white
-                                                      .withOpacity(0.9)
+                                                      .withValues(alpha: 0.9)
                                                   : Colors.black
-                                                      .withOpacity(0.85))),
+                                                      .withValues(alpha: 0.85))),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16,
                                       letterSpacing: 0.2)),
@@ -2394,9 +2394,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                           : (widget.isLight
                                               ? (isDarkTheme
                                                   ? Colors.white
-                                                      .withOpacity(0.7)
+                                                      .withValues(alpha: 0.7)
                                                   : Colors.black
-                                                      .withOpacity(0.6))
+                                                      .withValues(alpha: 0.6))
                                               : (isDarkTheme
                                                   ? Colors.white
                                                   : Colors.black))),
@@ -2407,7 +2407,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         Icon(Icons.arrow_forward_ios_rounded,
                             size: 14,
                             color: (allTodayDone ? Colors.green : Colors.grey)
-                                .withOpacity(0.5)),
+                                .withValues(alpha: 0.5)),
                       ],
                     ),
                   ),
@@ -2535,26 +2535,26 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 decoration: BoxDecoration(
                   color: widget.isLight
                       ? (isDarkTheme
-                          ? Colors.grey[850]!.withOpacity(0.95)
-                          : Colors.white.withOpacity(0.95))
+                          ? Colors.grey[850]!.withValues(alpha: 0.95)
+                          : Colors.white.withValues(alpha: 0.95))
                       : null,
                   gradient: widget.isLight
                       ? null
                       : LinearGradient(
                           colors: useDarkUI
                               ? [
-                                  Colors.white.withOpacity(0.12),
-                                  Colors.white.withOpacity(0.04)
+                                  Colors.white.withValues(alpha: 0.12),
+                                  Colors.white.withValues(alpha: 0.04)
                                 ]
                               : [
                                   Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.06),
+                                      .withValues(alpha: 0.06),
                                   Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.01)
+                                      .withValues(alpha: 0.01)
                                 ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -2563,14 +2563,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   border: Border.all(
                       color: widget.isLight
                           ? (isDarkTheme
-                              ? Colors.white.withOpacity(0.15)
-                              : Colors.black.withOpacity(0.1))
+                              ? Colors.white.withValues(alpha: 0.15)
+                              : Colors.black.withValues(alpha: 0.1))
                           : (useDarkUI
-                              ? Colors.white.withOpacity(0.1)
+                              ? Colors.white.withValues(alpha: 0.1)
                               : Theme.of(context)
                                   .colorScheme
                                   .primary
-                                  .withOpacity(0.08)),
+                                  .withValues(alpha: 0.08)),
                       width: 1),
                 ),
                 child: Row(
@@ -2581,7 +2581,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             color: Theme.of(context)
                                 .colorScheme
                                 .primary
-                                .withOpacity(0.1),
+                                .withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10)),
                         child: Icon(Icons.checklist_rtl_rounded,
                             size: 20,
@@ -2612,18 +2612,18 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               style: TextStyle(
                                   color: widget.isLight
                                       ? (isDarkTheme
-                                          ? Colors.white.withOpacity(0.6)
-                                          : Colors.black.withOpacity(0.55))
+                                          ? Colors.white.withValues(alpha: 0.6)
+                                          : Colors.black.withValues(alpha: 0.55))
                                       : (useDarkUI
                                               ? Colors.white
                                               : Colors.black)
-                                          .withOpacity(0.5),
+                                          .withValues(alpha: 0.5),
                                   fontSize: 12)),
                         ])),
                     Icon(Icons.unfold_more_rounded,
                         size: 18,
                         color: (useDarkUI ? Colors.white : Colors.grey)
-                            .withOpacity(0.4)),
+                            .withValues(alpha: 0.4)),
                   ],
                 ),
               ),
@@ -2719,7 +2719,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: theme.primary.withOpacity(0.3),
+                    color: theme.primary.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   )
@@ -3013,7 +3013,7 @@ class _IndependentStatusDialogState extends State<_IndependentStatusDialog> {
                         final isDone = s['is_completed'] == 1;
                         return ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: isDone ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+                            backgroundColor: isDone ? Colors.green.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
                             child: Text(
                               (s['username'] as String?)?.isNotEmpty == true 
                                   ? s['username'][0].toUpperCase() 
@@ -3231,7 +3231,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             decoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)],
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)],
             ),
             child: Column(
               children: [
@@ -3248,7 +3248,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   style: const TextStyle(fontSize: 15),
                   decoration: InputDecoration(
                     hintText: "备注 (可选)",
-                    hintStyle: TextStyle(color: Colors.grey.withOpacity(0.8)),
+                    hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.8)),
                     border: InputBorder.none,
                   ),
                 ),
@@ -3353,7 +3353,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             Container(
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black.withOpacity(0.04))),
+              decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black.withValues(alpha: 0.04))),
               child: Column(
                 children: [
                   if (_recurrence == RecurrenceType.customDays) ...[
@@ -3446,7 +3446,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 GestureDetector(onTap: () => _showFullImage(context, widget.todo.imagePath!), child: Container(height: 160, width: double.infinity, decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), image: DecorationImage(image: FileImage(File(widget.todo.imagePath!)), fit: BoxFit.cover)))),
              if (widget.todo.originalText != null && widget.todo.originalText!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black.withOpacity(0.04))), child: Text(widget.todo.originalText!, style: const TextStyle(fontSize: 13, color: Colors.grey))),
+                Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black.withValues(alpha: 0.04))), child: Text(widget.todo.originalText!, style: const TextStyle(fontSize: 13, color: Colors.grey))),
              ],
              const SizedBox(height: 24),
           ],
@@ -3458,7 +3458,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             decoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.black.withOpacity(0.04)),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
             ),
             child: Material(
               color: Colors.transparent,
@@ -3480,7 +3480,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           ],
                         ),
                       ),
-                      Icon(Icons.chevron_right_rounded, color: Colors.grey.withOpacity(0.5)),
+                      Icon(Icons.chevron_right_rounded, color: Colors.grey.withValues(alpha: 0.5)),
                     ],
                   ),
                 ),
@@ -3512,10 +3512,10 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.black.withOpacity(0.04)),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.01),
+                color: Colors.black.withValues(alpha: 0.01),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               )
@@ -3595,9 +3595,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.2)),
+        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3627,7 +3627,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     return Container(
       height: 36,
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -3644,7 +3644,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   color: isSelected ? colorScheme.surface : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: isSelected ? [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 1))
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 1))
                   ] : [],
                 ),
                 child: Text(
@@ -3652,7 +3652,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6),
+                    color: isSelected ? colorScheme.primary : colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),

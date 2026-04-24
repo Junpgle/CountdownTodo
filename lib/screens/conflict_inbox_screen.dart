@@ -146,7 +146,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.verified_user_rounded, size: 80, color: Colors.green.withOpacity(0.2)),
+          Icon(Icons.verified_user_rounded, size: 80, color: Colors.green.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
           const Text("所有数据已完全对齐", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
           const Text("目前没有任何待解决的同步冲突", style: TextStyle(fontSize: 12, color: Colors.grey)),
@@ -194,7 +194,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+                    decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
                     child: Row(
                       children: [
                         const Icon(Icons.warning_amber_rounded, size: 12, color: Colors.amber),
@@ -215,7 +215,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 children: [
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: Colors.blue.withOpacity(0.1),
+                    backgroundColor: Colors.blue.withValues(alpha: 0.1),
                     child: Icon(icon, size: 18, color: Colors.blue),
                   ),
                   const SizedBox(width: 12),

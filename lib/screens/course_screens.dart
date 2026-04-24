@@ -602,7 +602,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     return Container(
       width: double.infinity,
-      color: isDark ? Colors.black.withOpacity(0.1) : Colors.grey[50],
+      color: isDark ? Colors.black.withValues(alpha: 0.1) : Colors.grey[50],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -677,7 +677,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: Icon(Icons.class_, color: color, size: 20),
         ),
         title: Text(item.courseName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
@@ -689,7 +689,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: (item.isDone ? Colors.green : Colors.amber).withOpacity(0.1),
+            color: (item.isDone ? Colors.green : Colors.amber).withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(item.isDone ? Icons.check_circle : Icons.task_alt,
@@ -709,9 +709,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 margin: const EdgeInsets.only(left: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                 ),
                 child: const Icon(Icons.group, size: 12, color: Colors.blue),
               ),
@@ -729,7 +729,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: const Icon(Icons.edit_calendar, color: color, size: 20),
         ),
         title: Text(item.title.isNotEmpty ? item.title : '时间日志', style: const TextStyle(fontSize: 15)),
@@ -740,7 +740,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: const Icon(Icons.timer, color: color, size: 20),
         ),
         title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
@@ -935,8 +935,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                 decoration: BoxDecoration(
                   color: allDone
-                      ? Colors.green.withOpacity(0.5)
-                      : Colors.amber.shade500.withOpacity(0.85),
+                      ? Colors.green.withValues(alpha: 0.5)
+                      : Colors.amber.shade500.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(4),
                 ),
                   child: Row(
@@ -1104,8 +1104,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           }
 
           Color todoColor = todo.isDone
-              ? Colors.green.withOpacity(0.5)
-              : Colors.amber.shade500.withOpacity(0.85);
+              ? Colors.green.withValues(alpha: 0.5)
+              : Colors.amber.shade500.withValues(alpha: 0.85);
           final todoCardKey = _getTodoCardKey(todo.id);
           final todoIndex = _intraDayTodosPerDay.values
               .expand((e) => e)
@@ -1186,7 +1186,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.3),
+                                    color: Colors.white.withValues(alpha: 0.3),
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                   child: Row(
@@ -1265,14 +1265,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           double finalWidth = cellWidth - 2;
           double finalLeft = leftOffset + 1;
 
-          Color logColor = const Color(0xFF3B82F6).withOpacity(0.7);
+          Color logColor = const Color(0xFF3B82F6).withValues(alpha: 0.7);
           String logTitle = log.title.isNotEmpty ? log.title : '时间日志';
           if (log.tagUuids.isNotEmpty) {
             final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
                 (t) => log.tagUuids.contains(t?.uuid),
                 orElse: () => null);
             if (tag != null) {
-              logColor = _hexToColor(tag.color).withOpacity(0.7);
+              logColor = _hexToColor(tag.color).withValues(alpha: 0.7);
               if (logTitle == '时间日志') logTitle = tag.name;
             }
           }
@@ -1336,7 +1336,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                       color: logColor,
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(
-                          color: logColor.withOpacity(1.0), width: 0.5)),
+                          color: logColor.withValues(alpha: 1.0), width: 0.5)),
                   child: height < 18
                       ? const Icon(Icons.edit_calendar,
                           size: 8, color: Colors.white)
@@ -1371,7 +1371,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               Text(
                                 '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}-${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
                                 style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
+                                    color: Colors.white.withValues(alpha: 0.8),
                                     fontSize: 7,
                                     height: 1.0),
                                 maxLines: 1,
@@ -1408,14 +1408,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           double finalWidth = cellWidth - 2;
           double finalLeft = leftOffset + 1;
 
-          Color pomColor = Colors.redAccent.withOpacity(0.6);
+          Color pomColor = Colors.redAccent.withValues(alpha: 0.6);
           String pomTitle = '专注';
           if (record.tagUuids.isNotEmpty) {
             final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
                 (t) => record.tagUuids.contains(t?.uuid),
                 orElse: () => null);
             if (tag != null) {
-              pomColor = _hexToColor(tag.color).withOpacity(0.6);
+              pomColor = _hexToColor(tag.color).withValues(alpha: 0.6);
               pomTitle = tag.name;
             }
           }
@@ -1479,7 +1479,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                       color: pomColor,
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(
-                          color: pomColor.withOpacity(1.0), width: 0.5)),
+                          color: pomColor.withValues(alpha: 1.0), width: 0.5)),
                   child: height < 18
                       ? const Icon(Icons.local_fire_department,
                           size: 8, color: Colors.white)
@@ -1514,7 +1514,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               Text(
                                 '${record.effectiveDuration ~/ 60}min',
                                 style: TextStyle(
-                                    color: Colors.white.withOpacity(0.85),
+                                    color: Colors.white.withValues(alpha: 0.85),
                                     fontSize: 7,
                                     height: 1.0),
                                 maxLines: 1,
@@ -1580,7 +1580,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                     ContainerTransformRoute(
                       page: CourseDetailScreen(course: course),
                       sourceRect: rect,
-                      sourceColor: bgColor.withOpacity(0.95),
+                      sourceColor: bgColor.withValues(alpha: 0.95),
                       sourceBorderRadius:
                           const BorderRadius.all(Radius.circular(4)),
                     ),
@@ -1598,7 +1598,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 clipBehavior: Clip.hardEdge,
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                    color: bgColor.withOpacity(0.95),
+                    color: bgColor.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(4),
                     boxShadow: const [
                       BoxShadow(
@@ -1624,7 +1624,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                       Text(
                         course.roomName,
                         style: TextStyle(
-                            color: Colors.white.withOpacity(0.85),
+                            color: Colors.white.withValues(alpha: 0.85),
                             fontSize: 9,
                             height: 1.1),
                         maxLines: 1,
@@ -1663,7 +1663,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               builder: (context, child) {
                 return Container(
                   color: Colors.redAccent
-                      .withOpacity(0.3 + 0.2 * _pulseAnimation.value),
+                      .withValues(alpha: 0.3 + 0.2 * _pulseAnimation.value),
                 );
               },
             ),
@@ -1678,7 +1678,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               builder: (context, child) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: Colors.redAccent.withOpacity(_pulseAnimation.value),
+                    color: Colors.redAccent.withValues(alpha: _pulseAnimation.value),
                     shape: BoxShape.circle,
                   ),
                 );
@@ -1814,16 +1814,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             decoration: BoxDecoration(
                               color: todo.isDone
                                   ? (isDark
-                                      ? Colors.green.withOpacity(0.1)
-                                      : Colors.green.withOpacity(0.05))
+                                      ? Colors.green.withValues(alpha: 0.1)
+                                      : Colors.green.withValues(alpha: 0.05))
                                   : (isDark
-                                      ? Colors.amber.withOpacity(0.1)
-                                      : Colors.amber.withOpacity(0.05)),
+                                      ? Colors.amber.withValues(alpha: 0.1)
+                                      : Colors.amber.withValues(alpha: 0.05)),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: todo.isDone
-                                    ? Colors.green.withOpacity(0.3)
-                                    : Colors.amber.withOpacity(0.3),
+                                    ? Colors.green.withValues(alpha: 0.3)
+                                    : Colors.amber.withValues(alpha: 0.3),
                               ),
                             ),
                             child: Row(
@@ -2297,7 +2297,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   Widget _buildSkeleton() {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color baseColor = isDark ? Colors.white10 : Colors.black.withOpacity(0.05);
+    Color baseColor = isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
 
     return FadeTransition(
       opacity: _pulseAnimation,
@@ -2434,7 +2434,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.grey.withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
+                decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(16)),
                 child: Text(_safeStr(todo.remark!), style: const TextStyle(fontSize: 14, color: Colors.grey)),
               ),
             const SizedBox(height: 24),
@@ -2477,7 +2477,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(28),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 10))],
               ),
               child: Column(
                 children: [
@@ -2517,7 +2517,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Column(
@@ -2681,7 +2681,7 @@ class TodoDetailScreen extends StatelessWidget {
                   value: progress,
                   minHeight: 10,
                   backgroundColor:
-                      Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
+                      Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
                   valueColor: AlwaysStoppedAnimation<Color>(todo.isDone
                       ? Colors.green
                       : Theme.of(context).colorScheme.primary),

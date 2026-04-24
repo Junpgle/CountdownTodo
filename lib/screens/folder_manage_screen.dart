@@ -191,7 +191,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
           child: Column(
             children: [
               const SizedBox(height: 12),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(2))),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
               const Padding(
                 padding: EdgeInsets.all(20.0),
                 child: Text('移动至此文件夹', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
@@ -208,13 +208,13 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+                        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         leading: Icon(t.isDone ? Icons.check_circle : Icons.circle_outlined, 
-                          color: t.isDone ? Colors.green : Theme.of(context).colorScheme.primary.withOpacity(0.5)),
+                          color: t.isDone ? Colors.green : Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)),
                         title: Text(t.title, style: TextStyle(
                           fontWeight: FontWeight.w600,
                           color: t.isDone ? Colors.grey : null,

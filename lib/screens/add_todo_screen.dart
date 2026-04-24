@@ -429,7 +429,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       height: 36,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: colorScheme.onSurface.withOpacity(0.08),
+        color: colorScheme.onSurface.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -448,7 +448,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   color: isSelected ? colorScheme.surface : Colors.transparent,
                   borderRadius: BorderRadius.circular(6),
                   boxShadow: isSelected ? [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 1))
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 1))
                   ] : [],
                 ),
                 child: Text(
@@ -456,7 +456,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6),
+                    color: isSelected ? colorScheme.primary : colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -488,10 +488,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.black.withOpacity(0.04)),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.01),
+                color: Colors.black.withValues(alpha: 0.01),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               )
@@ -640,7 +640,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)],
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -658,7 +658,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   minLines: 1,
                   decoration: InputDecoration(
                     hintText: "补充细节或备注...",
-                    hintStyle: TextStyle(color: Colors.grey.withOpacity(0.8)),
+                    hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.8)),
                     border: InputBorder.none,
                   ),
                 ),
@@ -812,7 +812,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.black.withOpacity(0.04)),
+                border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
               ),
               child: Column(
                 children: [
@@ -935,9 +935,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.2)),
+        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -968,7 +968,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
             ),
             child: Column(
               children: [
@@ -982,7 +982,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: TextField(
@@ -1027,7 +1027,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
               ),
               child: Column(
                 children: [

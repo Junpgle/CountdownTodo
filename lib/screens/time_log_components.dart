@@ -121,7 +121,7 @@ class _DayViewState extends State<_DayView> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 3),
                       decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6).withOpacity(0.12),
+                          color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(20)),
                       child: Text('${dayLogs.length}条',
                           style: const TextStyle(
@@ -215,7 +215,7 @@ class _DayViewState extends State<_DayView> {
                           const SizedBox(width: 4),
                           IconButton(
                             icon: Icon(Icons.delete_outline,
-                                size: 20, color: Colors.red.withOpacity(0.6)),
+                                size: 20, color: Colors.red.withValues(alpha: 0.6)),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(
                                 minWidth: 36, minHeight: 36),
@@ -323,9 +323,9 @@ class _DayViewState extends State<_DayView> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                        color: const Color(0xFF3B82F6).withOpacity(0.1),
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
                         border: Border.all(
-                            color: const Color(0xFF3B82F6).withOpacity(0.35)),
+                            color: const Color(0xFF3B82F6).withValues(alpha: 0.35)),
                         borderRadius: BorderRadius.circular(8)),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.list_alt_outlined,
@@ -343,17 +343,17 @@ class _DayViewState extends State<_DayView> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.08),
-                border: Border.all(color: Colors.red.withOpacity(0.30)),
+                color: Colors.red.withValues(alpha: 0.08),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.30)),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.close, size: 12, color: Colors.red.withOpacity(0.8)),
+                Icon(Icons.close, size: 12, color: Colors.red.withValues(alpha: 0.8)),
                 const SizedBox(width: 4),
                 Text('退出补录',
                     style: TextStyle(
                         fontSize: 11,
-                        color: Colors.red.withOpacity(0.8),
+                        color: Colors.red.withValues(alpha: 0.8),
                         fontWeight: FontWeight.w600)),
               ]),
             ),
@@ -416,7 +416,7 @@ class _DayViewState extends State<_DayView> {
                       gridStart: _gridStart,
                       selColor: selTag != null
                           ? hexColor(selTag.color, opacity: 0.48)
-                          : accent.withOpacity(0.45),
+                          : accent.withValues(alpha: 0.45),
                       isDark: isDark,
                       hourH: hourH))),
           ..._pomodoroTapTargets(w, hourH),
@@ -447,8 +447,8 @@ class _DayViewState extends State<_DayView> {
       }
       final isDark = Theme.of(context).brightness == Brightness.dark;
       final base = tag != null ? hexColor(tag.color) : Colors.redAccent;
-      final fill = base.withOpacity(isDark ? 0.35 : 0.45);
-      final mark = base.withOpacity(0.85);
+      final fill = base.withValues(alpha: isDark ? 0.35 : 0.45);
+      final mark = base.withValues(alpha: 0.85);
       for (int h = sH; h <= eH; h++) {
         final hS = max(h.toDouble(), startF);
         final hE = min((h + 1).toDouble(), endF);
@@ -504,9 +504,9 @@ class _DayViewState extends State<_DayView> {
                               horizontal: 5, vertical: 4),
                           padding: const EdgeInsets.symmetric(vertical: 9),
                           decoration: BoxDecoration(
-                              color: sel ? c.withOpacity(0.2) : _TC.card(ctx),
+                              color: sel ? c.withValues(alpha: 0.2) : _TC.card(ctx),
                               border: Border.all(
-                                  color: sel ? c : c.withOpacity(0.2),
+                                  color: sel ? c : c.withValues(alpha: 0.2),
                                   width: sel ? 1.5 : 1),
                               borderRadius: BorderRadius.circular(10)),
                           child: Column(children: [
@@ -550,7 +550,7 @@ class _DayViewState extends State<_DayView> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 blurRadius: 12,
                 offset: const Offset(0, -4))
           ]),
@@ -709,7 +709,7 @@ class _DayGridPainter extends CustomPainter {
           Offset(x, h * hourH),
           Offset(x, (h + 1) * hourH),
           Paint()
-            ..color = Colors.redAccent.withOpacity(0.7)
+            ..color = Colors.redAccent.withValues(alpha: 0.7)
             ..strokeWidth = 1.5);
       canvas.drawCircle(
           Offset(x, h * hourH), 3, Paint()..color = Colors.redAccent);
@@ -867,9 +867,9 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                      color: const Color(0xFF22C55E).withOpacity(0.12),
+                      color: const Color(0xFF22C55E).withValues(alpha: 0.12),
                       border: Border.all(
-                          color: const Color(0xFF22C55E).withOpacity(0.35)),
+                          color: const Color(0xFF22C55E).withValues(alpha: 0.35)),
                       borderRadius: BorderRadius.circular(20)),
                   child: Text(_durLabel(),
                       style: const TextStyle(
@@ -901,16 +901,16 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
                               horizontal: 14, vertical: 7),
                           decoration: BoxDecoration(
                               color: sel
-                                  ? c.withOpacity(0.2)
-                                  : c.withOpacity(0.06),
+                                  ? c.withValues(alpha: 0.2)
+                                  : c.withValues(alpha: 0.06),
                               border: Border.all(
-                                  color: sel ? c : c.withOpacity(0.3)),
+                                  color: sel ? c : c.withValues(alpha: 0.3)),
                               borderRadius: BorderRadius.circular(20)),
                           child: Text(t.name,
                               style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
-                                  color: sel ? c : c.withOpacity(0.7)))));
+                                  color: sel ? c : c.withValues(alpha: 0.7)))));
                 }).toList()),
             const SizedBox(height: 16),
             Text('TITLE',
@@ -1068,7 +1068,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
         margin: const EdgeInsets.only(left: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: isSel ? color.withOpacity(0.15) : Colors.transparent,
+          color: isSel ? color.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(title,
@@ -1193,7 +1193,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
       decoration: BoxDecoration(
           color: _TC.card(context),
           border:
-              Border(top: BorderSide(color: c.withOpacity(0.35), width: 1.5)),
+              Border(top: BorderSide(color: c.withValues(alpha: 0.35), width: 1.5)),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
       child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1218,8 +1218,8 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                      color: c.withOpacity(0.12),
-                      border: Border.all(color: c.withOpacity(0.3)),
+                      color: c.withValues(alpha: 0.12),
+                      border: Border.all(color: c.withValues(alpha: 0.3)),
                       borderRadius: BorderRadius.circular(20)),
                   child: Text('${(totalMin / 60).toStringAsFixed(1)}h 累计',
                       style: TextStyle(
@@ -1318,7 +1318,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                           if (r.isPomodoro) ...[
                             Icon(Icons.timer_outlined,
                                 size: 12,
-                                color: Colors.redAccent.withOpacity(0.6)),
+                                color: Colors.redAccent.withValues(alpha: 0.6)),
                             const SizedBox(width: 4),
                           ],
                           Expanded(
@@ -1345,7 +1345,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                           if (!r.isPomodoro)
                             IconButton(
                                 icon: Icon(Icons.delete_outline,
-                                    color: Colors.red.withOpacity(0.55),
+                                    color: Colors.red.withValues(alpha: 0.55),
                                     size: 18),
                                 onPressed: () => widget.onDelete(r.id),
                                 padding: EdgeInsets.zero,
@@ -1513,7 +1513,7 @@ class _LineChartPainter extends CustomPainter {
     final gradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [color.withOpacity(0.3), color.withOpacity(0.0)],
+      colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.0)],
     );
     canvas.drawPath(fillPath,
         Paint()..shader = gradient.createShader(Rect.fromLTWH(0, 0, size.width, size.height)));
@@ -1557,7 +1557,7 @@ class _LineChartPainter extends CustomPainter {
       // 节点点
       canvas.drawCircle(p, isHover ? 6 : 4, Paint()..color = color);
       if (isHover) {
-        canvas.drawCircle(p, 10, Paint()..color = color.withOpacity(0.2));
+        canvas.drawCircle(p, 10, Paint()..color = color.withValues(alpha: 0.2));
       }
 
       // X轴标签
@@ -1565,7 +1565,7 @@ class _LineChartPainter extends CustomPainter {
         final dateTp = TextPainter(
           text: TextSpan(
             text: xLabels[i],
-            style: TextStyle(fontSize: 9, color: color.withOpacity(0.6), fontWeight: FontWeight.w500),
+            style: TextStyle(fontSize: 9, color: color.withValues(alpha: 0.6), fontWeight: FontWeight.w500),
           ),
           textDirection: ui.TextDirection.ltr,
         )..layout();
@@ -1574,7 +1574,7 @@ class _LineChartPainter extends CustomPainter {
 
       // 活跃点的指示线和数值
       if (isHover) {
-        final lineP = Paint()..color = color.withOpacity(0.5)..strokeWidth = 1.0;
+        final lineP = Paint()..color = color.withValues(alpha: 0.5)..strokeWidth = 1.0;
         canvas.drawLine(Offset(p.dx, 0), Offset(p.dx, size.height - 30), lineP);
         
         final valText = formatLabel(data[i]);
@@ -1785,7 +1785,7 @@ class _TagManagerSheetState extends State<_TagManagerSheet> {
                             GestureDetector(
                                 onTap: () => setState(() => _list.removeAt(i)),
                                 child: Icon(Icons.delete_outline,
-                                    color: Colors.red.withOpacity(0.55),
+                                    color: Colors.red.withValues(alpha: 0.55),
                                     size: 18)),
                           ]));
                     })),
@@ -1822,7 +1822,7 @@ class _TagManagerSheetState extends State<_TagManagerSheet> {
               ElevatedButton(
                   onPressed: _add,
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: accent.withOpacity(0.15),
+                      backgroundColor: accent.withValues(alpha: 0.15),
                       foregroundColor: accent,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -1894,8 +1894,8 @@ class _TopBarChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = filled ? color : color.withOpacity(0.10);
-    final border = filled ? Colors.transparent : color.withOpacity(0.30);
+    final bg = filled ? color : color.withValues(alpha: 0.10);
+    final border = filled ? Colors.transparent : color.withValues(alpha: 0.30);
     final fg = filled ? Colors.white : color;
 
     return GestureDetector(
@@ -1943,8 +1943,8 @@ class _MinuteDropdown extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
-        border: Border.all(color: accent.withOpacity(0.35)),
+        color: accent.withValues(alpha: 0.10),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: DropdownButtonHideUnderline(

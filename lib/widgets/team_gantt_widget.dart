@@ -82,7 +82,7 @@ class TeamGanttWidget extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     child: Stack(
                       children: [
-                        Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.05), borderRadius: BorderRadius.circular(4))),
+                        Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(4))),
                         Positioned(
                           left: 800 * startPos,
                           width: 800 * duration,
@@ -91,9 +91,9 @@ class TeamGanttWidget extends StatelessWidget {
                             child: Container(
                               height: 14,
                               decoration: BoxDecoration(
-                                gradient: LinearGradient(colors: [color.withOpacity(0.8), color]),
+                                gradient: LinearGradient(colors: [color.withValues(alpha: 0.8), color]),
                                 borderRadius: BorderRadius.circular(4),
-                                boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 4)]
+                                boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4)]
                               ),
                               alignment: Alignment.centerLeft,
                               padding: const EdgeInsets.only(left: 4),

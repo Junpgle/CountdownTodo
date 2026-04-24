@@ -157,7 +157,7 @@ class CourseImportHandler {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
         child: Icon(icon, color: color),
       ),
       title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),

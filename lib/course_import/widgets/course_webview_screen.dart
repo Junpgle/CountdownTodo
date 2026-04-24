@@ -260,7 +260,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
           height: 40,
           margin: const EdgeInsets.only(right: 8),
           decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(20),
           ),
           child: TextField(
@@ -302,7 +302,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withOpacity(0.5),
+              color: colorScheme.primaryContainer.withValues(alpha: 0.5),
               border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
             ),
             child: Row(
@@ -320,7 +320,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
                       const SizedBox(height: 2),
                       Text(
                         '2. 待页面完全加载出网格或列表后，点击下方抓取',
-                        style: TextStyle(fontSize: 12, color: colorScheme.onPrimaryContainer.withOpacity(0.8)),
+                        style: TextStyle(fontSize: 12, color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8)),
                       ),
                     ],
                   ),

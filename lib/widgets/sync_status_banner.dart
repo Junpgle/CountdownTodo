@@ -141,7 +141,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
               decoration: BoxDecoration(
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
+                    color: Colors.black.withValues(alpha: 0.08),
                     blurRadius: 12,
                     offset: const Offset(0, 3),
                   ),
@@ -153,10 +153,10 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: _getStatusColor().withOpacity(0.85),
+                      color: _getStatusColor().withValues(alpha: 0.85),
                       border: Border(
                         bottom: BorderSide(
-                          color: Colors.white.withOpacity(0.12),
+                          color: Colors.white.withValues(alpha: 0.12),
                           width: 0.5,
                         ),
                       ),
@@ -168,7 +168,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                         children: [
                           Row(
                             children: [
-                              Icon(_getStatusIcon(), size: 16, color: Colors.white.withOpacity(0.95)),
+                              Icon(_getStatusIcon(), size: 16, color: Colors.white.withValues(alpha: 0.95)),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
@@ -203,7 +203,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.white.withOpacity(0.95),
+                                          color: Colors.white.withValues(alpha: 0.95),
                                         ),
                                       ),
                                     ),
@@ -220,7 +220,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.white.withOpacity(0.7),
+                                          color: Colors.white.withValues(alpha: 0.7),
                                         ),
                                       ),
                                     ),
@@ -235,7 +235,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                                 "Uni-Sync 正在检测您的实时同步通道。若长时间处于连接中，请尝试切换网络或检查服务器防火墙设置。",
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: Colors.white.withOpacity(0.75),
+                                  color: Colors.white.withValues(alpha: 0.75),
                                   height: 1.4,
                                 ),
                               ),

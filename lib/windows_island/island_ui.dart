@@ -676,7 +676,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(borderRadius),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.55),
+                    color: Colors.black.withValues(alpha: 0.55),
                     blurRadius: 15,
                     spreadRadius: 1,
                     offset: const Offset(0, 5),
@@ -691,12 +691,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     decoration: BoxDecoration(
                       color: isTransparent
                           ? Colors.transparent
-                          : IslandConfig.bgColor.withOpacity(0.82),
+                          : IslandConfig.bgColor.withValues(alpha: 0.82),
                       borderRadius: BorderRadius.circular(borderRadius),
                       border: isTransparent
                           ? null
                           : Border.all(
-                              color: Colors.white.withOpacity(0.08),
+                              color: Colors.white.withValues(alpha: 0.08),
                               width: 0.8,
                             ),
                     ),
@@ -966,7 +966,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                             fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
                             style: TextStyle(
                               color: _isPulsing
-                                  ? _colorAnimation.value?.withOpacity(0.7) ??
+                                  ? _colorAnimation.value?.withValues(alpha: 0.7) ??
                                       Colors.white70
                                   : Colors.white70,
                               fontSize: 10,
@@ -1103,7 +1103,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         key: ValueKey(_currentCardIndex),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.2),
+          color: color.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(12),
         ),
         child: IntrinsicWidth(
@@ -1131,7 +1131,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       Text(
                         subtitle,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 9,
                         ),
                         maxLines: 1,
@@ -1179,7 +1179,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                         fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
                         style: TextStyle(
                           color: _isPulsing
-                              ? _colorAnimation.value?.withOpacity(0.7) ??
+                              ? _colorAnimation.value?.withValues(alpha: 0.7) ??
                                   Colors.white70
                               : Colors.white70,
                           fontSize: 10,
@@ -1294,7 +1294,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: ValueListenableBuilder<String>(
@@ -1389,7 +1389,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               ),
             const SizedBox(height: 16),
             if (!isLocal)
-              _btn('远端计时中，无法更改', Colors.white.withOpacity(0.1), () {})
+              _btn('远端计时中，无法更改', Colors.white.withValues(alpha: 0.1), () {})
             else
               Row(
                 children: [
@@ -1494,14 +1494,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             Text(
               detail,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 10,
               ),
               overflow: TextOverflow.ellipsis,
               maxLines: 2,
             ),
             const SizedBox(height: 12),
-            _btn('关闭', color.withOpacity(0.8), () {
+            _btn('关闭', color.withValues(alpha: 0.8), () {
               _currentPayload?.remove('selectedCard');
               final restored = _stack.pop(IslandState.stackedCard);
               _animateToState(restored);
@@ -1625,12 +1625,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               color: IslandConfig.bgColor,
               borderRadius: BorderRadius.circular(IslandConfig.capsuleRadius),
               border: Border.all(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 width: 0.8,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.4),
+                  color: Colors.black.withValues(alpha: 0.4),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -1660,7 +1660,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   _animateToState(restored);
                 }),
                 const SizedBox(width: 6),
-                _miniBtn('✕', Colors.white.withOpacity(0.2), () {
+                _miniBtn('✕', Colors.white.withValues(alpha: 0.2), () {
                   _autoDismissTimer?.cancel();
                   final restored = _stack.pop(IslandState.copiedLink);
                   _animateToState(restored);
@@ -1685,7 +1685,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           color: IslandConfig.bgColor,
           borderRadius: BorderRadius.circular(IslandConfig.capsuleRadius),
           border: Border.all(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.5),
             width: 0.8,
           ),
         ),
@@ -1725,7 +1725,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           color: IslandConfig.bgColor,
           borderRadius: BorderRadius.circular(IslandConfig.capsuleRadius),
           border: Border.all(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.5),
             width: 0.8,
           ),
         ),
@@ -1969,7 +1969,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.9),
+          color: color.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(15),
         ),
         child: Row(
@@ -2000,7 +2000,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.9),
+          color: color.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(15),
         ),
         child: Row(
@@ -2035,7 +2035,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       decoration: BoxDecoration(
         color: IslandConfig.bgColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.5), width: 0.8),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.5), width: 0.8),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2114,7 +2114,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       decoration: BoxDecoration(
         color: IslandConfig.bgColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.5)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.5)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2128,7 +2128,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: iconColor.withOpacity(0.2),
+                    color: iconColor.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(iconData, color: iconColor, size: 20),
@@ -2664,7 +2664,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         fontSize: 9,
                       ),
                       maxLines: 1,
@@ -2693,7 +2693,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
+                    color: color.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
@@ -2771,10 +2771,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           width: 80,
           height: 50,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: color.withOpacity(0.4),
+              color: color.withValues(alpha: 0.4),
               width: 1,
             ),
           ),
@@ -2863,12 +2863,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         Text(
           '打开音乐播放器后将自动显示',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.4),
+            color: Colors.white.withValues(alpha: 0.4),
             fontSize: 10,
           ),
         ),
         const SizedBox(height: 12),
-        _miniBtn('返回', Colors.white.withOpacity(0.15), () {
+        _miniBtn('返回', Colors.white.withValues(alpha: 0.15), () {
           _systemControlAutoReturnTimer?.cancel();
           _quickControlsAutoReturnTimer?.cancel();
           _sliderDebounce?.cancel();
@@ -2902,7 +2902,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: IslandConfig.focusColor.withOpacity(0.3),
+                color: IslandConfig.focusColor.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(
@@ -2963,7 +2963,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                             height: 6,
                             margin: const EdgeInsets.symmetric(horizontal: 6),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(3),
                             ),
                             child: FractionallySizedBox(
@@ -3002,12 +3002,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             _miniBtn(
               shuffleOn ? '🔀' : '➡️',
               shuffleOn
-                  ? IslandConfig.focusColor.withOpacity(0.4)
-                  : Colors.white.withOpacity(0.1),
+                  ? IslandConfig.focusColor.withValues(alpha: 0.4)
+                  : Colors.white.withValues(alpha: 0.1),
               () => widget.onAction?.call('music_shuffle'),
             ),
             const SizedBox(width: 10),
-            _miniBtn('⏮', Colors.white.withOpacity(0.15), () {
+            _miniBtn('⏮', Colors.white.withValues(alpha: 0.15), () {
               widget.onAction?.call('music_prev');
               _resetSystemControlAutoReturnTimer();
             }),
@@ -3033,7 +3033,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               ),
             ),
             const SizedBox(width: 8),
-            _miniBtn('⏭', Colors.white.withOpacity(0.15), () {
+            _miniBtn('⏭', Colors.white.withValues(alpha: 0.15), () {
               widget.onAction?.call('music_next');
               _resetSystemControlAutoReturnTimer();
             }),
@@ -3045,8 +3045,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       ? '🔁'
                       : '➡️',
               repeatMode != 'off'
-                  ? IslandConfig.focusColor.withOpacity(0.4)
-                  : Colors.white.withOpacity(0.1),
+                  ? IslandConfig.focusColor.withValues(alpha: 0.4)
+                  : Colors.white.withValues(alpha: 0.1),
               () => widget.onAction?.call('music_repeat'),
             ),
           ],
@@ -3058,7 +3058,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             width: double.infinity,
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
+              color: Colors.white.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -3066,7 +3066,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 Text(
                   '🎵 歌词',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
@@ -3212,8 +3212,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   _miniBtn(
                     isMuted ? '🔇' : '🔈',
                     isMuted
-                        ? IslandConfig.dangerColor.withOpacity(0.3)
-                        : Colors.white.withOpacity(0.1),
+                        ? IslandConfig.dangerColor.withValues(alpha: 0.3)
+                        : Colors.white.withValues(alpha: 0.1),
                     () {
                       if (isMuted) {
                         SystemControlService.setVolume(_savedVolumeBeforeMute);
@@ -3234,9 +3234,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                         overlayShape:
                             const RoundSliderOverlayShape(overlayRadius: 14),
                         activeTrackColor: IslandConfig.focusColor,
-                        inactiveTrackColor: Colors.white.withOpacity(0.15),
+                        inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
                         thumbColor: Colors.white,
-                        overlayColor: IslandConfig.focusColor.withOpacity(0.2),
+                        overlayColor: IslandConfig.focusColor.withValues(alpha: 0.2),
                       ),
                       child: Slider(
                         value: currentVolume,
@@ -3253,7 +3253,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     ),
                   ),
                   // 最大音量
-                  _miniBtn('🔊', Colors.white.withOpacity(0.1), () {
+                  _miniBtn('🔊', Colors.white.withValues(alpha: 0.1), () {
                     SystemControlService.setVolume(1.0);
                     setState(() {});
                     _resetSystemControlAutoReturnTimer();
@@ -3277,13 +3277,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       height: 24,
                       decoration: BoxDecoration(
                         color: isActive
-                            ? IslandConfig.focusColor.withOpacity(0.3)
-                            : Colors.white.withOpacity(0.05),
+                            ? IslandConfig.focusColor.withValues(alpha: 0.3)
+                            : Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
                           color: isActive
-                              ? IslandConfig.focusColor.withOpacity(0.5)
-                              : Colors.white.withOpacity(0.1),
+                              ? IslandConfig.focusColor.withValues(alpha: 0.5)
+                              : Colors.white.withValues(alpha: 0.1),
                           width: 0.5,
                         ),
                       ),
@@ -3381,7 +3381,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               Row(
                 children: [
                   // 最低亮度
-                  _miniBtn('🌙', Colors.white.withOpacity(0.1), () {
+                  _miniBtn('🌙', Colors.white.withValues(alpha: 0.1), () {
                     SystemControlService.setBrightness(0.05);
                     setState(() {});
                     _resetSystemControlAutoReturnTimer();
@@ -3395,10 +3395,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                         overlayShape:
                             const RoundSliderOverlayShape(overlayRadius: 14),
                         activeTrackColor: IslandConfig.warningColor,
-                        inactiveTrackColor: Colors.white.withOpacity(0.15),
+                        inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
                         thumbColor: Colors.white,
                         overlayColor:
-                            IslandConfig.warningColor.withOpacity(0.2),
+                            IslandConfig.warningColor.withValues(alpha: 0.2),
                       ),
                       child: Slider(
                         value: currentBrightness,
@@ -3411,7 +3411,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     ),
                   ),
                   // 最高亮度
-                  _miniBtn('☀️', Colors.white.withOpacity(0.1), () {
+                  _miniBtn('☀️', Colors.white.withValues(alpha: 0.1), () {
                     SystemControlService.setBrightness(1.0);
                     setState(() {});
                     _resetSystemControlAutoReturnTimer();
@@ -3435,13 +3435,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       height: 24,
                       decoration: BoxDecoration(
                         color: isActive
-                            ? IslandConfig.warningColor.withOpacity(0.3)
-                            : Colors.white.withOpacity(0.05),
+                            ? IslandConfig.warningColor.withValues(alpha: 0.3)
+                            : Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
                           color: isActive
-                              ? IslandConfig.warningColor.withOpacity(0.5)
-                              : Colors.white.withOpacity(0.1),
+                              ? IslandConfig.warningColor.withValues(alpha: 0.5)
+                              : Colors.white.withValues(alpha: 0.1),
                           width: 0.5,
                         ),
                       ),

@@ -52,7 +52,7 @@ class WidgetService {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     if (_initialized) return;
     try {
-      await HomeWidget.registerBackgroundCallback(widgetBackgroundCallback);
+      await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
       _initialized = true;
     } catch (e) {
       print('WidgetBackground 注册失败: $e');

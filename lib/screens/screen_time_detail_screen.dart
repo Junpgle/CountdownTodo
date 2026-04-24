@@ -635,12 +635,12 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              cs.primary.withOpacity(0.08),
-              cs.primary.withOpacity(0.02)
+              cs.primary.withValues(alpha: 0.08),
+              cs.primary.withValues(alpha: 0.02)
             ],
           ),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: cs.primary.withOpacity(0.15), width: 1),
+          border: Border.all(color: cs.primary.withValues(alpha: 0.15), width: 1),
         ),
         child: Padding(
           padding: const EdgeInsets.all(22),
@@ -677,7 +677,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.12), shape: BoxShape.circle),
+                  color: cs.primary.withValues(alpha: 0.12), shape: BoxShape.circle),
               child: Icon(Icons.access_time_filled_rounded,
                   size: 32, color: cs.primary),
             ),
@@ -767,13 +767,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             historyStats: _historyStats,
             currentFilter: _currentFilter,
           ),
-          sourceColor: color.withOpacity(0.06),
+          sourceColor: color.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(18),
           child: Container(
             decoration: BoxDecoration(
-              color: color.withOpacity(0.06),
+              color: color.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: color.withOpacity(0.18), width: 1),
+              border: Border.all(color: color.withValues(alpha: 0.18), width: 1),
             ),
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -781,7 +781,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                    color: color.withOpacity(0.15), shape: BoxShape.circle),
+                    color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
                 child: Icon(getCategoryIcon(name), color: color, size: 20),
               ),
               const SizedBox(height: 8),
@@ -849,7 +849,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               Row(children: [
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor: cs.primary.withOpacity(0.14),
+                  backgroundColor: cs.primary.withValues(alpha: 0.14),
                   child: Text(
                       app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
                       style: TextStyle(
@@ -879,8 +879,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                 child: LinearProgressIndicator(
                   value: ratio,
                   minHeight: 4,
-                  backgroundColor: cs.primary.withOpacity(0.1),
-                  color: cs.primary.withOpacity(0.6),
+                  backgroundColor: cs.primary.withValues(alpha: 0.1),
+                  color: cs.primary.withValues(alpha: 0.6),
                 ),
               ),
               const SizedBox(height: 6),
@@ -910,7 +910,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               height: 1,
               indent: 60,
               endIndent: 16,
-              color: cs.outlineVariant.withOpacity(0.4)),
+              color: cs.outlineVariant.withValues(alpha: 0.4)),
           itemBuilder: (ctx, i) {
             final app = apps[i + skipCount];
             final devices = app.value['devices'] as Map<String, int>;
@@ -972,10 +972,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return BoxDecoration(
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: cs.outlineVariant.withOpacity(0.5), width: 0.8),
+      border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
       boxShadow: [
         BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2))
       ],
@@ -1051,10 +1051,10 @@ class CategoryDetailScreen extends StatelessWidget {
     return BoxDecoration(
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: cs.outlineVariant.withOpacity(0.5), width: 0.8),
+      border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
       boxShadow: [
         BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2))
       ],
@@ -1089,16 +1089,16 @@ class CategoryDetailScreen extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
-                color: catColor.withOpacity(0.07),
+                color: catColor.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: catColor.withOpacity(0.2)),
+                border: Border.all(color: catColor.withValues(alpha: 0.2)),
               ),
               child: Column(children: [
                 Container(
                   width: 64,
                   height: 64,
                   decoration: BoxDecoration(
-                      color: catColor.withOpacity(0.15),
+                      color: catColor.withValues(alpha: 0.15),
                       shape: BoxShape.circle),
                   child: Icon(
                       _ScreenTimeDetailScreenState.getCategoryIcon(
@@ -1132,7 +1132,7 @@ class CategoryDetailScreen extends StatelessWidget {
                               height: 1,
                               indent: 60,
                               endIndent: 16,
-                              color: cs.outlineVariant.withOpacity(0.4)),
+                              color: cs.outlineVariant.withValues(alpha: 0.4)),
                           itemBuilder: (ctx, i) {
                             final app = apps[i];
                             final devices =
@@ -1151,7 +1151,7 @@ class CategoryDetailScreen extends StatelessWidget {
                                 child: Row(children: [
                                   CircleAvatar(
                                     radius: 20,
-                                    backgroundColor: catColor.withOpacity(0.1),
+                                    backgroundColor: catColor.withValues(alpha: 0.1),
                                     child: Text(
                                         app.key.isNotEmpty
                                             ? app.key[0].toUpperCase()
@@ -1268,10 +1268,10 @@ class AppDetailScreen extends StatelessWidget {
     BoxDecoration cardDec = BoxDecoration(
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: cs.outlineVariant.withOpacity(0.5), width: 0.8),
+      border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
       boxShadow: [
         BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2))
       ],
@@ -1317,7 +1317,7 @@ class AppDetailScreen extends StatelessWidget {
                             width: 34,
                             height: 34,
                             decoration: BoxDecoration(
-                                color: cs.primary.withOpacity(0.1),
+                                color: cs.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10)),
                             child: Icon(
                                 _ScreenTimeDetailScreenState.getDeviceIcon(
@@ -1395,18 +1395,18 @@ class AppDetailScreen extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              cs.primary.withOpacity(0.08),
-                              cs.primaryContainer.withOpacity(0.3)
+                              cs.primary.withValues(alpha: 0.08),
+                              cs.primaryContainer.withValues(alpha: 0.3)
                             ],
                           ),
                           borderRadius: BorderRadius.circular(24),
                           border:
-                              Border.all(color: cs.primary.withOpacity(0.15)),
+                              Border.all(color: cs.primary.withValues(alpha: 0.15)),
                         ),
                         child: Column(children: [
                           CircleAvatar(
                             radius: 36,
-                            backgroundColor: cs.primary.withOpacity(0.18),
+                            backgroundColor: cs.primary.withValues(alpha: 0.18),
                             child: Text(
                                 appName.isNotEmpty
                                     ? appName[0].toUpperCase()
@@ -1441,7 +1441,7 @@ class AppDetailScreen extends StatelessWidget {
                                 Container(
                                     width: 1,
                                     height: 44,
-                                    color: cs.outlineVariant.withOpacity(0.5)),
+                                    color: cs.outlineVariant.withValues(alpha: 0.5)),
                                 Column(children: [
                                   Text("日均使用",
                                       style: TextStyle(
@@ -1534,7 +1534,7 @@ class LineChartPainter extends CustomPainter {
           Offset(horizontalPadding, yAvg),
           Offset(size.width - horizontalPadding, yAvg),
           Paint()
-            ..color = textColor.withOpacity(0.15)
+            ..color = textColor.withValues(alpha: 0.15)
             ..strokeWidth = 1
             ..style = PaintingStyle.stroke);
     }
@@ -1563,7 +1563,7 @@ class LineChartPainter extends CustomPainter {
           ..shader = ui.Gradient.linear(
             Offset(0, topPadding),
             Offset(0, size.height - bottomPadding),
-            [primaryColor.withOpacity(0.3), primaryColor.withOpacity(0.0)],
+            [primaryColor.withValues(alpha: 0.3), primaryColor.withValues(alpha: 0.0)],
           ));
     canvas.drawPath(
         linePath,
@@ -1661,7 +1661,7 @@ class BarChartPainter extends CustomPainter {
       double xc = i * spacing + spacing / 2;
       double barH = (data[i] / maxVal) * chartHeight;
       barPaint.color =
-          (i == selectedIndex) ? primaryColor : primaryColor.withOpacity(0.22);
+          (i == selectedIndex) ? primaryColor : primaryColor.withValues(alpha: 0.22);
       canvas.drawRRect(
           RRect.fromRectAndRadius(
               Rect.fromLTWH(xc - barWidth / 2,

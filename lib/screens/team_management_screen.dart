@@ -24,6 +24,7 @@ class TeamManagementScreen extends StatefulWidget {
 
 class _TeamManagementScreenState extends State<TeamManagementScreen> with WidgetsBindingObserver {
   StreamSubscription? _wsSub;
+  Team? _selectedTeam;
   List<Team> _teams = [];
   List<dynamic> _myInvitations = [];
   Map<String, int> _teamPendingCounts = {};
@@ -199,6 +200,17 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           _myInvitations = invitations;
           _teamPendingCounts = pendingCounts;
           _isLoading = false;
+          // 🚀 默认选中第一个
+          if (_selectedTeam == null && _teams.isNotEmpty) {
+            _selectedTeam = _teams.first;
+          } else if (_selectedTeam != null) {
+            // 同步更新已选中的团队数据
+            try {
+              _selectedTeam = _teams.firstWhere((t) => t.uuid == _selectedTeam!.uuid);
+            } catch (_) {
+              _selectedTeam = _teams.isNotEmpty ? _teams.first : null;
+            }
+          }
         });
       }
     } catch (e) {
@@ -442,88 +454,68 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
   // ============== 核心页面构建 ==============
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isWide = size.width > 900;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA);
 
+    if (isWide) {
+      return Scaffold(
+        backgroundColor: bgColor,
+        body: Row(
+          children: [
+            // 左侧侧边栏 (Master)
+            SizedBox(
+              width: 380,
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border(right: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05))),
+                ),
+                child: _buildMasterList(isDark),
+              ),
+            ),
+            // 右侧详情区 (Detail)
+            Expanded(
+              child: _selectedTeam == null
+                  ? _buildDetailEmptyState(isDark)
+                  : _TeamDetailView(
+                      team: _selectedTeam!,
+                      onRefresh: _loadTeams,
+                      username: widget.username,
+                      key: ValueKey(_selectedTeam!.uuid), // 强制刷新
+                    ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: Colors.blueAccent,
+          onPressed: _showSpeedDialMenu,
+          child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+        ),
+      );
+    }
+
+    // 手机端原始布局
     return Scaffold(
       backgroundColor: bgColor,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         slivers: [
-          SliverAppBar(
-            floating: true,
-            pinned: true,
-            expandedHeight: 60,
-            elevation: 0,
-            backgroundColor: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.65),
-            flexibleSpace: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-            title: const Text('团队协作', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-            centerTitle: false,
-            actions: [
-              _buildMessageCenterAction(),
-              Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: IconButton(
-                  icon: const Icon(Icons.refresh_rounded),
-                  tooltip: '刷新数据',
-                  onPressed: _loadTeams,
-                ),
-              ),
-            ],
-          ),
-
+          _buildSliverAppBar(isDark),
           if (_isLoading)
             const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
           else ...[
-            // 🚀 顶部业务入口区 (瀑布流 + 冲突中心)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    _buildQuickActionCard(
-                      title: "全景汇聚",
-                      desc: "所有团队任务时间轴",
-                      icon: Icons.waterfall_chart_rounded,
-                      color: Colors.blueAccent,
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedWaterfallScreen(username: widget.username))),
-                    ),
-                    const SizedBox(width: 12),
-                    _buildQuickActionCard(
-                      title: "冲突中心",
-                      desc: "解决多端同步冲突",
-                      icon: Icons.verified_user_rounded,
-                      color: Colors.orangeAccent,
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConflictInboxScreen(username: widget.username))),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // 🚀 邀请待办区
+            _buildQuickActionsSliver(isWide),
             if (_myInvitations.isNotEmpty)
-              SliverToBoxAdapter(
-                child: _buildInvitationsSection(),
-              ),
-
-            // 🚀 团队列表区 / 空状态
+              SliverToBoxAdapter(child: _buildInvitationsSection()),
             if (_teams.isEmpty && _myInvitations.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _buildEmptyState(isDark),
-              )
+              SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState(isDark))
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
-                        (context, index) => _buildTeamCard(_teams[index], isDark),
+                    (context, index) => _buildTeamCard(_teams[index], isDark),
                     childCount: _teams.length,
                   ),
                 ),
@@ -532,6 +524,137 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         ],
       ),
       floatingActionButton: _buildSpeedDial(context, isDark),
+    );
+  }
+
+  Widget _buildSliverAppBar(bool isDark) {
+    return SliverAppBar(
+      floating: true,
+      pinned: true,
+      expandedHeight: 60,
+      elevation: 0,
+      backgroundColor: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.65),
+      flexibleSpace: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(color: Colors.transparent),
+        ),
+      ),
+      title: const Text('团队协作', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+      centerTitle: false,
+      actions: [_buildMessageCenterAction()],
+    );
+  }
+
+  Widget _buildQuickActionsSliver(bool isWide) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Row(
+          children: [
+            _buildQuickActionCard(
+              title: "全景汇聚",
+              desc: isWide ? "汇集所有团队任务的时间轴展示" : "所有团队任务时间轴",
+              icon: Icons.waterfall_chart_rounded,
+              color: Colors.blueAccent,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedWaterfallScreen(username: widget.username))),
+            ),
+            const SizedBox(width: 12),
+            _buildQuickActionCard(
+              title: "冲突中心",
+              desc: isWide ? "处理多终端同步产生的数据争议" : "解决多端同步冲突",
+              icon: Icons.verified_user_rounded,
+              color: Colors.orangeAccent,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConflictInboxScreen(username: widget.username))),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMasterList(bool isDark) {
+    return CustomScrollView(
+      slivers: [
+        SliverAppBar(
+          pinned: true,
+          title: const Text('团队列表', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          actions: [_buildMessageCenterAction()],
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+        ),
+        if (_myInvitations.isNotEmpty)
+          SliverToBoxAdapter(child: _buildInvitationsSection()),
+        SliverPadding(
+          padding: const EdgeInsets.all(16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final team = _teams[index];
+                final isSelected = _selectedTeam?.uuid == team.uuid;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    onTap: () => setState(() => _selectedTeam = team),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.blueAccent.withValues(alpha: 0.1) : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isSelected ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.transparent),
+                      ),
+                      child: Row(
+                        children: [
+                          _buildTeamAvatar(team),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(team.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), overflow: TextOverflow.ellipsis),
+                                Text('${team.memberCount} 位成员', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                              ],
+                            ),
+                          ),
+                          if (_teamPendingCounts[team.uuid] != null && _teamPendingCounts[team.uuid]! > 0)
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                              child: Text('${_teamPendingCounts[team.uuid]}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+              childCount: _teams.length,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.dashboard_customize_rounded, size: 80, color: Colors.grey.withValues(alpha: 0.2)),
+          const SizedBox(height: 16),
+          Text('请从左侧选择一个团队进行管理', style: TextStyle(color: Colors.grey.shade500)),
+        ],
+      ),
+    );
+  }
+
+  void _showSpeedDialMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildSpeedDial(context, Theme.of(context).brightness == Brightness.dark),
     );
   }
 
@@ -1144,6 +1267,341 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         );
       },
       child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+    );
+  }
+}
+
+// ============== 团队详情看板 (Master-Detail Detail) ==============
+class _TeamDetailView extends StatefulWidget {
+  final Team team;
+  final VoidCallback onRefresh;
+  final String username;
+  const _TeamDetailView({super.key, required this.team, required this.onRefresh, required this.username});
+
+  @override
+  State<_TeamDetailView> createState() => _TeamDetailViewState();
+}
+
+class _TeamDetailViewState extends State<_TeamDetailView> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cardColor = Theme.of(context).cardColor;
+
+    return Column(
+      children: [
+        // 头部概览
+        Container(
+          padding: const EdgeInsets.all(24),
+          color: cardColor,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  _buildTeamAvatarLarge(widget.team),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.team.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Text('创建于 ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
+                            style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  _buildHeaderActions(),
+                ],
+              ),
+              const SizedBox(height: 24),
+              TabBar(
+                controller: _tabController,
+                isScrollable: false,
+                indicatorColor: Colors.blueAccent,
+                labelColor: Colors.blueAccent,
+                unselectedLabelColor: Colors.grey,
+                indicatorSize: TabBarIndicatorSize.label,
+                tabs: const [
+                  Tab(text: '公告动态'),
+                  Tab(text: '成员管理'),
+                  Tab(text: '设置与管理'),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // 内容区
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              // Tab 1: 公告
+              _TeamAnnouncementView(team: widget.team),
+              // Tab 2: 成员
+              _TeamMembersView(team: widget.team, scrollController: ScrollController(), onRefresh: widget.onRefresh),
+              // Tab 3: 管理
+              _TeamSettingsView(team: widget.team, onRefresh: widget.onRefresh),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTeamAvatarLarge(Team team) {
+    final colors = [Colors.blueAccent, Colors.purpleAccent, Colors.orangeAccent, Colors.teal, Colors.indigo];
+    final color = colors[team.uuid.hashCode % colors.length];
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [color.withValues(alpha: 0.4), color.withValues(alpha: 0.1)]),
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 3),
+      ),
+      child: Center(
+        child: Text(
+          team.name.isNotEmpty ? team.name[0].toUpperCase() : '?',
+          style: TextStyle(color: color, fontSize: 32, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderActions() {
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded),
+          onPressed: widget.onRefresh,
+          tooltip: '刷新数据',
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blueAccent,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          onPressed: () {
+             Clipboard.setData(ClipboardData(text: '邀请您加入「${widget.team.name}」团队，邀请码：[${widget.team.inviteCode}]'));
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('邀请码已复制 📋')));
+          },
+          icon: const Icon(Icons.person_add_rounded, size: 20),
+          label: const Text('复制邀请码', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+      ],
+    );
+  }
+}
+
+// ============== 公告内嵌视图 ==============
+class _TeamAnnouncementView extends StatefulWidget {
+  final Team team;
+  const _TeamAnnouncementView({required this.team});
+
+  @override
+  State<_TeamAnnouncementView> createState() => _TeamAnnouncementViewState();
+}
+
+class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
+  List<dynamic> _announcements = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAnnouncements();
+  }
+
+  Future<void> _loadAnnouncements() async {
+    setState(() => _loading = true);
+    try {
+      final list = await ApiService.fetchTeamAnnouncements(widget.team.uuid);
+      if (mounted) {
+        setState(() {
+          _announcements = list;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_announcements.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.campaign_outlined, size: 64, color: Colors.grey.withValues(alpha: 0.2)),
+            const SizedBox(height: 16),
+            const Text('暂无团队公告', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(24),
+      itemCount: _announcements.length,
+      itemBuilder: (context, index) {
+        final ann = _announcements[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          elevation: 0,
+          color: Theme.of(context).cardColor.withValues(alpha: 0.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.campaign_rounded, color: Colors.orangeAccent, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(ann['title'] ?? '未命名公告', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                    Builder(builder: (context) {
+                      DateTime date;
+                      final rawDate = ann['created_at'];
+                      if (rawDate is int) {
+                        date = DateTime.fromMillisecondsSinceEpoch(rawDate);
+                      } else {
+                        date = DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now();
+                      }
+                      return Text(DateFormat('MM-dd HH:mm').format(date), style: TextStyle(fontSize: 12, color: Colors.grey.shade500));
+                    }),
+                  ],
+                ),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),
+                Text(ann['content'] ?? '', style: const TextStyle(fontSize: 14, height: 1.5)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ============== 团队设置内嵌视图 ==============
+class _TeamSettingsView extends StatelessWidget {
+  final Team team;
+  final VoidCallback onRefresh;
+  const _TeamSettingsView({required this.team, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdmin = team.userRole == TeamRole.admin;
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const Text('通用信息', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey, letterSpacing: 1.2)),
+        const SizedBox(height: 16),
+        _buildSettingItem(
+          context,
+          icon: Icons.vpn_key_rounded,
+          color: Colors.blueAccent,
+          title: '团队邀请码',
+          subtitle: team.inviteCode ?? '尚未生成',
+          trailing: const Icon(Icons.copy_rounded, size: 18, color: Colors.grey),
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: team.inviteCode ?? ''));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('邀请码已复制')));
+          },
+        ),
+        if (isAdmin) ...[
+          const SizedBox(height: 32),
+          const Text('管理操作', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.redAccent, letterSpacing: 1.2)),
+          const SizedBox(height: 16),
+          _buildSettingItem(
+            context,
+            icon: Icons.refresh_rounded,
+            color: Colors.blueAccent,
+            title: '重置邀请码',
+            subtitle: '旧的邀请码将立即失效',
+            onTap: () async {
+              await ApiService.generateInviteCode(team.uuid);
+              onRefresh();
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildSettingItem(
+            context,
+            icon: Icons.delete_forever_rounded,
+            color: Colors.redAccent,
+            title: '解散团队',
+            subtitle: '删除所有团队任务与成员，此操作不可逆',
+            onTap: () {
+               // 触发解散弹窗
+            },
+          ),
+        ] else ...[
+          const SizedBox(height: 32),
+          _buildSettingItem(
+            context,
+            icon: Icons.exit_to_app_rounded,
+            color: Colors.orange,
+            title: '退出团队',
+            subtitle: '退出后将不再接收此团队的任务同步',
+            onTap: () {
+               // 触发退出弹窗
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSettingItem(BuildContext context, {required IconData icon, required Color color, required String title, required String subtitle, Widget? trailing, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.1)),
+        ),
+        child: Row(
+          children: [
+            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 20)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                ],
+              ),
+            ),
+            if (trailing != null) trailing else Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+          ],
+        ),
+      ),
     );
   }
 }

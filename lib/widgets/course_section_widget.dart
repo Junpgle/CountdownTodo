@@ -92,7 +92,7 @@ class CourseSectionWidget extends StatelessWidget {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: colorScheme.onSurface.withOpacity(0.15),
+                    color: colorScheme.onSurface.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -101,7 +101,7 @@ class CourseSectionWidget extends StatelessWidget {
                 margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withOpacity(0.45),
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.45),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(children: [
@@ -299,7 +299,7 @@ class _CourseDetailPageState extends State<_CourseDetailPage> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withOpacity(0.45),
+              color: colorScheme.primaryContainer.withValues(alpha: 0.45),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -409,16 +409,16 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withOpacity(widget.isLight ? 0.97 : 0.75),
+        color: colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: colorScheme.outline.withOpacity(widget.isLight ? 0.06 : 0.12),
+          color: colorScheme.outline.withValues(alpha: widget.isLight ? 0.06 : 0.12),
           width: 1,
         ),
         boxShadow: widget.isLight
             ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
                 )
@@ -442,7 +442,7 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                   height: 36,
                   margin: const EdgeInsets.only(right: 10),
                   decoration: BoxDecoration(
-                    color: colorScheme.primary.withOpacity(0.7),
+                    color: colorScheme.primary.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -466,7 +466,7 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                         _periodToTime(widget.course.endTime),
                         style: TextStyle(
                           fontSize: 10.5,
-                          color: colorScheme.primary.withOpacity(0.55),
+                          color: colorScheme.primary.withValues(alpha: 0.55),
                           height: 1.2,
                         ),
                       ),
@@ -502,7 +502,7 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                                   horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: colorScheme.secondaryContainer
-                                    .withOpacity(0.8),
+                                    .withValues(alpha: 0.8),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -522,7 +522,7 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                         children: [
                           Icon(Icons.location_on_rounded,
                               size: 11,
-                              color: colorScheme.onSurface.withOpacity(0.4)),
+                              color: colorScheme.onSurface.withValues(alpha: 0.4)),
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
@@ -531,7 +531,7 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: colorScheme.onSurface.withOpacity(0.45),
+                                color: colorScheme.onSurface.withValues(alpha: 0.45),
                                 height: 1.2,
                               ),
                             ),
@@ -543,7 +543,7 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                 ),
                 const SizedBox(width: 4),
                 Icon(Icons.chevron_right_rounded,
-                    size: 16, color: colorScheme.onSurface.withOpacity(0.25)),
+                    size: 16, color: colorScheme.onSurface.withValues(alpha: 0.25)),
               ],
             ),
           ),
@@ -575,13 +575,13 @@ class _DetailRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: colorScheme.onSurface.withOpacity(0.45)),
+          Icon(icon, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.45)),
           const SizedBox(width: 10),
           Text(
             label,
             style: TextStyle(
               fontSize: 13,
-              color: colorScheme.onSurface.withOpacity(0.5),
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -592,7 +592,7 @@ class _DetailRow extends StatelessWidget {
               textAlign: TextAlign.right,
               style: TextStyle(
                 fontSize: 13,
-                color: colorScheme.onSurface.withOpacity(0.85),
+                color: colorScheme.onSurface.withValues(alpha: 0.85),
                 fontWeight: FontWeight.w600,
               ),
             ),

@@ -621,7 +621,7 @@ Future<void> islandMain(List<String> args) async {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.35),
+                          color: Colors.black.withValues(alpha: 0.35),
                           borderRadius: BorderRadius.circular(8)),
                       child: const Text('灵动岛已就绪 — 等待主程序数据',
                           style: TextStyle(color: Colors.white, fontSize: 12)),

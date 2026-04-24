@@ -45,9 +45,9 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
   @override
   Widget build(BuildContext context) {
     final baseColor =
-        widget.isLight ? Colors.white.withOpacity(0.3) : Colors.grey[800]!;
+        widget.isLight ? Colors.white.withValues(alpha: 0.3) : Colors.grey[800]!;
     final highlightColor =
-        widget.isLight ? Colors.white.withOpacity(0.6) : Colors.grey[700]!;
+        widget.isLight ? Colors.white.withValues(alpha: 0.6) : Colors.grey[700]!;
 
     return AnimatedBuilder(
       animation: _animation,
@@ -74,7 +74,7 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
   }
 }
 
-class HomeAppBar extends StatefulWidget {
+class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String username;
   final String timeSalutation;
   final String currentGreeting;
@@ -106,6 +106,15 @@ class HomeAppBar extends StatefulWidget {
 
   @override
   State<HomeAppBar> createState() => _HomeAppBarState();
+
+  @override
+  Size get preferredSize {
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final dpr = view.devicePixelRatio;
+    final logical = view.physicalSize / dpr;
+    final landscape = logical.width > logical.height;
+    return Size.fromHeight(landscape ? 64.0 : 100.0);
+  }
 }
 
 class _HomeAppBarState extends State<HomeAppBar>
@@ -158,8 +167,8 @@ class _HomeAppBarState extends State<HomeAppBar>
       margin: margin ?? const EdgeInsets.only(right: 8, top: 4, bottom: 4),
       decoration: BoxDecoration(
         color: widget.isLight
-            ? Colors.white.withOpacity(0.15)
-            : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+            ? Colors.white.withValues(alpha: 0.15)
+            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         shape: BoxShape.circle,
       ),
       child: Stack(
@@ -279,7 +288,7 @@ class _HomeAppBarState extends State<HomeAppBar>
               fontSize: dateSize,
               fontWeight: FontWeight.w500,
               color: widget.isLight
-                  ? Colors.white.withOpacity(0.9)
+                  ? Colors.white.withValues(alpha: 0.9)
                   : Colors.blueGrey,
             ),
           ),
@@ -289,7 +298,7 @@ class _HomeAppBarState extends State<HomeAppBar>
             style: TextStyle(
               fontSize: greetingSize,
               color:
-                  widget.isLight ? Colors.white.withOpacity(0.7) : Colors.grey,
+                  widget.isLight ? Colors.white.withValues(alpha: 0.7) : Colors.grey,
             ),
           ),
         ],
@@ -346,12 +355,4 @@ class _HomeAppBarState extends State<HomeAppBar>
     );
   }
 
-  @override
-  Size get preferredSize {
-    final window = WidgetsBinding.instance.window;
-    final dpr = window.devicePixelRatio;
-    final logical = window.physicalSize / dpr;
-    final landscape = logical.width > logical.height;
-    return Size.fromHeight(landscape ? 64.0 : 100.0);
-  }
 }

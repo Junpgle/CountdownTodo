@@ -232,7 +232,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     width: 4,
                     height: 16,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -242,7 +242,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -296,7 +296,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   emptyText: "没有历史待办",
                   itemBuilder: (todo) => Card(
                     elevation: 0,
-                    color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       leading: Checkbox(
@@ -307,7 +307,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                         todo.title,
                         style: TextStyle(
                           decoration: TextDecoration.lineThrough,
-                          color: colorScheme.onSurface.withOpacity(0.5),
+                          color: colorScheme.onSurface.withValues(alpha: 0.5),
                         ),
                       ),
                       subtitle: Text(
@@ -342,7 +342,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   ),
                   itemBuilder: (todo) => Card(
                     elevation: 0,
-                    color: colorScheme.errorContainer.withOpacity(0.2),
+                    color: colorScheme.errorContainer.withValues(alpha: 0.2),
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       title: Text(todo.title, style: TextStyle(color: colorScheme.onSurface)),
@@ -377,9 +377,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     padding: const EdgeInsets.all(12),
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
+                      color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                     ),
                     child: const Row(
                       children: [
@@ -396,7 +396,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   ),
                   itemBuilder: (todo) => Card(
                     elevation: 0,
-                    color: Colors.orange.withOpacity(0.05),
+                    color: Colors.orange.withValues(alpha: 0.05),
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       title: Text(todo.title, style: const TextStyle(fontWeight: FontWeight.bold)),

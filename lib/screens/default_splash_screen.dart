@@ -76,7 +76,7 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
                     '跳过',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       shadows: const [
                         Shadow(
                           color: Colors.black54,

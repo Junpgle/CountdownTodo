@@ -36,7 +36,7 @@ class SystemSection extends StatelessWidget {
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
           color: isHighlighted 
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.2) 
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2) 
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),

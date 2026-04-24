@@ -206,7 +206,7 @@ class CourseMonthView extends StatelessWidget {
                 Color? heatColor;
                 if (count > 0) {
                   double opacity = (count / 15).clamp(0.05, 0.4);
-                  heatColor = Colors.blue.withOpacity(opacity);
+                  heatColor = Colors.blue.withValues(alpha: opacity);
                 }
 
                 final List<CourseItem> dayCourses = activeDataViews.contains('courses') ? (courseMap[dStr] ?? []) : [];
@@ -265,13 +265,13 @@ class CourseMonthView extends StatelessWidget {
 
                               Color barColor;
                               if (course != null) {
-                                barColor = Colors.blue.withOpacity(0.85);
+                                barColor = Colors.blue.withValues(alpha: 0.85);
                               } else {
                                 final isTeam = todo?.teamUuid != null;
                                 final isDone = todo?.isDone ?? false;
                                 barColor = isDone 
                                   ? (isDark ? Colors.white24 : Colors.black12)
-                                  : (isTeam ? Colors.green.withOpacity(0.7) : Colors.orange.withOpacity(0.7));
+                                  : (isTeam ? Colors.green.withValues(alpha: 0.7) : Colors.orange.withValues(alpha: 0.7));
                               }
 
                               return Positioned(
@@ -352,27 +352,27 @@ class CourseMonthView extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: heatColor ?? (isCurrentMonth ? (isDark ? Colors.white.withOpacity(0.02) : Colors.white) : Colors.transparent),
-        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.03), width: 0.5),
+        color: heatColor ?? (isCurrentMonth ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.white) : Colors.transparent),
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.03), width: 0.5),
       ),
       child: Stack(
         children: [
           Padding(
             padding: const EdgeInsets.all(4.0),
-            child: Text('${day.day}', style: TextStyle(fontSize: 10.5, color: isToday ? Colors.redAccent : (isCurrentMonth ? (isDark ? Colors.white70 : Colors.black87) : Colors.grey.withOpacity(0.3)), fontWeight: isToday ? FontWeight.bold : FontWeight.normal)),
+            child: Text('${day.day}', style: TextStyle(fontSize: 10.5, color: isToday ? Colors.redAccent : (isCurrentMonth ? (isDark ? Colors.white70 : Colors.black87) : Colors.grey.withValues(alpha: 0.3)), fontWeight: isToday ? FontWeight.bold : FontWeight.normal)),
           ),
           if (viewMode == 1 && height > 150)
             Positioned(
               top: 25, left: 4, right: 4, bottom: 4,
               child: Stack(
                 children: [
-                  Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: List.generate(4, (i) => Container(height: 0.5, width: double.infinity, color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)))),
-                  ...courses.map((c) => _buildVerticalBar(c.startTime, c.endTime, Colors.blue.withOpacity(0.6), height)),
+                  Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: List.generate(4, (i) => Container(height: 0.5, width: double.infinity, color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)))),
+                  ...courses.map((c) => _buildVerticalBar(c.startTime, c.endTime, Colors.blue.withValues(alpha: 0.6), height)),
                   ...filteredTodos.where((t)=>t.dueDate != null).map((t) => _buildTimeDot(t.dueDate!.hour * 100 + t.dueDate!.minute, Colors.amber, height)),
                   ...logs.map((l) {
                     DateTime s = DateTime.fromMillisecondsSinceEpoch(l.startTime).toLocal();
                     DateTime e = DateTime.fromMillisecondsSinceEpoch(l.endTime).toLocal();
-                    return _buildVerticalBar(s.hour * 100 + s.minute, e.hour * 100 + e.minute, Colors.blueAccent.withOpacity(0.4), height);
+                    return _buildVerticalBar(s.hour * 100 + s.minute, e.hour * 100 + e.minute, Colors.blueAccent.withValues(alpha: 0.4), height);
                   }),
                   ...poms.map((p) => _buildTimeDot(DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal().hour * 100, Colors.redAccent, height)),
                 ],
@@ -404,7 +404,7 @@ class CourseMonthView extends StatelessWidget {
     return Positioned(top: y * (height - 30), left: 4, width: 4, height: 4, child: Container(decoration: BoxDecoration(color: color, shape: BoxShape.circle)));
   }
 
-  Widget _buildMiniDot(Color color) => Container(width: 4, height: 4, decoration: BoxDecoration(color: color.withOpacity(0.6), shape: BoxShape.circle));
+  Widget _buildMiniDot(Color color) => Container(width: 4, height: 4, decoration: BoxDecoration(color: color.withValues(alpha: 0.6), shape: BoxShape.circle));
 
   double _calculateTimeY(int time, int start, int end) {
     int minutes = (time ~/ 100) * 60 + (time % 100);

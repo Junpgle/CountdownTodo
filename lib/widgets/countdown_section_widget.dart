@@ -468,7 +468,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                             children: [
                               Icon(Icons.groups_rounded,
                                   size: 10,
-                                  color: accentColor.withOpacity(0.6)),
+                                  color: accentColor.withValues(alpha: 0.6)),
                               const SizedBox(width: 3),
                               Expanded(
                                 child: Text(
@@ -478,7 +478,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 8,
-                                    color: subTextColor.withOpacity(0.8),
+                                    color: subTextColor.withValues(alpha: 0.8),
                                   ),
                                 ),
                               ),

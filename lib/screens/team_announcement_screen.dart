@@ -99,7 +99,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                        decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
                         child: const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
                       ),
                       const SizedBox(width: 12),
@@ -138,7 +138,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   hintText: '输入一个吸引人的标题...',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
                   filled: true,
-                  fillColor: Colors.grey.withOpacity(0.05),
+                  fillColor: Colors.grey.withValues(alpha: 0.05),
                 ),
               ),
               const SizedBox(height: 16),
@@ -150,7 +150,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   hintText: '详细描述公告信息...',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
                   filled: true,
-                  fillColor: Colors.grey.withOpacity(0.05),
+                  fillColor: Colors.grey.withValues(alpha: 0.05),
                 ),
               ),
               const SizedBox(height: 24),
@@ -313,7 +313,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.campaign_outlined, size: 64, color: Colors.grey.withOpacity(0.3)),
+          Icon(Icons.campaign_outlined, size: 64, color: Colors.grey.withValues(alpha: 0.3)),
           const SizedBox(height: 16),
           Text('暂无团队公告', style: TextStyle(color: Colors.grey.shade500)),
         ],
@@ -328,10 +328,10 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.white,
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: ann.isPriority ? Border.all(color: Colors.orange.withOpacity(0.5), width: 2) : null,
-        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        border: ann.isPriority ? Border.all(color: Colors.orange.withValues(alpha: 0.5), width: 2) : null,
+        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,7 +369,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     if (!ann.isRead)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                        decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                         child: const Text('未读', style: TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.bold)),
                       ),
                   ],
@@ -427,7 +427,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     icon: const Icon(Icons.check_circle_rounded, size: 18),
                     label: const Text('确认已读'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent.withOpacity(0.1),
+                      backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
                       foregroundColor: Colors.blueAccent,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

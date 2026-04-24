@@ -1808,7 +1808,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
                     selectedTileColor: Theme.of(context)
                         .colorScheme
                         .primaryContainer
-                        .withOpacity(0.3),
+                        .withValues(alpha: 0.3),
                     onTap: () async {
                       if (_phase == PomodoroPhase.focusing) {
                         await _switchTask(null);
@@ -1905,7 +1905,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
           : null,
       selected: t.id == _boundTodo?.id,
       selectedTileColor:
-          Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
       onTap: () async {
         Navigator.pop(ctx);
         if (_phase == PomodoroPhase.focusing) {
@@ -2249,7 +2249,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
       case SyncConnectionState.disconnected:
       default:
         icon = Icons.link_off_rounded;
-        color = Colors.redAccent.withOpacity(0.8);
+        color = Colors.redAccent.withValues(alpha: 0.8);
         message = '同步连接已断开，点击重试';
         canRetry = true;
     }
@@ -2273,9 +2273,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withOpacity(0.3), width: 1),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -2398,7 +2398,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
                   label: Text(tag.name, style: const TextStyle(fontSize: 13)),
                   selected: selected,
                   showCheckmark: false,
-                  selectedColor: color.withOpacity(0.2),
+                  selectedColor: color.withValues(alpha: 0.2),
                   side: BorderSide(
                       color: selected ? color : Colors.grey.shade300),
                   shape: RoundedRectangleBorder(
@@ -2474,13 +2474,13 @@ class _SimpleTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.4))),
+          border: Border.all(color: color.withValues(alpha: 0.4))),
       child: Text(name,
           style: TextStyle(
               fontSize: 12,
-              color: color.withOpacity(0.9),
+              color: color.withValues(alpha: 0.9),
               fontWeight: FontWeight.w500)),
     );
   }

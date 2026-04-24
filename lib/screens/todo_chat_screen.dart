@@ -1048,7 +1048,7 @@ $folderList
                         Icon(
                           Icons.smart_toy_outlined,
                           size: 64,
-                          color: colorScheme.primary.withOpacity(0.5),
+                          color: colorScheme.primary.withValues(alpha: 0.5),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -1064,7 +1064,7 @@ $folderList
                           '你可以问我任何问题关于你的待办',
                           style: TextStyle(
                             fontSize: 14,
-                            color: colorScheme.onSurface.withOpacity(0.6),
+                            color: colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -1104,7 +1104,7 @@ $folderList
                 color: colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
+                    color: Colors.black.withValues(alpha: 0.03),
                     blurRadius: 4,
                     offset: const Offset(0, -1),
                   ),
@@ -1117,7 +1117,7 @@ $folderList
                     '💡 你可以继续问我：',
                     style: TextStyle(
                       fontSize: 12,
-                      color: colorScheme.onSurface.withOpacity(0.5),
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -1154,7 +1154,7 @@ $folderList
         return Stack(
           children: [
             ModalBarrier(
-              color: Colors.black.withOpacity(
+              color: Colors.black.withValues(alpha: 
                 0.3 * anim1.value,
               ),
               dismissible: true,
@@ -1180,7 +1180,7 @@ $folderList
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                         blurRadius: 16,
                         offset: const Offset(4, 0),
                       ),
@@ -1333,7 +1333,7 @@ $folderList
             size: 20,
             color: _chatModel.isNotEmpty
                 ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
           ),
           const SizedBox(width: 2),
           Text(
@@ -1343,7 +1343,7 @@ $folderList
               fontWeight: FontWeight.w500,
               color: _chatModel.isNotEmpty
                   ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
           const Icon(Icons.arrow_drop_down, size: 20),
@@ -1658,10 +1658,10 @@ $folderList
         width: double.infinity,
         decoration: BoxDecoration(
           color:
-              Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+              Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -1743,11 +1743,11 @@ $folderList
                                           horizontal: 4, vertical: 1),
                                       margin: const EdgeInsets.only(right: 6),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.withOpacity(0.1),
+                                        color: Colors.orange.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(4),
                                         border: Border.all(
                                             color:
-                                                Colors.orange.withOpacity(0.3)),
+                                                Colors.orange.withValues(alpha: 0.3)),
                                       ),
                                       child: const Text('整理',
                                           style: TextStyle(
@@ -1761,11 +1761,11 @@ $folderList
                                           horizontal: 4, vertical: 1),
                                       margin: const EdgeInsets.only(right: 6),
                                       decoration: BoxDecoration(
-                                        color: Colors.green.withOpacity(0.1),
+                                        color: Colors.green.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(4),
                                         border: Border.all(
                                             color:
-                                                Colors.green.withOpacity(0.3)),
+                                                Colors.green.withValues(alpha: 0.3)),
                                       ),
                                       child: const Text('新增',
                                           style: TextStyle(
@@ -1793,7 +1793,7 @@ $folderList
                                     '从 [${_getTodoCurrentFolderName(todo['todoId'])}] 移动',
                                     style: TextStyle(
                                         fontSize: 10,
-                                        color: Colors.grey.withOpacity(0.8),
+                                        color: Colors.grey.withValues(alpha: 0.8),
                                         fontStyle: FontStyle.italic),
                                   ),
                                 ),
@@ -1813,7 +1813,7 @@ $folderList
                             color: Theme.of(context)
                                 .colorScheme
                                 .onSurface
-                                .withOpacity(0.5),
+                                .withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -1823,7 +1823,7 @@ $folderList
                               color: Theme.of(context)
                                   .colorScheme
                                   .onSurface
-                                  .withOpacity(0.5),
+                                  .withValues(alpha: 0.5),
                             ),
                           ),
                           if (recurrence != 'none') ...[
@@ -1859,7 +1859,7 @@ $folderList
                               color: Theme.of(context)
                                   .colorScheme
                                   .onSurface
-                                  .withOpacity(0.4),
+                                  .withValues(alpha: 0.4),
                             ),
                             const SizedBox(width: 4),
                             Expanded(
@@ -1870,7 +1870,7 @@ $folderList
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurface
-                                      .withOpacity(0.6),
+                                      .withValues(alpha: 0.6),
                                 ),
                               ),
                             ),
@@ -1882,7 +1882,7 @@ $folderList
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(
@@ -2133,7 +2133,7 @@ $folderList
                         : Theme.of(context)
                             .colorScheme
                             .surfaceContainerHighest
-                            .withOpacity(isDark ? 0.3 : 0.7),
+                            .withValues(alpha: isDark ? 0.3 : 0.7),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: isUser
@@ -2184,7 +2184,7 @@ $folderList
                     color: Theme.of(context)
                         .colorScheme
                         .onSurface
-                        .withOpacity(0.4),
+                        .withValues(alpha: 0.4),
                   ),
                 ),
               ],
@@ -2256,7 +2256,7 @@ $folderList
                       color: Theme.of(context)
                           .colorScheme
                           .surfaceContainerHighest
-                          .withOpacity(isDark ? 0.3 : 0.7),
+                          .withValues(alpha: isDark ? 0.3 : 0.7),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: MarkdownBody(
@@ -2294,7 +2294,7 @@ $folderList
                       color: Theme.of(context)
                           .colorScheme
                           .surfaceContainerHighest
-                          .withOpacity(isDark ? 0.3 : 0.7),
+                          .withValues(alpha: isDark ? 0.3 : 0.7),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -2303,7 +2303,7 @@ $folderList
                         color: Theme.of(context)
                             .colorScheme
                             .onSurface
-                            .withOpacity(0.5),
+                            .withValues(alpha: 0.5),
                         fontSize: 15,
                       ),
                     ),
@@ -2323,7 +2323,7 @@ $folderList
         color: colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 4,
             offset: const Offset(0, -2),
           ),
@@ -2406,7 +2406,7 @@ $folderList
                               : Theme.of(context)
                                   .colorScheme
                                   .onSurface
-                                  .withOpacity(0.6),
+                                  .withValues(alpha: 0.6),
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -2418,7 +2418,7 @@ $folderList
                                 : Theme.of(context)
                                     .colorScheme
                                     .onSurface
-                                    .withOpacity(0.6),
+                                    .withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -2445,7 +2445,7 @@ $folderList
                               : Theme.of(context)
                                   .colorScheme
                                   .onSurface
-                                  .withOpacity(0.6),
+                                  .withValues(alpha: 0.6),
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -2457,7 +2457,7 @@ $folderList
                                 : Theme.of(context)
                                     .colorScheme
                                     .onSurface
-                                    .withOpacity(0.6),
+                                    .withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -2504,11 +2504,11 @@ class _CollapsibleReasoningWidgetState
       margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
         color: widget.isDark
-            ? Colors.grey[900]!.withOpacity(0.5)
-            : Colors.grey[100]!.withOpacity(0.8),
+            ? Colors.grey[900]!.withValues(alpha: 0.5)
+            : Colors.grey[100]!.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -2526,7 +2526,7 @@ class _CollapsibleReasoningWidgetState
                     Icons.psychology_outlined,
                     size: 16,
                     color:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                        Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -2536,7 +2536,7 @@ class _CollapsibleReasoningWidgetState
                       color: Theme.of(context)
                           .colorScheme
                           .primary
-                          .withOpacity(0.7),
+                          .withValues(alpha: 0.7),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -2550,7 +2550,7 @@ class _CollapsibleReasoningWidgetState
                         color: Theme.of(context)
                             .colorScheme
                             .primary
-                            .withOpacity(0.5),
+                            .withValues(alpha: 0.5),
                       ),
                     ),
                   const SizedBox(width: 4),
@@ -2560,7 +2560,7 @@ class _CollapsibleReasoningWidgetState
                         : Icons.keyboard_arrow_down,
                     size: 20,
                     color:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                        Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                   ),
                 ],
               ),
@@ -2576,7 +2576,7 @@ class _CollapsibleReasoningWidgetState
                     color: Theme.of(context)
                         .colorScheme
                         .onSurface
-                        .withOpacity(0.6),
+                        .withValues(alpha: 0.6),
                     fontSize: 13,
                     fontStyle: FontStyle.italic,
                   ),
@@ -2585,7 +2585,7 @@ class _CollapsibleReasoningWidgetState
                     backgroundColor: Theme.of(context)
                         .colorScheme
                         .primaryContainer
-                        .withOpacity(0.3),
+                        .withValues(alpha: 0.3),
                     fontSize: 12,
                   ),
                 ),

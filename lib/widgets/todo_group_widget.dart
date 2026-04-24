@@ -283,23 +283,23 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: isHovering
-                  ? statusColor.withOpacity(0.08)
+                  ? statusColor.withValues(alpha: 0.08)
                   : (widget.isLight ? Colors.white : Colors.grey[900]),
               borderRadius: widget.group.isExpanded
                   ? const BorderRadius.vertical(top: Radius.circular(20))
                   : BorderRadius.circular(20),
               border: Border.all(
                   color: allDone
-                      ? Colors.green.withOpacity(isDark ? 0.25 : 0.15)
+                      ? Colors.green.withValues(alpha: isDark ? 0.25 : 0.15)
                       : isHovering
                           ? statusColor
                           : (widget.isLight
-                              ? Colors.grey.withOpacity(0.12)
-                              : Colors.white.withOpacity(0.06)),
+                              ? Colors.grey.withValues(alpha: 0.12)
+                              : Colors.white.withValues(alpha: 0.06)),
                   width: allDone || isHovering ? 1.2 : 1),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -333,9 +333,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                           gradient: LinearGradient(
                             colors: [
                               urgencyColor
-                                  .withOpacity(widget.isLight ? 0.32 : 0.18),
+                                  .withValues(alpha: widget.isLight ? 0.32 : 0.18),
                               urgencyColor
-                                  .withOpacity(widget.isLight ? 0.15 : 0.07),
+                                  .withValues(alpha: widget.isLight ? 0.15 : 0.07),
                             ],
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
@@ -362,12 +362,12 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                           gradient: LinearGradient(
                             colors: isDark
                                 ? [
-                                    Colors.green.withOpacity(0.12),
-                                    Colors.green.withOpacity(0.04)
+                                    Colors.green.withValues(alpha: 0.12),
+                                    Colors.green.withValues(alpha: 0.04)
                                   ]
                                 : [
-                                    Colors.green.withOpacity(0.06),
-                                    Colors.green.withOpacity(0.01)
+                                    Colors.green.withValues(alpha: 0.06),
+                                    Colors.green.withValues(alpha: 0.01)
                                   ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
@@ -385,7 +385,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.12),
+                          color: statusColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
@@ -427,8 +427,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                 fontSize: 11,
                                 color: allDone
                                     ? (isDark
-                                        ? Colors.green.withOpacity(0.5)
-                                        : Colors.green.withOpacity(0.6))
+                                        ? Colors.green.withValues(alpha: 0.5)
+                                        : Colors.green.withValues(alpha: 0.6))
                                     : Colors.grey[500],
                               ),
                             ),
@@ -445,7 +445,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         widget.group.isExpanded
                             ? Icons.keyboard_arrow_up_rounded
                             : Icons.keyboard_arrow_down_rounded,
-                        color: Colors.grey.withOpacity(0.4),
+                        color: Colors.grey.withValues(alpha: 0.4),
                         size: 20,
                       ),
                     ],
@@ -557,21 +557,21 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       if (isPast) {
         badge = "已逾期";
         badgeColor = Colors.redAccent.shade200;
-        badgeBg = Colors.redAccent.withOpacity(0.12);
+        badgeBg = Colors.redAccent.withValues(alpha: 0.12);
       } else if (d.isAtSameMomentAs(today)) {
         badge = "今天截止";
         badgeColor = Colors.orange.shade700;
-        badgeBg = Colors.orange.withOpacity(0.12);
+        badgeBg = Colors.orange.withValues(alpha: 0.12);
       } else {
         int days = d.difference(today).inDays;
         badge = "$days天后";
         badgeColor = colorScheme.secondary;
-        badgeBg = colorScheme.secondaryContainer.withOpacity(0.5);
+        badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);
       }
     } else {
       badge = DateFormat('MM/dd').format(start);
-      badgeColor = colorScheme.onSurface.withOpacity(0.45);
-      badgeBg = colorScheme.onSurface.withOpacity(0.06);
+      badgeColor = colorScheme.onSurface.withValues(alpha: 0.45);
+      badgeBg = colorScheme.onSurface.withValues(alpha: 0.06);
     }
 
     // Deadline urgency color
@@ -607,7 +607,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       background: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.redAccent.withOpacity(0.8),
+          color: Colors.redAccent.withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(12),
         ),
         alignment: Alignment.centerRight,
@@ -655,7 +655,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: widget.isLight
-                  ? Colors.black.withOpacity(0.02)
+                  ? Colors.black.withValues(alpha: 0.02)
                   : Colors.white.withValues(alpha: 0.03),
               borderRadius: BorderRadius.circular(12),
             ),
@@ -683,9 +683,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              fillBrush.withOpacity(widget.isLight ? 0.2 : 0.1),
+                              fillBrush.withValues(alpha: widget.isLight ? 0.2 : 0.1),
                               fillBrush
-                                  .withOpacity(widget.isLight ? 0.1 : 0.05),
+                                  .withValues(alpha: widget.isLight ? 0.1 : 0.05),
                             ],
                           ),
                         ),
@@ -723,7 +723,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                               border: Border.all(
                                 color: todo.isDone
                                     ? Colors.green
-                                    : Colors.grey.withOpacity(0.4),
+                                    : Colors.grey.withValues(alpha: 0.4),
                                 width: 1.8,
                               ),
                             ),
@@ -764,12 +764,12 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                     decoration: BoxDecoration(
-                                      color: todo.isDone ? colorScheme.onSurface.withOpacity(0.06) : badgeBg,
+                                      color: todo.isDone ? colorScheme.onSurface.withValues(alpha: 0.06) : badgeBg,
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
                                       badge,
-                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: todo.isDone ? colorScheme.onSurface.withOpacity(0.3) : badgeColor),
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: todo.isDone ? colorScheme.onSurface.withValues(alpha: 0.3) : badgeColor),
                                     ),
                                   ),
                                 ],
@@ -782,9 +782,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                     decoration: BoxDecoration(
-                                      color: colorScheme.primary.withOpacity(0.1),
+                                      color: colorScheme.primary.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: colorScheme.primary.withOpacity(0.2), width: 0.5),
+                                      border: Border.all(color: colorScheme.primary.withValues(alpha: 0.2), width: 0.5),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -815,11 +815,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 5, vertical: 1.5),
                                         decoration: BoxDecoration(
-                                          color: Colors.green.withOpacity(0.12),
+                                          color: Colors.green.withValues(alpha: 0.12),
                                           borderRadius: BorderRadius.circular(4),
                                           border: Border.all(
                                             color:
-                                                Colors.green.withOpacity(0.35),
+                                                Colors.green.withValues(alpha: 0.35),
                                             width: 0.5,
                                           ),
                                         ),

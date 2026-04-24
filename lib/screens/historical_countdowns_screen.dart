@@ -78,7 +78,7 @@ class _HistoricalCountdownsScreenState
                           color: Theme.of(context)
                               .colorScheme
                               .surfaceContainerHighest
-                              .withOpacity(0.5),
+                              .withValues(alpha: 0.5),
                           margin: const EdgeInsets.symmetric(vertical: 6),
                           child: ListTile(
                             title: Text(item.title,

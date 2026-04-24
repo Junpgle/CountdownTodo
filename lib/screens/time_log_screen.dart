@@ -37,7 +37,7 @@ const List<String> kPalette = [
 
 Color hexColor(String hex, {double opacity = 1.0}) {
   final c = Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
-  return c.withOpacity(opacity);
+  return c.withValues(alpha: opacity);
 }
 
 DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -71,10 +71,10 @@ class _TC {
   static Color text(BuildContext c) => Theme.of(c).colorScheme.onSurface;
 
   static Color textSub(BuildContext c) =>
-      Theme.of(c).colorScheme.onSurface.withOpacity(0.55);
+      Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.55);
 
   static Color textHint(BuildContext c) =>
-      Theme.of(c).colorScheme.onSurface.withOpacity(0.28);
+      Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.28);
 
   static Color divider(BuildContext c) => Theme.of(c).dividerColor;
 
@@ -285,13 +285,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (_view != _ViewMode.week) {
+    return PopScope(
+      canPop: _view == _ViewMode.week,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _view != _ViewMode.week) {
           _goWeek();
-          return false;
         }
-        return true;
       },
       child: Scaffold(
         backgroundColor: _TC.surface(context),
@@ -402,7 +401,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         context: context,
         backgroundColor: Colors.transparent,
         builder: (_) => _sheet(
-              Colors.redAccent.withOpacity(0.4),
+              Colors.redAccent.withValues(alpha: 0.4),
               Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -465,7 +464,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         context: context,
         backgroundColor: Colors.transparent,
         builder: (_) => _sheet(
-              c.withOpacity(0.4),
+              c.withValues(alpha: 0.4),
               Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -544,7 +543,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                           style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.red,
                               side: BorderSide(
-                                  color: Colors.red.withOpacity(0.4)),
+                                  color: Colors.red.withValues(alpha: 0.4)),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12))),
                         ),
@@ -565,8 +564,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   Widget _pill(String t, Color c) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-          color: c.withOpacity(0.1),
-          border: Border.all(color: c.withOpacity(0.4)),
+          color: c.withValues(alpha: 0.1),
+          border: Border.all(color: c.withValues(alpha: 0.4)),
           borderRadius: BorderRadius.circular(20)),
       child: Text(t,
           style:
@@ -631,10 +630,10 @@ class _ViewTab extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 5),
             decoration: BoxDecoration(
-                color: selected ? accent.withOpacity(0.12) : Colors.transparent,
+                color: selected ? accent.withValues(alpha: 0.12) : Colors.transparent,
                 border: Border.all(
                     color: selected
-                        ? accent.withOpacity(0.4)
+                        ? accent.withValues(alpha: 0.4)
                         : Colors.transparent),
                 borderRadius: BorderRadius.circular(18)),
             child: Text(label,
@@ -763,7 +762,7 @@ class _WeekViewState extends State<_WeekView>
           _TopBarChip(
             label: '标签',
             icon: Icons.label_outline,
-            color: _TC.textSub(ctx).withOpacity(0.8),
+            color: _TC.textSub(ctx).withValues(alpha: 0.8),
             ctx: ctx,
             onTap: widget.onManageTags,
           ),
@@ -831,10 +830,10 @@ class _WeekViewState extends State<_WeekView>
                       height: 52,
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       decoration: BoxDecoration(
-                          color: isToday ? accent.withOpacity(0.07) : null,
+                          color: isToday ? accent.withValues(alpha: 0.07) : null,
                           border: Border(
                               right: BorderSide(
-                                  color: _TC.divider(ctx).withOpacity(0.2)))),
+                                  color: _TC.divider(ctx).withValues(alpha: 0.2)))),
                       child: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Column(
@@ -871,7 +870,7 @@ class _WeekViewState extends State<_WeekView>
                                   Text('${dm}m',
                                       style: TextStyle(
                                           fontSize: 8,
-                                          color: accent.withOpacity(0.5))),
+                                          color: accent.withValues(alpha: 0.5))),
                               ]))));
             }),
           ])),
@@ -1004,8 +1003,8 @@ class _WeekViewState extends State<_WeekView>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 10),
                           decoration: BoxDecoration(
-                              color: c.withOpacity(0.07),
-                              border: Border.all(color: c.withOpacity(0.25)),
+                              color: c.withValues(alpha: 0.07),
+                              border: Border.all(color: c.withValues(alpha: 0.25)),
                               borderRadius: BorderRadius.circular(10)),
                           child: Row(children: [
                             Container(
@@ -1063,8 +1062,8 @@ class _WeekViewState extends State<_WeekView>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                        color: c.withOpacity(0.08),
-                        border: Border.all(color: c.withOpacity(0.3)),
+                        color: c.withValues(alpha: 0.08),
+                        border: Border.all(color: c.withValues(alpha: 0.3)),
                         borderRadius: BorderRadius.circular(8)),
                     child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -1151,14 +1150,14 @@ class _WeekColPainter extends CustomPainter {
           RRect.fromRectAndRadius(
               Rect.fromLTRB(0, top + 0.5, 3, animatedBot - 0.5),
               const Radius.circular(2)),
-          Paint()..color = c.withOpacity(0.9 * blockProgress));
+          Paint()..color = c.withValues(alpha: 0.9 * blockProgress));
 
       canvas.drawRRect(
           RRect.fromRectAndRadius(
               Rect.fromLTRB(3, top + 0.5, size.width - 1, animatedBot - 0.5),
               const Radius.circular(3)),
           Paint()
-            ..color = c.withOpacity((isPom ? 0.22 : 0.35) * blockProgress));
+            ..color = c.withValues(alpha: (isPom ? 0.22 : 0.35) * blockProgress));
 
       final blockH = animatedBot - top;
       final blockW = size.width - 6;
@@ -1170,7 +1169,7 @@ class _WeekColPainter extends CustomPainter {
               text: title,
               style: TextStyle(
                 fontSize: (blockH * 0.28).clamp(7.0, 10.0),
-                color: c.withOpacity(0.95 * blockProgress),
+                color: c.withValues(alpha: 0.95 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1185,7 +1184,7 @@ class _WeekColPainter extends CustomPainter {
               text: title,
               style: TextStyle(
                 fontSize: 7.0,
-                color: c.withOpacity(0.85 * blockProgress),
+                color: c.withValues(alpha: 0.85 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1207,7 +1206,7 @@ class _WeekColPainter extends CustomPainter {
     // 画番茄钟（★ 传入 title）
     for (final p in dayPoms) {
       final pe = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-      Color c = Colors.redAccent.withOpacity(0.45);
+      Color c = Colors.redAccent.withValues(alpha: 0.45);
       String title = '专注';
       if (p.tagUuids.isNotEmpty) {
         final t = tags.cast<PomodoroTag?>().firstWhere(
@@ -1223,7 +1222,7 @@ class _WeekColPainter extends CustomPainter {
 
     // 画补录日志（★ 传入 title）
     for (final l in dayLogs) {
-      Color c = const Color(0xFF3B82F6).withOpacity(0.45);
+      Color c = const Color(0xFF3B82F6).withValues(alpha: 0.45);
       String title = l.title.isNotEmpty ? l.title : '补录';
       if (l.tagUuids.isNotEmpty) {
         final t = tags.cast<PomodoroTag?>().firstWhere(
@@ -1351,8 +1350,8 @@ class _DayGridViewState extends State<_DayGridView> {
           Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                  color: accent.withOpacity(0.1),
-                  border: Border.all(color: accent.withOpacity(0.3)),
+                  color: accent.withValues(alpha: 0.1),
+                  border: Border.all(color: accent.withValues(alpha: 0.3)),
                   borderRadius: BorderRadius.circular(20)),
               child: Text('${(total / 60).toStringAsFixed(1)}h  今日合计',
                   style: TextStyle(
@@ -1372,8 +1371,8 @@ class _DayGridViewState extends State<_DayGridView> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                      color: accent.withOpacity(0.1),
-                      border: Border.all(color: accent.withOpacity(0.3)),
+                      color: accent.withValues(alpha: 0.1),
+                      border: Border.all(color: accent.withValues(alpha: 0.3)),
                       borderRadius: BorderRadius.circular(8)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.edit_note, size: 14, color: accent),
@@ -1397,8 +1396,8 @@ class _DayGridViewState extends State<_DayGridView> {
   Widget _miniPill(BuildContext ctx, String text, Color c) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-          color: c.withOpacity(0.08),
-          border: Border.all(color: c.withOpacity(0.3)),
+          color: c.withValues(alpha: 0.08),
+          border: Border.all(color: c.withValues(alpha: 0.3)),
           borderRadius: BorderRadius.circular(16)),
       child: Text(text,
           style:
@@ -1509,7 +1508,7 @@ class _GridCanvas extends StatelessWidget {
           colW: colW,
           rowW: rowW,
           rowH: rowH,
-          fillColor: base.withOpacity(isDark ? 0.30 : 0.22),
+          fillColor: base.withValues(alpha: isDark ? 0.30 : 0.22),
           barColor: base,
           title: title,
           onTap: () => onPomodoroTap(pom),
@@ -1534,7 +1533,7 @@ class _GridCanvas extends StatelessWidget {
           colW: colW,
           rowW: rowW,
           rowH: rowH,
-          fillColor: base.withOpacity(isDark ? 0.26 : 0.18),
+          fillColor: base.withValues(alpha: isDark ? 0.26 : 0.18),
           barColor: base,
           title: title,
           onTap: () => onTimeLogTap(log),
@@ -1555,14 +1554,14 @@ class _GridCanvas extends StatelessWidget {
         left: 0,
         right: 0,
         height: 1.0,
-        child: Container(color: Colors.redAccent.withOpacity(0.20)),
+        child: Container(color: Colors.redAccent.withValues(alpha: 0.20)),
       ),
       Positioned(
         top: y,
         left: x,
         width: 1.5,
         height: rowH,
-        child: Container(color: Colors.redAccent.withOpacity(0.80)),
+        child: Container(color: Colors.redAccent.withValues(alpha: 0.80)),
       ),
       Positioned(
         top: y + rowH / 2 - 3,
@@ -1574,7 +1573,7 @@ class _GridCanvas extends StatelessWidget {
             color: Colors.redAccent,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(color: Colors.redAccent.withOpacity(0.5), blurRadius: 4)
+              BoxShadow(color: Colors.redAccent.withValues(alpha: 0.5), blurRadius: 4)
             ],
           ),
         ),
@@ -1636,13 +1635,13 @@ class _GridCanvas extends StatelessWidget {
               border: Border(
                 left: BorderSide(color: barColor, width: 2.5),
                 top: isFirst
-                    ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0)
+                    ? BorderSide(color: barColor.withValues(alpha: 0.45), width: 1.0)
                     : BorderSide.none,
                 bottom: isLast
-                    ? BorderSide(color: barColor.withOpacity(0.45), width: 1.0)
+                    ? BorderSide(color: barColor.withValues(alpha: 0.45), width: 1.0)
                     : BorderSide.none,
                 right: isLast && colEnd < kColsPerH
-                    ? BorderSide(color: barColor.withOpacity(0.25), width: 1.0)
+                    ? BorderSide(color: barColor.withValues(alpha: 0.25), width: 1.0)
                     : BorderSide.none,
               ),
               borderRadius: BorderRadius.only(

@@ -147,15 +147,13 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
         ),
         child: Row(
           children: [
-            Radio<String>(
-              value: value,
-              groupValue: _selectedServer,
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() => _selectedServer = val);
-                }
-              },
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.grey[600],
             ),
+            const SizedBox(width: 12),
             Icon(icon,
                 size: 24,
                 color: isSelected

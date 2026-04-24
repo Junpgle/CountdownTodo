@@ -36,7 +36,7 @@ class SectionHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.15),
+              color: iconColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, size: 20, color: iconColor),
@@ -208,7 +208,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4))
         ],
@@ -270,9 +270,9 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         return Container(
           margin: const EdgeInsets.only(bottom: 24),
           decoration: BoxDecoration(
-            color: Colors.amber.withOpacity(0.1),
+            color: Colors.amber.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.amber.withOpacity(0.3)),
+            border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
           ),
           child: ListTile(
             contentPadding: EdgeInsets.symmetric(
@@ -297,7 +297,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 4))
             ],
@@ -353,7 +353,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 2))
           ],
@@ -389,7 +389,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                     "更新: ${DateFormat('HH:mm').format(widget.lastSyncTime!)}",
                                     style: TextStyle(
                                         fontSize: isTablet ? 11 : 10,
-                                        color: Colors.blueGrey.withOpacity(0.7))),
+                                        color: Colors.blueGrey.withValues(alpha: 0.7))),
                             ],
                           ),
                           Text(_formatSeconds(totalTime),
@@ -556,7 +556,7 @@ class PieChartPainter extends CustomPainter {
             text: TextSpan(
               text: displayLabel,
               style: TextStyle(
-                  color: colors[i % colors.length].withOpacity(1.0),
+                  color: colors[i % colors.length].withValues(alpha: 1.0),
                   fontSize: fontSize,
                   fontWeight: FontWeight.bold,
                   shadows: const [
@@ -595,8 +595,8 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color bgColor = isLight
-        ? Colors.white.withOpacity(0.1)
-        : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3);
+        ? Colors.white.withValues(alpha: 0.1)
+        : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3);
     Color textColor = isLight ? Colors.white70 : Colors.grey.shade600;
 
     return Container(
@@ -608,7 +608,7 @@ class EmptyState extends StatelessWidget {
         border: Border.all(
           color: isLight
               ? Colors.white30
-              : Theme.of(context).dividerColor.withOpacity(0.5),
+              : Theme.of(context).dividerColor.withValues(alpha: 0.5),
           style: BorderStyle.solid,
         ),
       ),
@@ -616,7 +616,7 @@ class EmptyState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.inbox_rounded,
-              size: 36, color: textColor.withOpacity(0.5)),
+              size: 36, color: textColor.withValues(alpha: 0.5)),
           const SizedBox(height: 12),
           Text(text,
               style: TextStyle(
@@ -653,7 +653,7 @@ class MathStatsCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4))
           ],
@@ -676,8 +676,8 @@ class MathStatsCard extends StatelessWidget {
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
                             color: todayCount > 0
-                                ? Colors.green.withOpacity(0.12)
-                                : Colors.orangeAccent.withOpacity(0.12),
+                                ? Colors.green.withValues(alpha: 0.12)
+                                : Colors.orangeAccent.withValues(alpha: 0.12),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -711,7 +711,7 @@ class MathStatsCard extends StatelessWidget {
                       Divider(
                           height: isTablet ? 32 : 24,
                           color:
-                              Theme.of(context).dividerColor.withOpacity(0.4)),
+                              Theme.of(context).dividerColor.withValues(alpha: 0.4)),
                       Row(children: [
                         Expanded(
                             child: Column(
@@ -769,7 +769,7 @@ class MathStatsCard extends StatelessWidget {
                                   backgroundColor: Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.1),
+                                      .withValues(alpha: 0.1),
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
                               )

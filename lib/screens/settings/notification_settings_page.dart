@@ -345,7 +345,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               leading: CircleAvatar(
-                backgroundColor: Colors.teal.withOpacity(0.12),
+                backgroundColor: Colors.teal.withValues(alpha: 0.12),
                 child: const Icon(Icons.manage_search, color: Colors.teal),
               ),
               title: const Text(
@@ -384,7 +384,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         secondary: CircleAvatar(
-          backgroundColor: color.withOpacity(0.12),
+          backgroundColor: color.withValues(alpha: 0.12),
           child: Icon(icon, color: color),
         ),
         title: Text(

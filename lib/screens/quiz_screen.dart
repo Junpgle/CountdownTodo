@@ -170,8 +170,8 @@ class _QuizScreenState extends State<QuizScreen>
       questions[currentIndex].isAnswered = true;
       _lastAnswerCorrect = isCorrect;
       _feedbackColor = isCorrect
-          ? Colors.green.withOpacity(0.3)
-          : Colors.red.withOpacity(0.3);
+          ? Colors.green.withValues(alpha: 0.3)
+          : Colors.red.withValues(alpha: 0.3);
     });
 
     if (isCorrect) {
@@ -197,7 +197,7 @@ class _QuizScreenState extends State<QuizScreen>
     Future.delayed(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       setState(() {
-        _feedbackColor = Colors.green.withOpacity(0.1);
+        _feedbackColor = Colors.green.withValues(alpha: 0.1);
       });
     });
     Future.delayed(const Duration(milliseconds: 600), () {

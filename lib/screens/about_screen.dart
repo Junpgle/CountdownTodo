@@ -385,9 +385,9 @@ class _AboutScreenState extends State<AboutScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: colorScheme.errorContainer.withOpacity(0.3),
+          color: colorScheme.errorContainer.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colorScheme.error.withOpacity(0.2)),
+          border: Border.all(color: colorScheme.error.withValues(alpha: 0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -784,14 +784,14 @@ class _AboutScreenState extends State<AboutScreen> {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              colorScheme.primaryContainer.withOpacity(0.4),
-              colorScheme.secondaryContainer.withOpacity(0.2),
+              colorScheme.primaryContainer.withValues(alpha: 0.4),
+              colorScheme.secondaryContainer.withValues(alpha: 0.2),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: colorScheme.primary.withOpacity(0.1)),
+          border: Border.all(color: colorScheme.primary.withValues(alpha: 0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -861,7 +861,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 child: LinearProgressIndicator(
                   value: _migrationProgress,
                   minHeight: 8,
-                  backgroundColor: colorScheme.primary.withOpacity(0.1),
+                  backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
                 ),
               ),
               if (_migrationErrors.isNotEmpty) ...[
@@ -869,7 +869,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
+                    color: Colors.orange.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(

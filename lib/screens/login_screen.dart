@@ -106,7 +106,7 @@ class _OrbPainter extends CustomPainter {
       240,
       Paint()
         ..shader = RadialGradient(
-          colors: [_T.primary.withOpacity(a1), Colors.transparent],
+          colors: [_T.primary.withValues(alpha: a1), Colors.transparent],
         ).createShader(Rect.fromCircle(
             center: Offset(size.width * 0.88, size.height * 0.10),
             radius: 240)),
@@ -117,7 +117,7 @@ class _OrbPainter extends CustomPainter {
       200,
       Paint()
         ..shader = RadialGradient(
-          colors: [_T.accent.withOpacity(a2), Colors.transparent],
+          colors: [_T.accent.withValues(alpha: a2), Colors.transparent],
         ).createShader(Rect.fromCircle(
             center: Offset(size.width * 0.08, size.height * 0.80),
             radius: 200)),
@@ -206,7 +206,7 @@ class _Field extends StatelessWidget {
             disabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide:
-                  BorderSide(color: t.border.withOpacity(0.4), width: 1),
+                  BorderSide(color: t.border.withValues(alpha: 0.4), width: 1),
             ),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -248,7 +248,7 @@ class _PrimaryBtn extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: colors.first.withOpacity(0.35),
+              color: colors.first.withValues(alpha: 0.35),
               blurRadius: 18,
               offset: const Offset(0, 7),
             ),
@@ -298,7 +298,7 @@ class _BrandLogo extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * 0.28),
         boxShadow: [
           BoxShadow(
-            color: _T.primary.withOpacity(0.38),
+            color: _T.primary.withValues(alpha: 0.38),
             blurRadius: 18,
             offset: const Offset(0, 7),
           ),
@@ -1364,7 +1364,7 @@ class _LoginScreenState extends State<LoginScreen>
               height: 52,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: t.textHint.withOpacity(0.15),
+                  color: t.textHint.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(

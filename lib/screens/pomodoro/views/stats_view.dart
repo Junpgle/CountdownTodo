@@ -426,7 +426,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: colorScheme.primary.withOpacity(0.1),
+              color: colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -447,7 +447,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
         height: 100,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(16),
         ),
         child: const Text('本期暂无数据', style: TextStyle(color: Colors.grey)),
@@ -480,7 +480,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: pct,
-                  backgroundColor: color.withOpacity(0.1),
+                  backgroundColor: color.withValues(alpha: 0.1),
                   color: color,
                   minHeight: 8,
                 ),
@@ -775,7 +775,7 @@ class PomodoroTrendChart extends StatelessWidget {
                 color: colorScheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
                 ],
             ),
             child: Row(

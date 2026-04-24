@@ -1052,7 +1052,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: scheme.primaryContainer.withOpacity(0.4),
+            color: scheme.primaryContainer.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -1250,7 +1250,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                            color: Colors.grey.withOpacity(0.2),
+                            color: Colors.grey.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(4)),
                         child: const Text('强烈推荐',
                             style: TextStyle(fontSize: 10, color: Colors.grey)),

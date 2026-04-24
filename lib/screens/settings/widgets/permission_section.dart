@@ -53,8 +53,8 @@ class PermissionSection extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: allGranted
-                        ? Colors.green.withOpacity(0.12)
-                        : Colors.orange.withOpacity(0.12),
+                        ? Colors.green.withValues(alpha: 0.12)
+                        : Colors.orange.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -133,7 +133,7 @@ class PermissionSection extends StatelessWidget {
     return ListTile(
       leading: CircleAvatar(
         radius: 18,
-        backgroundColor: color.withOpacity(0.12),
+        backgroundColor: color.withValues(alpha: 0.12),
         child: Icon(icon, size: 18, color: color),
       ),
       title: Row(
@@ -148,7 +148,7 @@ class PermissionSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
-                color: Colors.redAccent.withOpacity(0.1),
+                color: Colors.redAccent.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: const Text('必要',
@@ -163,7 +163,7 @@ class PermissionSection extends StatelessWidget {
       subtitle: Text(desc,
           style: TextStyle(
               fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

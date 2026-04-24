@@ -47,8 +47,8 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
     // 优先级色彩方案
     final accentColor = widget.announcement.isPriority ? Colors.orange[400]! : Colors.blue[400]!;
     final bgColor = widget.announcement.isPriority 
-        ? (isDark ? Colors.orange[900]!.withOpacity(0.15) : Colors.orange[50]!.withOpacity(0.7))
-        : (isDark ? Colors.blueGrey[900]!.withOpacity(0.15) : Colors.blue[50]!.withOpacity(0.7));
+        ? (isDark ? Colors.orange[900]!.withValues(alpha: 0.15) : Colors.orange[50]!.withValues(alpha: 0.7))
+        : (isDark ? Colors.blueGrey[900]!.withValues(alpha: 0.15) : Colors.blue[50]!.withValues(alpha: 0.7));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -61,12 +61,12 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
               color: bgColor,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: accentColor.withOpacity(0.3),
+                color: accentColor.withValues(alpha: 0.3),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: accentColor.withOpacity(0.1),
+                  color: accentColor.withValues(alpha: 0.1),
                   blurRadius: 20,
                   spreadRadius: -5,
                 ),
@@ -83,7 +83,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                     height: 80,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: accentColor.withOpacity(0.05),
+                      color: accentColor.withValues(alpha: 0.05),
                     ),
                   ),
                 ),
@@ -104,7 +104,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: accentColor.withOpacity(0.4),
+                                    color: accentColor.withValues(alpha: 0.4),
                                     blurRadius: 8,
                                     offset: const Offset(0, 2),
                                   )
@@ -128,7 +128,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                                     fontSize: 10,
                                     letterSpacing: 1.2,
                                     fontWeight: FontWeight.w900,
-                                    color: accentColor.withOpacity(0.8),
+                                    color: accentColor.withValues(alpha: 0.8),
                                   ),
                                 ),
                                 Text(
@@ -152,7 +152,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: (isDark ? Colors.black : Colors.white).withOpacity(0.3),
+                          color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
@@ -181,7 +181,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                             children: [
                               CircleAvatar(
                                 radius: 8,
-                                backgroundColor: accentColor.withOpacity(0.2),
+                                backgroundColor: accentColor.withValues(alpha: 0.2),
                                 child: Icon(Icons.person, size: 10, color: accentColor),
                               ),
                               const SizedBox(width: 6),
@@ -219,7 +219,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.3),
+              color: color.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 4),
             )

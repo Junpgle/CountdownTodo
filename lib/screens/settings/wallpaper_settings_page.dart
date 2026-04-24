@@ -185,7 +185,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
-          color: Theme.of(context).primaryColor.withOpacity(0.8),
+          color: Theme.of(context).primaryColor.withValues(alpha: 0.8),
           letterSpacing: 1.2,
         ),
       ),
