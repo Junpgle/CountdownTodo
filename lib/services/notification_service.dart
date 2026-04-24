@@ -16,12 +16,28 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
+  static Future<void>? _initializationFuture;
+  static bool _initialized = false;
+
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
   static final Set<String> _windowsAllDayTodoNotifiedKeys = <String>{};
 
   static Future<void> init() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    await ensureInitialized();
+  }
 
+  static Future<void> ensureInitialized() async {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (_initialized) return;
+    final existing = _initializationFuture;
+    if (existing != null) return existing;
+
+    final future = _initialize();
+    _initializationFuture = future;
+    return future;
+  }
+
+  static Future<void> _initialize() async {
     tz.initializeTimeZones();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -40,7 +56,14 @@ class NotificationService {
       windows: initializationSettingsWindows,
     );
 
-    await _plugin.initialize(settings: initializationSettings);
+    try {
+      await _plugin.initialize(settings: initializationSettings);
+      _initialized = true;
+    } finally {
+      if (!_initialized) {
+        _initializationFuture = null;
+      }
+    }
   }
 
   static bool _isSameDay(DateTime date1, DateTime date2) {
@@ -57,6 +80,7 @@ class NotificationService {
   }) async {
     if (!await StorageService.isCourseNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    await ensureInitialized();
 
     if (Platform.isWindows) {
       await _plugin.show(
@@ -112,6 +136,7 @@ class NotificationService {
     required String title,
     required String body,
   }) async {
+    await ensureInitialized();
     const androidDetails = AndroidNotificationDetails(
       'system_channel',
       '系统通知',
@@ -134,6 +159,7 @@ class NotificationService {
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
     if (!await StorageService.isTodoSummaryNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
+    await ensureInitialized();
 
     final DateTime now = DateTime.now();
     final List<TodoItem> todayAllDayTodos = todos.where((t) {
@@ -358,6 +384,7 @@ class NotificationService {
   }) async {
     if (!await StorageService.isPomodoroEndNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    await ensureInitialized();
 
     if (Platform.isWindows) {
       final title = isBreak ? '☕ 休息结束' : '🍅 专注完成';
@@ -409,6 +436,7 @@ class NotificationService {
     if (!await StorageService.isReminderNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
     if (reminders.isEmpty && !clearFirst) return;
+    await ensureInitialized();
 
     if (Platform.isWindows) {
       if (clearFirst) {
@@ -489,6 +517,7 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     if (Platform.isWindows) {
+      await ensureInitialized();
       await _plugin.cancel(id: notifId);
       final current = await StorageService.getWindowsScheduledReminders();
       current.removeWhere((r) => r['notifId'] == notifId);
@@ -535,6 +564,7 @@ class NotificationService {
   }) async {
     if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    await ensureInitialized();
 
     final title = '🔍 图片识别待办中...';
     final body = '第$currentAttempt/$maxAttempts次尝试 | $status';
@@ -573,6 +603,7 @@ class NotificationService {
   }) async {
     if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    await ensureInitialized();
 
     final title = '✅ 图片识别完成';
     final body = '发现$todoCount个待办事项，点击查看详情';
@@ -606,6 +637,7 @@ class NotificationService {
   }) async {
     if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    await ensureInitialized();
 
     final title = '❌ 图片识别失败';
     final body =
@@ -638,6 +670,7 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
 
     if (Platform.isWindows) {
+      await ensureInitialized();
       await _plugin.cancel(id: NOTIF_ID_TODO_RECOGNIZE);
       return;
     }
