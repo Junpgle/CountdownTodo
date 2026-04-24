@@ -502,58 +502,88 @@ class SearchNavigationHandler {
   }
 
   static void _handleTodoEdit(BuildContext context, SearchResult result) async {
-    final uuid = result.extraData?['uuid'];
-    if (uuid == null) return;
+    try {
+      final uuid = result.extraData?['uuid'];
+      if (uuid == null) {
+        debugPrint("❌ _handleTodoEdit: uuid is null");
+        return;
+      }
 
-    final db = DatabaseHelper.instance;
-    final todoMap = await db.getTodoByUuid(uuid);
-    if (todoMap == null) return;
+      final db = DatabaseHelper.instance;
+      final todoMap = await db.getTodoByUuid(uuid);
+      if (todoMap == null) {
+        debugPrint("❌ _handleTodoEdit: todo not found for uuid=$uuid");
+        return;
+      }
 
-    final username = await StorageService.getLoginSession();
-    if (username == null) return;
+      final username = await StorageService.getLoginSession();
+      if (username == null) {
+        debugPrint("❌ _handleTodoEdit: no login session");
+        return;
+      }
 
-    final todo = TodoItem(
-      id: todoMap['uuid'],
-      title: todoMap['content'] ?? '',
-      isDone: todoMap['is_completed'] == 1,
-      isDeleted: todoMap['is_deleted'] == 1,
-      version: todoMap['version'] ?? 1,
-      updatedAt: todoMap['updated_at'],
-      createdAt: todoMap['created_at'],
-      createdDate: todoMap['created_date'],
-      dueDate: todoMap['due_date'] != null ? DateTime.fromMillisecondsSinceEpoch(todoMap['due_date']) : null,
-      remark: todoMap['remark'],
-      groupId: todoMap['group_id'],
-      teamUuid: todoMap['team_uuid'],
-      teamName: todoMap['team_name'],
-      collabType: todoMap['collab_type'] ?? 0,
-      reminderMinutes: todoMap['reminder_minutes'],
-    );
+      // 🚀 核心修复：due_date 在 DB 中是 TEXT (jsonType)，需要安全转 int
+      int? _toInt(dynamic v) {
+        if (v == null) return null;
+        if (v is int) return v == 0 ? null : v;
+        final parsed = int.tryParse(v.toString());
+        return (parsed == null || parsed == 0) ? null : parsed;
+      }
 
-    final allTodos = await StorageService.getTodos(username);
-    final allGroups = await StorageService.getTodoGroups(username);
-
-    if (context.mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => TodoEditScreen(
-            todo: todo,
-            todos: allTodos,
-            onTodosChanged: (newList) async {
-              await StorageService.saveTodos(username, newList);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("待办已更新")));
-            },
-            todoGroups: allGroups,
-            onGroupsChanged: (newGroups) async {
-              await StorageService.saveTodoGroups(username, newGroups);
-            },
-            username: username,
-          ),
-        ),
+      final todo = TodoItem(
+        id: todoMap['uuid']?.toString(),
+        title: todoMap['content']?.toString() ?? '',
+        isDone: todoMap['is_completed'] == 1,
+        isDeleted: todoMap['is_deleted'] == 1,
+        version: (todoMap['version'] is int) ? todoMap['version'] : int.tryParse(todoMap['version'].toString()) ?? 1,
+        updatedAt: (todoMap['updated_at'] is int) ? todoMap['updated_at'] : int.tryParse(todoMap['updated_at'].toString()),
+        createdAt: (todoMap['created_at'] is int) ? todoMap['created_at'] : int.tryParse(todoMap['created_at'].toString()),
+        createdDate: _toInt(todoMap['created_date']),
+        dueDate: _toInt(todoMap['due_date']) != null
+            ? DateTime.fromMillisecondsSinceEpoch(_toInt(todoMap['due_date'])!)
+            : null,
+        remark: todoMap['remark']?.toString(),
+        groupId: todoMap['group_id']?.toString(),
+        teamUuid: todoMap['team_uuid']?.toString(),
+        teamName: todoMap['team_name']?.toString(),
+        collabType: (todoMap['collab_type'] is int) ? todoMap['collab_type'] : int.tryParse(todoMap['collab_type'].toString()) ?? 0,
+        reminderMinutes: _toInt(todoMap['reminder_minutes']),
       );
+
+      final allTodos = await StorageService.getTodos(username);
+      final allGroups = await StorageService.getTodoGroups(username);
+
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => TodoEditScreen(
+              todo: todo,
+              todos: allTodos,
+              onTodosChanged: (newList) async {
+                await StorageService.saveTodos(username, newList);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("待办已更新"), behavior: SnackBarBehavior.floating),
+                  );
+                }
+              },
+              todoGroups: allGroups,
+              onGroupsChanged: (newGroups) async {
+                await StorageService.saveTodoGroups(username, newGroups);
+              },
+              username: username,
+            ),
+          ),
+        );
+      } else {
+        debugPrint("❌ _handleTodoEdit: context not mounted after async ops");
+      }
+    } catch (e, stack) {
+      debugPrint("❌ _handleTodoEdit crash: $e\n$stack");
     }
   }
+
 
   static void _handleTodoGroupNavigation(BuildContext context, SearchResult result) {
     Navigator.of(context).popUntil((route) => route.isFirst);
