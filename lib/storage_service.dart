@@ -834,6 +834,97 @@ class StorageService {
     triggerRefresh(); // 🚀 触发 UI 刷新
   }
 
+  /// 🚀 Uni-Sync 4.0: 物理删除单条待办 (用于彻底删除)
+  static Future<void> permanentlyDeleteTodo(String username, String uuid) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
+    
+    // 同步清理 Prefs 缓存
+    final prefs = await SharedPreferences.getInstance();
+    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+    list.removeWhere((jsonStr) {
+      try {
+        final map = jsonDecode(jsonStr);
+        return map['id'] == uuid || map['uuid'] == uuid;
+      } catch (_) { return false; }
+    });
+    await prefs.setStringList("${KEY_TODOS}_$username", list);
+    
+    // 记录删除操作到 Oplog (物理删除也需要同步给其它端)
+    await db.insert('op_logs', {
+      'op_type': 'DELETE',
+      'target_table': 'todos',
+      'target_uuid': uuid,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'is_synced': 0
+    });
+    
+    triggerRefresh();
+  }
+
+  /// 🚀 Uni-Sync 4.0: 清空待办回收站 (物理删除所有标记为已删除的项)
+  static Future<void> clearTodoRecycleBin(String username) async {
+    final db = await DatabaseHelper.instance.database;
+    
+    // 1. 获取所有待删除的 UUID，用于记录 Oplog
+    final List<Map<String, dynamic>> deletedItems = await db.query('todos', columns: ['uuid'], where: 'is_deleted = 1');
+    
+    final batch = db.batch();
+    for (var item in deletedItems) {
+      final uuid = item['uuid'] as String;
+      batch.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
+      batch.insert('op_logs', {
+        'op_type': 'DELETE',
+        'target_table': 'todos',
+        'target_uuid': uuid,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'is_synced': 0
+      });
+    }
+    await batch.commit(noResult: true);
+
+    // 2. 清理 Prefs 缓存
+    final prefs = await SharedPreferences.getInstance();
+    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+    list.removeWhere((jsonStr) {
+      try {
+        final map = jsonDecode(jsonStr);
+        return map['is_deleted'] == 1 || map['is_deleted'] == true;
+      } catch (_) { return false; }
+    });
+    await prefs.setStringList("${KEY_TODOS}_$username", list);
+    
+    triggerRefresh();
+  }
+
+  /// 🚀 Uni-Sync 4.0: 物理删除单条倒计时 (彻底删除)
+  static Future<void> permanentlyDeleteCountdown(String username, String uuid) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('countdowns', where: 'uuid = ?', whereArgs: [uuid]);
+
+    // 同步清理 Prefs 缓存
+    final prefs = await SharedPreferences.getInstance();
+    List<String> list = prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
+    list.removeWhere((jsonStr) {
+      try {
+        final map = jsonDecode(jsonStr);
+        return map['id'] == uuid || map['uuid'] == uuid;
+      } catch (_) { return false; }
+    });
+    await prefs.setStringList("${KEY_COUNTDOWNS}_$username", list);
+
+    // 记录删除操作到 Oplog
+    await db.insert('op_logs', {
+      'op_type': 'DELETE',
+      'target_table': 'countdowns',
+      'target_uuid': uuid,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'is_synced': 0
+    });
+
+    triggerRefresh();
+  }
+
   static Future<List<TodoItem>> getTodos(String username,
       {bool includeDeleted = false}) async {
     final prefs = await StorageService.prefs;

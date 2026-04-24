@@ -128,23 +128,27 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   }
 
   Future<void> _restoreDeletedItem(TodoItem item) async {
-    final allTodos = await StorageService.getTodos(widget.username);
-    int idx = allTodos.indexWhere((t) => t.id == item.id);
-    if (idx != -1) {
-      allTodos[idx].isDeleted = false;
-      allTodos[idx].markAsChanged();
-      await StorageService.saveTodos(widget.username, allTodos, sync: true);
+    item.isDeleted = false;
+    item.markAsChanged();
+    
+    // 🚀 核心修复：自动检测并修复“孤儿”状态
+    // 如果该待办所属的分组已不存在，则将其设为未分组，确保其能直接在首页主列表显示
+    final groups = await StorageService.getTodoGroups(widget.username);
+    final activeGroupIds = groups.map((g) => g.id).toSet();
+    
+    if (item.groupId != null && item.groupId!.isNotEmpty && !activeGroupIds.contains(item.groupId)) {
+      item.groupId = null;
     }
+    
+    await StorageService.updateSingleTodo(widget.username, item);
     _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('待办已成功恢复')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('待办已成功恢复，并退回首页清单')));
     }
   }
 
   Future<void> _permanentlyDeleteItem(TodoItem item) async {
-    final allTodos = await StorageService.getTodos(widget.username);
-    allTodos.removeWhere((t) => t.id == item.id);
-    await StorageService.saveTodos(widget.username, allTodos, sync: false);
+    await StorageService.permanentlyDeleteTodo(widget.username, item.id);
     _loadData();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已彻底删除')));
@@ -182,9 +186,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         false;
 
     if (confirm) {
-      final allTodos = await StorageService.getTodos(widget.username);
-      allTodos.removeWhere((t) => t.isDeleted);
-      await StorageService.saveTodos(widget.username, allTodos, sync: false);
+      await StorageService.clearTodoRecycleBin(widget.username);
       _loadData();
     }
   }

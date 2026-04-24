@@ -36,14 +36,11 @@ class _HistoricalCountdownsScreenState
   }
 
   Future<void> _deleteItem(CountdownItem item) async {
-    setState(() => _history.remove(item));
-    final allCountdowns = await StorageService.getCountdowns(widget.username);
-    allCountdowns.removeWhere(
-        (c) => c.title == item.title && c.targetDate == item.targetDate);
-    await StorageService.saveCountdowns(widget.username, allCountdowns);
+    await StorageService.permanentlyDeleteCountdown(widget.username, item.id);
+    _loadData();
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已删除该历史记录')));
+          .showSnackBar(const SnackBar(content: Text('已彻底删除该历史记录')));
     }
   }
 
