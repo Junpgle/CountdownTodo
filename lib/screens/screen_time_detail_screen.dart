@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
-import 'dart:convert';
 import 'dart:ui' as ui;
 import '../storage_service.dart';
-import '../services/api_service.dart';
 import '../utils/page_transitions.dart';
 
 // ─────────────────────────────────────────────
@@ -146,41 +143,6 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         _cloudMappings = mappings;
         _isLoading = false;
       });
-    _fetchCloudHistory();
-  }
-
-  Future<void> _fetchCloudHistory() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      int? userId = prefs.getInt('current_user_id');
-      if (userId == null) return;
-      DateTime now = DateTime.now();
-      bool hasChanges = false;
-      List<Future<void>> tasks = [];
-      for (int i = 1; i <= 6; i++) {
-        DateTime d = now.subtract(Duration(days: i));
-        String dateStr = DateFormat('yyyy-MM-dd').format(d);
-        if (_historyStats.containsKey(dateStr) &&
-            _historyStats[dateStr]!.isNotEmpty) continue;
-        tasks.add(() async {
-          try {
-            var data = await ApiService.fetchScreenTime(userId, dateStr);
-            if (data.isNotEmpty) {
-              _historyStats[dateStr] = data;
-              hasChanges = true;
-            }
-          } catch (_) {}
-        }());
-      }
-      if (tasks.isNotEmpty) await Future.wait(tasks);
-      if (hasChanges) {
-        await prefs.setString(
-            StorageService.KEY_SCREEN_TIME_HISTORY, jsonEncode(_historyStats));
-        if (mounted) setState(() {});
-      }
-    } catch (e) {
-      debugPrint("拉取云端数据失败: $e");
-    }
   }
 
   // ─── 静态工具 ───
