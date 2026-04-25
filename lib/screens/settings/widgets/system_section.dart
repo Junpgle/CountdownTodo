@@ -35,8 +35,8 @@ class SystemSection extends StatelessWidget {
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
-          color: isHighlighted 
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2) 
+          color: isHighlighted
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
@@ -68,7 +68,8 @@ class SystemSection extends StatelessWidget {
                 context: context,
                 targetId: 'feature_guide',
                 child: ListTile(
-                  leading: const Icon(Icons.school_rounded, color: Colors.indigo),
+                  leading:
+                      const Icon(Icons.school_rounded, color: Colors.indigo),
                   title: const Text('重新查看新版教程与权限设置'),
                   subtitle: const Text('可再次查看功能介绍与重新配置各项权限'),
                   trailing: const Icon(Icons.chevron_right),
@@ -85,9 +86,15 @@ class SystemSection extends StatelessWidget {
                         color: Colors.blueAccent),
                     title: const Text('深度清理缓存与冗余'),
                     subtitle: const Text('包含更新残留包与深度图片缓存'),
-                    trailing: Text(cacheSizeStr,
+                    trailing: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: Text(
+                        cacheSizeStr,
+                        key: ValueKey(cacheSizeStr),
                         style: const TextStyle(
-                            color: Colors.grey, fontWeight: FontWeight.bold)),
+                            color: Colors.grey, fontWeight: FontWeight.bold),
+                      ),
+                    ),
                     onTap: onClearCache,
                   ),
                 ),
@@ -111,12 +118,19 @@ class SystemSection extends StatelessWidget {
                 child: ListTile(
                   leading: const Icon(Icons.system_update, color: Colors.green),
                   title: const Text('检查新版本'),
-                  trailing: isCheckingUpdate
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.chevron_right),
+                  trailing: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: isCheckingUpdate
+                        ? const SizedBox(
+                            key: ValueKey('checking'),
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(
+                            Icons.chevron_right,
+                            key: ValueKey('ready'),
+                          ),
+                  ),
                   onTap: isCheckingUpdate ? null : onCheckUpdates,
                 ),
               ),

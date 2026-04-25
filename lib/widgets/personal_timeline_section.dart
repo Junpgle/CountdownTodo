@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
+import '../utils/page_transitions.dart';
 
 class PersonalTimelineSection extends StatefulWidget {
   final String username;
@@ -16,12 +17,14 @@ class PersonalTimelineSection extends StatefulWidget {
   });
 
   @override
-  State<PersonalTimelineSection> createState() => _PersonalTimelineSectionState();
+  State<PersonalTimelineSection> createState() =>
+      _PersonalTimelineSectionState();
 }
 
 class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
   TimelineSummary? _summary;
   bool _isLoading = true;
+  final GlobalKey _cardKey = GlobalKey();
 
   @override
   void initState() {
@@ -40,7 +43,8 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    final summary = await TimelineService.instance.getTodaySummary(widget.username);
+    final summary =
+        await TimelineService.instance.getTodaySummary(widget.username);
     if (mounted) {
       setState(() {
         _summary = summary;
@@ -68,12 +72,17 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                 decoration: BoxDecoration(
                   color: widget.isLight
                       ? Colors.white.withValues(alpha: 0.15)
-                      : Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                      : Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(Icons.timeline_rounded,
                     size: 20,
-                    color: widget.isLight ? Colors.white : Theme.of(context).colorScheme.primary),
+                    color: widget.isLight
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.primary),
               ),
               const SizedBox(width: 10),
               Text(
@@ -91,9 +100,15 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         ),
         const SizedBox(height: 12),
         InkWell(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => PersonalTimelineScreen(username: widget.username)),
+          key: _cardKey,
+          onTap: () => PageTransitions.pushFromRect(
+            context: context,
+            page: PersonalTimelineScreen(username: widget.username),
+            sourceKey: _cardKey,
+            sourceColor: widget.isLight
+                ? Colors.white.withValues(alpha: 0.1)
+                : Theme.of(context).colorScheme.surface,
+            sourceBorderRadius: BorderRadius.circular(24),
           ).then((_) => _loadData()),
           borderRadius: BorderRadius.circular(24),
           child: Container(
@@ -112,12 +127,31 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                           offset: const Offset(0, 4))
                     ],
               border: Border.all(
-                color: widget.isLight ? Colors.white12 : Theme.of(context).dividerColor.withValues(alpha: 0.05),
+                color: widget.isLight
+                    ? Colors.white12
+                    : Theme.of(context).dividerColor.withValues(alpha: 0.05),
               ),
             ),
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _buildSummaryGrid(subColor, textColor),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              child: _isLoading
+                  ? Center(
+                      key: const ValueKey('loading'),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: widget.isLight
+                              ? Colors.white
+                              : Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    )
+                  : Container(
+                      key: const ValueKey('content'),
+                      child: _buildSummaryGrid(subColor, textColor),
+                    ),
+            ),
           ),
         ),
       ],
@@ -135,7 +169,8 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         icon: Icons.search_rounded,
         color: Colors.teal,
         title: '搜索记录',
-        content: '搜索了 ${_summary!.searchCount} 次${_summary!.lastSearchTime != null ? '，最近 ${DateFormat('HH:mm').format(_summary!.lastSearchTime!)}' : ''}',
+        content:
+            '搜索了 ${_summary!.searchCount} 次${_summary!.lastSearchTime != null ? '，最近 ${DateFormat('HH:mm').format(_summary!.lastSearchTime!)}' : ''}',
         subColor: subColor,
         textColor: textColor,
       ));
@@ -148,20 +183,23 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         icon: Icons.task_alt_rounded,
         color: Colors.blue,
         title: '待办事项',
-        content: '编辑了 ${_summary!.todoCreatedCount} 个，完成了 ${_summary!.todoCompletedCount} 个',
+        content:
+            '编辑了 ${_summary!.todoCreatedCount} 个，完成了 ${_summary!.todoCompletedCount} 个',
         subColor: subColor,
         textColor: textColor,
       ));
     }
 
     // 3. 倒计时
-    if (_summary!.countdownCreatedCount > 0 || _summary!.countdownCompletedCount > 0) {
+    if (_summary!.countdownCreatedCount > 0 ||
+        _summary!.countdownCompletedCount > 0) {
       if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
       rows.add(_buildSummaryRow(
         icon: Icons.timer_outlined,
         color: Colors.redAccent,
         title: '倒计时',
-        content: '新增了 ${_summary!.countdownCreatedCount} 个，完成了 ${_summary!.countdownCompletedCount} 个',
+        content:
+            '新增了 ${_summary!.countdownCreatedCount} 个，完成了 ${_summary!.countdownCompletedCount} 个',
         subColor: subColor,
         textColor: textColor,
       ));
@@ -199,9 +237,11 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
           padding: const EdgeInsets.symmetric(vertical: 20),
           child: Column(
             children: [
-              Icon(Icons.history_toggle_off_rounded, size: 32, color: subColor.withValues(alpha: 0.3)),
+              Icon(Icons.history_toggle_off_rounded,
+                  size: 32, color: subColor.withValues(alpha: 0.3)),
               const SizedBox(height: 8),
-              Text('今日暂无变动，开启高效一天吧', style: TextStyle(color: subColor, fontSize: 13)),
+              Text('今日暂无变动，开启高效一天吧',
+                  style: TextStyle(color: subColor, fontSize: 13)),
             ],
           ),
         ),

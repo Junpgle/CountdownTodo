@@ -215,9 +215,11 @@ class CourseMonthView extends StatelessWidget {
                 final List<PomodoroRecord> dayPoms = activeDataViews.contains('pomodoros') ? (pomMap[dStr] ?? []) : [];
 
                 return Expanded(
-                  child: GestureDetector(
-                    onTap: () => onDayTapped(day),
-                    child: _buildDetailedDayBackground(context, day, heatColor, isDark, cellHeight, dayCourses, dayTodos, dayLogs, dayPoms),
+                  child: RepaintBoundary(
+                    child: GestureDetector(
+                      onTap: () => onDayTapped(day),
+                      child: _buildDetailedDayBackground(context, day, heatColor, isDark, cellHeight, dayCourses, dayTodos, dayLogs, dayPoms),
+                    ),
                   ),
                 );
               }).toList(),

@@ -90,12 +90,15 @@ class PomodoroStatsState extends State<PomodoroStats> {
     if (!mounted) return;
     setState(() => _loading = true);
 
-    // 🚀 核心优化：并行加载标签、待办和专注记录
     final results = await Future.wait([
       PomodoroService.getTags(),
       StorageService.getTodos(widget.username),
       PomodoroService.getSessionsInRange(_getChartRange().start, _getChartRange().end),
     ]);
+    
+    // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
+    // 避免在此期间进行大量 CPU 计算导致掉帧
+    await Future.delayed(const Duration(milliseconds: 300));
     
     if (!mounted) return;
 
@@ -305,16 +308,16 @@ class PomodoroStatsState extends State<PomodoroStats> {
             const SizedBox(height: 20),
             
             // --- Trend Chart ---
-            _buildTrendChart(),
+            RepaintBoundary(child: _buildTrendChart()),
             
             const SizedBox(height: 20),
 
-            _buildSummaryCard(totalSecs, completedCount),
+            RepaintBoundary(child: _buildSummaryCard(totalSecs, completedCount)),
 
             const SizedBox(height: 20),
             const Text('标签分布', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            _buildTagDistribution(byTag, totalSecs),
+            RepaintBoundary(child: _buildTagDistribution(byTag, totalSecs)),
 
             const SizedBox(height: 24),
             Row(

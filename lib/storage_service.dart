@@ -750,7 +750,9 @@ class StorageService {
           'group_id',
           'recurrence',
           'is_all_day',
-          'reminder_minutes'
+          'reminder_minutes',
+          'has_conflict',
+          'conflict_data'
         ]);
       }
 
@@ -2349,7 +2351,7 @@ class StorageService {
       }
 
       // 7. 持久化数据
-      if (_recomputeLocalTeamTodoConflicts(allLocalTodos)) {
+      if (_recomputeLocalTodoScheduleConflicts(allLocalTodos)) {
         hasChanges = true;
       }
 
@@ -2392,17 +2394,12 @@ class StorageService {
     }
   }
 
-  static bool _recomputeLocalTeamTodoConflicts(List<TodoItem> todos) {
+  static bool _recomputeLocalTodoScheduleConflicts(List<TodoItem> todos) {
     final buckets = <String, List<_TodoInterval>>{};
 
     for (final todo in todos) {
-      final teamUuid = todo.teamUuid;
       final dueDate = todo.dueDate;
-      if (teamUuid == null ||
-          teamUuid.isEmpty ||
-          todo.isDeleted ||
-          dueDate == null ||
-          todo.isAllDay) {
+      if (todo.isDeleted || dueDate == null || todo.isAllDay) {
         continue;
       }
 
@@ -2414,7 +2411,7 @@ class StorageService {
       final endDay = _localDayKey(endMs);
       if (startDay != endDay) continue;
 
-      buckets.putIfAbsent('$teamUuid|$startDay', () => <_TodoInterval>[]).add(
+      buckets.putIfAbsent(startDay, () => <_TodoInterval>[]).add(
             _TodoInterval(todo: todo, startMs: startMs, endMs: endMs),
           );
     }
@@ -2441,8 +2438,7 @@ class StorageService {
 
     var changed = false;
     for (final todo in todos) {
-      final teamUuid = todo.teamUuid;
-      if (teamUuid == null || teamUuid.isEmpty || todo.isDeleted) continue;
+      if (todo.isDeleted) continue;
 
       final existing = todo.serverVersionData;
       final isLocalScheduleConflict = _isLocalScheduleConflict(existing);
@@ -2450,11 +2446,14 @@ class StorageService {
 
       if (peers != null && peers.isNotEmpty) {
         if (!_hasVersionConflict(existing)) {
+          final bool isTeamTodo =
+              todo.teamUuid != null && todo.teamUuid!.isNotEmpty;
           final data = {
             'uuid': todo.id,
             'id': todo.id,
             'content': todo.title,
-            'team_uuid': teamUuid,
+            'team_uuid': todo.teamUuid,
+            'schedule_scope': isTeamTodo ? 'team' : 'personal',
             'conflict_kind': 'logic',
             'conflict_type': 'local_schedule_conflict',
             'source': 'local_detector',
@@ -2504,6 +2503,10 @@ class StorageService {
       'title': interval.todo.title,
       'content': interval.todo.title,
       'team_uuid': interval.todo.teamUuid,
+      'schedule_scope':
+          (interval.todo.teamUuid != null && interval.todo.teamUuid!.isNotEmpty)
+              ? 'team'
+              : 'personal',
       'start_time': interval.startMs,
       'end_time': interval.endMs,
     };

@@ -219,7 +219,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     Timer? initWatchdog = Timer(const Duration(seconds: 6), () {});
 
     try {
-      // 🚀 核心优化：并发加载所有基础配置与数据
       final results = await Future.wait([
         PomodoroService.getSettings(),
         PomodoroService.getTags(),
@@ -228,6 +227,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         StorageService.getTodoGroups(widget.username).timeout(const Duration(seconds: 5), onTimeout: () => <TodoGroup>[]),
         PomodoroService.loadRunState().timeout(const Duration(seconds: 5), onTimeout: () => null),
       ]);
+
+      // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
+      // 避免在动画期间进行大量 CPU 计算导致界面掉帧
+      await Future.delayed(const Duration(milliseconds: 300));
 
       _settings = results[0] as PomodoroSettings;
       _allTags = results[1] as List<PomodoroTag>;
@@ -307,7 +310,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
         } on TimeoutException catch (_) {}
       } catch (e) {}
 
-      await Future.delayed(const Duration(milliseconds: 400));
 
       if (mounted) {
         setState(() => _initializing = false);

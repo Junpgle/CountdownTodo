@@ -139,6 +139,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       StorageService.getSemesterStart(),
     ]);
 
+    // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
+    // 避免在动画期间进行大量 CPU 计算导致界面掉帧
+    await Future.delayed(const Duration(milliseconds: 300));
+
     if (!mounted) return;
 
     _allCourses = results[0] as List<CourseItem>;
@@ -190,7 +194,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     // 6. 获取当前周课程
     _weekCourses = _allCourses.where((c) => c.weekIndex == _currentWeek).toList();
 
-    // 7. 🚀 性能优化：在主线程进行分组（如果后续发现依然卡顿，可考虑将 _groupDataForMonthView 移入 Isolate）
+    // 7. 🚀 性能优化：在主线程进行分组
     _groupDataForMonthView();
     _updateWeekTodos();
     _updateWeekTimeLogsAndPomodoros();

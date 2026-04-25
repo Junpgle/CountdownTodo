@@ -170,6 +170,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   // 🚀 GlobalKeys for Zoom Animations
   final GlobalKey _searchButtonKey = GlobalKey();
   final GlobalKey _teamsButtonKey = GlobalKey();
+  final GlobalKey _courseCenterKey = GlobalKey();
 
   // === 初始化与生命周期 ===
   @override
@@ -3161,14 +3162,14 @@ class _HomeDashboardState extends State<HomeDashboard>
   Widget _buildCourseCenterButton(Color primary) {
     return InkWell(
       onTap: () {
-        Navigator.push(
-          context,
-          PageTransitions.slideUp(
-            WeeklyCourseScreen(username: widget.username),
-          ),
+        PageTransitions.pushFromRect(
+          context: context,
+          page: WeeklyCourseScreen(username: widget.username),
+          sourceKey: _courseCenterKey,
         );
       },
       child: Container(
+        key: _courseCenterKey,
         width: 48, // 缩小中键按钮
         height: 48,
         decoration: BoxDecoration(

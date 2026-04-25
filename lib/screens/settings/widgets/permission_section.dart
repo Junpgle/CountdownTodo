@@ -114,21 +114,37 @@ class PermissionSection extends StatelessWidget {
     Widget statusIcon;
     if (isCheckingPermissions && status == null) {
       statusIcon = const SizedBox(
+          key: ValueKey('checking'),
           width: 18,
           height: 18,
           child: CircularProgressIndicator(strokeWidth: 2));
     } else if (status == null) {
-      statusIcon = const Icon(Icons.help_outline, size: 20, color: Colors.grey);
+      statusIcon = const Icon(
+        Icons.help_outline,
+        key: ValueKey('unknown'),
+        size: 20,
+        color: Colors.grey,
+      );
     } else if (granted) {
-      statusIcon =
-          const Icon(Icons.check_circle, size: 20, color: Colors.green);
+      statusIcon = const Icon(
+        Icons.check_circle,
+        key: ValueKey('granted'),
+        size: 20,
+        color: Colors.green,
+      );
     } else {
       statusIcon = Icon(
         critical ? Icons.error : Icons.warning_amber_rounded,
+        key: ValueKey('denied_${critical ? 'critical' : 'warning'}'),
         size: 20,
         color: critical ? Colors.redAccent : Colors.orange,
       );
     }
+
+    statusIcon = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: statusIcon,
+    );
 
     return ListTile(
       leading: CircleAvatar(
@@ -163,7 +179,10 @@ class PermissionSection extends StatelessWidget {
       subtitle: Text(desc,
           style: TextStyle(
               fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))),
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.5))),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

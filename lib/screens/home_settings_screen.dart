@@ -79,7 +79,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final GlobalKey _advancedSectionKey = GlobalKey();
   final GlobalKey _systemSectionKey = GlobalKey();
   final GlobalKey _aboutSectionKey = GlobalKey();
-  
+
   // 🚀 细粒度定位 Key (用于丝滑滚动到具体选项)
   final Map<String, GlobalKey> _itemKeys = {
     'theme': GlobalKey(),
@@ -192,7 +192,8 @@ class _SettingsPageState extends State<SettingsPage> {
     GlobalKey? itemKey = _itemKeys[target];
 
     setState(() {
-      if (['theme', 'server_choice', 'sync_interval', 'llm_retry'].contains(target)) {
+      if (['theme', 'server_choice', 'sync_interval', 'llm_retry']
+          .contains(target)) {
         _preferenceExpanded = true;
         sectionKey = _preferenceSectionKey;
       } else if (target == 'float_window_style') {
@@ -204,13 +205,30 @@ class _SettingsPageState extends State<SettingsPage> {
           _preferenceExpanded = true;
           sectionKey = _preferenceSectionKey;
         }
-      } else if (['no_course_behavior', 'webview_import', 'smart_import', 'course_sync', 'course_upload', 'course_adapt'].contains(target)) {
+      } else if ([
+        'no_course_behavior',
+        'webview_import',
+        'smart_import',
+        'course_sync',
+        'course_upload',
+        'course_adapt'
+      ].contains(target)) {
         _courseExpanded = true;
         sectionKey = _courseSectionKey;
-      } else if (['semester_progress', 'semester_start', 'semester_end', 'semester_sync'].contains(target)) {
+      } else if ([
+        'semester_progress',
+        'semester_start',
+        'semester_end',
+        'semester_sync'
+      ].contains(target)) {
         _semesterExpanded = true;
         sectionKey = _semesterSectionKey;
-      } else if (['animations_enabled', 'motion_blur', 'layer_blur', 'animation_duration'].contains(target)) {
+      } else if ([
+        'animations_enabled',
+        'motion_blur',
+        'layer_blur',
+        'animation_duration'
+      ].contains(target)) {
         _animationExpanded = true;
         sectionKey = _animationSectionKey;
       } else if (target == 'notifications') {
@@ -219,7 +237,14 @@ class _SettingsPageState extends State<SettingsPage> {
       } else if (target == 'permissions') {
         _permissionExpanded = true;
         sectionKey = _permissionSectionKey;
-      } else if (['lan_sync', 'cache', 'migration', 'live_updates', 'test_notification', 'band_sync'].contains(target)) {
+      } else if ([
+        'lan_sync',
+        'cache',
+        'migration',
+        'live_updates',
+        'test_notification',
+        'band_sync'
+      ].contains(target)) {
         _advancedExpanded = true;
         sectionKey = _advancedSectionKey;
       } else if (target == 'storage' || target == 'update') {
@@ -248,7 +273,8 @@ class _SettingsPageState extends State<SettingsPage> {
       // 第二步：等待展开动画后，精准定位到子项
       Future.delayed(const Duration(milliseconds: 550), () {
         // 重新获取 context，防止在动画过程中失效
-        final targetContext = itemKey?.currentContext ?? sectionKey?.currentContext;
+        final targetContext =
+            itemKey?.currentContext ?? sectionKey?.currentContext;
         if (targetContext != null) {
           Scrollable.ensureVisible(
             targetContext,
@@ -477,12 +503,13 @@ class _SettingsPageState extends State<SettingsPage> {
     String? currentUsername = prefs.getString(StorageService.KEY_CURRENT_USER);
     String? noCourseBehaviorPref;
     int style = 0;
-    
+
     if (currentUsername != null && currentUsername.isNotEmpty) {
-       noCourseBehaviorPref = prefs.getString('no_course_behavior_$currentUsername');
-       style = prefs.getInt('float_window_style_$currentUsername') ?? 0;
+      noCourseBehaviorPref =
+          prefs.getString('no_course_behavior_$currentUsername');
+      style = prefs.getInt('float_window_style_$currentUsername') ?? 0;
     }
-    
+
     noCourseBehaviorPref ??= prefs.getString('no_course_behavior');
     style = style == 0 ? (prefs.getInt('float_window_style') ?? 0) : style;
 
@@ -557,8 +584,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildAnnouncementPanel() {
+    Widget content;
     if (_isLoadingAnnouncements) {
-      return Card(
+      content = Card(
+        key: const ValueKey('loading'),
         elevation: 1,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: const ListTile(
@@ -571,10 +600,9 @@ class _SettingsPageState extends State<SettingsPage> {
           subtitle: Text('正在获取最新公告内容'),
         ),
       );
-    }
-
-    if (_announcementLoadFailed) {
-      return Card(
+    } else if (_announcementLoadFailed) {
+      content = Card(
+        key: const ValueKey('failed'),
         elevation: 1,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: ListTile(
@@ -587,10 +615,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
       );
-    }
-
-    if (_settingsAnnouncements.isEmpty) {
-      return Card(
+    } else if (_settingsAnnouncements.isEmpty) {
+      content = Card(
+        key: const ValueKey('empty'),
         elevation: 1,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: const ListTile(
@@ -599,67 +626,74 @@ class _SettingsPageState extends State<SettingsPage> {
           subtitle: Text('当前没有可展示的公告内容'),
         ),
       );
-    }
+    } else {
+      final latest = _settingsAnnouncements.first;
+      final others = _settingsAnnouncements.skip(1).toList();
 
-    final latest = _settingsAnnouncements.first;
-    final others = _settingsAnnouncements.skip(1).toList();
-
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Row(
-              children: [
-                const Icon(Icons.campaign, color: Colors.orange),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    latest.title.isEmpty ? '最新公告' : latest.title,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              latest.content.isEmpty ? '暂无内容' : latest.content,
-              style: const TextStyle(fontSize: 14, height: 1.5),
-            ),
-          ),
-          if (others.isNotEmpty) ...[
-            const Divider(height: 1),
-            ExpansionTile(
-              key: const PageStorageKey('settings_announcement_expansion'),
-              title: Text('其他公告 (${others.length})'),
-              initiallyExpanded: _announcementExpanded,
-              onExpansionChanged: (expanded) {
-                setState(() => _announcementExpanded = expanded);
-              },
-              children: [
-                ...others.map(
-                  (ann) => ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.announcement_outlined, size: 18),
-                    title: Text(ann.title.isEmpty ? '未命名公告' : ann.title),
-                    subtitle: Text(
-                      ann.content,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
+      content = Card(
+        key: const ValueKey('data'),
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.campaign, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      latest.title.isEmpty ? '最新公告' : latest.title,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                latest.content.isEmpty ? '暂无内容' : latest.content,
+                style: const TextStyle(fontSize: 14, height: 1.5),
+              ),
+            ),
+            if (others.isNotEmpty) ...[
+              const Divider(height: 1),
+              ExpansionTile(
+                key: const PageStorageKey('settings_announcement_expansion'),
+                title: Text('其他公告 (${others.length})'),
+                initiallyExpanded: _announcementExpanded,
+                onExpansionChanged: (expanded) {
+                  setState(() => _announcementExpanded = expanded);
+                },
+                children: [
+                  ...others.map(
+                    (ann) => ListTile(
+                      dense: true,
+                      leading:
+                          const Icon(Icons.announcement_outlined, size: 18),
+                      title: Text(ann.title.isEmpty ? '未命名公告' : ann.title),
+                      subtitle: Text(
+                        ann.content,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
-      ),
+        ),
+      );
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      child: content,
     );
   }
 
@@ -1170,7 +1204,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ─── 重新调度所有保活提醒 ──────────────────────────────────────
   Future<void> _rescheduleReminders() async {
-    if (_username.isEmpty || _username == "未登录" || _username == "加载中...") return;
+    if (_username.isEmpty || _username == "未登录" || _username == "加载中...")
+      return;
     try {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
@@ -1194,20 +1229,26 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('设置'), centerTitle: true),
-      body: _isInitialLoading
-          ? _buildSkeleton()
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                // 宽屏阈值：768px 以上切换为双栏布局
-                final bool isWide = constraints.maxWidth >= 768;
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 600),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        child: _isInitialLoading
+            ? _buildSkeleton(key: const ValueKey('skeleton'))
+            : LayoutBuilder(
+                key: const ValueKey('content'),
+                builder: (context, constraints) {
+                  // 宽屏阈值：768px 以上切换为双栏布局
+                  final bool isWide = constraints.maxWidth >= 768;
 
-                if (isWide) {
-                  return _buildWideLayout();
-                } else {
-                  return _buildNarrowLayout();
-                }
-              },
-            ),
+                  if (isWide) {
+                    return _buildWideLayout();
+                  } else {
+                    return _buildNarrowLayout();
+                  }
+                },
+              ),
+      ),
     );
   }
 
@@ -1218,246 +1259,218 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-        _buildAnnouncementPanel(),
-        const SizedBox(height: 8),
-        Container(
-          key: _accountSectionKey,
-          child: _buildExpandableSection(
-            title: '账户管理',
-            icon: Icons.person_outline,
-            expanded: _accountExpanded,
-            onToggle: () => setState(() => _accountExpanded = !_accountExpanded),
-            child: AccountSection(
-              username: _username,
-              userId: _userId,
-              userTier: _userTier,
-              syncProgress: _syncProgress,
-              isLoadingStatus: _isLoadingStatus,
-              onRefreshStatus: _fetchAccountStatus,
-              onForceFullSync: _forceFullSync,
-              onLogout: () => _handleLogout(force: false),
-              onChangePassword: _showChangePasswordDialog,
+          _buildAnnouncementPanel(),
+          const SizedBox(height: 8),
+          Container(
+            key: _accountSectionKey,
+            child: _buildExpandableSection(
+              title: '账户管理',
+              icon: Icons.person_outline,
+              expanded: _accountExpanded,
+              onToggle: () =>
+                  setState(() => _accountExpanded = !_accountExpanded),
+              child: AccountSection(
+                username: _username,
+                userId: _userId,
+                userTier: _userTier,
+                syncProgress: _syncProgress,
+                isLoadingStatus: _isLoadingStatus,
+                onRefreshStatus: _fetchAccountStatus,
+                onForceFullSync: _forceFullSync,
+                onLogout: () => _handleLogout(force: false),
+                onChangePassword: _showChangePasswordDialog,
+              ),
             ),
           ),
-        ),
-        Container(
-          key: _courseSectionKey,
-          child: _buildExpandableSection(
-            title: '课程管理',
-            icon: Icons.school_outlined,
-            expanded: _courseExpanded,
-            onToggle: () => setState(() => _courseExpanded = !_courseExpanded),
-            child: CourseSection(
-              highlightTarget: _highlightTarget,
-              itemKeys: _itemKeys, // 🚀 传递子项 Key
-              onUploadCourses: _uploadCoursesToCloud,
-              onSmartImport: _courseImportHandler.smartImportCourse,
-              onWebViewImport: _courseImportHandler.importFromWebView,
-              onFetchFromCloud: _fetchCoursesFromCloud,
-              noCourseBehavior: _noCourseBehavior,
-              onNoCourseBehaviorChanged: (val) {
-                if (val != null) {
-                  setState(() => _noCourseBehavior = val);
-                  SharedPreferences.getInstance().then(
-                      (prefs) {
-                         final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
-                         if (username != null && username.isNotEmpty) {
-                            prefs.setString('no_course_behavior_$username', val);
-                         }
-                         prefs.setString('no_course_behavior', val);
-                      });
-                }
-              },
-            ),
-          ),
-        ),
-        Container(
-          key: _semesterSectionKey,
-          child: _buildExpandableSection(
-            title: '学期设置',
-            icon: Icons.date_range_outlined,
-            expanded: _semesterExpanded,
-            onToggle: () =>
-                setState(() => _semesterExpanded = !_semesterExpanded),
-            child: SemesterSection(
-              highlightTarget: _highlightTarget,
-              itemKeys: _itemKeys, // 🚀 传递子项 Key
-              semesterEnabled: _semesterEnabled,
-              onSemesterEnabledChanged: (val) {
-                setState(() => _semesterEnabled = val);
-                StorageService.saveAppSetting(
-                    StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
-              },
-              semesterStart: _semesterStart,
-              semesterEnd: _semesterEnd,
-              onPickSemesterDate: _pickSemesterDate,
-              onFetchFromCloud: _fetchCoursesFromCloud,
-            ),
-          ),
-        ),
-        Container(
-          key: _preferenceSectionKey,
-          child: _buildExpandableSection(
-            title: '偏好设置',
-            icon: Icons.settings_outlined,
-            expanded: _preferenceExpanded,
-            onToggle: () =>
-                setState(() => _preferenceExpanded = !_preferenceExpanded),
-            child: PreferenceSection(
-              highlightTarget: _highlightTarget,
-              itemKeys: _itemKeys, // 🚀 传递子项 Key
-              syncInterval: _syncInterval,
-              onSyncIntervalChanged: (val) {
-                if (val != null) {
-                  setState(() => _syncInterval = val);
-                  StorageService.saveAppSetting(
-                      StorageService.KEY_SYNC_INTERVAL, val);
-                }
-              },
-              serverChoice: _serverChoice,
-              onServerChoiceTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    ServerChoicePage(
-                      initialServerChoice: _serverChoice,
-                    ),
-                  ),
-                );
-              },
-              themeMode: _themeMode,
-              onThemeModeChanged: (val) {
-                if (val != null) {
-                  setState(() => _themeMode = val);
-                  StorageService.saveAppSetting(
-                      StorageService.KEY_THEME_MODE, val);
-                  StorageService.themeNotifier.value = val;
-                }
-              },
-              taiDbPath: _taiDbPath,
-              onPickTaiDatabase: _pickTaiDatabase,
-              floatWindowStyle: _floatWindowStyle,
-              onFloatWindowStyleChanged: Platform.isWindows
-                  ? (val) async {
-                      if (val == null) return;
-                      setState(() => _floatWindowStyle = val);
-                      final prefs = await SharedPreferences.getInstance();
-                      final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+          Container(
+            key: _courseSectionKey,
+            child: _buildExpandableSection(
+              title: '课程管理',
+              icon: Icons.school_outlined,
+              expanded: _courseExpanded,
+              onToggle: () =>
+                  setState(() => _courseExpanded = !_courseExpanded),
+              child: CourseSection(
+                highlightTarget: _highlightTarget,
+                itemKeys: _itemKeys, // 🚀 传递子项 Key
+                onUploadCourses: _uploadCoursesToCloud,
+                onSmartImport: _courseImportHandler.smartImportCourse,
+                onWebViewImport: _courseImportHandler.importFromWebView,
+                onFetchFromCloud: _fetchCoursesFromCloud,
+                noCourseBehavior: _noCourseBehavior,
+                onNoCourseBehaviorChanged: (val) {
+                  if (val != null) {
+                    setState(() => _noCourseBehavior = val);
+                    SharedPreferences.getInstance().then((prefs) {
+                      final String? username =
+                          prefs.getString(StorageService.KEY_CURRENT_USER);
                       if (username != null && username.isNotEmpty) {
-                         await prefs.setInt('float_window_style_$username', val);
+                        prefs.setString('no_course_behavior_$username', val);
                       }
-                      await prefs.setInt('float_window_style', val);
-                      if (val == 2) {
-                        try {
-                          IslandDataProvider().invalidateCache();
-                          IslandManager().clearIslandCache('island-1');
-                        } catch (e) {}
-                      } else {
-                        debugPrint('[Settings] Creating island (ON)');
-                        try {
-                          IslandDataProvider().invalidateCache();
-                          IslandManager().clearIslandCache('island-1');
-                          final winId =
-                              await IslandManager().createIsland('island-1');
-                          debugPrint('[Settings] Island created, winId: $winId');
-                        } catch (e) {
-                          debugPrint('[Settings] Create error: $e');
-                        }
-                        try {
-                          await FloatWindowService.update(forceReset: true);
-                          debugPrint(
-                              '[Settings] FloatWindowService.update called');
-                        } catch (e) {
-                          debugPrint('[Settings] Update error: $e');
-                        }
-                      }
-                    }
-                  : null,
-              onForceRefreshPressed: Platform.isWindows
-                  ? () async {
-                      try {
-                        await StorageService.saveIslandBounds('island-1', {});
-                      } catch (_) {}
-                      try {
-                        IslandDataProvider().invalidateCache();
-                      } catch (_) {}
-                      try {
-                        IslandManager().clearIslandCache('island-1');
-                      } catch (_) {}
-                      try {
-                        await FloatWindowService.update(forceReset: true);
-                      } catch (_) {}
-                    }
-                  : null,
-              onIslandPriorityPressed:
-                  Platform.isWindows ? _showIslandPriorityDialog : null,
-              llmRetryCount: _llmRetryCount,
-              onLLMRetryCountChanged: (val) {
-                if (val != null) {
-                  setState(() => _llmRetryCount = val);
-                  StorageService.setLLMRetryCount(val);
-                }
-              },
-            ),
-          ),
-        ),
-        Container(
-          key: _animationSectionKey,
-          child: _buildExpandableSection(
-            title: '动画设置',
-            icon: Icons.animation_outlined,
-            expanded: _animationExpanded,
-            onToggle: () =>
-                setState(() => _animationExpanded = !_animationExpanded),
-            child: Card(
-              elevation: 1,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: ListTile(
-                leading: const Icon(Icons.animation_outlined, color: Colors.blue),
-                title: const Text('动画设置',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('页面切换动画、Container Transform、性能选项'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      const AnimationSettingsPage(),
-                    ),
-                  );
+                      prefs.setString('no_course_behavior', val);
+                    });
+                  }
                 },
               ),
             ),
           ),
-        ),
-        Container(
-          key: _notificationSectionKey,
-          child: _buildExpandableSection(
-            title: '通知管理',
-            icon: Icons.notifications_outlined,
-            expanded: _notificationExpanded,
-            onToggle: () =>
-                setState(() => _notificationExpanded = !_notificationExpanded),
-            child: _buildTile(
-              context: context,
-              targetId: 'notifications',
+          Container(
+            key: _semesterSectionKey,
+            child: _buildExpandableSection(
+              title: '学期设置',
+              icon: Icons.date_range_outlined,
+              expanded: _semesterExpanded,
+              onToggle: () =>
+                  setState(() => _semesterExpanded = !_semesterExpanded),
+              child: SemesterSection(
+                highlightTarget: _highlightTarget,
+                itemKeys: _itemKeys, // 🚀 传递子项 Key
+                semesterEnabled: _semesterEnabled,
+                onSemesterEnabledChanged: (val) {
+                  setState(() => _semesterEnabled = val);
+                  StorageService.saveAppSetting(
+                      StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+                },
+                semesterStart: _semesterStart,
+                semesterEnd: _semesterEnd,
+                onPickSemesterDate: _pickSemesterDate,
+                onFetchFromCloud: _fetchCoursesFromCloud,
+              ),
+            ),
+          ),
+          Container(
+            key: _preferenceSectionKey,
+            child: _buildExpandableSection(
+              title: '偏好设置',
+              icon: Icons.settings_outlined,
+              expanded: _preferenceExpanded,
+              onToggle: () =>
+                  setState(() => _preferenceExpanded = !_preferenceExpanded),
+              child: PreferenceSection(
+                highlightTarget: _highlightTarget,
+                itemKeys: _itemKeys, // 🚀 传递子项 Key
+                syncInterval: _syncInterval,
+                onSyncIntervalChanged: (val) {
+                  if (val != null) {
+                    setState(() => _syncInterval = val);
+                    StorageService.saveAppSetting(
+                        StorageService.KEY_SYNC_INTERVAL, val);
+                  }
+                },
+                serverChoice: _serverChoice,
+                onServerChoiceTap: () {
+                  Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      ServerChoicePage(
+                        initialServerChoice: _serverChoice,
+                      ),
+                    ),
+                  );
+                },
+                themeMode: _themeMode,
+                onThemeModeChanged: (val) {
+                  if (val != null) {
+                    setState(() => _themeMode = val);
+                    StorageService.saveAppSetting(
+                        StorageService.KEY_THEME_MODE, val);
+                    StorageService.themeNotifier.value = val;
+                  }
+                },
+                taiDbPath: _taiDbPath,
+                onPickTaiDatabase: _pickTaiDatabase,
+                floatWindowStyle: _floatWindowStyle,
+                onFloatWindowStyleChanged: Platform.isWindows
+                    ? (val) async {
+                        if (val == null) return;
+                        setState(() => _floatWindowStyle = val);
+                        final prefs = await SharedPreferences.getInstance();
+                        final String? username =
+                            prefs.getString(StorageService.KEY_CURRENT_USER);
+                        if (username != null && username.isNotEmpty) {
+                          await prefs.setInt(
+                              'float_window_style_$username', val);
+                        }
+                        await prefs.setInt('float_window_style', val);
+                        if (val == 2) {
+                          try {
+                            IslandDataProvider().invalidateCache();
+                            IslandManager().clearIslandCache('island-1');
+                          } catch (e) {}
+                        } else {
+                          debugPrint('[Settings] Creating island (ON)');
+                          try {
+                            IslandDataProvider().invalidateCache();
+                            IslandManager().clearIslandCache('island-1');
+                            final winId =
+                                await IslandManager().createIsland('island-1');
+                            debugPrint(
+                                '[Settings] Island created, winId: $winId');
+                          } catch (e) {
+                            debugPrint('[Settings] Create error: $e');
+                          }
+                          try {
+                            await FloatWindowService.update(forceReset: true);
+                            debugPrint(
+                                '[Settings] FloatWindowService.update called');
+                          } catch (e) {
+                            debugPrint('[Settings] Update error: $e');
+                          }
+                        }
+                      }
+                    : null,
+                onForceRefreshPressed: Platform.isWindows
+                    ? () async {
+                        try {
+                          await StorageService.saveIslandBounds('island-1', {});
+                        } catch (_) {}
+                        try {
+                          IslandDataProvider().invalidateCache();
+                        } catch (_) {}
+                        try {
+                          IslandManager().clearIslandCache('island-1');
+                        } catch (_) {}
+                        try {
+                          await FloatWindowService.update(forceReset: true);
+                        } catch (_) {}
+                      }
+                    : null,
+                onIslandPriorityPressed:
+                    Platform.isWindows ? _showIslandPriorityDialog : null,
+                llmRetryCount: _llmRetryCount,
+                onLLMRetryCountChanged: (val) {
+                  if (val != null) {
+                    setState(() => _llmRetryCount = val);
+                    StorageService.setLLMRetryCount(val);
+                  }
+                },
+              ),
+            ),
+          ),
+          Container(
+            key: _animationSectionKey,
+            child: _buildExpandableSection(
+              title: '动画设置',
+              icon: Icons.animation_outlined,
+              expanded: _animationExpanded,
+              onToggle: () =>
+                  setState(() => _animationExpanded = !_animationExpanded),
               child: Card(
-                elevation: 2,
+                elevation: 1,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
-                  leading: const Icon(Icons.notifications_outlined,
-                      color: Colors.blueAccent),
-                  title: const Text('通知管理',
+                  leading:
+                      const Icon(Icons.animation_outlined, color: Colors.blue),
+                  title: const Text('动画设置',
                       style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
+                  subtitle: const Text('页面切换动画、Container Transform、性能选项'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.push(
                       context,
                       PageTransitions.slideHorizontal(
-                        const NotificationSettingsPage(),
+                        const AnimationSettingsPage(),
                       ),
                     );
                   },
@@ -1465,121 +1478,156 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
-        ),
-        Container(
-          key: _permissionSectionKey,
-          child: _buildExpandableSection(
-            title: '权限管理',
-            icon: Icons.security_outlined,
-            expanded: _permissionExpanded,
-            onToggle: () =>
-                setState(() => _permissionExpanded = !_permissionExpanded),
-            child: PermissionSection(
-              permissionDefs: PermissionHandler.permissionDefs,
-              permissionStatuses: _permissionStatuses,
-              isCheckingPermissions: _isCheckingPermissions,
-              onCheckAllPermissions: _permissionHandler.checkAllPermissions,
-              onRequestOrOpenPermission:
-                  _permissionHandler.requestOrOpenPermission,
-            ),
-          ),
-        ),
-        Container(
-          key: _advancedSectionKey,
-          child: _buildExpandableSection(
-            title: '高级设置',
-            icon: Icons.tune_outlined,
-            expanded: _advancedExpanded,
-            onToggle: () =>
-                setState(() => _advancedExpanded = !_advancedExpanded),
-            child: AdvancedSection(
-              highlightTarget: _highlightTarget,
-              itemKeys: _itemKeys, // 🚀 传递子项 Key
-              onShowMigrationDialog: _showMigrationDialog,
-              onTestCourseNotification: _testCourseNotification,
-              liveUpdatesStatus: _liveUpdatesStatus,
-              onCheckAndOpenLiveUpdates: _checkAndOpenLiveUpdates,
-              islandStatus: _islandStatus,
-              onCheckIslandSupport: _checkIslandSupport,
-              onOpenBandSync: Platform.isAndroid
-                  ? () {
+          Container(
+            key: _notificationSectionKey,
+            child: _buildExpandableSection(
+              title: '通知管理',
+              icon: Icons.notifications_outlined,
+              expanded: _notificationExpanded,
+              onToggle: () => setState(
+                  () => _notificationExpanded = !_notificationExpanded),
+              child: _buildTile(
+                context: context,
+                targetId: 'notifications',
+                child: Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  child: ListTile(
+                    leading: const Icon(Icons.notifications_outlined,
+                        color: Colors.blueAccent),
+                    title: const Text('通知管理',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
                       Navigator.push(
                         context,
                         PageTransitions.slideHorizontal(
-                          const BandSyncScreen(),
+                          const NotificationSettingsPage(),
                         ),
                       );
-                    }
-                  : null,
-              onOpenLanSync: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    const LanSyncScreen(),
+                    },
                   ),
-                );
-              },
+                ),
+              ),
             ),
           ),
-        ),
-        Container(
-          key: _systemSectionKey,
-          child: _buildExpandableSection(
-            title: '系统设置',
-            icon: Icons.devices_outlined,
-            expanded: _systemExpanded,
-            onToggle: () => setState(() => _systemExpanded = !_systemExpanded),
-            child: SystemSection(
-              highlightTarget: _highlightTarget,
-              itemKeys: _itemKeys, // 🚀 传递子项 Key
-              onOpenFeatureGuide: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    const FeatureGuideScreen(isManualReview: true),
-                  ),
-                );
-              },
-              cacheSizeStr: _cacheSizeStr,
-              onClearCache: _storageManagementHandler.clearCache,
-              onShowStorageAnalysis:
-                  _storageManagementHandler.showStorageAnalysis,
-              isCheckingUpdate: _isCheckingUpdate,
-              onCheckUpdates: _checkUpdatesAndNotices,
+          Container(
+            key: _permissionSectionKey,
+            child: _buildExpandableSection(
+              title: '权限管理',
+              icon: Icons.security_outlined,
+              expanded: _permissionExpanded,
+              onToggle: () =>
+                  setState(() => _permissionExpanded = !_permissionExpanded),
+              child: PermissionSection(
+                permissionDefs: PermissionHandler.permissionDefs,
+                permissionStatuses: _permissionStatuses,
+                isCheckingPermissions: _isCheckingPermissions,
+                onCheckAllPermissions: _permissionHandler.checkAllPermissions,
+                onRequestOrOpenPermission:
+                    _permissionHandler.requestOrOpenPermission,
+              ),
             ),
           ),
-        ),
-        Container(
-          key: _aboutSectionKey,
-          child: _buildExpandableSection(
-            title: '关于此应用',
-            icon: Icons.info_outline,
-            expanded: _aboutExpanded,
-            onToggle: () => setState(() => _aboutExpanded = !_aboutExpanded),
-            child: Card(
-              elevation: 1,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: ListTile(
-              leading: const Icon(Icons.info_outline, color: Colors.blue),
-              title: const Text('关于此应用'),
-              subtitle: const Text('版本信息、更新日志、联系我们'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(const AboutScreen()),
-                );
-              },
+          Container(
+            key: _advancedSectionKey,
+            child: _buildExpandableSection(
+              title: '高级设置',
+              icon: Icons.tune_outlined,
+              expanded: _advancedExpanded,
+              onToggle: () =>
+                  setState(() => _advancedExpanded = !_advancedExpanded),
+              child: AdvancedSection(
+                highlightTarget: _highlightTarget,
+                itemKeys: _itemKeys, // 🚀 传递子项 Key
+                onShowMigrationDialog: _showMigrationDialog,
+                onTestCourseNotification: _testCourseNotification,
+                liveUpdatesStatus: _liveUpdatesStatus,
+                onCheckAndOpenLiveUpdates: _checkAndOpenLiveUpdates,
+                islandStatus: _islandStatus,
+                onCheckIslandSupport: _checkIslandSupport,
+                onOpenBandSync: Platform.isAndroid
+                    ? () {
+                        Navigator.push(
+                          context,
+                          PageTransitions.slideHorizontal(
+                            const BandSyncScreen(),
+                          ),
+                        );
+                      }
+                    : null,
+                onOpenLanSync: () {
+                  Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      const LanSyncScreen(),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
-        ),
+          Container(
+            key: _systemSectionKey,
+            child: _buildExpandableSection(
+              title: '系统设置',
+              icon: Icons.devices_outlined,
+              expanded: _systemExpanded,
+              onToggle: () =>
+                  setState(() => _systemExpanded = !_systemExpanded),
+              child: SystemSection(
+                highlightTarget: _highlightTarget,
+                itemKeys: _itemKeys, // 🚀 传递子项 Key
+                onOpenFeatureGuide: () {
+                  Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      const FeatureGuideScreen(isManualReview: true),
+                    ),
+                  );
+                },
+                cacheSizeStr: _cacheSizeStr,
+                onClearCache: _storageManagementHandler.clearCache,
+                onShowStorageAnalysis:
+                    _storageManagementHandler.showStorageAnalysis,
+                isCheckingUpdate: _isCheckingUpdate,
+                onCheckUpdates: _checkUpdatesAndNotices,
+              ),
+            ),
+          ),
+          Container(
+            key: _aboutSectionKey,
+            child: _buildExpandableSection(
+              title: '关于此应用',
+              icon: Icons.info_outline,
+              expanded: _aboutExpanded,
+              onToggle: () => setState(() => _aboutExpanded = !_aboutExpanded),
+              child: Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline, color: Colors.blue),
+                  title: const Text('关于此应用'),
+                  subtitle: const Text('版本信息、更新日志、联系我们'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(const AboutScreen()),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+        ],
       ),
-        const SizedBox(height: 40),
-      ],
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildExpandableSection({
     required String title,
@@ -1714,105 +1762,109 @@ class _SettingsPageState extends State<SettingsPage> {
                         highlightTarget: _highlightTarget,
                         itemKeys: _itemKeys, // 🚀 传递子项 Key
                         syncInterval: _syncInterval,
-                      onSyncIntervalChanged: (val) {
-                        if (val != null) {
-                          setState(() => _syncInterval = val);
-                          StorageService.saveAppSetting(
-                              StorageService.KEY_SYNC_INTERVAL, val);
-                        }
-                      },
-                      serverChoice: _serverChoice,
-                      onServerChoiceTap: () {
-                        Navigator.push(
-                          context,
-                          PageTransitions.slideHorizontal(
-                            ServerChoicePage(
-                              initialServerChoice: _serverChoice,
+                        onSyncIntervalChanged: (val) {
+                          if (val != null) {
+                            setState(() => _syncInterval = val);
+                            StorageService.saveAppSetting(
+                                StorageService.KEY_SYNC_INTERVAL, val);
+                          }
+                        },
+                        serverChoice: _serverChoice,
+                        onServerChoiceTap: () {
+                          Navigator.push(
+                            context,
+                            PageTransitions.slideHorizontal(
+                              ServerChoicePage(
+                                initialServerChoice: _serverChoice,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      themeMode: _themeMode,
-                      onThemeModeChanged: (val) {
-                        if (val != null) {
-                          setState(() => _themeMode = val);
-                          StorageService.saveAppSetting(
-                              StorageService.KEY_THEME_MODE, val);
-                          StorageService.themeNotifier.value = val;
-                        }
-                      },
-                      taiDbPath: _taiDbPath,
-                      onPickTaiDatabase: _pickTaiDatabase,
-                      floatWindowStyle: _floatWindowStyle,
-                      onFloatWindowStyleChanged: Platform.isWindows
-                          ? (val) async {
-                              if (val == null) return;
-                              debugPrint(
-                                  '[Settings] Float window style changed: $val');
-                              setState(() => _floatWindowStyle = val);
-                              final prefs =
-                                  await SharedPreferences.getInstance();
-                              await prefs.setInt('float_window_style', val);
-                              if (val == 2) {
-                                debugPrint('[Settings] Disabling island (OFF)');
-                                try {
-                                  IslandDataProvider().invalidateCache();
-                                  IslandManager().clearIslandCache('island-1');
-                                } catch (e) {
-                                  debugPrint('[Settings] Clear error: $e');
-                                }
-                              } else {
-                                debugPrint('[Settings] Creating island (ON)');
-                                try {
-                                  IslandDataProvider().invalidateCache();
-                                  IslandManager().clearIslandCache('island-1');
-                                  final winId = await IslandManager()
-                                      .createIsland('island-1');
+                          );
+                        },
+                        themeMode: _themeMode,
+                        onThemeModeChanged: (val) {
+                          if (val != null) {
+                            setState(() => _themeMode = val);
+                            StorageService.saveAppSetting(
+                                StorageService.KEY_THEME_MODE, val);
+                            StorageService.themeNotifier.value = val;
+                          }
+                        },
+                        taiDbPath: _taiDbPath,
+                        onPickTaiDatabase: _pickTaiDatabase,
+                        floatWindowStyle: _floatWindowStyle,
+                        onFloatWindowStyleChanged: Platform.isWindows
+                            ? (val) async {
+                                if (val == null) return;
+                                debugPrint(
+                                    '[Settings] Float window style changed: $val');
+                                setState(() => _floatWindowStyle = val);
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setInt('float_window_style', val);
+                                if (val == 2) {
                                   debugPrint(
-                                      '[Settings] Island created, winId: $winId');
-                                } catch (e) {
-                                  debugPrint('[Settings] Create error: $e');
+                                      '[Settings] Disabling island (OFF)');
+                                  try {
+                                    IslandDataProvider().invalidateCache();
+                                    IslandManager()
+                                        .clearIslandCache('island-1');
+                                  } catch (e) {
+                                    debugPrint('[Settings] Clear error: $e');
+                                  }
+                                } else {
+                                  debugPrint('[Settings] Creating island (ON)');
+                                  try {
+                                    IslandDataProvider().invalidateCache();
+                                    IslandManager()
+                                        .clearIslandCache('island-1');
+                                    final winId = await IslandManager()
+                                        .createIsland('island-1');
+                                    debugPrint(
+                                        '[Settings] Island created, winId: $winId');
+                                  } catch (e) {
+                                    debugPrint('[Settings] Create error: $e');
+                                  }
+                                  try {
+                                    await FloatWindowService.update(
+                                        forceReset: true);
+                                  } catch (e) {
+                                    debugPrint('[Settings] Update error: $e');
+                                  }
                                 }
+                              }
+                            : null,
+                        onForceRefreshPressed: Platform.isWindows
+                            ? () async {
+                                debugPrint('[Settings] Force refresh pressed');
+                                try {
+                                  await StorageService.saveIslandBounds(
+                                      'island-1', {});
+                                } catch (_) {}
+                                try {
+                                  IslandDataProvider().invalidateCache();
+                                } catch (_) {}
+                                try {
+                                  IslandManager().clearIslandCache('island-1');
+                                } catch (_) {}
                                 try {
                                   await FloatWindowService.update(
                                       forceReset: true);
-                                } catch (e) {
-                                  debugPrint('[Settings] Update error: $e');
-                                }
+                                  debugPrint('[Settings] Force refresh done');
+                                } catch (_) {}
                               }
-                            }
-                          : null,
-                      onForceRefreshPressed: Platform.isWindows
-                          ? () async {
-                              debugPrint('[Settings] Force refresh pressed');
-                              try {
-                                await StorageService.saveIslandBounds(
-                                    'island-1', {});
-                              } catch (_) {}
-                              try {
-                                IslandDataProvider().invalidateCache();
-                              } catch (_) {}
-                              try {
-                                IslandManager().clearIslandCache('island-1');
-                              } catch (_) {}
-                              try {
-                                await FloatWindowService.update(
-                                    forceReset: true);
-                                debugPrint('[Settings] Force refresh done');
-                              } catch (_) {}
-                            }
-                          : null,
-                      onIslandPriorityPressed:
-                          Platform.isWindows ? _showIslandPriorityDialog : null,
-                      llmRetryCount: _llmRetryCount,
-                      onLLMRetryCountChanged: (val) {
-                        if (val != null) {
-                          setState(() => _llmRetryCount = val);
-                          StorageService.setLLMRetryCount(val);
-                        }
-                      },
+                            : null,
+                        onIslandPriorityPressed: Platform.isWindows
+                            ? _showIslandPriorityDialog
+                            : null,
+                        llmRetryCount: _llmRetryCount,
+                        onLLMRetryCountChanged: (val) {
+                          if (val != null) {
+                            setState(() => _llmRetryCount = val);
+                            StorageService.setLLMRetryCount(val);
+                          }
+                        },
+                      ),
                     ),
-                  ),
                     Container(
                       key: _animationSectionKey,
                       child: Card(
@@ -1824,7 +1876,8 @@ class _SettingsPageState extends State<SettingsPage> {
                               color: Colors.blue),
                           title: const Text('动画设置',
                               style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: const Text('页面切换动画、Container Transform、性能选项'),
+                          subtitle:
+                              const Text('页面切换动画、Container Transform、性能选项'),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
                             Navigator.push(
@@ -1923,14 +1976,16 @@ class _SettingsPageState extends State<SettingsPage> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
-                          leading: const Icon(Icons.info_outline, color: Colors.blue),
+                          leading: const Icon(Icons.info_outline,
+                              color: Colors.blue),
                           title: const Text('关于此应用'),
                           subtitle: const Text('版本信息、更新日志、联系我们'),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
                             Navigator.push(
                               context,
-                              PageTransitions.slideHorizontal(const AboutScreen()),
+                              PageTransitions.slideHorizontal(
+                                  const AboutScreen()),
                             );
                           },
                         ),
@@ -1948,12 +2003,13 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   // 🚀 设置页专用骨架屏
-  Widget _buildSkeleton() {
+  Widget _buildSkeleton({Key? key}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseColor =
         isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
 
     return ListView(
+      key: key,
       padding: const EdgeInsets.all(16),
       children: [
         // 顶部公告占位

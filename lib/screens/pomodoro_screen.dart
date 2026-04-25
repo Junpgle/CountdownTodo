@@ -46,19 +46,19 @@ class _PomodoroScreenState extends State<PomodoroScreen>
         TabController(length: 2, vsync: this, initialIndex: widget.initialTab);
     _tabController.addListener(() {
       if (_disposed || !mounted) return;
-      debugPrint(
-          '[PomodoroScreen] TabController listener: index=${_tabController.index} indexIsChanging=${_tabController.indexIsChanging}');
-      if (_tabController.index == 1 && !_tabController.indexIsChanging) {
-        try {
-          _statsKey.currentState?.reload();
-        } catch (_) {}
+      // 🚀 性能优化：只有在确实需要刷新 UI 时才 setState
+      if (!_tabController.indexIsChanging) {
+        if (_tabController.index == 1) {
+          try {
+            _statsKey.currentState?.reload();
+          } catch (_) {}
+        } else {
+          try {
+            _workbenchKey.currentState?.reload();
+          } catch (_) {}
+        }
+        if (mounted && !_disposed) setState(() {});
       }
-      if (_tabController.index == 0 && !_tabController.indexIsChanging) {
-        try {
-          _workbenchKey.currentState?.reload();
-        } catch (_) {}
-      }
-      if (mounted && !_disposed) setState(() {});
     });
 
     // If initial tab is workbench, trigger a reload after first frame
