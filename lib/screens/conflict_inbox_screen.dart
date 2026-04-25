@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
@@ -25,6 +25,18 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   @override
   void initState() {
     super.initState();
+    StorageService.dataRefreshNotifier.addListener(_onDataRefreshed);
+    _loadConflicts();
+  }
+
+  @override
+  void dispose() {
+    StorageService.dataRefreshNotifier.removeListener(_onDataRefreshed);
+    super.dispose();
+  }
+
+  void _onDataRefreshed() {
+    if (!mounted) return;
     _loadConflicts();
   }
 
@@ -118,6 +130,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return _isLocalScheduleConflict(item) ? '时间重叠' : '版本争议';
   }
 
+  String _scheduleScopeLabel(Map<String, dynamic> data) {
+    final scope = data['schedule_scope']?.toString();
+    if (scope == 'team') return '团队待办';
+    if (scope == 'personal') return '个人待办';
+    final teamUuid = data['team_uuid']?.toString();
+    return (teamUuid != null && teamUuid.isNotEmpty) ? '团队待办' : '个人待办';
+  }
+
   Color _conflictColor(dynamic item) {
     return _isLocalScheduleConflict(item) ? Colors.orangeAccent : Colors.amber;
   }
@@ -126,6 +146,55 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return _isLocalScheduleConflict(item)
         ? Icons.schedule_rounded
         : Icons.warning_amber_rounded;
+  }
+
+  String _itemTitle(Map<String, dynamic> data) {
+    return data['content'] ??
+        data['title'] ??
+        data['courseName'] ??
+        data['course_name'] ??
+        data['name'] ??
+        '未命名';
+  }
+
+  List<Map<String, dynamic>> _conflictPeers(dynamic item) {
+    final peers = <Map<String, dynamic>>[];
+    final data = _conflictData(item);
+    if (data != null && data['conflict_with'] is List) {
+      for (final peer in data['conflict_with'] as List) {
+        if (peer is Map) peers.add(Map<String, dynamic>.from(peer));
+      }
+    }
+
+    final serverVersion = _findServerVersion(item);
+    if (serverVersion != null && serverVersion.isNotEmpty) {
+      peers.add(serverVersion);
+    }
+
+    final itemId = _itemId(item);
+    peers.removeWhere((peer) {
+      final peerId = (peer['uuid'] ?? peer['id'] ?? '').toString();
+      return peerId.isNotEmpty && peerId == itemId;
+    });
+
+    final deduped = <String, Map<String, dynamic>>{};
+    for (final peer in peers) {
+      final peerId = (peer['uuid'] ?? peer['id'] ?? '').toString();
+      final title = _itemTitle(peer);
+      final key = peerId.isNotEmpty ? peerId : title;
+      if (key.isNotEmpty) deduped[key] = peer;
+    }
+    return deduped.values.toList();
+  }
+
+  String _conflictSummary(dynamic item) {
+    final peers = _conflictPeers(item);
+    if (peers.isEmpty) return '';
+    final titles = peers.map(_itemTitle).where((t) => t.isNotEmpty).toList();
+    if (titles.isEmpty) return '';
+    final head = titles.take(3).join('、');
+    final extra = titles.length > 3 ? ' 等 ${titles.length} 项' : '';
+    return '${_conflictLabel(item)}：$head$extra';
   }
 
   String? _itemId(dynamic item) {
@@ -300,6 +369,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final conflictColor = _conflictColor(item);
     final conflictIcon = _conflictIcon(item);
     final conflictLabel = _conflictLabel(item);
+    final conflictSummary = _conflictSummary(item);
+    final conflictPeers = _conflictPeers(item);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -366,6 +437,52 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   ),
                 ],
               ),
+              if (conflictSummary.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  conflictSummary,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade700,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+              if (conflictPeers.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: conflictPeers.take(4).map((peer) {
+                    final peerData = Map<String, dynamic>.from(peer);
+                    final scope = _scheduleScopeLabel(peerData);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.orangeAccent.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: Colors.orangeAccent.withValues(alpha: 0.18)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_itemTitle(peerData),
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          Text(scope,
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey.shade600)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
               const Divider(height: 32),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -411,9 +528,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         table: table,
         username: widget.username,
         onResolved: () {
-          setState(() {
-            _conflictItems.remove(item);
-          });
           _loadConflicts();
         },
       ),

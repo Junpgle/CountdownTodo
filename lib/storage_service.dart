@@ -467,7 +467,8 @@ class StorageService {
       await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
     }));
 
-    final db = await DatabaseHelper.instance.database;
+    final dbHelper = DatabaseHelper.instance;
+    final db = await dbHelper.database;
 
     // 🚀 批量获取现有数据，用于审计
     Map<String, Map<String, dynamic>> existingItemsMap = {};
@@ -694,7 +695,9 @@ class StorageService {
   // 待办事项 (Todos)
   // ==========================================
   static Future<void> saveTodos(String username, List<TodoItem> items,
-      {bool sync = true, bool isSyncSource = false}) async {
+      {bool sync = true,
+      bool isSyncSource = false,
+      bool recomputeScheduleConflicts = true}) async {
     final Map<String, TodoItem> dedupeMap = {};
 
     // 🚀 核心优化：只有在非同步源保存时才清理，防止 saveTodos -> getTodos 循环触发
@@ -724,9 +727,11 @@ class StorageService {
     // 🚀 核心优化：批量获取现有数据，用于审计对比，避免循环中重复查询 DB
     Map<String, Map<String, dynamic>> existingItemsMap = {};
     if (!isSyncSource && dedupeList.isNotEmpty) {
-      final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
       final List<Map<String, dynamic>> existing =
-          await db.rawQuery('SELECT * FROM todos WHERE uuid IN ($uuids)');
+          await DatabaseHelper.instance.getTodoMaps(
+        includeDeleted: true,
+        uuids: dedupeList.map((e) => e.id).toList(),
+      );
       for (var row in existing) {
         existingItemsMap[row['uuid']] = row;
       }
@@ -810,6 +815,10 @@ class StorageService {
       await batch.commit(noResult: true);
     }
 
+    if (recomputeScheduleConflicts) {
+      await _refreshTodoScheduleConflicts(username);
+    }
+
     if (sync) Future.microtask(() => syncData(username));
     Future.microtask(() => _syncTodosToBand(dedupeList));
     triggerRefresh();
@@ -842,6 +851,23 @@ class StorageService {
       if (valA != valB) return true;
     }
     return false;
+  }
+
+  static Future<void> _refreshTodoScheduleConflicts(String username) async {
+    try {
+      final allTodos = await getTodos(username, includeDeleted: true);
+      if (_recomputeLocalTodoScheduleConflicts(allTodos)) {
+        await saveTodos(
+          username,
+          allTodos,
+          sync: false,
+          isSyncSource: true,
+          recomputeScheduleConflicts: false,
+        );
+      }
+    } catch (e) {
+      debugPrint('refreshTodoScheduleConflicts error: $e');
+    }
   }
 
   static Future<void> _recordLocalAuditOptimized(
@@ -1212,7 +1238,7 @@ class StorageService {
         await prefs.setBool(migrationKey, true);
       }
 
-      final List<Map<String, dynamic>> maps = await db.query('todos',
+      final List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
           where: includeDeleted ? null : 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
           );
       if (maps.isNotEmpty) {
@@ -3270,6 +3296,8 @@ class StorageService {
             ? '${KEY_COUNTDOWNS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}'
             : '${KEY_TODO_GROUPS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}';
     await prefs.remove(key);
+
+    triggerRefresh();
   }
 }
 

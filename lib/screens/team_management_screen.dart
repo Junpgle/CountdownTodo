@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:async';
@@ -37,9 +37,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    StorageService.dataRefreshNotifier.addListener(_onDataRefreshed);
     _loadTeams();
     _setupWsListener();
     _checkClipboardForInvite();
+  }
+
+  void _onDataRefreshed() {
+    if (!mounted) return;
+    _loadTeams(isSilent: true);
   }
 
   @override
@@ -66,6 +72,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    StorageService.dataRefreshNotifier.removeListener(_onDataRefreshed);
     _wsSub?.cancel();
     super.dispose();
   }
@@ -692,6 +699,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
               desc: isWide ? "处理多终端同步产生的数据争议" : "解决多端同步冲突",
               icon: Icons.verified_user_rounded,
               color: Colors.orangeAccent,
+              badgeCount:
+                  _teamConflictCounts.values.fold(0, (sum, count) => sum + count),
               onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -986,61 +995,87 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       required String desc,
       required IconData icon,
       required Color color,
-      required VoidCallback onTap}) {
+      required VoidCallback onTap,
+      int badgeCount = 0}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Expanded(
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? color.withValues(alpha: 0.08) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border:
-                Border.all(color: color.withValues(alpha: isDark ? 0.2 : 0.1)),
-            boxShadow: [
-              BoxShadow(
-                  color: color.withValues(alpha: 0.05),
-                  blurRadius: 15,
-                  offset: const Offset(0, 5))
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16)),
-                child: Icon(icon, color: color, size: 24),
+        child: Stack(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? color.withValues(alpha: 0.08) : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                    color: color.withValues(alpha: isDark ? 0.2 : 0.1)),
+                boxShadow: [
+                  BoxShadow(
+                      color: color.withValues(alpha: 0.05),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5))
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize:
-                      MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
-                  children: [
-                    Text(title,
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black87),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4),
-                    Text(desc,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: isDark ? Colors.white70 : Colors.black54),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                  ],
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16)),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 4),
+                        Text(desc,
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? Colors.white70 : Colors.black54),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (badgeCount > 0)
+              Positioned(
+                right: 10,
+                top: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: const BoxDecoration(
+                    color: Colors.redAccent,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                  child: Text(
+                    badgeCount > 9 ? '9+' : badgeCount.toString(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -2289,3 +2324,4 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     );
   }
 }
+

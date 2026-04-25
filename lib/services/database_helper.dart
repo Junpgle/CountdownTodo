@@ -10,6 +10,29 @@ import '../models.dart';
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+  static const int _todoTextChunkSize = 8192;
+  static const List<String> _todoBaseColumns = [
+    'uuid',
+    'team_uuid',
+    'group_id',
+    'team_name',
+    'creator_id',
+    'creator_name',
+    'is_completed',
+    'is_deleted',
+    'version',
+    'due_date',
+    'created_date',
+    'created_at',
+    'updated_at',
+    'collab_type',
+    'recurrence',
+    'custom_interval_days',
+    'recurrence_end_date',
+    'reminder_minutes',
+    'has_conflict',
+    'is_all_day',
+  ];
 
   DatabaseHelper._init();
 
@@ -817,14 +840,17 @@ class DatabaseHelper {
   }
 
   Future<Map<String, dynamic>?> getTodoByUuid(String uuid) async {
-    final db = await instance.database;
-    final results = await db.query('todos', where: 'uuid = ?', whereArgs: [uuid], limit: 1);
+    final results = await getTodoMaps(
+      includeDeleted: true,
+      uuids: [uuid],
+      limit: 1,
+    );
     return results.isNotEmpty ? results.first : null;
   }
 
   Future<List<Map<String, dynamic>>> searchTodos(String query) async {
     final db = await instance.database;
-    final Map<String, Map<String, dynamic>> resultsMap = {};
+    final Map<String, int> resultScores = {};
 
     // 1. 尝试 FTS 搜索引擎 (高性能前缀匹配)
     final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'");
@@ -838,7 +864,7 @@ class DatabaseHelper {
 
         final ftsQuery = query.split(' ').where((s) => s.isNotEmpty).map((s) => '$s*').join(' ');
         final ftsResults = await db.rawQuery('''
-          SELECT t.* FROM todos t
+          SELECT t.uuid, t.updated_at FROM todos t
           JOIN todos_fts f ON t.uuid = f.uuid
           WHERE todos_fts MATCH ?
           AND t.is_deleted = 0
@@ -846,7 +872,7 @@ class DatabaseHelper {
         ''', [ftsQuery]);
         
         for (var r in ftsResults) {
-          resultsMap[r['uuid'].toString()] = r;
+          resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
         }
       } catch (e) {
         debugPrint("FTS error: $e");
@@ -855,9 +881,9 @@ class DatabaseHelper {
 
     // 2. 补全 LIKE 搜索 (解决中文分词无法匹配中间词的问题)
     // 如果 FTS 结果不足，或者包含中文字符，则使用 LIKE 增强召回
-    if (resultsMap.length < 20) {
+    if (resultScores.length < 20) {
       final likeResults = await db.rawQuery('''
-        SELECT * FROM todos 
+        SELECT uuid, updated_at FROM todos 
         WHERE is_deleted = 0 
         AND (content LIKE ? OR remark LIKE ?)
         ORDER BY updated_at DESC
@@ -865,13 +891,19 @@ class DatabaseHelper {
       ''', ['%$query%', '%$query%']);
       
       for (var r in likeResults) {
-        resultsMap[r['uuid'].toString()] = r;
+        resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
       }
     }
 
-    final finalResults = resultsMap.values.toList();
+    if (resultScores.isEmpty) return [];
+
+    final finalResults = await getTodoMaps(
+      includeDeleted: true,
+      uuids: resultScores.keys.toList(),
+    );
     // 按更新时间降序排序
-    finalResults.sort((a, b) => (b['updated_at'] ?? 0).compareTo(a['updated_at'] ?? 0));
+    finalResults.sort((a, b) => (resultScores[b['uuid'].toString()] ?? 0)
+        .compareTo(resultScores[a['uuid'].toString()] ?? 0));
     return finalResults.take(20).toList();
   }
 
@@ -996,10 +1028,116 @@ class DatabaseHelper {
     db.close();
   }
 
+  Future<List<Map<String, dynamic>>> getTodoMaps({
+    bool includeDeleted = false,
+    String? where,
+    List<String>? uuids,
+    int? limit,
+  }) async {
+    final db = await instance.database;
+    final whereParts = <String>[];
+    final whereArgs = <Object?>[];
+
+    if (where != null && where.isNotEmpty) {
+      whereParts.add(where);
+    } else if (!includeDeleted) {
+      whereParts.add('is_deleted IS NOT 1');
+    }
+    if (uuids != null && uuids.isNotEmpty) {
+      whereParts.add(
+        'uuid IN (${List.filled(uuids.length, '?').join(', ')})',
+      );
+      whereArgs.addAll(uuids);
+    }
+
+    final sql = StringBuffer()
+      ..write('SELECT ')
+      ..write(_todoBaseColumns.join(', '))
+      ..write(', LENGTH(content) AS _content_length')
+      ..write(', LENGTH(remark) AS _remark_length')
+      ..write(', LENGTH(conflict_data) AS _conflict_length')
+      ..write(' FROM todos');
+    if (whereParts.isNotEmpty) {
+      sql.write(' WHERE ${whereParts.join(' AND ')}');
+    }
+    sql.write(' ORDER BY updated_at DESC');
+    if (limit != null) {
+      sql.write(' LIMIT $limit');
+    }
+
+    final rows = await db.rawQuery(sql.toString(), whereArgs);
+    final hydrated = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      hydrated.add(await _hydrateTodoRow(db, row));
+    }
+    return hydrated;
+  }
+
+  Future<Map<String, dynamic>> _hydrateTodoRow(
+      Database db, Map<String, dynamic> row) async {
+    final hydrated = Map<String, dynamic>.from(row);
+    final uuid = hydrated['uuid']?.toString();
+    if (uuid == null || uuid.isEmpty) {
+      hydrated.remove('_content_length');
+      hydrated.remove('_remark_length');
+      hydrated.remove('_conflict_length');
+      return hydrated;
+    }
+
+    hydrated['content'] = await _readTodoTextColumn(
+      db,
+      uuid,
+      'content',
+      _toNullableInt(row['_content_length']),
+    );
+    hydrated['remark'] = await _readTodoTextColumn(
+      db,
+      uuid,
+      'remark',
+      _toNullableInt(row['_remark_length']),
+    );
+    hydrated['conflict_data'] = await _readTodoTextColumn(
+      db,
+      uuid,
+      'conflict_data',
+      _toNullableInt(row['_conflict_length']),
+    );
+    hydrated.remove('_content_length');
+    hydrated.remove('_remark_length');
+    hydrated.remove('_conflict_length');
+    return hydrated;
+  }
+
+  Future<String?> _readTodoTextColumn(
+      Database db, String uuid, String column, int? textLength) async {
+    if (textLength == null || textLength <= 0) return null;
+
+    final buffer = StringBuffer();
+    for (var offset = 0; offset < textLength; offset += _todoTextChunkSize) {
+      final result = await db.rawQuery(
+        'SELECT substr($column, ?, ?) AS value FROM todos WHERE uuid = ? LIMIT 1',
+        [offset + 1, _todoTextChunkSize, uuid],
+      );
+      if (result.isEmpty) break;
+      final chunk = result.first['value']?.toString() ?? '';
+      if (chunk.isEmpty) break;
+      buffer.write(chunk);
+    }
+
+    final value = buffer.toString();
+    return value.isEmpty ? null : value;
+  }
+
+  int? _toNullableInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    return int.tryParse(value.toString());
+  }
+
   // 🚀 Uni-Sync 4.0: 获取所有待办事项（用于缓存重载）
   Future<List<TodoItem>> getTodos() async {
-    final db = await instance.database;
-    final List<Map<String, dynamic>> maps = await db.query('todos');
+    final List<Map<String, dynamic>> maps =
+        await getTodoMaps(includeDeleted: true);
     return List.generate(maps.length, (i) => TodoItem.fromSql(maps[i]));
   }
 
