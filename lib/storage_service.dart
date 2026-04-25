@@ -2127,17 +2127,30 @@ class StorageService {
         for (final c in conflicts) {
           final itemId = c.item['uuid'] ?? c.item['id'] ?? '';
           if (itemId.isEmpty) continue;
+          final serverVersion = c.conflictWith;
 
           if (todosIndexMap.containsKey(itemId)) {
-            allLocalTodos[todosIndexMap[itemId]!].hasConflict = true;
+            final todo = allLocalTodos[todosIndexMap[itemId]!];
+            todo.hasConflict = true;
+            if (serverVersion.isNotEmpty) {
+              todo.serverVersionData = serverVersion;
+            }
             hasChanges = true;
           }
           if (countdownsIndexMap.containsKey(itemId)) {
-            allLocalCountdowns[countdownsIndexMap[itemId]!].hasConflict = true;
+            final countdown = allLocalCountdowns[countdownsIndexMap[itemId]!];
+            countdown.hasConflict = true;
+            if (serverVersion.isNotEmpty) {
+              countdown.conflictData = serverVersion;
+            }
             hasChanges = true;
           }
           if (groupsIndexMap.containsKey(itemId)) {
-            allLocalGroups[groupsIndexMap[itemId]!].hasConflict = true;
+            final group = allLocalGroups[groupsIndexMap[itemId]!];
+            group.hasConflict = true;
+            if (serverVersion.isNotEmpty) {
+              group.conflictData = serverVersion;
+            }
             hasChanges = true;
           }
           // TimeLogs don't have hasConflict field, skip

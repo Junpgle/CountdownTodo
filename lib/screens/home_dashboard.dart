@@ -40,6 +40,7 @@ import 'todo_confirm_screen.dart';
 import 'add_todo_screen.dart';
 import 'course_screens.dart';
 import 'band_sync_screen.dart';
+import 'conflict_inbox_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
@@ -1883,7 +1884,19 @@ class _HomeDashboardState extends State<HomeDashboard>
         // 🚀 新增：处理冲突信息
         final List<ConflictInfo> conflicts = syncResult['conflicts'] ?? [];
         if (conflicts.isNotEmpty && mounted) {
-           ConflictAlertDialog.show(context, conflicts);
+          final shouldOpenConflictCenter =
+              await ConflictAlertDialog.show(context, conflicts);
+          if (shouldOpenConflictCenter == true && mounted) {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ConflictInboxScreen(
+                  username: widget.username,
+                  syncConflicts: conflicts,
+                ),
+              ),
+            );
+          }
         }
       }
 

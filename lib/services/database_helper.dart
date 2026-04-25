@@ -49,7 +49,7 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 19, // 🚀 V19: 倒数日增加 is_completed 字段支持时间轴统计
+        version: 20, // 🚀 V20: 修复 op_logs.sync_error 字段缺失导致同步中断
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 3) {
@@ -354,6 +354,17 @@ class DatabaseHelper {
               debugPrint("⚠️ Database: 升级 V19 失败: $e");
             }
           }
+          if (oldVersion < 20) {
+            try {
+              final info = await db.rawQuery("PRAGMA table_info(op_logs)");
+              if (!info.any((row) => row['name'] == 'sync_error')) {
+                await db.execute("ALTER TABLE op_logs ADD COLUMN sync_error TEXT;");
+                debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V20)");
+              }
+            } catch (e) {
+              debugPrint("⚠️ Database: 升级 V20 失败: $e");
+            }
+          }
         }
     );
   }
@@ -564,7 +575,8 @@ class DatabaseHelper {
         target_uuid $textType,
         data_json $jsonType,
         timestamp $integerType,
-        is_synced $boolType DEFAULT 0
+        is_synced $boolType DEFAULT 0,
+        sync_error $textType
       )
     ''');
 
@@ -1040,4 +1052,4 @@ class DatabaseHelper {
       limit: limit,
     );
   }
-}
+}
