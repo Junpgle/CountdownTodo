@@ -183,14 +183,28 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
   Future<void> _loadTeams({bool isSilent = false}) async {
     if (!isSilent) setState(() => _isLoading = true);
     try {
-      final rawTeams = await ApiService.fetchTeams();
-      final invitations = await ApiService.fetchMyInvitations();
+      // 🚀 核心优化：并发加载团队列表和我的邀请
+      final results = await Future.wait([
+        ApiService.fetchTeams(),
+        ApiService.fetchMyInvitations(),
+      ]);
 
+      final rawTeams = results[0] as List<dynamic>;
+      final invitations = results[1] as List<dynamic>;
+
+      // 并发加载所有管理团队的待处理请求数
+      final adminTeamUuids = rawTeams
+          .where((t) => t['role'] == 0)
+          .map((t) => t['uuid'] as String)
+          .toList();
+      
       Map<String, int> pendingCounts = {};
-      for(var t in rawTeams) {
-        if (t['role'] == 0) { // 管理员
-          final requests = await ApiService.fetchPendingRequests(t['uuid']);
-          pendingCounts[t['uuid']] = requests.length;
+      if (adminTeamUuids.isNotEmpty) {
+        final pendingResults = await Future.wait(
+          adminTeamUuids.map((uuid) => ApiService.fetchPendingRequests(uuid))
+        );
+        for (int i = 0; i < adminTeamUuids.length; i++) {
+          pendingCounts[adminTeamUuids[i]] = (pendingResults[i] as List).length;
         }
       }
 
@@ -503,7 +517,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         slivers: [
           _buildSliverAppBar(isDark),
           if (_isLoading)
-            const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
+            _buildTeamSkeleton(isDark)
           else ...[
             _buildQuickActionsSliver(isWide),
             if (_myInvitations.isNotEmpty)
@@ -1268,6 +1282,53 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         );
       },
       child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+    );
+  }
+
+  // 🚀 团队协作骨架屏
+  Widget _buildTeamSkeleton(bool isDark) {
+    final baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return SliverPadding(
+      padding: const EdgeInsets.all(16),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (index == 0) {
+              // 快速操作入口骨架
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                        child: Container(
+                            height: 80,
+                            decoration: BoxDecoration(
+                                color: baseColor,
+                                borderRadius: BorderRadius.circular(24)))),
+                    const SizedBox(width: 12),
+                    Expanded(
+                        child: Container(
+                            height: 80,
+                            decoration: BoxDecoration(
+                                color: baseColor,
+                                borderRadius: BorderRadius.circular(24)))),
+                  ],
+                ),
+              );
+            }
+            // 团队卡片骨架
+            return Container(
+              height: 100,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                  color: baseColor, borderRadius: BorderRadius.circular(20)),
+            );
+          },
+          childCount: 5,
+        ),
+      ),
     );
   }
 }

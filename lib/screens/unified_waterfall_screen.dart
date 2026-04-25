@@ -210,7 +210,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildSkeleton(isDark)
           : GestureDetector(
         onScaleUpdate: _handleScaleUpdate,
         child: CustomScrollView(
@@ -406,10 +406,13 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
+                border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.transparent),
                 boxShadow: [
                   BoxShadow(
-                    color: isDark ? Colors.black.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.03),
+                    color: isDark
+                        ? Colors.black.withValues(alpha: 0.2)
+                        : Colors.black.withValues(alpha: 0.03),
                     blurRadius: 15,
                     offset: const Offset(0, 5),
                   )
@@ -422,7 +425,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                     children: [
                       // 🚀 优化的标签样式
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: teamColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
@@ -430,11 +434,21 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(isTeamTask ? Icons.group_rounded : Icons.person_rounded, size: 10, color: teamColor),
+                            Icon(
+                                isTeamTask
+                                    ? Icons.group_rounded
+                                    : Icons.person_rounded,
+                                size: 10,
+                                color: teamColor),
                             const SizedBox(width: 4),
                             Text(
-                              isTeamTask ? _safeStr(todo.teamName ?? '未知团队') : "个人私密",
-                              style: TextStyle(fontSize: 10, color: teamColor, fontWeight: FontWeight.bold),
+                              isTeamTask
+                                  ? _safeStr(todo.teamName ?? '未知团队')
+                                  : "个人私密",
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: teamColor,
+                                  fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
@@ -442,24 +456,39 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                       const Spacer(),
                       Row(
                         children: [
-                          Icon(Icons.schedule_rounded, size: 12, color: Colors.grey.shade400),
+                          Icon(Icons.schedule_rounded,
+                              size: 12, color: Colors.grey.shade400),
                           const SizedBox(width: 4),
                           Text(
-                            _safeStr(TimezoneUtils.getRelativeTime(todo.dueDate?.millisecondsSinceEpoch ?? todo.updatedAt)),
-                            style: TextStyle(fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontWeight: FontWeight.w500),
+                            _safeStr(TimezoneUtils.getRelativeTime(
+                                todo.dueDate?.millisecondsSinceEpoch ??
+                                    todo.updatedAt)),
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: isDark
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade600,
+                                fontWeight: FontWeight.w500),
                           ),
                         ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text(_safeStr(todo.title), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.3)),
+                  Text(_safeStr(todo.title),
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600, height: 1.3)),
                   if (todo.remark != null && todo.remark!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         _safeStr(todo.remark!),
-                        style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade500 : Colors.grey.shade600, height: 1.4),
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: isDark
+                                ? Colors.grey.shade500
+                                : Colors.grey.shade600,
+                            height: 1.4),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -470,6 +499,69 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // 🚀 全景看板骨架屏
+  Widget _buildSkeleton(bool isDark) {
+    final baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return CustomScrollView(
+      slivers: [
+        SliverAppBar(
+          backgroundColor: Colors.transparent,
+          title: Container(
+              width: 140,
+              height: 24,
+              decoration: BoxDecoration(
+                  color: baseColor, borderRadius: BorderRadius.circular(12))),
+        ),
+        SliverToBoxAdapter(
+          child: Container(
+            height: 300,
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: baseColor, borderRadius: BorderRadius.circular(28)),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                    child: Container(
+                        height: 60,
+                        decoration: BoxDecoration(
+                            color: baseColor,
+                            borderRadius: BorderRadius.circular(20)))),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Container(
+                        height: 60,
+                        decoration: BoxDecoration(
+                            color: baseColor,
+                            borderRadius: BorderRadius.circular(20)))),
+              ],
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.all(16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => Container(
+                height: 100,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                    color: baseColor, borderRadius: BorderRadius.circular(20)),
+              ),
+              childCount: 3,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

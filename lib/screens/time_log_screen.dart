@@ -157,7 +157,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   }
 
   Future<void> _loadData({bool forceSync = false}) async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+    
     if (forceSync) {
       try {
         await StorageService.syncData(widget.username,
@@ -169,23 +171,29 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         }
       }
     }
-    final tags = await PomodoroService.getTags();
-    final logs = await StorageService.getTimeLogs(widget.username);
-    final pomodoros = await PomodoroService.getRecords();
-    if (mounted) {
-      setState(() {
-        _tags = tags;
-        _allLogs = logs.where((l) => !l.isDeleted).toList();
-        _allPomodoros = pomodoros;
-        _isLoading = false;
+
+    // 🚀 核心优化：并行加载所有统计所需数据
+    final results = await Future.wait([
+      PomodoroService.getTags(),
+      StorageService.getTimeLogs(widget.username),
+      PomodoroService.getRecords(),
+    ]);
+
+    if (!mounted) return;
+
+    setState(() {
+      _tags = results[0] as List<PomodoroTag>;
+      _allLogs = (results[1] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
+      _allPomodoros = results[2] as List<PomodoroRecord>;
+      _isLoading = false;
+    });
+
+    // 🚀 如果从搜索跳转并指定了标签，数据加载完成后自动弹出统计面板
+    if (widget.initialTagUuid != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final tag = _tags.where((t) => t.uuid == widget.initialTagUuid).firstOrNull;
+        if (tag != null && mounted) _showTagDetail(tag);
       });
-      // 🚀 如果从搜索跳转并指定了标签，数据加载完成后自动弹出统计面板
-      if (widget.initialTagUuid != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final tag = _tags.where((t) => t.uuid == widget.initialTagUuid).firstOrNull;
-          if (tag != null && mounted) _showTagDetail(tag);
-        });
-      }
     }
   }
 
@@ -332,7 +340,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           surfaceTintColor: Colors.transparent,
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? _buildSkeleton()
             : _view == _ViewMode.week
                 ? _WeekView(
                     weekStart: _weekStart,
@@ -607,6 +615,26 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       await PomodoroService.saveTags(updated);
       setState(() => _tags = updated);
     }
+  }
+
+  // 🚀 时间日志骨架屏
+  Widget _buildSkeleton() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 8,
+      itemBuilder: (context, index) => Container(
+        height: 60,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: baseColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
   }
 }
 

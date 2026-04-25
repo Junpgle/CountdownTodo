@@ -2119,6 +2119,31 @@ class StorageService {
         }
       }
 
+      // 🚀 关键：将 conflicts 数组中的冲突也标记到本地数据上。
+      // 服务器在标记 has_conflict=1 时可能不会同时更新 updated_at，
+      // 导致该条目被 filterWithActualTime 过滤掉，不在 server_todos 中。
+      // 这里从 conflicts 数组直接补标，确保 ConflictInboxScreen 能看到。
+      if (conflicts.isNotEmpty) {
+        for (final c in conflicts) {
+          final itemId = c.item['uuid'] ?? c.item['id'] ?? '';
+          if (itemId.isEmpty) continue;
+
+          if (todosIndexMap.containsKey(itemId)) {
+            allLocalTodos[todosIndexMap[itemId]!].hasConflict = true;
+            hasChanges = true;
+          }
+          if (countdownsIndexMap.containsKey(itemId)) {
+            allLocalCountdowns[countdownsIndexMap[itemId]!].hasConflict = true;
+            hasChanges = true;
+          }
+          if (groupsIndexMap.containsKey(itemId)) {
+            allLocalGroups[groupsIndexMap[itemId]!].hasConflict = true;
+            hasChanges = true;
+          }
+          // TimeLogs don't have hasConflict field, skip
+        }
+      }
+
       // 合并 Pomodoro (Tags & Records)
       if (syncPomodoro) {
         try {
@@ -2769,5 +2794,115 @@ class StorageService {
   static Future<List<Map<String, dynamic>>> getSyncFailures() async {
     final db = await DatabaseHelper.instance.database;
     return await db.query('op_logs', where: 'sync_error IS NOT NULL AND is_synced = 0', orderBy: 'timestamp DESC');
+  }
+
+  /// Resolve a conflict locally: clear the has_conflict flag in the database.
+  /// If [createOplog] is true (keep_local case), also create an op_log entry
+  /// with the bumped version so the next sync pushes it to the server.
+  static Future<void> resolveConflictLocally({
+    required String uuid,
+    required String table,
+    required Map<String, dynamic> resolvedData,
+    bool createOplog = false,
+  }) async {
+    final db = await DatabaseHelper.instance.database;
+    final batch = db.batch();
+
+    resolvedData['has_conflict'] = 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    resolvedData['updated_at'] = now;
+
+    switch (table) {
+      case 'todos':
+        batch.update(
+          'todos',
+          {
+            'has_conflict': 0,
+            'version': resolvedData['version'],
+            'updated_at': now,
+            'content': resolvedData['content'] ?? resolvedData['title'] ?? '',
+            'is_deleted': resolvedData['is_deleted'] == 1 || resolvedData['is_deleted'] == true ? 1 : 0,
+            'is_completed': resolvedData['is_completed'] == 1 || resolvedData['is_completed'] == true ? 1 : 0,
+            'due_date': resolvedData['due_date'] ?? resolvedData['dueDate'] ?? 0,
+            'remark': resolvedData['remark'] ?? null,
+            'group_id': resolvedData['group_id'] ?? resolvedData['groupId'] ?? null,
+            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+            'recurrence': resolvedData['recurrence'] ?? 0,
+            'is_all_day': resolvedData['is_all_day'] == 1 || resolvedData['is_all_day'] == true || resolvedData['isAllDay'] == true ? 1 : 0,
+            'reminder_minutes': resolvedData['reminder_minutes'] ?? resolvedData['reminderMinutes'] ?? -1,
+            'created_date': resolvedData['created_date'] ?? resolvedData['createdDate'] ?? 0,
+            'collab_type': resolvedData['collab_type'] ?? resolvedData['collabType'] ?? 0,
+          },
+          where: 'uuid = ?',
+          whereArgs: [uuid],
+        );
+        break;
+
+      case 'countdowns':
+        final targetTime = resolvedData['target_time'] ?? resolvedData['targetTime'] ?? resolvedData['target_date'] ?? 0;
+        batch.update(
+          'countdowns',
+          {
+            'has_conflict': 0,
+            'version': resolvedData['version'],
+            'updated_at': now,
+            'title': resolvedData['title'] ?? '',
+            'is_deleted': resolvedData['is_deleted'] == 1 || resolvedData['is_deleted'] == true ? 1 : 0,
+            'is_completed': resolvedData['is_completed'] == 1 || resolvedData['is_completed'] == true ? 1 : 0,
+            'target_time': targetTime is int ? targetTime : 0,
+            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+          },
+          where: 'uuid = ?',
+          whereArgs: [uuid],
+        );
+        break;
+
+      case 'todo_groups':
+        batch.update(
+          'todo_groups',
+          {
+            'has_conflict': 0,
+            'version': resolvedData['version'],
+            'updated_at': now,
+            'name': resolvedData['name'] ?? '',
+            'is_deleted': resolvedData['is_deleted'] == 1 || resolvedData['is_deleted'] == true ? 1 : 0,
+            'is_expanded': resolvedData['is_expanded'] == 1 || resolvedData['is_expanded'] == true ? 1 : 0,
+            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+          },
+          where: 'uuid = ?',
+          whereArgs: [uuid],
+        );
+        break;
+    }
+
+    if (createOplog) {
+      batch.insert('op_logs', {
+        'op_type': 'UPSERT',
+        'target_table': table,
+        'target_uuid': uuid,
+        'data_json': jsonEncode(resolvedData),
+        'timestamp': now,
+        'is_synced': 0,
+      });
+    }
+
+    // Also clear conflict_data
+    try {
+      await db.rawUpdate(
+        'UPDATE $table SET conflict_data = NULL WHERE uuid = ?',
+        [uuid],
+      );
+    } catch (_) {}
+
+    await batch.commit(noResult: true);
+
+    // Invalidate SharedPreferences cache so next load picks up the resolved item
+    final prefs = await SharedPreferences.getInstance();
+    final key = table == 'todos'
+        ? '${KEY_TODOS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}'
+        : table == 'countdowns'
+            ? '${KEY_COUNTDOWNS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}'
+            : '${KEY_TODO_GROUPS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}';
+    await prefs.remove(key);
   }
 }

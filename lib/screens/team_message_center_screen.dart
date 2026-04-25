@@ -33,8 +33,15 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     final List<dynamic> allMessages = [];
     final Set<String> seenMessageKeys = <String>{};
     try {
-      for (var team in widget.managedTeams) {
-        final res = await ApiService.fetchTeamSystemMessages(team.uuid);
+      // 🚀 核心优化：并发加载所有管理团队的消息
+      final results = await Future.wait(
+        widget.managedTeams.map((team) => ApiService.fetchTeamSystemMessages(team.uuid))
+      );
+
+      for (int i = 0; i < widget.managedTeams.length; i++) {
+        final team = widget.managedTeams[i];
+        final res = results[i];
+        
         if (res['success'] == true) {
           final msgs = List<dynamic>.from(res['messages'] as List? ?? const []);
           for (var m in msgs) {
@@ -88,7 +95,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
         ],
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? _buildSkeleton(isDark)
         : _messages.isEmpty 
           ? _buildEmptyState(isDark)
           : RefreshIndicator(
@@ -313,5 +320,24 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  // 🚀 消息中心骨架屏
+  Widget _buildSkeleton(bool isDark) {
+    final baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 6,
+      itemBuilder: (context, index) => Container(
+        height: 100,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: baseColor,
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+    );
   }
 }

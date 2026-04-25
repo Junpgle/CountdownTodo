@@ -83,8 +83,11 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback onSync;
   final VoidCallback onSettings;
   final VoidCallback? onSearch; // 🚀 新增：搜索回调
+  final VoidCallback? onTeams; // 🚀 新增：团队回调
   final GlobalKey? settingsKey;
   final GlobalKey? courseKey;
+  final GlobalKey? searchKey; // 🚀 新增
+  final GlobalKey? teamsKey; // 🚀 新增
   final bool showCourseButton;
   final int teamPendingCount; // 🚀 Uni-Sync 4.0: 团队待处理消息数
 
@@ -98,9 +101,12 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.onSync,
     required this.onSettings,
     this.onSearch,
+    this.onTeams,
     this.settingsKey,
     this.courseKey,
-    this.showCourseButton = true,
+    this.searchKey,
+    this.teamsKey,
+    this.showCourseButton = false,
     this.teamPendingCount = 0,
   });
 
@@ -236,6 +242,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       context,
       icon: Icons.search_rounded,
       onPressed: widget.onSearch ?? () {},
+      buttonKey: widget.searchKey,
       isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
@@ -250,7 +257,8 @@ class _HomeAppBarState extends State<HomeAppBar>
     final teamsBtn = _buildActionButton(
       context,
       icon: Icons.people_rounded,
-      onPressed: () => Navigator.pushNamed(context, '/teams'),
+      onPressed: widget.onTeams ?? () => Navigator.pushNamed(context, '/teams'),
+      buttonKey: widget.teamsKey,
       badgeCount: widget.teamPendingCount,
       isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,

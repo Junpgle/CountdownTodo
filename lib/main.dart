@@ -194,26 +194,27 @@ class _MyAppState extends State<MyApp> {
   // 将所有耗时的初始化工作放到异步方法中
   Future<void> _initializeApp() async {
     try {
-      // 0. 读取主题偏好
-      await StorageService.initTheme();
+      // 🚀 核心优化：并发执行所有不互相依赖的初始化任务
+      final results = await Future.wait([
+        StorageService.initTheme(),
+        EnvironmentService.init(),
+        StorageService.getLoginSession(),
+        StorageService.isPrivacyPolicyUpToDate(),
+        StorageService.isPrivacyPolicyAgreed(),
+        FeatureGuideScreen.shouldShow()
+            .timeout(const Duration(seconds: 2), onTimeout: () => false),
+      ]);
 
-      // 0.5 初始化环境与隔离服务 (基于包名自动识别)
-      await EnvironmentService.init();
+      // 解析并发结果
+      final String? user = results[2] as String?;
+      final bool privacyNeedsUpdate = results[3] as bool;
+      final bool wasAgreed = results[4] as bool;
+      final bool needGuide = results[5] as bool;
 
       // 0.6 初始化壁纸(从manifest获取)
       UpdateService.initWallpaper();
 
-      // 1. 读取登录状态
-      final user = await StorageService.getLoginSession();
-
-      // 1.5 检查隐私协议是否需要更新
-      final privacyNeedsUpdate = await StorageService.isPrivacyPolicyUpToDate();
-      final wasAgreed = await StorageService.isPrivacyPolicyAgreed();
       final wasLoggedIn = user != null && user.isNotEmpty;
-
-      // 2. 检查升级引导 (增加超时保护，防止平台接口卡死)
-      final needGuide = await FeatureGuideScreen.shouldShow()
-          .timeout(const Duration(seconds: 2), onTimeout: () => false);
 
       // 3. 判断是否需要弹窗：已登录但未同意过，或版本已过期
       final shouldShowPrivacyDialog =

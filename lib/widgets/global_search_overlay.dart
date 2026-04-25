@@ -386,6 +386,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildResultsPanel(ColorScheme colorScheme, bool isDark, Size screenSize) {
+    if (_results.isEmpty && _isSearching) {
+      return _buildSearchSkeleton(isDark, screenSize);
+    }
     if (_results.isEmpty && !_isSearching) {
       return _buildEmptyState(colorScheme, isDark);
     }
@@ -897,6 +900,24 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           ),
         ],
       ),
+    );
+  }
+  // 🚀 搜索结果骨架屏
+  Widget _buildSearchSkeleton(bool isDark, Size screenSize) {
+    final baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return Column(
+      children: List.generate(
+          4,
+          (i) => Container(
+                height: 70,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: baseColor,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              )),
     );
   }
 }

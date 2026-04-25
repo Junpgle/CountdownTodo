@@ -52,13 +52,21 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final allTodos = await StorageService.getTodos(widget.username, includeDeleted: true);
-    final groups = await StorageService.getTodoGroups(widget.username, includeDeleted: true);
-    final activeGroupIds = groups.where((g) => !g.isDeleted).map((g) => g.id).toSet();
+    // 🚀 核心优化：并发加载待办和分组
+    final results = await Future.wait([
+      StorageService.getTodos(widget.username, includeDeleted: true),
+      StorageService.getTodoGroups(widget.username, includeDeleted: true),
+    ]);
+
+    final allTodos = results[0] as List<TodoItem>;
+    final groups = results[1] as List<TodoGroup>;
+    final activeGroupIds =
+        groups.where((g) => !g.isDeleted).map((g) => g.id).toSet();
 
     setState(() {
       // 1. 历史记录：已完成、日期在今天之前、未被逻辑删除
-      _history = allTodos.where((t) => _isHistorical(t) && !t.isDeleted).toList();
+      _history =
+          allTodos.where((t) => _isHistorical(t) && !t.isDeleted).toList();
       _history.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       // 2. 回收站：逻辑删除的数据
@@ -66,22 +74,15 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       _deletedTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       // 3. 孤儿待办：未删除、未完成，且符合以下任一可见性异常条件的：
-      //   - 带有无效的 groupId (空字符串，或者 ID 不在活跃群组中)
-      //   - 或者：由于某些元数据异常导致可能在主页隐藏的（作为兜底）
       _orphanTodos = allTodos.where((t) {
         if (t.isDeleted || t.isDone) return false;
-        
-        // 情况 A: 带有空字符串 groupId (会导致在旧版本 UI 中消失)
         if (t.groupId != null && t.groupId!.isEmpty) return true;
-        
-        // 情况 B: 带有 groupId 但对应的组找不到或已删除
-        if (t.groupId != null && !activeGroupIds.contains(t.groupId)) return true;
-        
+        if (t.groupId != null && !activeGroupIds.contains(t.groupId))
+          return true;
         return false;
       }).toList();
       _orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-      debugPrint("🔍 数据扫描完成: 历史=${_history.length}, 回收站=${_deletedTodos.length}, 孤儿=${_orphanTodos.length}");
       _isLoading = false;
     });
   }
@@ -286,7 +287,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildSkeleton(isDark)
           : TabBarView(
               controller: _tabController,
               children: [
@@ -415,6 +416,25 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                 ),
               ],
             ),
+    );
+  }
+
+  // 🚀 清理中心骨架屏
+  Widget _buildSkeleton(bool isDark) {
+    final baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 6,
+      itemBuilder: (context, index) => Container(
+        height: 72,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: baseColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
     );
   }
 }

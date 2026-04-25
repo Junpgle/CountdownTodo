@@ -140,6 +140,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _userTier = "加载中...";
   double _syncProgress = 0.0;
   bool _isLoadingStatus = true;
+  bool _isInitialLoading = true; // 🚀 新增：整页初始加载锁
 
   // 分区展开/折叠状态
   bool _accountExpanded = true;
@@ -323,6 +324,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
 
     _loadSettings().then((_) {
+      if (mounted) setState(() => _isInitialLoading = false); // 🚀 加载完本地设置后解锁
       _fetchAccountStatus();
       // 在加载完设置后同步更新 handler 的 semesterStart
       _courseImportHandler = CourseImportHandler(
@@ -1190,18 +1192,20 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('设置'), centerTitle: true),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // 宽屏阈值：768px 以上切换为双栏布局
-          final bool isWide = constraints.maxWidth >= 768;
+      body: _isInitialLoading
+          ? _buildSkeleton()
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                // 宽屏阈值：768px 以上切换为双栏布局
+                final bool isWide = constraints.maxWidth >= 768;
 
-          if (isWide) {
-            return _buildWideLayout();
-          } else {
-            return _buildNarrowLayout();
-          }
-        },
-      ),
+                if (isWide) {
+                  return _buildWideLayout();
+                } else {
+                  return _buildNarrowLayout();
+                }
+              },
+            ),
     );
   }
 
@@ -1938,6 +1942,48 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  // 🚀 设置页专用骨架屏
+  Widget _buildSkeleton() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // 顶部公告占位
+        Container(
+          height: 80,
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // 账户卡片占位
+        Container(
+          height: 140,
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // 分区项占位
+        ...List.generate(
+            6,
+            (index) => Container(
+                  height: 64,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: baseColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                )),
+      ],
     );
   }
 }

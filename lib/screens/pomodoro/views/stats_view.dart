@@ -89,12 +89,19 @@ class PomodoroStatsState extends State<PomodoroStats> {
   Future<void> _loadLocal() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final tags = await PomodoroService.getTags();
-    final todos = await StorageService.getTodos(widget.username);
+
+    // 🚀 核心优化：并行加载标签、待办和专注记录
+    final results = await Future.wait([
+      PomodoroService.getTags(),
+      StorageService.getTodos(widget.username),
+      PomodoroService.getSessionsInRange(_getChartRange().start, _getChartRange().end),
+    ]);
     
-    // Fetch chart range data
-    final chartRange = _getChartRange();
-    final allSessions = await PomodoroService.getSessionsInRange(chartRange.start, chartRange.end);
+    if (!mounted) return;
+
+    final tags = results[0] as List<PomodoroTag>;
+    final allTodos = results[1] as List<TodoItem>;
+    final allSessions = results[2] as List<PomodoroSession>;
 
     // Filter for current detail view
     final detailRange = _getRange();
@@ -103,10 +110,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
              s.startTime < detailRange.end.millisecondsSinceEpoch;
     }).toList();
 
-    if (!mounted) return;
     setState(() {
       _tags = tags;
-      _todos = todos.where((t) => !t.isDeleted).toList();
+      _todos = allTodos.where((t) => !t.isDeleted).toList();
       _chartSessions = allSessions;
       _sessions = sessions;
       _loading = false;
@@ -200,7 +206,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return _buildSkeleton();
 
     final totalSecs = PomodoroService.totalFocusSeconds(_sessions);
     final byTag = PomodoroService.focusByTag(_sessions);
@@ -751,6 +757,49 @@ class PomodoroStatsState extends State<PomodoroStats> {
       await PomodoroService.deleteSession(session.uuid);
       _loadLocal();
     }
+  }
+
+  // 🚀 骨架屏：模拟趋势图和统计卡片
+  Widget _buildSkeleton() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor = isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 导航栏骨架
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(width: 40, height: 40, decoration: BoxDecoration(color: baseColor, shape: BoxShape.circle)),
+              Container(width: 120, height: 24, decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(12))),
+              Container(width: 40, height: 40, decoration: BoxDecoration(color: baseColor, shape: BoxShape.circle)),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // 图表骨架
+          Container(
+            height: 220,
+            decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(24)),
+          ),
+          const SizedBox(height: 20),
+          // 概览卡片骨架
+          Container(
+            height: 100,
+            decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(20)),
+          ),
+          const SizedBox(height: 24),
+          // 列表骨架
+          ...List.generate(3, (i) => Container(
+            height: 70,
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(16)),
+          )),
+        ],
+      ),
+    );
   }
 }
 

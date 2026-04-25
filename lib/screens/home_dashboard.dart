@@ -153,6 +153,17 @@ class _HomeDashboardState extends State<HomeDashboard>
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
 
+  // 🚀 Granular Refresh Notifiers
+  late final ValueNotifier<List<TodoItem>> _todosNotifier;
+  late final ValueNotifier<List<TodoGroup>> _groupsNotifier;
+  late final ValueNotifier<Map<String, dynamic>> _courseDataNotifier;
+  late final ValueNotifier<List<CountdownItem>> _countdownsNotifier;
+  late final ValueNotifier<Map<String, dynamic>> _mathStatsNotifier;
+
+  // 🚀 GlobalKeys for Zoom Animations
+  final GlobalKey _searchButtonKey = GlobalKey();
+  final GlobalKey _teamsButtonKey = GlobalKey();
+
   // === 初始化与生命周期 ===
   @override
   void initState() {
@@ -166,6 +177,13 @@ class _HomeDashboardState extends State<HomeDashboard>
     WidgetService.init();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
+
+    // 🚀 Granular Refresh Initialization
+    _todosNotifier = ValueNotifier<List<TodoItem>>(_todos);
+    _groupsNotifier = ValueNotifier<List<TodoGroup>>(_todoGroups);
+    _courseDataNotifier = ValueNotifier<Map<String, dynamic>>(_dashboardCourseData);
+    _countdownsNotifier = ValueNotifier<List<CountdownItem>>([]);
+    _mathStatsNotifier = ValueNotifier<Map<String, dynamic>>(_mathStats);
     
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
     StorageService.dataRefreshNotifier.addListener(_loadAllData);
@@ -268,6 +286,11 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   @override
   void dispose() {
+    _todosNotifier.dispose();
+    _groupsNotifier.dispose();
+    _courseDataNotifier.dispose();
+    _countdownsNotifier.dispose();
+    _mathStatsNotifier.dispose();
     _connStateSub?.cancel();
     _remotePomodoroSub?.cancel();
     _localPomodoroSub?.cancel();
@@ -1721,13 +1744,30 @@ class _HomeDashboardState extends State<HomeDashboard>
       final Map<String, dynamic> courseData = results[4] as Map<String, dynamic>;
 
       if (mounted) {
-        setState(() {
+        // 🚀 Granular Update: Only update notifiers if content actually changed
+        if (!_isListEqual(_todos, allTodos)) {
           _todos = allTodos;
+          _todosNotifier.value = allTodos;
+        }
+        if (!_isListEqual(_todoGroups, allGroups)) {
           _todoGroups = allGroups;
+          _groupsNotifier.value = allGroups;
+        }
+        if (!_isListEqual(_countdowns, allCountdowns)) {
           _countdowns = allCountdowns;
+          _countdownsNotifier.value = allCountdowns;
+        }
+        if (!_isMapEqual(_mathStats, mathStats)) {
           _mathStats = mathStats;
+          _mathStatsNotifier.value = mathStats;
+        }
+        if (!_isMapEqual(_dashboardCourseData, courseData)) {
           _dashboardCourseData = courseData;
-          _todoUpdateSignal++; // 🚀 触发重绘
+          _courseDataNotifier.value = courseData;
+        }
+
+        setState(() {
+          _todoUpdateSignal++; // 🚀 触发部分全局状态重绘
         });
 
         // 2. 交互与同步逻辑 (异步执行)
@@ -1742,14 +1782,14 @@ class _HomeDashboardState extends State<HomeDashboard>
           courses: allCourses,
         ));
       }
-
-      final duration = DateTime.now().difference(startTime);
-      // debugPrint('✅ [DashboardLoader] 加载成功: ${allTodos.length} Todos, ${allCountdowns.length} Countdowns, 耗时: ${duration.inMilliseconds}ms');
     } catch (e) {
       debugPrint('❌ [DashboardLoader] 加载失败: $e');
     } finally {
-      _isDataLoading = false;
-      _initManifestWallpaper(); // 🚀 保持原有的壁纸初始化
+      if (mounted) {
+        setState(() {
+          _isDataLoading = false;
+        });
+      }
     }
   }
 
@@ -3087,7 +3127,26 @@ class _HomeDashboardState extends State<HomeDashboard>
           color: Colors.white,
           size: 22,
         ),
-      ),
+    )
     );
+  }
+
+  // 🚀 辅助方法：内容级深度比较，用于按需刷新
+  bool _isListEqual(List a, List b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  bool _isMapEqual(Map a, Map b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (!b.containsKey(key) || a[key] != b[key]) return false;
+    }
+    return true;
   }
 }

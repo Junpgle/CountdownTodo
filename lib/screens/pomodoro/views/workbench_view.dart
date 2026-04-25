@@ -219,39 +219,32 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
     Timer? initWatchdog = Timer(const Duration(seconds: 6), () {});
 
     try {
-      _settings = await PomodoroService.getSettings();
-      _allTags = await PomodoroService.getTags();
-      _deviceId = await StorageService.getDeviceId();
+      // 🚀 核心优化：并发加载所有基础配置与数据
+      final results = await Future.wait([
+        PomodoroService.getSettings(),
+        PomodoroService.getTags(),
+        StorageService.getDeviceId(),
+        StorageService.getTodos(widget.username).timeout(const Duration(seconds: 5), onTimeout: () => <TodoItem>[]),
+        StorageService.getTodoGroups(widget.username).timeout(const Duration(seconds: 5), onTimeout: () => <TodoGroup>[]),
+        PomodoroService.loadRunState().timeout(const Duration(seconds: 5), onTimeout: () => null),
+      ]);
+
+      _settings = results[0] as PomodoroSettings;
+      _allTags = results[1] as List<PomodoroTag>;
+      _deviceId = results[2] as String;
+      
+      final todosRaw = results[3] as List<TodoItem>;
+      _todos = todosRaw.where((t) => !t.isDeleted && !t.isDone).toList();
+      
+      final groupsRaw = results[4] as List<TodoGroup>;
+      _todoGroups = groupsRaw.where((g) => !g.isDeleted).toList();
+
+      final saved = results[5] as PomodoroRunState?;
+
       try {
         final info = await PackageInfo.fromPlatform();
         _appVersion = info.version;
       } catch (e) {}
-
-      //debugPrint('[PomodoroWorkbench] StorageService.getTodos() start');
-      try {
-        final todosRaw = await StorageService.getTodos(widget.username)
-            .timeout(const Duration(seconds: 5), onTimeout: () {
-          return <TodoItem>[];
-        });
-        _todos = (todosRaw).where((t) => !t.isDeleted && !t.isDone).toList();
-
-        final groupsRaw = await StorageService.getTodoGroups(widget.username)
-            .timeout(const Duration(seconds: 5), onTimeout: () => <TodoGroup>[]);
-        _todoGroups = groupsRaw.where((g) => !g.isDeleted).toList();
-      } catch (e) {
-        _todos = [];
-        _todoGroups = [];
-      }
-
-      PomodoroRunState? saved;
-      try {
-        saved = await PomodoroService.loadRunState()
-            .timeout(const Duration(seconds: 5));
-      } on TimeoutException catch (_) {
-        saved = null;
-      } catch (e) {
-        saved = null;
-      }
 
       if (saved != null && saved.phase != PomodoroPhase.idle) {
         try {
@@ -2006,10 +1999,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
 
     return SafeArea(
       bottom: false,
-      child: AnimatedOpacity(
-        opacity: _initializing ? 0.0 : 1.0,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOut,
+      child: _initializing
+          ? _buildSkeleton()
+          : AnimatedOpacity(
+              opacity: 1.0,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOut,
         child: OrientationBuilder(
           builder: (context, orientation) {
             final isLandscape = orientation == Orientation.landscape;
@@ -2060,6 +2055,83 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench> with WidgetsBindin
           ),
         ),
       ],
+    );
+  }
+
+  // 🚀 专注工作台骨架屏：模拟大圆环计时器和任务选择区
+  Widget _buildSkeleton() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          // 顶部状态栏骨架
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                  width: 80,
+                  height: 24,
+                  decoration: BoxDecoration(
+                      color: baseColor,
+                      borderRadius: BorderRadius.circular(12))),
+            ],
+          ),
+          const SizedBox(height: 40),
+          // 计时器圆环骨架
+          Container(
+            width: 240,
+            height: 240,
+            decoration: BoxDecoration(
+              border: Border.all(color: baseColor, width: 8),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Container(
+                  width: 120,
+                  height: 48,
+                  decoration: BoxDecoration(
+                      color: baseColor,
+                      borderRadius: BorderRadius.circular(8))),
+            ),
+          ),
+          const SizedBox(height: 40),
+          // 任务区域骨架
+          Container(
+            height: 100,
+            width: double.infinity,
+            decoration: BoxDecoration(
+                color: baseColor, borderRadius: BorderRadius.circular(20)),
+          ),
+          const SizedBox(height: 20),
+          // 按钮骨架
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              Container(
+                  width: 60,
+                  height: 60,
+                  decoration:
+                      BoxDecoration(color: baseColor, shape: BoxShape.circle)),
+              Container(
+                  width: 120,
+                  height: 50,
+                  decoration: BoxDecoration(
+                      color: baseColor,
+                      borderRadius: BorderRadius.circular(25))),
+              Container(
+                  width: 60,
+                  height: 60,
+                  decoration:
+                      BoxDecoration(color: baseColor, shape: BoxShape.circle)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

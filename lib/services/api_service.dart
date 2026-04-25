@@ -1199,4 +1199,37 @@ class ApiService {
       return {'success': false, 'error': "网络错误，无法执行云端回滚"};
     }
   }
+
+  /// Resolve a conflict on the server: clear the has_conflict flag.
+  static Future<Map<String, dynamic>> resolveConflict({
+    required String uuid,
+    required String table,
+    required String resolution, // 'keep_local' or 'accept_server'
+    int? bumpedVersion,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'uuid': uuid,
+        'table': table,
+        'resolution': resolution,
+      };
+      if (bumpedVersion != null) body['version'] = bumpedVersion;
+      if (data != null) body['data'] = data;
+
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/sync/resolve_conflict'),
+        headers: _getHeaders(),
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 5));
+
+      final result = jsonDecode(response.body);
+      if (response.statusCode == 200 && result['success'] == true) {
+        return {'success': true};
+      }
+      return {'success': false, 'error': result['error'] ?? '请求失败'};
+    } catch (e) {
+      return {'success': false, 'error': "网络错误: $e"};
+    }
+  }
 }
