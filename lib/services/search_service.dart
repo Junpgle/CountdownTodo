@@ -860,56 +860,68 @@ class SearchService {
 
     // 1. 时间维度：根据时刻推荐
     final hour = now.hour;
-    final currentTimeHHMM = now.hour * 100 + now.minute;
-    final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
-    // 🚀 新增：基于最近课程的推荐
+    // 🚀 新增：基于“最近”课程的推荐 (全量时间轴最近)
     try {
       final username = await StorageService.getLoginSession();
       if (username != null) {
         final allCourses = await CourseService.getAllCourses(username);
-        // 筛选今天的课
-        final todayCourses = allCourses.where((c) => c.date == todayStr).toList();
-        if (todayCourses.isNotEmpty) {
-          todayCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
-          
-          CourseItem? recentCourse;
+        if (allCourses.isNotEmpty) {
+          CourseItem? nearestCourse;
+          int minDiffSeconds = 0x7FFFFFFF; // 很大一个数
           String reason = "";
           
-          // 1. 查找正在上的课
-          for (var c in todayCourses) {
-            if (currentTimeHHMM >= c.startTime && currentTimeHHMM <= c.endTime) {
-              recentCourse = c;
-              reason = "正在进行的课程";
-              break;
-            }
-          }
-          
-          // 2. 查找刚刚结束的课 (30分钟内)
-          if (recentCourse == null) {
-             for (var i = todayCourses.length - 1; i >= 0; i--) {
-               final c = todayCourses[i];
-               if (c.endTime < currentTimeHHMM) {
-                 final diffMin = (now.hour - c.endTime ~/ 100) * 60 + (now.minute - c.endTime % 100);
-                 if (diffMin <= 30) {
-                   recentCourse = c;
-                   reason = "刚刚结束的课程";
-                 }
-                 break;
-               }
-             }
+          for (var c in allCourses) {
+            try {
+              final dateParts = c.date.split('-');
+              if (dateParts.length != 3) continue;
+              
+              final startDt = DateTime(
+                int.parse(dateParts[0]), 
+                int.parse(dateParts[1]), 
+                int.parse(dateParts[2]),
+                c.startTime ~/ 100,
+                c.startTime % 100
+              );
+              final endDt = DateTime(
+                int.parse(dateParts[0]), 
+                int.parse(dateParts[1]), 
+                int.parse(dateParts[2]),
+                c.endTime ~/ 100,
+                c.endTime % 100
+              );
+
+              // 1. 如果正在进行，优先级最高
+              if (now.isAfter(startDt) && now.isBefore(endDt)) {
+                nearestCourse = c;
+                minDiffSeconds = 0;
+                reason = "正在进行的课程";
+                break; 
+              }
+
+              // 2. 计算绝对距离
+              final diffToStart = now.difference(startDt).inSeconds.abs();
+              final diffToEnd = now.difference(endDt).inSeconds.abs();
+              final localMin = diffToStart < diffToEnd ? diffToStart : diffToEnd;
+
+              if (localMin < minDiffSeconds) {
+                minDiffSeconds = localMin;
+                nearestCourse = c;
+                reason = now.isBefore(startDt) ? "即将开始的课程" : "最近结束的课程";
+              }
+            } catch (_) {}
           }
 
-          if (recentCourse != null) {
+          if (nearestCourse != null) {
             suggestions.add(SearchResult(
               id: 'guess_recent_course',
-              title: recentCourse.courseName,
-              subtitle: '🎓 $reason · ${recentCourse.roomName}',
+              title: nearestCourse.courseName,
+              subtitle: '🎓 $reason · ${nearestCourse.roomName}',
               icon: Icons.school_rounded,
               type: SearchResultType.recommend,
               extraData: {
-                'uuid': recentCourse.uuid,
-                'type': 'course_detail' // 让 handle 识别去查详情
+                'action': 'apply_query',
+                'query': nearestCourse.courseName,
               },
             ));
           }
