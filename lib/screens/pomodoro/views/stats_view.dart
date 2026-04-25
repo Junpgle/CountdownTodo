@@ -8,8 +8,13 @@ import '../pomodoro_utils.dart';
 class PomodoroStats extends StatefulWidget {
   final String username;
   final bool isCompact;
-  const PomodoroStats(
-      {super.key, required this.username, this.isCompact = false});
+  final int initialDimension;
+  const PomodoroStats({
+    super.key,
+    required this.username,
+    this.isCompact = false,
+    this.initialDimension = 0,
+  });
 
   @override
   State<PomodoroStats> createState() => PomodoroStatsState();
@@ -29,6 +34,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   @override
   void initState() {
     super.initState();
+    _dimension = widget.initialDimension; // 🚀 使用初始维度
     _loadLocal().then((_) => _syncIfDue());
   }
 

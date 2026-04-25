@@ -17,7 +17,9 @@ import '../utils/page_transitions.dart';
 import '../widgets/todo_section_widget.dart';
 import '../screens/pomodoro_screen.dart';
 import '../screens/time_log_screen.dart';
+import 'course_service.dart';
 import '../screens/screen_time_detail_screen.dart';
+import '../screens/course_screens.dart';
 
 class SearchResultWithScore {
   final SearchResult result;
@@ -262,10 +264,16 @@ class SearchService {
   ];
 
   Future<List<SearchResult>> search(String query) async {
-    if (query.trim().isEmpty) return [];
+    if (query.trim().isEmpty) {
+      return await guessSearch();
+    }
     
     final currentSearchId = ++_latestSearchId;
     final q = query.toLowerCase().trim();
+
+    // 🚀 异步记录搜索历史
+    DatabaseHelper.instance.insertSearchHistory(q).catchError((e) => debugPrint("Record search history error: $e"));
+
     final searchTerms = _extractSearchTerms(q);
     final scoredResults = <SearchResultWithScore>[];
 
@@ -841,6 +849,179 @@ class SearchService {
     }
     return dbItems;
   }
+
+  /// 🚀 猜你想搜：非常轻量的启发式“小模型”
+  /// 基于时间、任务紧急度、搜索历史、近期活动进行智能推荐
+  Future<List<SearchResult>> guessSearch() async {
+    final suggestions = <SearchResult>[];
+    final db = DatabaseHelper.instance;
+    final now = DateTime.now();
+    final username = await StorageService.getLoginSession() ?? 'default';
+
+    // 1. 时间维度：根据时刻推荐
+    final hour = now.hour;
+    final currentTimeHHMM = now.hour * 100 + now.minute;
+    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+
+    // 🚀 新增：基于最近课程的推荐
+    try {
+      final username = await StorageService.getLoginSession();
+      if (username != null) {
+        final allCourses = await CourseService.getAllCourses(username);
+        // 筛选今天的课
+        final todayCourses = allCourses.where((c) => c.date == todayStr).toList();
+        if (todayCourses.isNotEmpty) {
+          todayCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
+          
+          CourseItem? recentCourse;
+          String reason = "";
+          
+          // 1. 查找正在上的课
+          for (var c in todayCourses) {
+            if (currentTimeHHMM >= c.startTime && currentTimeHHMM <= c.endTime) {
+              recentCourse = c;
+              reason = "正在进行的课程";
+              break;
+            }
+          }
+          
+          // 2. 查找刚刚结束的课 (30分钟内)
+          if (recentCourse == null) {
+             for (var i = todayCourses.length - 1; i >= 0; i--) {
+               final c = todayCourses[i];
+               if (c.endTime < currentTimeHHMM) {
+                 final diffMin = (now.hour - c.endTime ~/ 100) * 60 + (now.minute - c.endTime % 100);
+                 if (diffMin <= 30) {
+                   recentCourse = c;
+                   reason = "刚刚结束的课程";
+                 }
+                 break;
+               }
+             }
+          }
+
+          if (recentCourse != null) {
+            suggestions.add(SearchResult(
+              id: 'guess_recent_course',
+              title: recentCourse.courseName,
+              subtitle: '🎓 $reason · ${recentCourse.roomName}',
+              icon: Icons.school_rounded,
+              type: SearchResultType.recommend,
+              extraData: {
+                'uuid': recentCourse.uuid,
+                'type': 'course_detail' // 让 handle 识别去查详情
+              },
+            ));
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (hour >= 6 && hour <= 10) {
+      suggestions.add(SearchResult(
+        id: 'guess_today_plan',
+        title: '查看今日课表与待办',
+        subtitle: '✨ 早安！开启高效的一天',
+        icon: Icons.wb_sunny_outlined,
+        type: SearchResultType.recommend,
+        extraData: {
+          'action': 'navigate', 
+          'route': '/course/weekly'
+        },
+      ));
+    } else if (hour >= 21 || hour <= 2) {
+      suggestions.add(SearchResult(
+        id: 'guess_today_stats',
+        title: '查看今日完成情况',
+        subtitle: '🌙 晚安！回顾今日成就，展望下周规划',
+        icon: Icons.insert_chart_outlined,
+        type: SearchResultType.recommend,
+        extraData: {
+          'action': 'navigate', 
+          'route': '/pomodoro/stats',
+          'initialDimension': 1 // 🚀 1 代表周视图
+        },
+      ));
+    }
+
+    // 2. 紧急维度：逾期任务探测 (权重最高)
+    try {
+      final allTodos = await StorageService.getTodos(username);
+      final overdue = allTodos.where((t) => !t.isDone && !t.isDeleted && t.dueDate != null && t.dueDate!.isBefore(now)).toList();
+      if (overdue.isNotEmpty) {
+        suggestions.add(SearchResult(
+          id: 'guess_overdue',
+          title: '处理逾期任务 (${overdue.length})',
+          subtitle: '⚠️ 发现已截止但未完成的任务，建议优先处理',
+          icon: Icons.priority_high_rounded,
+          type: SearchResultType.recommend,
+          extraData: {'action': 'filter_overdue'},
+        ));
+      }
+    } catch (_) {}
+
+    // 3. 历史频率维度：最常搜索 (Top 1)
+    try {
+      final topHistory = await db.getRecentSearches(limit: 1); // 不按时段，按绝对频率
+      if (topHistory.isNotEmpty) {
+        final h = topHistory.first;
+        suggestions.add(SearchResult(
+          id: 'guess_most_frequent',
+          title: h['query'],
+          subtitle: '💡 您最常搜索的内容',
+          icon: Icons.lightbulb_outline_rounded,
+          type: SearchResultType.recommend,
+          extraData: {'action': 'apply_query', 'query': h['query']},
+        ));
+      }
+    } catch (_) {}
+
+    // 4. 历史时间维度：最近搜索 (时段敏感型，展示前 5 条)
+    try {
+      final history = await db.getRecentSearches(limit: 5, currentHour: now.hour);
+      for (var h in history) {
+        // 如果已经作为“最常搜索”推荐过了，就不再在历史里重复显示（可选）
+        suggestions.add(SearchResult(
+          id: 'history_${h['query']}',
+          title: h['query'],
+          subtitle: '最近搜过',
+          icon: Icons.history_rounded,
+          type: SearchResultType.history,
+          extraData: {'action': 'apply_query', 'query': h['query']},
+        ));
+      }
+    } catch (_) {}
+
+    // 4. 活动维度：近期专注活动
+    try {
+      final poms = await PomodoroService.getRecords();
+      if (poms.isNotEmpty) {
+        final lastPom = poms.first;
+        if (lastPom.todoTitle != null && lastPom.todoTitle!.isNotEmpty) {
+           suggestions.add(SearchResult(
+            id: 'guess_recent_focus',
+            title: '继续搜索: ${lastPom.todoTitle}',
+            subtitle: '🔥 您最近正在专注这项任务',
+            icon: Icons.local_fire_department_rounded,
+            type: SearchResultType.recommend,
+            extraData: {'action': 'ai_query', 'query': lastPom.todoTitle},
+          ));
+        }
+      }
+    } catch (_) {}
+
+    // 5. 统计维度：今日屏幕时间
+    suggestions.add(SearchResult(
+      id: 'guess_screen_time',
+      title: '今日屏幕使用时长',
+      subtitle: '📊 看看今天在手机上花了多少时间',
+      icon: Icons.pie_chart_rounded,
+      type: SearchResultType.recommend,
+      extraData: {'action': 'navigate', 'route': '/screen_time'},
+    ));
+
+    return suggestions;
+  }
 }
 
 class SearchNavigationHandler {
@@ -857,6 +1038,13 @@ class SearchNavigationHandler {
         _showAISuggestion(context, query);
       } else if (action == 'new_todo') {
         _executeAction(context, action);
+      } else if (action == 'apply_query' && query != null) {
+        // 交给 UI 层处理：重新设置 Search Bar 的文本并触发搜索
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("正在搜索: $query"), duration: const Duration(seconds: 1)));
+      } else if (action == 'navigate') {
+        _navigateByRoute(context, route ?? '', data);
+      } else if (action == 'filter_overdue') {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("已跳转至待办列表 - 逾期筛选")));
       }
       return;
     }
@@ -867,6 +1055,8 @@ class SearchNavigationHandler {
       _handleTodoEdit(context, result);
     } else if (result.type == SearchResultType.todoGroup) {
       _handleTodoGroupNavigation(context, result);
+    } else if (result.type == SearchResultType.course || data['type'] == 'course_detail') {
+      _handleCourseNavigation(context, result);
     }
   }
 
@@ -962,6 +1152,26 @@ class SearchNavigationHandler {
     ));
   }
 
+  static void _handleCourseNavigation(BuildContext context, SearchResult result) async {
+    try {
+      final uuid = result.extraData?['uuid'];
+      if (uuid == null) return;
+
+      final db = DatabaseHelper.instance;
+      final maps = await db.searchCourses(''); // 暂时全量搜或者加个 getCourseByUuid
+      final courseMap = maps.firstWhere((m) => m['uuid'].toString() == uuid.toString(), orElse: () => {});
+      
+      if (courseMap.isNotEmpty) {
+        final course = CourseItem.fromJson(courseMap);
+        if (context.mounted) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailScreen(course: course)));
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ _handleCourseNavigation error: $e");
+    }
+  }
+
   static void _navigateByRoute(BuildContext context, String route, Map<String, dynamic> data) async {
     final target = data['target'] as String?;
     Widget? page;
@@ -999,7 +1209,12 @@ class SearchNavigationHandler {
 
     switch (route) {
       case '/pomodoro/stats':
-        page = PomodoroScreen(username: username, initialTab: 1);
+        final dim = data['initialDimension'] as int? ?? 0;
+        page = PomodoroScreen(
+          username: username, 
+          initialTab: 1, 
+          initialDimension: dim
+        );
         break;
       case '/time_log/manual':
         page = TimeLogScreen(username: username);
@@ -1024,6 +1239,20 @@ class SearchNavigationHandler {
           ));
         }
         return;
+      case '/today':
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        return;
+      case '/course/weekly':
+        page = WeeklyCourseScreen(username: username);
+        break;
+      case '/tomorrow':
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("已跳转至主页 - 请查看明日安排"), behavior: SnackBarBehavior.floating));
+        return;
+      case '/screen_time':
+        final cache = await StorageService.getScreenTimeCache();
+        page = ScreenTimeDetailScreen(todayStats: cache);
+        break;
     }
 
     if (page != null && context.mounted) {

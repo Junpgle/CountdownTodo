@@ -13,8 +13,15 @@ class PomodoroScreen extends StatefulWidget {
 
   /// 0 = 工作台（默认），1 = 统计看板
   final int initialTab;
-  const PomodoroScreen(
-      {super.key, required this.username, this.initialTab = 0});
+  /// 0 = 日，1 = 周，2 = 月，3 = 年
+  final int initialDimension;
+
+  const PomodoroScreen({
+    super.key,
+    required this.username,
+    this.initialTab = 0,
+    this.initialDimension = 0,
+  });
 
   @override
   State<PomodoroScreen> createState() => _PomodoroScreenState();
@@ -208,10 +215,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                                 borderRadius: BorderRadius.circular(12)),
                             child: Padding(
                               padding: const EdgeInsets.all(4),
-                              child: PomodoroStats(
-                                  key: _statsKey,
-                                  username: widget.username,
-                                  isCompact: true),
+                                child: PomodoroStats(
+                                    key: _statsKey,
+                                    username: widget.username,
+                                    initialDimension: widget.initialDimension,
+                                    isCompact: true),
                             ),
                           ),
                         ],
@@ -253,7 +261,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                       }
                     },
                   ),
-                  PomodoroStats(key: _statsKey, username: widget.username),
+                  PomodoroStats(
+                    key: _statsKey,
+                    username: widget.username,
+                    initialDimension: widget.initialDimension,
+                  ),
                 ],
               ),
             ),

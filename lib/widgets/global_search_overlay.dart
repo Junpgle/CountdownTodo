@@ -41,10 +41,14 @@ const _typeMeta = <SearchResultType, _TypeMeta>{
   SearchResultType.log:       _TypeMeta('时间日志',  Icons.history_edu_rounded,     Color(0xFF00C7BE)),
   SearchResultType.setting:   _TypeMeta('设置',      Icons.settings_rounded,        Color(0xFFFF9500)),
   SearchResultType.action:    _TypeMeta('快捷操作',  Icons.bolt_rounded,            Color(0xFFAF52DE)),
+  SearchResultType.recommend: _TypeMeta('猜你想搜',  Icons.auto_awesome_outlined,   Color(0xFFFF2D55)),
+  SearchResultType.history:   _TypeMeta('搜索历史',  Icons.history_rounded,         Colors.grey),
 };
 
 // 分组显示顺序
 const _groupOrder = [
+  SearchResultType.recommend,
+  SearchResultType.history,
   SearchResultType.todo,
   SearchResultType.todoGroup,
   SearchResultType.countdown,
@@ -97,6 +101,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
     Future.delayed(const Duration(milliseconds: 50), () {
       _inputFocusNode.requestFocus();
+      _onQueryChanged(''); // 🚀 初始化触发“猜你想搜”
     });
   }
 
@@ -114,25 +119,26 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   void _onQueryChanged(String query) {
     _currentQuery = query;
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () async {
-      if (query.trim().isEmpty) {
-        setState(() {
-          _results = [];
-          _isSearching = false;
-          _expanded.clear();
-        });
-        return;
-      }
-      setState(() => _isSearching = true);
-      final results = await SearchService.instance.search(query);
-      if (mounted && query == _currentQuery) {
-        setState(() {
-          _results = results.cast<SearchResult>();
-          _isSearching = false;
-          _expanded.clear(); // 每次新搜索重置展开状态
-        });
-      }
-    });
+    
+    // 如果是空字符串，立即执行（不防抖），让建议秒出
+    if (query.trim().isEmpty) {
+      _executeSearch('');
+      return;
+    }
+
+    _debounce = Timer(const Duration(milliseconds: 300), () => _executeSearch(query));
+  }
+
+  Future<void> _executeSearch(String query) async {
+    setState(() => _isSearching = true);
+    final results = await SearchService.instance.search(query);
+    if (mounted && query == _currentQuery) {
+      setState(() {
+        _results = results.cast<SearchResult>();
+        _isSearching = false;
+        _expanded.clear();
+      });
+    }
   }
 
   // ────────────────────────────────── 交互 ──────────────────────────────────
@@ -152,14 +158,29 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   }
 
   void _handleResultClick(SearchResult result) {
+    final data = result.extraData;
+    final action = data?['action'] as String?;
+
+    // 🚀 特殊处理：如果是应用查询建议，不关闭蒙层，而是更新搜索框
+    if (action == 'apply_query' || action == 'ai_query') {
+      final q = data?['query'] as String?;
+      if (q != null) {
+        _controller.text = q;
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: q.length),
+        );
+        _onQueryChanged(q);
+        return;
+      }
+    }
+
     FocusManager.instance.primaryFocus?.unfocus();
-    // 🚀 核心修复：在 overlay 出栈之前先保存父级 Navigator 引用。
-    // Navigator.pop 之后 overlay 的 context 变为 unmounted，
-    // 但 navigator.context 指向父级 Navigator，始终有效。
     final navigator = Navigator.of(context);
     _animController.reverse().then((_) {
-      navigator.pop(); // 关闭搜索蒙层
-      SearchNavigationHandler.handle(navigator.context, result); // 用父级 context 导航
+      if (mounted) {
+        navigator.pop(); // 关闭搜索蒙层
+        SearchNavigationHandler.handle(navigator.context, result); // 用父级 context 导航
+      }
     });
   }
 
@@ -252,7 +273,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                             const SizedBox(height: 8),
                             _buildSearchScopeHint(colorScheme, isDark),
                             const SizedBox(height: 12),
-                            if (_controller.text.isNotEmpty)
+                            if (_results.isNotEmpty || _isSearching)
                               _buildResultsPanel(colorScheme, isDark, size),
                           ],
                         ),

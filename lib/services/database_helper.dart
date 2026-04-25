@@ -49,7 +49,7 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 16, // 🚀 V16: 为 courses 添加同步元数据 (is_deleted, updated_at 等)
+        version: 18, // 🚀 V18: 搜索历史增加时间段权重统计
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 3) {
@@ -315,23 +315,32 @@ class DatabaseHelper {
               debugPrint("⚠️ Database: 升级 V15 失败: $e");
             }
           }
-          if (oldVersion < 16) {
+          if (oldVersion < 17) {
             try {
-              final columns = [
-                {'name': 'is_deleted', 'type': 'INTEGER DEFAULT 0'},
-                {'name': 'version', 'type': 'INTEGER DEFAULT 1'},
-                {'name': 'updated_at', 'type': 'INTEGER'},
-                {'name': 'created_at', 'type': 'INTEGER'},
-              ];
-              for (var col in columns) {
-                final info = await db.rawQuery("PRAGMA table_info(courses)");
-                if (!info.any((row) => row['name'] == col['name'])) {
-                  await db.execute("ALTER TABLE courses ADD COLUMN ${col['name']} ${col['type']};");
-                  debugPrint("✅ Database: 修复字段 courses.${col['name']} (V16)");
-                }
-              }
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS search_history (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  query TEXT NOT NULL,
+                  timestamp INTEGER NOT NULL,
+                  frequency INTEGER DEFAULT 1,
+                  UNIQUE(query)
+                )
+              ''');
+              debugPrint("✅ Database: 创建 search_history 表 (V17)");
             } catch (e) {
-              debugPrint("⚠️ Database: 升级 V16 失败: $e");
+              debugPrint("⚠️ Database: 升级 V17 失败: $e");
+            }
+          }
+          if (oldVersion < 18) {
+            try {
+              // 为历史记录增加分时统计列
+              await db.execute("ALTER TABLE search_history ADD COLUMN morning_count INTEGER DEFAULT 0;");
+              await db.execute("ALTER TABLE search_history ADD COLUMN afternoon_count INTEGER DEFAULT 0;");
+              await db.execute("ALTER TABLE search_history ADD COLUMN evening_count INTEGER DEFAULT 0;");
+              await db.execute("ALTER TABLE search_history ADD COLUMN night_count INTEGER DEFAULT 0;");
+              debugPrint("✅ Database: 升级 search_history 分时统计字段 (V18)");
+            } catch (e) {
+              debugPrint("⚠️ Database: 升级 V18 失败: $e");
             }
           }
         }
@@ -659,6 +668,20 @@ class DatabaseHelper {
         updated_at $integerType
       )
     ''');
+
+    // 12. 创建搜索历史表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS search_history (
+        id $idType,
+        query $textType UNIQUE,
+        timestamp $integerType,
+        frequency $integerType DEFAULT 1,
+        morning_count INTEGER DEFAULT 0,
+        afternoon_count INTEGER DEFAULT 0,
+        evening_count INTEGER DEFAULT 0,
+        night_count INTEGER DEFAULT 0
+      )
+    ''');
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)
@@ -896,4 +919,40 @@ class DatabaseHelper {
     final List<Map<String, dynamic>> maps = await db.query('countdowns');
     return List.generate(maps.length, (i) => CountdownItem.fromSql(maps[i]));
   }
-}
+
+  // --- 搜索历史管理 ---
+
+  Future<void> insertSearchHistory(String query) async {
+    final db = await database;
+    final hour = DateTime.now().hour;
+    String column = 'morning_count';
+    if (hour >= 12 && hour < 18) column = 'afternoon_count';
+    else if (hour >= 18 && hour < 24) column = 'evening_count';
+    else if (hour >= 0 && hour < 6) column = 'night_count';
+
+    await db.rawInsert('''
+      INSERT INTO search_history (query, timestamp, frequency, $column)
+      VALUES (?, ?, 1, 1)
+      ON CONFLICT(query) DO UPDATE SET
+        frequency = frequency + 1,
+        timestamp = ?,
+        $column = $column + 1
+    ''', [query, DateTime.now().millisecondsSinceEpoch, DateTime.now().millisecondsSinceEpoch]);
+  }
+
+  Future<List<Map<String, dynamic>>> getRecentSearches({int limit = 10, int? currentHour}) async {
+    final db = await database;
+    final hour = currentHour ?? DateTime.now().hour;
+    
+    String timeWeightCol = 'morning_count';
+    if (hour >= 12 && hour < 18) timeWeightCol = 'afternoon_count';
+    else if (hour >= 18 && hour < 24) timeWeightCol = 'evening_count';
+    else if (hour >= 0 && hour < 6) timeWeightCol = 'night_count';
+
+    return await db.query(
+      'search_history',
+      orderBy: '$timeWeightCol DESC, frequency DESC, timestamp DESC',
+      limit: limit,
+    );
+  }
+}
