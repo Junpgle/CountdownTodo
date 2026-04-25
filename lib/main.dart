@@ -63,8 +63,29 @@ class MyHttpOverrides extends HttpOverrides {
   }
 }
 
+void _configureRuntimeCaches() {
+  final imageCache = PaintingBinding.instance.imageCache;
+  if (kIsWeb) {
+    imageCache.maximumSize = 120;
+    imageCache.maximumSizeBytes = 80 << 20; // 80MB
+    return;
+  }
+
+  if (Platform.isAndroid || Platform.isIOS) {
+    imageCache.maximumSize = 100;
+    imageCache.maximumSizeBytes = 96 << 20; // 96MB
+  } else {
+    imageCache.maximumSize = 180;
+    imageCache.maximumSizeBytes = 192 << 20; // Desktop 192MB
+  }
+
+  // 启动时清理一次悬挂的 live image 引用，降低冷启动内存峰值。
+  imageCache.clearLiveImages();
+}
+
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  _configureRuntimeCaches();
 
   // 🚀 核心修复：桌面端 SQL 引擎初始化 (解决 databaseFactory not initialized)
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {

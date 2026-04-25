@@ -14,6 +14,7 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
@@ -89,6 +90,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     private val lastNotificationFingerprint = ConcurrentHashMap<Int, NotificationFingerprint>()
     private val largeIconCache = ConcurrentHashMap<Int, Icon>()
+    private val lastNotificationTimestampMs = ConcurrentHashMap<Int, Long>()
 
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
@@ -208,7 +210,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     private fun handleOriginalTextFromIntent(intent: Intent?) {
         val text = intent?.getStringExtra("original_analysis_text") ?: return
-        Log.d(TAG, "📄 handleOriginalTextFromIntent: $text")
+        val preview = if (text.length > 120) text.take(120) + "..." else text
+        Log.d(TAG, "📄 handleOriginalTextFromIntent: $preview")
         // 清除 extra，防止重复处理
         intent.removeExtra("original_analysis_text")
 
@@ -302,6 +305,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         notificationExecutor.shutdownNow()
         lastNotificationFingerprint.clear()
         largeIconCache.clear()
+        lastNotificationTimestampMs.clear()
         methodChannel = null
     }
 
@@ -424,6 +428,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     lastNotificationFingerprint.remove(COURSE_NOTIFICATION_ID)
                     lastNotificationFingerprint.remove(POMODORO_NOTIFICATION_ID)
                     lastNotificationFingerprint.remove(SPECIAL_TODO_NOTIFICATION_ID)
+                    lastNotificationTimestampMs.remove(NOTIFICATION_ID)
+                    lastNotificationTimestampMs.remove(COURSE_NOTIFICATION_ID)
+                    lastNotificationTimestampMs.remove(POMODORO_NOTIFICATION_ID)
+                    lastNotificationTimestampMs.remove(SPECIAL_TODO_NOTIFICATION_ID)
                     result.success(null)
                 }
 
@@ -431,6 +439,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(TODO_RECOGNIZE_NOTIFICATION_ID)
                     lastNotificationFingerprint.remove(TODO_RECOGNIZE_NOTIFICATION_ID)
+                    lastNotificationTimestampMs.remove(TODO_RECOGNIZE_NOTIFICATION_ID)
                     result.success(null)
                 }
 
@@ -441,6 +450,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         nm.cancel(notifId)
                         lastNotificationFingerprint.remove(notifId)
+                        lastNotificationTimestampMs.remove(notifId)
                     }
                     result.success(null)
                 }
@@ -1114,6 +1124,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(NOTIFICATION_ID)
             lastNotificationFingerprint.remove(NOTIFICATION_ID)
+            lastNotificationTimestampMs.remove(NOTIFICATION_ID)
             return
         }
 
@@ -1384,6 +1395,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
         if (fingerprint == lastNotificationFingerprint[notificationId]) {
             return
+        }
+
+        if (notificationId == POMODORO_NOTIFICATION_ID && isOngoing) {
+            val nowElapsed = SystemClock.elapsedRealtime()
+            val lastElapsed = lastNotificationTimestampMs[notificationId] ?: 0L
+            if (lastElapsed > 0L && (nowElapsed - lastElapsed) < 500L) {
+                return
+            }
         }
 
         // ==========================================
@@ -1692,8 +1711,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         if (Build.VERSION.SDK_INT >= 36) {
             try {
-                val canPost = notificationManager.javaClass.getMethod("canPostPromotedNotifications").invoke(notificationManager) as? Boolean ?: false
-                val hasPromo = notification.javaClass.getMethod("hasPromotableCharacteristics").invoke(notification) as? Boolean ?: false
+                notificationManager.javaClass.getMethod("canPostPromotedNotifications").invoke(notificationManager)
+                notification.javaClass.getMethod("hasPromotableCharacteristics").invoke(notification)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to check Live Updates status via reflection", e)
             }
@@ -1702,6 +1721,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         try {
             notificationManager.notify(notificationId, notification)
             lastNotificationFingerprint[notificationId] = fingerprint
+            lastNotificationTimestampMs[notificationId] = SystemClock.elapsedRealtime()
         } catch (e: Exception) {
             Log.e(TAG, "Notify error", e)
         }
