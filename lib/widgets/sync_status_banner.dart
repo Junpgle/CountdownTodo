@@ -4,7 +4,7 @@ import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
 
-enum SyncPathStatus { online, connecting, offline, serverError }
+enum SyncPathStatus { online, connecting, offline, serverError, success }
 
 class SyncStatusBanner extends StatefulWidget {
   final VoidCallback? onDiagnosticRequested;
@@ -20,6 +20,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   String _detailMessage = "正在确认同步链路...";
   bool _isExpanded = false;
   Timer? _heartbeatTimer;
+  Timer? _autoHideTimer;
 
   // 监听 WS 连接状态变化
   StreamSubscription? _wsConnSub;
@@ -29,12 +30,17 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
     super.initState();
     // 订阅 WS 状态变化流，实时响应断线/重连
     _wsConnSub = PomodoroSyncService.instance.onConnectionChanged.listen(_onWsStateChanged);
+    
+    // 🚀 初始化时立即评估一次当前连接状态，防止错过已处于连接状态的情况
+    _evaluateStatus(PomodoroSyncService.instance.connectionState);
+    
     _startHeartbeat();
   }
 
   @override
   void dispose() {
     _heartbeatTimer?.cancel();
+    _autoHideTimer?.cancel();
     _wsConnSub?.cancel();
     super.dispose();
   }
@@ -93,6 +99,30 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   // 🚀 供外部手动触发快速更新
   void updateStatus(SyncPathStatus status, {String? message}) {
     if (!mounted) return;
+
+    // 🚀 核心逻辑：如果从“非在线”切换到“在线”，先进入 success 状态展示 2 秒再消失
+    if (status == SyncPathStatus.online && _status != SyncPathStatus.online && _status != SyncPathStatus.success) {
+      setState(() {
+        _status = SyncPathStatus.success;
+        _detailMessage = "同步连接已恢复";
+      });
+
+      _autoHideTimer?.cancel();
+      _autoHideTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _status = SyncPathStatus.online;
+          });
+        }
+      });
+      return;
+    }
+
+    // 如果是其它状态，取消自动隐藏计时器
+    if (status != SyncPathStatus.online && status != SyncPathStatus.success) {
+      _autoHideTimer?.cancel();
+    }
+
     setState(() {
       _status = status;
       if (message != null) _detailMessage = message;
@@ -102,6 +132,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   Color _getStatusColor() {
     switch (_status) {
       case SyncPathStatus.online: return Colors.green[400]!;
+      case SyncPathStatus.success: return Colors.teal[400]!;
       case SyncPathStatus.connecting: return Colors.orange[400]!;
       case SyncPathStatus.offline: return Colors.red[400]!;
       case SyncPathStatus.serverError: return Colors.purple[400]!;
@@ -110,7 +141,8 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
 
   IconData _getStatusIcon() {
     switch (_status) {
-      case SyncPathStatus.online: return Icons.cloud_done_rounded;
+      case SyncPathStatus.online: 
+      case SyncPathStatus.success: return Icons.cloud_done_rounded;
       case SyncPathStatus.connecting: return Icons.sync_rounded;
       case SyncPathStatus.offline: return Icons.cloud_off_rounded;
       case SyncPathStatus.serverError: return Icons.dns_rounded;
@@ -119,9 +151,10 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
 
   @override
   Widget build(BuildContext context) {
-    // 🚀 核心改动：仅在非在线状态（即：连接中、断线、错误）时显示横幅
+    // 🚀 核心改动：仅在非在线状态（即：连接中、断线、错误、或正在展示成功的 success 状态）时显示横幅
     bool shouldShow = _status != SyncPathStatus.online;
     bool isUrgent = _status == SyncPathStatus.offline || _status == SyncPathStatus.serverError;
+    bool isSuccess = _status == SyncPathStatus.success;
     
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
@@ -135,7 +168,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
       child: !shouldShow 
         ? const SizedBox.shrink()
         : RepaintBoundary(
-            key: ValueKey(_status),
+            key: ValueKey(_status == SyncPathStatus.success ? 'success' : _status),
             child: Container(
               width: double.infinity,
               decoration: BoxDecoration(
@@ -181,7 +214,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                                   ),
                                 ),
                               ),
-                              if (isUrgent || _status == SyncPathStatus.connecting)
+                              if (!isSuccess && (isUrgent || _status == SyncPathStatus.connecting))
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
