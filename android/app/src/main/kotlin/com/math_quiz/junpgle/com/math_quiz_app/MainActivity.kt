@@ -26,7 +26,9 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.*
 import org.json.JSONArray as KJSONArray
 import java.io.File
-import androidx.core.content.FileProvider
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.ConcurrentHashMap
 
 // 导入 HyperIsland Kit 的核心类
 import io.github.d4viddf.hyperisland_kit.HyperAction
@@ -59,6 +61,34 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val POMODORO_ISLAND_BIZ_TAG = "math_quiz_pomodoro" // 🍅 番茄钟独立岛 bizTag
     private val SPECIAL_TODO_ISLAND_BIZ_TAG = "math_quiz_special_todo" // 🚴 特殊待办独立岛 bizTag
     private val TAG = "MathQuizApp"
+
+    private val notificationExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "notification-worker").apply {
+            priority = Thread.NORM_PRIORITY - 1
+        }
+    }
+
+    private data class NotificationFingerprint(
+        val title: String,
+        val text: String,
+        val subText: String,
+        val progress: Int,
+        val isOngoing: Boolean,
+        val color: Int,
+        val currentStep: Int,
+        val totalSteps: Int,
+        val isTodo: Boolean,
+        val shortText: String?,
+        val iconResId: Int,
+        val largeIconResId: Int?,
+        val channelId: String,
+        val islandBizTag: String,
+        val imagePath: String?,
+        val originalText: String?
+    )
+
+    private val lastNotificationFingerprint = ConcurrentHashMap<Int, NotificationFingerprint>()
+    private val largeIconCache = ConcurrentHashMap<Int, Icon>()
 
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
@@ -269,6 +299,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 注销广播接收器并清空 channel，防内存泄漏
         unregisterReceiver(todoActionReceiver)
         unregisterReceiver(pomodoroActionReceiver)
+        notificationExecutor.shutdownNow()
+        lastNotificationFingerprint.clear()
+        largeIconCache.clear()
         methodChannel = null
     }
 
@@ -359,17 +392,23 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
                         val type = args["type"] as? String
-                        when (type) {
-                            "quiz" -> updateQuizNotification(args)
-                            "course" -> updateCourseNotification(args)
-                            "upcoming_todo" -> updateUpcomingTodoNotification(args)
-                            "special_todo" -> updateSpecialTodoNotification(args)
-                            "pomodoro" -> updatePomodoroNotification(args)
-                            "pomodoro_end" -> sendPomodoroEndAlert(args)
-                            "todo_recognize_progress" -> updateTodoRecognizeProgressNotification(args)
-                            "todo_recognize_success" -> updateTodoRecognizeSuccessNotification(args)
-                            "todo_recognize_failed" -> updateTodoRecognizeFailedNotification(args)
-                            else -> updateTodoNotification(args)
+                        notificationExecutor.execute {
+                            try {
+                                when (type) {
+                                    "quiz" -> updateQuizNotification(args)
+                                    "course" -> updateCourseNotification(args)
+                                    "upcoming_todo" -> updateUpcomingTodoNotification(args)
+                                    "special_todo" -> updateSpecialTodoNotification(args)
+                                    "pomodoro" -> updatePomodoroNotification(args)
+                                    "pomodoro_end" -> sendPomodoroEndAlert(args)
+                                    "todo_recognize_progress" -> updateTodoRecognizeProgressNotification(args)
+                                    "todo_recognize_success" -> updateTodoRecognizeSuccessNotification(args)
+                                    "todo_recognize_failed" -> updateTodoRecognizeFailedNotification(args)
+                                    else -> updateTodoNotification(args)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "showOngoingNotification worker failed", e)
+                            }
                         }
                         result.success(null)
                     } else result.error("INVALID_ARGS", "Arguments were null", null)
@@ -381,12 +420,17 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     nm.cancel(COURSE_NOTIFICATION_ID)          // 📚 清除课程独立通知
                     nm.cancel(POMODORO_NOTIFICATION_ID)        // 🍅 清除番茄钟独立通知
                     nm.cancel(SPECIAL_TODO_NOTIFICATION_ID)   // 🚴 清除特殊待办独立通知
+                    lastNotificationFingerprint.remove(NOTIFICATION_ID)
+                    lastNotificationFingerprint.remove(COURSE_NOTIFICATION_ID)
+                    lastNotificationFingerprint.remove(POMODORO_NOTIFICATION_ID)
+                    lastNotificationFingerprint.remove(SPECIAL_TODO_NOTIFICATION_ID)
                     result.success(null)
                 }
 
                 "cancelTodoRecognizeNotification" -> {
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(TODO_RECOGNIZE_NOTIFICATION_ID)
+                    lastNotificationFingerprint.remove(TODO_RECOGNIZE_NOTIFICATION_ID)
                     result.success(null)
                 }
 
@@ -396,6 +440,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     if (notifId != null) {
                         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         nm.cancel(notifId)
+                        lastNotificationFingerprint.remove(notifId)
                     }
                     result.success(null)
                 }
@@ -1068,6 +1113,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (totalCount == 0) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(NOTIFICATION_ID)
+            lastNotificationFingerprint.remove(NOTIFICATION_ID)
             return
         }
 
@@ -1284,6 +1330,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
     }
 
+    private fun getLargeIcon(resId: Int): Icon {
+        return largeIconCache[resId] ?: Icon.createWithResource(this, resId).also {
+            largeIconCache[resId] = it
+        }
+    }
+
     private fun buildAndNotify(
         title: String,
         text: String,
@@ -1312,12 +1364,34 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val fingerprint = NotificationFingerprint(
+            title = title,
+            text = text,
+            subText = subText,
+            progress = progress,
+            isOngoing = isOngoing,
+            color = color,
+            currentStep = currentStep,
+            totalSteps = totalSteps,
+            isTodo = isTodo,
+            shortText = shortText,
+            iconResId = iconResId,
+            largeIconResId = largeIconResId,
+            channelId = channelId,
+            islandBizTag = islandBizTag,
+            imagePath = imagePath,
+            originalText = originalText
+        )
+        if (fingerprint == lastNotificationFingerprint[notificationId]) {
+            return
+        }
+
         // ==========================================
         // 🚀 构建基础的 NotificationCompat.Builder
         // ==========================================
         val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(iconResId)
-            .setLargeIcon(if (largeIconResId != null) Icon.createWithResource(this, largeIconResId) else Icon.createWithResource(this, R.drawable.ic_notification))
+            .setLargeIcon(getLargeIcon(largeIconResId ?: R.drawable.ic_notification))
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)
@@ -1627,6 +1701,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         try {
             notificationManager.notify(notificationId, notification)
+            lastNotificationFingerprint[notificationId] = fingerprint
         } catch (e: Exception) {
             Log.e(TAG, "Notify error", e)
         }
