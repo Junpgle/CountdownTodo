@@ -907,6 +907,78 @@ class DatabaseHelper {
     ''', ['%$query%', '%$query%']);
   }
 
+  // ==========================================
+  // 🧹 数据库清理与去重
+  // ==========================================
+
+  /// 清理重复课程：基于名称、时间、地点去重，保留最新的一条，其余标记为删除（支持同步）
+  Future<int> deduplicateCourses() async {
+    final db = await database;
+    try {
+      // 1. 查找所有存在重复的课程组
+      final List<Map<String, dynamic>> results = await db.rawQuery('''
+        SELECT course_name, weekday, start_time, week_index, room_name, COUNT(*) as cnt
+        FROM courses 
+        WHERE is_deleted = 0
+        GROUP BY course_name, weekday, start_time, week_index, room_name
+        HAVING cnt > 1
+      ''');
+
+      int totalRemoved = 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      for (var group in results) {
+        final String name = group['course_name'] ?? '';
+        final int weekday = group['weekday'] ?? 0;
+        final int start = group['start_time'] ?? 0;
+        final int week = group['week_index'] ?? 0;
+        final String room = group['room_name'] ?? '';
+
+        // 2. 获取该组内所有有效记录，按更新时间排序
+        final List<Map<String, dynamic>> records = await db.query(
+          'courses',
+          where: 'course_name = ? AND weekday = ? AND start_time = ? AND week_index = ? AND room_name = ? AND is_deleted = 0',
+          whereArgs: [name, weekday, start, week, room],
+          orderBy: 'updated_at DESC'
+        );
+
+        if (records.length > 1) {
+          // 3. 保留第1条（最新的），其余标记删除
+          for (int i = 1; i < records.length; i++) {
+            final String uuid = records[i]['uuid'];
+            final newVersion = (records[i]['version'] as int? ?? 1) + 1;
+
+            await db.update('courses', {
+              'is_deleted': 1,
+              'updated_at': now,
+              'version': newVersion,
+            }, where: 'uuid = ?', whereArgs: [uuid]);
+
+            // 4. 写入操作日志以同步到其他设备
+            await db.insert('op_logs', {
+              'op_type': 'UPDATE',
+              'target_table': 'courses',
+              'target_uuid': uuid,
+              'data_json': jsonEncode({
+                'uuid': uuid,
+                'is_deleted': 1,
+                'updated_at': now,
+                'version': newVersion,
+              }),
+              'timestamp': now,
+              'is_synced': 0
+            });
+            totalRemoved++;
+          }
+        }
+      }
+      return totalRemoved;
+    } catch (e) {
+      debugPrint("❌ deduplicateCourses error: $e");
+      return 0;
+    }
+  }
+
   Future close() async {
     final db = await instance.database;
     db.close();

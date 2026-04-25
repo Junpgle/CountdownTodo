@@ -681,9 +681,15 @@ class CourseItem {
     int? updatedAt,
     int? createdAt,
     this.isDeleted = false,
-  }) : uuid = uuid ?? const Uuid().v4(),
+  }) : uuid = uuid ?? generateDeterministicUuid(courseName, weekday, startTime, endTime, weekIndex, roomName),
        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  static String generateDeterministicUuid(String name, int day, int start, int end, int week, String room) {
+    const namespace = '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Namespace URL as seed
+    final input = "$name|$day|$start|$end|$week|$room";
+    return const Uuid().v5(namespace, input);
+  }
 
   String get formattedStartTime => '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
   String get formattedEndTime => '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';

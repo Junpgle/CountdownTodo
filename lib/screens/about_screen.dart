@@ -12,6 +12,7 @@ import 'login_screen.dart';
 import '../storage_service.dart';
 import 'dart:async';
 import '../services/local_migration_service.dart';
+import '../services/database_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AboutScreen extends StatefulWidget {
@@ -267,6 +268,40 @@ class _AboutScreenState extends State<AboutScreen> {
     }
   }
 
+  Future<void> _runDeduplication() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('课程去重'),
+        content: const Text('系统将扫描数据库中重复的课程记录（名称、时间、周次、地点均相同），并自动清理多余项。此操作将保留最新的一份，并将清理记录同步到云端。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('开始清理')),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正在执行数据库深度清理...')));
+      
+      final count = await DatabaseHelper.instance.deduplicateCourses();
+      
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('清理完成'),
+            content: Text('成功清理了 $count 条重复课程记录。'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定')),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -323,6 +358,8 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const SizedBox(height: 16),
             _buildDeviceCard(context),
+            const SizedBox(height: 16),
+            _buildCleanupCard(context),
             const SizedBox(height: 16),
             _buildPrivacyCard(context),
             const SizedBox(height: 16),
@@ -578,6 +615,28 @@ class _AboutScreenState extends State<AboutScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCleanupCard(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            ListTile(
+              leading: Icon(Icons.cleaning_services_rounded,
+                  color: Theme.of(context).colorScheme.primary),
+              title: const Text('数据库清理'),
+              subtitle: const Text('剔除重复课程数据，优化数据库体积'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _runDeduplication,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
