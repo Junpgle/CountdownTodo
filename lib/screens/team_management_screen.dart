@@ -583,6 +583,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           backgroundColor: Colors.transparent,
           elevation: 0,
         ),
+        _buildQuickActionsSliver(true), // 🚀 新增：宽屏模式下显示全景汇聚和冲突中心
         if (_myInvitations.isNotEmpty)
           SliverToBoxAdapter(child: _buildInvitationsSection()),
         SliverPadding(

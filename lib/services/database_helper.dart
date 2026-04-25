@@ -49,7 +49,7 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 18, // 🚀 V18: 搜索历史增加时间段权重统计
+        version: 19, // 🚀 V19: 倒数日增加 is_completed 字段支持时间轴统计
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 3) {
@@ -343,6 +343,17 @@ class DatabaseHelper {
               debugPrint("⚠️ Database: 升级 V18 失败: $e");
             }
           }
+          if (oldVersion < 19) {
+            try {
+              final info = await db.rawQuery("PRAGMA table_info(countdowns)");
+              if (!info.any((row) => row['name'] == 'is_completed')) {
+                await db.execute("ALTER TABLE countdowns ADD COLUMN is_completed INTEGER DEFAULT 0;");
+                debugPrint("✅ Database: 为 countdowns 添加 is_completed 字段 (V19)");
+              }
+            } catch (e) {
+              debugPrint("⚠️ Database: 升级 V19 失败: $e");
+            }
+          }
         }
     );
   }
@@ -424,6 +435,7 @@ class DatabaseHelper {
         'title': beforeData['title'],
         'target_time': beforeData['target_time'],
         'is_deleted': (beforeData['is_deleted'] == 1 || beforeData['is_deleted'] == true) ? 1 : 0,
+        'is_completed': (beforeData['is_completed'] == 1 || beforeData['is_completed'] == true) ? 1 : 0,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
         'version': (beforeData['version'] ?? 0) + 1,
       }, where: 'uuid = ?', whereArgs: [targetUuid]);
@@ -514,6 +526,7 @@ class DatabaseHelper {
         title $textType,
         target_time $integerType,
         is_deleted $boolType DEFAULT 0,
+        is_completed $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,
         updated_at $integerType,

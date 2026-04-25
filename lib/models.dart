@@ -16,6 +16,7 @@ enum TimelineEventType {
   todoCompleted,
   todoCreated,
   countdownCreated,
+  countdownCompleted,
   searchQuery,
 }
 
@@ -356,6 +357,7 @@ class CountdownItem {
   String title;
   DateTime targetDate;
   bool isDeleted;
+  bool isCompleted;
   int version;
   int updatedAt;
   int createdAt;
@@ -371,6 +373,7 @@ class CountdownItem {
     required this.title,
     required this.targetDate,
     this.isDeleted = false,
+    this.isCompleted = false,
     this.version = 1,
     int? updatedAt,
     int? createdAt,
@@ -396,6 +399,7 @@ class CountdownItem {
         'title': title,
         'target_time': targetDate.millisecondsSinceEpoch, // UTC 毫秒时间戳
         'is_deleted': isDeleted ? 1 : 0,
+        'is_completed': isCompleted ? 1 : 0,
         'version': version,
         'updated_at': updatedAt, // UTC 毫秒时间戳
         'created_at': createdAt, // UTC 毫秒时间戳
@@ -427,6 +431,9 @@ class CountdownItem {
       isDeleted: json['is_deleted'] == 1 ||
           json['is_deleted'] == true ||
           json['isDeleted'] == true,
+      isCompleted: json['is_completed'] == 1 ||
+          json['is_completed'] == true ||
+          json['isCompleted'] == true,
       version: json['version'] ?? 1,
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),

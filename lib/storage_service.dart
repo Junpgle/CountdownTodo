@@ -481,6 +481,7 @@ class StorageService {
         'title': item.title,
         'target_time': item.targetDate.millisecondsSinceEpoch,
         'is_deleted': item.isDeleted ? 1 : 0,
+        'is_completed': item.isCompleted ? 1 : 0,
         'version': item.version,
         'updated_at': item.updatedAt,
         'created_at': item.createdAt,
@@ -541,6 +542,7 @@ class StorageService {
           targetDate: DateTime.fromMillisecondsSinceEpoch(
               m['target_time']),
           isDeleted: m['is_deleted'] == 1,
+          isCompleted: m['is_completed'] == 1,
           version: m['version'] ?? 1,
           updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
           createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
