@@ -17,6 +17,8 @@ enum TimelineEventType {
   todoCreated,
   countdownCreated,
   countdownCompleted,
+  courseStart,
+  courseEnd,
   searchQuery,
 }
 
