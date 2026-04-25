@@ -323,7 +323,9 @@ class _SettingsPageState extends State<SettingsPage> {
           .showSnackBar(SnackBar(content: Text(msg))),
     );
 
-    _loadSettings().then((_) {
+    _loadSettings().then((_) async {
+      // 🚀 增加人为延迟，提升骨架屏的感知度，让转场更显“高级感”
+      await Future.delayed(const Duration(milliseconds: 400));
       if (mounted) setState(() => _isInitialLoading = false); // 🚀 加载完本地设置后解锁
       _fetchAccountStatus();
       // 在加载完设置后同步更新 handler 的 semesterStart

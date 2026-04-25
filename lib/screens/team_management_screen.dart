@@ -12,22 +12,24 @@ import './team_message_center_screen.dart';
 import './team_announcement_screen.dart';
 import '../storage_service.dart';
 
-
 class TeamManagementScreen extends StatefulWidget {
   final String username;
   final String? initialTarget; // 🚀 新增：跳转目标
-  const TeamManagementScreen({super.key, required this.username, this.initialTarget});
+  const TeamManagementScreen(
+      {super.key, required this.username, this.initialTarget});
 
   @override
   State<TeamManagementScreen> createState() => _TeamManagementScreenState();
 }
 
-class _TeamManagementScreenState extends State<TeamManagementScreen> with WidgetsBindingObserver {
+class _TeamManagementScreenState extends State<TeamManagementScreen>
+    with WidgetsBindingObserver {
   StreamSubscription? _wsSub;
   Team? _selectedTeam;
   List<Team> _teams = [];
   List<dynamic> _myInvitations = [];
   Map<String, int> _teamPendingCounts = {};
+  Map<String, int> _teamConflictCounts = {};
   bool _isLoading = true;
   bool _isCheckingClipboard = false;
 
@@ -116,11 +118,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.auto_awesome_rounded, color: Colors.blueAccent),
+              decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.auto_awesome_rounded,
+                  color: Colors.blueAccent),
             ),
             const SizedBox(width: 12),
-            const Text('发现团队邀请', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('发现团队邀请',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
@@ -135,7 +141,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                 color: Colors.grey.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text('邀请码: $inviteCode', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+              child: Text('邀请码: $inviteCode',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontFamily: 'monospace')),
             )
           ],
         ),
@@ -151,28 +159,41 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                 backgroundColor: Colors.blueAccent,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
-              onPressed: isProcessing ? null : () async {
-                setDialogState(() => isProcessing = true);
-                try {
-                  final res = await ApiService.requestJoinTeam(inviteCode);
-                  if (res['success'] == true) {
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    _loadTeams();
-                    _showSuccessToast('申请已提交，请等待管理员审核 ⏳');
-                  } else {
-                    _showErrorToast(res['error'] ?? res['message'] ?? '加入失败');
-                  }
-                } finally {
-                  if (ctx.mounted) setDialogState(() => isProcessing = false);
-                }
-              },
+              onPressed: isProcessing
+                  ? null
+                  : () async {
+                      setDialogState(() => isProcessing = true);
+                      try {
+                        final res =
+                            await ApiService.requestJoinTeam(inviteCode);
+                        if (res['success'] == true) {
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                          _loadTeams();
+                          _showSuccessToast('申请已提交，请等待管理员审核 ⏳');
+                        } else {
+                          _showErrorToast(
+                              res['error'] ?? res['message'] ?? '加入失败');
+                        }
+                      } finally {
+                        if (ctx.mounted) {
+                          setDialogState(() => isProcessing = false);
+                        }
+                      }
+                    },
               child: isProcessing
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('立即申请', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('立即申请',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
             );
           }),
         ],
@@ -184,27 +205,35 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     if (!isSilent) setState(() => _isLoading = true);
     try {
       // 🚀 核心优化：并发加载团队列表和我的邀请
-      final results = await Future.wait([
-        ApiService.fetchTeams(),
-        ApiService.fetchMyInvitations(),
-      ]);
+      final teamsFuture = ApiService.fetchTeams();
+      final invitationsFuture = ApiService.fetchMyInvitations();
+      final localTodosFuture =
+          StorageService.getTodos(widget.username, includeDeleted: false);
 
-      final rawTeams = results[0] as List<dynamic>;
-      final invitations = results[1] as List<dynamic>;
+      final rawTeams = await teamsFuture;
+      final invitations = await invitationsFuture;
+      final localTodos = await localTodosFuture;
 
       // 并发加载所有管理团队的待处理请求数
       final adminTeamUuids = rawTeams
           .where((t) => t['role'] == 0)
           .map((t) => t['uuid'] as String)
           .toList();
-      
+
       Map<String, int> pendingCounts = {};
       if (adminTeamUuids.isNotEmpty) {
-        final pendingResults = await Future.wait(
-          adminTeamUuids.map((uuid) => ApiService.fetchPendingRequests(uuid))
-        );
+        final pendingResults = await Future.wait(adminTeamUuids
+            .map((uuid) => ApiService.fetchPendingRequests(uuid)));
         for (int i = 0; i < adminTeamUuids.length; i++) {
-          pendingCounts[adminTeamUuids[i]] = (pendingResults[i] as List).length;
+          pendingCounts[adminTeamUuids[i]] = pendingResults[i].length;
+        }
+      }
+
+      final conflictCounts = <String, int>{};
+      for (final todo in localTodos) {
+        final teamUuid = todo.teamUuid;
+        if (teamUuid != null && teamUuid.isNotEmpty && todo.hasConflict) {
+          conflictCounts[teamUuid] = (conflictCounts[teamUuid] ?? 0) + 1;
         }
       }
 
@@ -213,6 +242,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
           _myInvitations = invitations;
           _teamPendingCounts = pendingCounts;
+          _teamConflictCounts = conflictCounts;
           _isLoading = false;
           // 🚀 默认选中第一个
           if (_selectedTeam == null && _teams.isNotEmpty) {
@@ -220,7 +250,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           } else if (_selectedTeam != null) {
             // 同步更新已选中的团队数据
             try {
-              _selectedTeam = _teams.firstWhere((t) => t.uuid == _selectedTeam!.uuid);
+              _selectedTeam =
+                  _teams.firstWhere((t) => t.uuid == _selectedTeam!.uuid);
             } catch (_) {
               _selectedTeam = _teams.isNotEmpty ? _teams.first : null;
             }
@@ -283,9 +314,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         decoration: InputDecoration(
           hintText: '输入一个响亮的团队名称...',
           filled: true,
-          fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[100],
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey[800]
+              : Colors.grey[100],
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
         autofocus: true,
       ),
@@ -334,9 +370,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         decoration: InputDecoration(
           hintText: '请输入团队邀请码...',
           filled: true,
-          fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[100],
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey[800]
+              : Colors.grey[100],
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
         autofocus: true,
       ),
@@ -376,7 +417,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     required IconData icon,
     required Widget content,
     required String actionText,
-    required Future<void> Function(void Function(bool Function()) setDialogState) onAction,
+    required Future<void> Function(
+            void Function(bool Function()) setDialogState)
+        onAction,
   }) {
     bool isProcessing = false;
     showDialog(
@@ -387,11 +430,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, color: Colors.blueAccent),
             ),
             const SizedBox(width: 12),
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
         content: content,
@@ -407,19 +454,28 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                 backgroundColor: Colors.blueAccent,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
-              onPressed: isProcessing ? null : () async {
-                await onAction((updateLoading) {
-                  setDialogState(() {
-                    isProcessing = updateLoading();
-                  });
-                });
-              },
+              onPressed: isProcessing
+                  ? null
+                  : () async {
+                      await onAction((updateLoading) {
+                        setDialogState(() {
+                          isProcessing = updateLoading();
+                        });
+                      });
+                    },
               child: isProcessing
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text(actionText, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : Text(actionText,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
             );
           }),
         ],
@@ -427,11 +483,20 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     );
   }
 
-  void _showSuccessToast(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.green.shade600, behavior: SnackBarBehavior.floating));
-  void _showErrorToast(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating));
+  void _showSuccessToast(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.green.shade600,
+          behavior: SnackBarBehavior.floating));
+  void _showErrorToast(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating));
 
   Widget _buildMessageCenterAction() {
-    int totalPending = _teamPendingCounts.values.fold(0, (sum, count) => sum + count);
+    int totalPending =
+        _teamPendingCounts.values.fold(0, (sum, count) => sum + count);
     return Padding(
       padding: const EdgeInsets.only(right: 4.0),
       child: Stack(
@@ -441,8 +506,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
             icon: const Icon(Icons.notifications_none_rounded),
             tooltip: '消息中心',
             onPressed: () {
-              final managedTeams = _teams.where((t) => t.userRole == TeamRole.admin).toList();
-              Navigator.push(context, MaterialPageRoute(builder: (_) => TeamMessageCenterScreen(managedTeams: managedTeams)));
+              final managedTeams =
+                  _teams.where((t) => t.userRole == TeamRole.admin).toList();
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          TeamMessageCenterScreen(managedTeams: managedTeams)));
             },
           ),
           if (totalPending > 0)
@@ -451,11 +521,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               top: 12,
               child: Container(
                 padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                decoration: const BoxDecoration(
+                    color: Colors.redAccent, shape: BoxShape.circle),
                 constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
                 child: Text(
                   totalPending > 9 ? '9+' : totalPending.toString(),
-                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -466,6 +540,31 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
   }
 
   // ============== 核心页面构建 ==============
+  Widget _buildCountBadge(int count, Color color, {IconData? icon}) {
+    return Container(
+      padding:
+          EdgeInsets.symmetric(horizontal: icon == null ? 6 : 8, vertical: 5),
+      decoration:
+          BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
+      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: Colors.white),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            count > 99 ? '99+' : count.toString(),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -483,7 +582,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               width: 380,
               child: Container(
                 decoration: BoxDecoration(
-                  border: Border(right: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05))),
+                  border: Border(
+                      right: BorderSide(
+                          color: isDark
+                              ? Colors.white10
+                              : Colors.black.withValues(alpha: 0.05))),
                 ),
                 child: _buildMasterList(isDark),
               ),
@@ -513,7 +616,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     return Scaffold(
       backgroundColor: bgColor,
       body: CustomScrollView(
-        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics()),
         slivers: [
           _buildSliverAppBar(isDark),
           if (_isLoading)
@@ -523,7 +627,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
             if (_myInvitations.isNotEmpty)
               SliverToBoxAdapter(child: _buildInvitationsSection()),
             if (_teams.isEmpty && _myInvitations.isEmpty)
-              SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState(isDark))
+              SliverFillRemaining(
+                  hasScrollBody: false, child: _buildEmptyState(isDark))
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -547,14 +652,18 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
       pinned: true,
       expandedHeight: 60,
       elevation: 0,
-      backgroundColor: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.65),
+      backgroundColor: isDark
+          ? Colors.black.withValues(alpha: 0.65)
+          : Colors.white.withValues(alpha: 0.65),
       flexibleSpace: ClipRect(
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(color: Colors.transparent),
         ),
       ),
-      title: const Text('团队协作', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+      title: const Text('团队协作',
+          style: TextStyle(
+              fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
       centerTitle: false,
       actions: [_buildMessageCenterAction()],
     );
@@ -571,7 +680,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               desc: isWide ? "汇集所有团队任务的时间轴展示" : "所有团队任务时间轴",
               icon: Icons.waterfall_chart_rounded,
               color: Colors.blueAccent,
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedWaterfallScreen(username: widget.username))),
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          UnifiedWaterfallScreen(username: widget.username))),
             ),
             const SizedBox(width: 12),
             _buildQuickActionCard(
@@ -579,7 +692,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               desc: isWide ? "处理多终端同步产生的数据争议" : "解决多端同步冲突",
               icon: Icons.verified_user_rounded,
               color: Colors.orangeAccent,
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConflictInboxScreen(username: widget.username))),
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          ConflictInboxScreen(username: widget.username))),
             ),
           ],
         ),
@@ -592,7 +709,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
       slivers: [
         SliverAppBar(
           pinned: true,
-          title: const Text('团队列表', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          title: const Text('团队列表',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           actions: [_buildMessageCenterAction()],
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -607,6 +725,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               (context, index) {
                 final team = _teams[index];
                 final isSelected = _selectedTeam?.uuid == team.uuid;
+                final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
+                final conflictCount = _teamConflictCounts[team.uuid] ?? 0;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: InkWell(
@@ -615,9 +735,16 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: isSelected ? Colors.blueAccent.withValues(alpha: 0.1) : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white),
+                        color: isSelected
+                            ? Colors.blueAccent.withValues(alpha: 0.1)
+                            : (isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.white),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isSelected ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.transparent),
+                        border: Border.all(
+                            color: isSelected
+                                ? Colors.blueAccent.withValues(alpha: 0.3)
+                                : Colors.transparent),
                       ),
                       child: Row(
                         children: [
@@ -627,17 +754,25 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(team.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), overflow: TextOverflow.ellipsis),
-                                Text('${team.memberCount} 位成员', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                                Text(team.name,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15),
+                                    overflow: TextOverflow.ellipsis),
+                                Text('${team.memberCount} 位成员',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey.shade500)),
                               ],
                             ),
                           ),
-                          if (_teamPendingCounts[team.uuid] != null && _teamPendingCounts[team.uuid]! > 0)
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                              child: Text('${_teamPendingCounts[team.uuid]}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
+                          if (conflictCount > 0) ...[
+                            _buildCountBadge(conflictCount, Colors.orangeAccent,
+                                icon: Icons.schedule_rounded),
+                            const SizedBox(width: 6),
+                          ],
+                          if (pendingCount > 0)
+                            _buildCountBadge(pendingCount, Colors.redAccent),
                         ],
                       ),
                     ),
@@ -657,7 +792,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.dashboard_customize_rounded, size: 80, color: Colors.grey.withValues(alpha: 0.2)),
+          Icon(Icons.dashboard_customize_rounded,
+              size: 80, color: Colors.grey.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
           Text('请从左侧选择一个团队进行管理', style: TextStyle(color: Colors.grey.shade500)),
         ],
@@ -669,7 +805,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => _buildSpeedDial(context, Theme.of(context).brightness == Brightness.dark),
+      builder: (context) => _buildSpeedDial(
+          context, Theme.of(context).brightness == Brightness.dark),
     );
   }
 
@@ -680,13 +817,21 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
       children: [
         Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.05), shape: BoxShape.circle),
-          child: Icon(Icons.groups_2_rounded, size: 72, color: Colors.blueAccent.withValues(alpha: 0.5)),
+          decoration: BoxDecoration(
+              color: Colors.blueAccent.withValues(alpha: 0.05),
+              shape: BoxShape.circle),
+          child: Icon(Icons.groups_2_rounded,
+              size: 72, color: Colors.blueAccent.withValues(alpha: 0.5)),
         ),
         const SizedBox(height: 24),
-        Text('还没加入任何团队哦', style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text('还没加入任何团队哦',
+            style: TextStyle(
+                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                fontSize: 18,
+                fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Text('创建或加入团队，开启高效协作之旅', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+        Text('创建或加入团队，开启高效协作之旅',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
         const SizedBox(height: 32),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -695,25 +840,32 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blueAccent,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
               onPressed: _showCreateTeamDialog,
               icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text('创建团队', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text('创建团队',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ),
             const SizedBox(width: 16),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.blueAccent,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                side: BorderSide(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                side:
+                    BorderSide(color: Colors.blueAccent.withValues(alpha: 0.3)),
               ),
               onPressed: _showJoinTeamDialog,
               icon: const Icon(Icons.link_rounded, size: 20),
-              label: const Text('加入团队', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text('加入团队',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         )
@@ -730,56 +882,90 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
           child: Row(
             children: [
-              Icon(Icons.mark_email_unread_rounded, size: 18, color: Colors.blueAccent),
+              Icon(Icons.mark_email_unread_rounded,
+                  size: 18, color: Colors.blueAccent),
               const SizedBox(width: 8),
-              const Text('待处理的邀请', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.blueAccent)),
+              const Text('待处理的邀请',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Colors.blueAccent)),
             ],
           ),
         ),
         ..._myInvitations.map((inv) => Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.blueAccent.withValues(alpha: 0.05) : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
-            boxShadow: isDark ? [] : [BoxShadow(color: Colors.blueAccent.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(backgroundColor: Colors.blueAccent.withValues(alpha: 0.1), child: const Icon(Icons.groups_rounded, color: Colors.blueAccent)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
-                  children: [
-                    Text(inv['team_name'] ?? '未知团队', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    Text('来自 ${inv['inviter_name']} 的邀请', style: TextStyle(fontSize: 12, color: Colors.grey.shade500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ],
-                ),
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.blueAccent.withValues(alpha: 0.05)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border:
+                    Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+                boxShadow: isDark
+                    ? []
+                    : [
+                        BoxShadow(
+                            color: Colors.blueAccent.withValues(alpha: 0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4))
+                      ],
               ),
-              Row(
+              child: Row(
                 children: [
-                  IconButton(
-                    style: IconButton.styleFrom(backgroundColor: Colors.grey.withValues(alpha: 0.1)),
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    onPressed: () => _handleInvitation(inv['team_uuid'], 'decline'),
-                    tooltip: '忽略',
+                  CircleAvatar(
+                      backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
+                      child: const Icon(Icons.groups_rounded,
+                          color: Colors.blueAccent)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize:
+                          MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
+                      children: [
+                        Text(inv['team_name'] ?? '未知团队',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        Text('来自 ${inv['inviter_name']} 的邀请',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey.shade500),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    style: IconButton.styleFrom(backgroundColor: Colors.blueAccent.withValues(alpha: 0.1)),
-                    icon: const Icon(Icons.check_rounded, size: 18, color: Colors.blueAccent),
-                    onPressed: () => _handleInvitation(inv['team_uuid'], 'accept'),
-                    tooltip: '加入',
-                  ),
+                  Row(
+                    children: [
+                      IconButton(
+                        style: IconButton.styleFrom(
+                            backgroundColor:
+                                Colors.grey.withValues(alpha: 0.1)),
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () =>
+                            _handleInvitation(inv['team_uuid'], 'decline'),
+                        tooltip: '忽略',
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        style: IconButton.styleFrom(
+                            backgroundColor:
+                                Colors.blueAccent.withValues(alpha: 0.1)),
+                        icon: const Icon(Icons.check_rounded,
+                            size: 18, color: Colors.blueAccent),
+                        onPressed: () =>
+                            _handleInvitation(inv['team_uuid'], 'accept'),
+                        tooltip: '加入',
+                      ),
+                    ],
+                  )
                 ],
-              )
-            ],
-          ),
-        )),
+              ),
+            )),
         const SizedBox(height: 16),
       ],
     );
@@ -795,7 +981,12 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     }
   }
 
-  Widget _buildQuickActionCard({required String title, required String desc, required IconData icon, required Color color, required VoidCallback onTap}) {
+  Widget _buildQuickActionCard(
+      {required String title,
+      required String desc,
+      required IconData icon,
+      required Color color,
+      required VoidCallback onTap}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Expanded(
       child: InkWell(
@@ -806,25 +997,45 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           decoration: BoxDecoration(
             color: isDark ? color.withValues(alpha: 0.08) : Colors.white,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: color.withValues(alpha: isDark ? 0.2 : 0.1)),
-            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.05), blurRadius: 15, offset: const Offset(0, 5))],
+            border:
+                Border.all(color: color.withValues(alpha: isDark ? 0.2 : 0.1)),
+            boxShadow: [
+              BoxShadow(
+                  color: color.withValues(alpha: 0.05),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5))
+            ],
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
+                decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16)),
                 child: Icon(icon, color: color, size: 24),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
+                  mainAxisSize:
+                      MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
                   children: [
-                    Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(title,
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Text(desc, style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black54), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    Text(desc,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white70 : Colors.black54),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
@@ -837,6 +1048,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
 
   Widget _buildTeamCard(Team team, bool isDark) {
     final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
+    final conflictCount = _teamConflictCounts[team.uuid] ?? 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -846,7 +1058,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
         boxShadow: [
           BoxShadow(
-            color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.04),
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.3)
+                : Colors.black.withValues(alpha: 0.04),
             blurRadius: 24,
             offset: const Offset(0, 8),
           )
@@ -866,57 +1080,98 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
+                    mainAxisSize:
+                        MainAxisSize.min, // 🚀 避免 RenderFlex OVERFLOWING
                     children: [
                       Row(
                         children: [
-                          Expanded(child: Text(team.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                          Expanded(
+                              child: Text(team.name,
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1)),
                           if (team.userRole == TeamRole.admin)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                              child: const Text('管理员', style: TextStyle(fontSize: 10, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                  color:
+                                      Colors.blueAccent.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8)),
+                              child: const Text('管理员',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.blueAccent,
+                                      fontWeight: FontWeight.bold)),
                             ),
+                          if (conflictCount > 0) ...[
+                            const SizedBox(width: 6),
+                            _buildCountBadge(conflictCount, Colors.orangeAccent,
+                                icon: Icons.schedule_rounded),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('创建于 ${DateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                          '创建于 ${DateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade500),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
               ],
             ),
 
-            const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1)),
+            const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Divider(height: 1)),
 
             // 中部：人数 + 邀请码
             Row(
               children: [
-                Icon(Icons.people_alt_rounded, size: 16, color: Colors.grey.shade400),
+                Icon(Icons.people_alt_rounded,
+                    size: 16, color: Colors.grey.shade400),
                 const SizedBox(width: 6),
-                Text('${team.memberCount} 位成员', style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500)),
+                Text('${team.memberCount} 位成员',
+                    style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500)),
                 const Spacer(),
                 if (team.inviteCode != null)
                   InkWell(
                     onTap: () {
-                      final inviteText = '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${team.inviteCode}]';
+                      final inviteText =
+                          '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${team.inviteCode}]';
                       Clipboard.setData(ClipboardData(text: inviteText));
                       _showSuccessToast('邀请文案已复制，快去分享吧 📋');
                     },
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                        border: Border.all(
+                            color: Colors.grey.withValues(alpha: 0.2)),
                       ),
                       child: Row(
                         children: [
-                          Text('邀请码: ${team.inviteCode}', style: const TextStyle(fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.w600)),
+                          Text('邀请码: ${team.inviteCode}',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                  fontWeight: FontWeight.w600)),
                           const SizedBox(width: 6),
-                          Icon(Icons.copy_rounded, size: 12, color: Colors.grey.shade500),
+                          Icon(Icons.copy_rounded,
+                              size: 12, color: Colors.grey.shade500),
                         ],
                       ),
                     ),
@@ -934,17 +1189,22 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                     style: OutlinedButton.styleFrom(
                       foregroundColor: isDark ? Colors.white : Colors.black87,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      side:
+                          BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
                     ),
                     onPressed: () => _showMembersSheet(team),
                     icon: pendingCount > 0
                         ? Badge(
-                      label: Text('$pendingCount'),
-                      child: const Icon(Icons.admin_panel_settings_rounded, size: 18),
-                    )
+                            label: Text('$pendingCount'),
+                            child: const Icon(
+                                Icons.admin_panel_settings_rounded,
+                                size: 18),
+                          )
                         : const Icon(Icons.manage_accounts_rounded, size: 18),
-                    label: Text(pendingCount > 0 ? '审批申请' : '成员管理', style: const TextStyle(fontSize: 13)),
+                    label: Text(pendingCount > 0 ? '审批申请' : '成员管理',
+                        style: const TextStyle(fontSize: 13)),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -953,10 +1213,16 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.orangeAccent,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      side: BorderSide(color: Colors.orangeAccent.withValues(alpha: 0.2)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      side: BorderSide(
+                          color: Colors.orangeAccent.withValues(alpha: 0.2)),
                     ),
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamAnnouncementScreen(team: team))),
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                TeamAnnouncementScreen(team: team))),
                     icon: const Icon(Icons.campaign_rounded, size: 18),
                     label: const Text('团队公告', style: TextStyle(fontSize: 13)),
                   ),
@@ -969,18 +1235,24 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                       foregroundColor: Colors.blueAccent,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
                     ),
-                    onPressed: () => _showInviteOptionsSheet(team), // 🚀 修改点：点击后弹出选择框
+                    onPressed: () =>
+                        _showInviteOptionsSheet(team), // 🚀 修改点：点击后弹出选择框
                     icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                    label: const Text('邀请加入', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    label: const Text('邀请加入',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(width: 8),
                 // 更多菜单
                 PopupMenuButton<String>(
-                  icon: Icon(Icons.more_horiz_rounded, color: Colors.grey.shade600),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  icon: Icon(Icons.more_horiz_rounded,
+                      color: Colors.grey.shade600),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   onSelected: (value) {
                     if (value == 'share') {
                       _handleGenerateCode(team);
@@ -991,11 +1263,31 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                     }
                   },
                   itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'share', child: Row(children: [Icon(Icons.share_rounded, size: 18), SizedBox(width: 12), Text('重置/生成邀请码')])),
+                    const PopupMenuItem(
+                        value: 'share',
+                        child: Row(children: [
+                          Icon(Icons.share_rounded, size: 18),
+                          SizedBox(width: 12),
+                          Text('重置/生成邀请码')
+                        ])),
                     if (team.userRole == TeamRole.admin)
-                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_forever_rounded, size: 18, color: Colors.red), SizedBox(width: 12), Text('解散团队', style: TextStyle(color: Colors.red))]))
+                      const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(children: [
+                            Icon(Icons.delete_forever_rounded,
+                                size: 18, color: Colors.red),
+                            SizedBox(width: 12),
+                            Text('解散团队', style: TextStyle(color: Colors.red))
+                          ]))
                     else
-                      const PopupMenuItem(value: 'leave', child: Row(children: [Icon(Icons.exit_to_app_rounded, size: 18, color: Colors.orange), SizedBox(width: 12), Text('退出团队', style: TextStyle(color: Colors.orange))])),
+                      const PopupMenuItem(
+                          value: 'leave',
+                          child: Row(children: [
+                            Icon(Icons.exit_to_app_rounded,
+                                size: 18, color: Colors.orange),
+                            SizedBox(width: 12),
+                            Text('退出团队', style: TextStyle(color: Colors.orange))
+                          ])),
                   ],
                 )
               ],
@@ -1007,7 +1299,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
   }
 
   Widget _buildTeamAvatar(Team team) {
-    final colors = [Colors.blueAccent, Colors.purpleAccent, Colors.orangeAccent, Colors.teal, Colors.indigo];
+    final colors = [
+      Colors.blueAccent,
+      Colors.purpleAccent,
+      Colors.orangeAccent,
+      Colors.teal,
+      Colors.indigo
+    ];
     final color = colors[team.uuid.hashCode % colors.length];
     return Container(
       width: 52,
@@ -1024,7 +1322,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
       child: Center(
         child: Text(
           _safeFirstChar(team.name), // 🚀 修复 UTF-16 切片奔溃 Bug
-          style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold),
+          style: TextStyle(
+              color: color, fontSize: 22, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -1036,7 +1335,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        padding: const EdgeInsets.only(top: 12, bottom: 32, left: 24, right: 24),
+        padding:
+            const EdgeInsets.only(top: 12, bottom: 32, left: 24, right: 24),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -1044,9 +1344,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
+            Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 24),
-            const Text('邀请新成员', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('邀请新成员',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 24),
             _buildInviteOption(
               icon: Icons.copy_all_rounded,
@@ -1055,7 +1361,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               color: Colors.blueAccent,
               onTap: () {
                 Navigator.pop(context);
-                final inviteText = '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${team.inviteCode}]';
+                final inviteText =
+                    '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${team.inviteCode}]';
                 Clipboard.setData(ClipboardData(text: inviteText));
                 _showSuccessToast('邀请文案已复制 📋');
               },
@@ -1077,7 +1384,12 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
     );
   }
 
-  Widget _buildInviteOption({required IconData icon, required String title, required String subtitle, required Color color, required VoidCallback onTap}) {
+  Widget _buildInviteOption(
+      {required IconData icon,
+      required String title,
+      required String subtitle,
+      required Color color,
+      required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -1092,7 +1404,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: Icon(icon, color: color, size: 24),
             ),
             const SizedBox(width: 16),
@@ -1100,9 +1413,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                  Text(subtitle,
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                 ],
               ),
             ),
@@ -1123,9 +1440,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         decoration: InputDecoration(
           hintText: '输入对方的注册邮箱...',
           filled: true,
-          fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[100],
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey[800]
+              : Colors.grey[100],
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
         autofocus: true,
         keyboardType: TextInputType.emailAddress,
@@ -1167,7 +1489,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
             color: Theme.of(context).scaffoldBackgroundColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           ),
-          child: _TeamMembersView(team: team, scrollController: scrollController, onRefresh: _loadTeams),
+          child: _TeamMembersView(
+              team: team,
+              scrollController: scrollController,
+              onRefresh: _loadTeams),
         ),
       ),
     );
@@ -1188,11 +1513,12 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         title: const Text('退出团队'),
         content: Text('确定要退出「${team.name}」吗？退出后将无法查看该团队的协作任务。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('取消')),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-               final res = await ApiService.leaveTeam(team.uuid);
+              final res = await ApiService.leaveTeam(team.uuid);
               if (res['success'] == true) {
                 // 🚀 核心修复：立即清理本地缓存的该团队数据，触发首页刷新
                 await StorageService.clearTeamItems(team.uuid);
@@ -1216,11 +1542,12 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
         title: const Text('解散团队'),
         content: Text('警告：此操作不可逆！解散「${team.name}」将删除所有团队数据并移除所有成员。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('取消')),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-               final res = await ApiService.deleteTeam(team.uuid);
+              final res = await ApiService.deleteTeam(team.uuid);
               if (res['success'] == true) {
                 // 🚀 核心修复：立即清理本地缓存的该团队数据，触发首页刷新
                 await StorageService.clearTeamItems(team.uuid);
@@ -1245,21 +1572,37 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
           context: context,
           backgroundColor: Colors.transparent,
           builder: (context) => Container(
-            padding: const EdgeInsets.only(top: 12, bottom: 32, left: 24, right: 24),
+            padding:
+                const EdgeInsets.only(top: 12, bottom: 32, left: 24, right: 24),
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(32)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
+                Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 24),
-                const Text('团队操作', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text('团队操作',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 24),
                 ListTile(
-                  leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.1), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, color: Colors.blueAccent)),
-                  title: const Text('创建新团队', style: TextStyle(fontWeight: FontWeight.bold)),
+                  leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                          color: Colors.blueAccent.withValues(alpha: 0.1),
+                          shape: BoxShape.circle),
+                      child: const Icon(Icons.add_rounded,
+                          color: Colors.blueAccent)),
+                  title: const Text('创建新团队',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text('开启一个全新的协作项目'),
                   onTap: () {
                     Navigator.pop(context);
@@ -1268,8 +1611,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> with Widget
                 ),
                 const Divider(),
                 ListTile(
-                  leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.orangeAccent.withValues(alpha: 0.1), shape: BoxShape.circle), child: const Icon(Icons.link_rounded, color: Colors.orangeAccent)),
-                  title: const Text('加入已有团队', style: TextStyle(fontWeight: FontWeight.bold)),
+                  leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                          color: Colors.orangeAccent.withValues(alpha: 0.1),
+                          shape: BoxShape.circle),
+                      child: const Icon(Icons.link_rounded,
+                          color: Colors.orangeAccent)),
+                  title: const Text('加入已有团队',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text('通过邀请码加入其他协作小组'),
                   onTap: () {
                     Navigator.pop(context);
@@ -1338,13 +1688,18 @@ class _TeamDetailView extends StatefulWidget {
   final Team team;
   final VoidCallback onRefresh;
   final String username;
-  const _TeamDetailView({super.key, required this.team, required this.onRefresh, required this.username});
+  const _TeamDetailView(
+      {super.key,
+      required this.team,
+      required this.onRefresh,
+      required this.username});
 
   @override
   State<_TeamDetailView> createState() => _TeamDetailViewState();
 }
 
-class _TeamDetailViewState extends State<_TeamDetailView> with SingleTickerProviderStateMixin {
+class _TeamDetailViewState extends State<_TeamDetailView>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
@@ -1379,10 +1734,14 @@ class _TeamDetailViewState extends State<_TeamDetailView> with SingleTickerProvi
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.team.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                        Text(widget.team.name,
+                            style: const TextStyle(
+                                fontSize: 24, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
-                        Text('创建于 ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
-                            style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                        Text(
+                            '创建于 ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
+                            style: TextStyle(
+                                color: Colors.grey.shade500, fontSize: 13)),
                       ],
                     ),
                   ),
@@ -1414,7 +1773,10 @@ class _TeamDetailViewState extends State<_TeamDetailView> with SingleTickerProvi
               // Tab 1: 公告
               _TeamAnnouncementView(team: widget.team),
               // Tab 2: 成员
-              _TeamMembersView(team: widget.team, scrollController: ScrollController(), onRefresh: widget.onRefresh),
+              _TeamMembersView(
+                  team: widget.team,
+                  scrollController: ScrollController(),
+                  onRefresh: widget.onRefresh),
               // Tab 3: 管理
               _TeamSettingsView(team: widget.team, onRefresh: widget.onRefresh),
             ],
@@ -1425,20 +1787,30 @@ class _TeamDetailViewState extends State<_TeamDetailView> with SingleTickerProvi
   }
 
   Widget _buildTeamAvatarLarge(Team team) {
-    final colors = [Colors.blueAccent, Colors.purpleAccent, Colors.orangeAccent, Colors.teal, Colors.indigo];
+    final colors = [
+      Colors.blueAccent,
+      Colors.purpleAccent,
+      Colors.orangeAccent,
+      Colors.teal,
+      Colors.indigo
+    ];
     final color = colors[team.uuid.hashCode % colors.length];
     return Container(
       width: 72,
       height: 72,
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [color.withValues(alpha: 0.4), color.withValues(alpha: 0.1)]),
+        gradient: LinearGradient(colors: [
+          color.withValues(alpha: 0.4),
+          color.withValues(alpha: 0.1)
+        ]),
         shape: BoxShape.circle,
         border: Border.all(color: color.withValues(alpha: 0.5), width: 3),
       ),
       child: Center(
         child: Text(
           team.name.isNotEmpty ? team.name[0].toUpperCase() : '?',
-          style: TextStyle(color: color, fontSize: 32, fontWeight: FontWeight.bold),
+          style: TextStyle(
+              color: color, fontSize: 32, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -1458,15 +1830,20 @@ class _TeamDetailViewState extends State<_TeamDetailView> with SingleTickerProvi
             backgroundColor: Colors.blueAccent,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 0,
           ),
           onPressed: () {
-             Clipboard.setData(ClipboardData(text: '邀请您加入「${widget.team.name}」团队，邀请码：[${widget.team.inviteCode}]'));
-             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('邀请码已复制 📋')));
+            Clipboard.setData(ClipboardData(
+                text:
+                    '邀请您加入「${widget.team.name}」团队，邀请码：[${widget.team.inviteCode}]'));
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('邀请码已复制 📋')));
           },
           icon: const Icon(Icons.person_add_rounded, size: 20),
-          label: const Text('复制邀请码', style: TextStyle(fontWeight: FontWeight.bold)),
+          label: const Text('复制邀请码',
+              style: TextStyle(fontWeight: FontWeight.bold)),
         ),
       ],
     );
@@ -1515,7 +1892,8 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.campaign_outlined, size: 64, color: Colors.grey.withValues(alpha: 0.2)),
+            Icon(Icons.campaign_outlined,
+                size: 64, color: Colors.grey.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
             const Text('暂无团队公告', style: TextStyle(color: Colors.grey)),
           ],
@@ -1532,7 +1910,9 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
           margin: const EdgeInsets.only(bottom: 16),
           elevation: 0,
           color: Theme.of(context).cardColor.withValues(alpha: 0.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -1540,23 +1920,33 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.campaign_rounded, color: Colors.orangeAccent, size: 20),
+                    const Icon(Icons.campaign_rounded,
+                        color: Colors.orangeAccent, size: 20),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(ann['title'] ?? '未命名公告', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                    Expanded(
+                        child: Text(ann['title'] ?? '未命名公告',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16))),
                     Builder(builder: (context) {
                       DateTime date;
                       final rawDate = ann['created_at'];
                       if (rawDate is int) {
                         date = DateTime.fromMillisecondsSinceEpoch(rawDate);
                       } else {
-                        date = DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now();
+                        date = DateTime.tryParse(rawDate?.toString() ?? '') ??
+                            DateTime.now();
                       }
-                      return Text(DateFormat('MM-dd HH:mm').format(date), style: TextStyle(fontSize: 12, color: Colors.grey.shade500));
+                      return Text(DateFormat('MM-dd HH:mm').format(date),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade500));
                     }),
                   ],
                 ),
-                const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),
-                Text(ann['content'] ?? '', style: const TextStyle(fontSize: 14, height: 1.5)),
+                const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Divider()),
+                Text(ann['content'] ?? '',
+                    style: const TextStyle(fontSize: 14, height: 1.5)),
               ],
             ),
           ),
@@ -1578,7 +1968,12 @@ class _TeamSettingsView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        const Text('通用信息', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey, letterSpacing: 1.2)),
+        const Text('通用信息',
+            style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.grey,
+                letterSpacing: 1.2)),
         const SizedBox(height: 16),
         _buildSettingItem(
           context,
@@ -1586,15 +1981,22 @@ class _TeamSettingsView extends StatelessWidget {
           color: Colors.blueAccent,
           title: '团队邀请码',
           subtitle: team.inviteCode ?? '尚未生成',
-          trailing: const Icon(Icons.copy_rounded, size: 18, color: Colors.grey),
+          trailing:
+              const Icon(Icons.copy_rounded, size: 18, color: Colors.grey),
           onTap: () {
             Clipboard.setData(ClipboardData(text: team.inviteCode ?? ''));
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('邀请码已复制')));
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('邀请码已复制')));
           },
         ),
         if (isAdmin) ...[
           const SizedBox(height: 32),
-          const Text('管理操作', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.redAccent, letterSpacing: 1.2)),
+          const Text('管理操作',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.redAccent,
+                  letterSpacing: 1.2)),
           const SizedBox(height: 16),
           _buildSettingItem(
             context,
@@ -1615,7 +2017,7 @@ class _TeamSettingsView extends StatelessWidget {
             title: '解散团队',
             subtitle: '删除所有团队任务与成员，此操作不可逆',
             onTap: () {
-               // 触发解散弹窗
+              // 触发解散弹窗
             },
           ),
         ] else ...[
@@ -1627,7 +2029,7 @@ class _TeamSettingsView extends StatelessWidget {
             title: '退出团队',
             subtitle: '退出后将不再接收此团队的任务同步',
             onTap: () {
-               // 触发退出弹窗
+              // 触发退出弹窗
             },
           ),
         ],
@@ -1635,7 +2037,13 @@ class _TeamSettingsView extends StatelessWidget {
     );
   }
 
-  Widget _buildSettingItem(BuildContext context, {required IconData icon, required Color color, required String title, required String subtitle, Widget? trailing, required VoidCallback onTap}) {
+  Widget _buildSettingItem(BuildContext context,
+      {required IconData icon,
+      required Color color,
+      required String title,
+      required String subtitle,
+      Widget? trailing,
+      required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -1648,19 +2056,31 @@ class _TeamSettingsView extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 20)),
+            Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: 20)),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 2),
-                  Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                  Text(subtitle,
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                 ],
               ),
             ),
-            if (trailing != null) trailing else Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+            if (trailing != null)
+              trailing
+            else
+              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
           ],
         ),
       ),
@@ -1673,7 +2093,10 @@ class _TeamMembersView extends StatefulWidget {
   final Team team;
   final ScrollController scrollController;
   final VoidCallback onRefresh;
-  const _TeamMembersView({required this.team, required this.scrollController, required this.onRefresh});
+  const _TeamMembersView(
+      {required this.team,
+      required this.scrollController,
+      required this.onRefresh});
 
   @override
   __TeamMembersViewState createState() => __TeamMembersViewState();
@@ -1709,16 +2132,27 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     return Column(
       children: [
         const SizedBox(height: 12),
-        Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
+        Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2))),
         Padding(
           padding: const EdgeInsets.all(24),
           child: Row(
             children: [
-              const Icon(Icons.manage_accounts_rounded, color: Colors.blueAccent),
+              const Icon(Icons.manage_accounts_rounded,
+                  color: Colors.blueAccent),
               const SizedBox(width: 12),
-              Text('成员管理 - ${widget.team.name}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Text('成员管理 - ${widget.team.name}',
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold)),
               const Spacer(),
-              if (!_loading) Text('${_members.length} 人', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+              if (!_loading)
+                Text('${_members.length} 人',
+                    style:
+                        TextStyle(color: Colors.grey.shade500, fontSize: 13)),
             ],
           ),
         ),
@@ -1726,26 +2160,31 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-            controller: widget.scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: [
-              if (_requests.isNotEmpty) ...[
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Text('待审批申请', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                  controller: widget.scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    if (_requests.isNotEmpty) ...[
+                      const Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        child: Text('待审批申请',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blueAccent)),
+                      ),
+                      ..._requests.map((r) => _buildRequestItem(r)),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                    ],
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      child: Text('团队成员',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    ..._members.map((m) => _buildMemberItem(m)),
+                    const SizedBox(height: 40),
+                  ],
                 ),
-                ..._requests.map((r) => _buildRequestItem(r)),
-                const SizedBox(height: 16),
-                const Divider(),
-              ],
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Text('团队成员', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              ..._members.map((m) => _buildMemberItem(m)),
-              const SizedBox(height: 40),
-            ],
-          ),
         ),
       ],
     );
@@ -1755,16 +2194,31 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.1))),
+      decoration: BoxDecoration(
+          color: Colors.blueAccent.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.1))),
       child: Row(
         children: [
-          CircleAvatar(backgroundColor: Colors.blueAccent.withValues(alpha: 0.1), child: Text(r['username']?[0]?.toUpperCase() ?? '?', style: const TextStyle(color: Colors.blueAccent))),
+          CircleAvatar(
+              backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
+              child: Text(r['username']?[0]?.toUpperCase() ?? '?',
+                  style: const TextStyle(color: Colors.blueAccent))),
           const SizedBox(width: 12),
-          Expanded(child: Text(r['username'] ?? '未知用户', style: const TextStyle(fontWeight: FontWeight.bold))),
-          TextButton(onPressed: () => _handleRequest(r, 'reject'), child: const Text('拒绝', style: TextStyle(color: Colors.grey))),
+          Expanded(
+              child: Text(r['username'] ?? '未知用户',
+                  style: const TextStyle(fontWeight: FontWeight.bold))),
+          TextButton(
+              onPressed: () => _handleRequest(r, 'reject'),
+              child: const Text('拒绝', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             onPressed: () => _handleRequest(r, 'approve'),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8))),
             child: const Text('同意'),
           ),
         ],
@@ -1777,20 +2231,32 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     final bool isMe = m['is_me'] == true || m['id'] == ApiService.currentUserId;
 
     return ListTile(
-      leading: CircleAvatar(backgroundColor: isAdmin ? Colors.blueAccent.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1), child: Text(m['username']?[0]?.toUpperCase() ?? '?', style: TextStyle(color: isAdmin ? Colors.blueAccent : Colors.grey))),
-      title: Text('${m['username']}${isMe ? ' (我)' : ''}', style: TextStyle(fontWeight: isMe ? FontWeight.bold : FontWeight.normal)),
-      subtitle: Text(isAdmin ? '管理员' : '成员', style: TextStyle(fontSize: 12, color: isAdmin ? Colors.blueAccent : Colors.grey)),
+      leading: CircleAvatar(
+          backgroundColor: isAdmin
+              ? Colors.blueAccent.withValues(alpha: 0.1)
+              : Colors.grey.withValues(alpha: 0.1),
+          child: Text(m['username']?[0]?.toUpperCase() ?? '?',
+              style:
+                  TextStyle(color: isAdmin ? Colors.blueAccent : Colors.grey))),
+      title: Text('${m['username']}${isMe ? ' (我)' : ''}',
+          style: TextStyle(
+              fontWeight: isMe ? FontWeight.bold : FontWeight.normal)),
+      subtitle: Text(isAdmin ? '管理员' : '成员',
+          style: TextStyle(
+              fontSize: 12, color: isAdmin ? Colors.blueAccent : Colors.grey)),
       trailing: (widget.team.userRole == TeamRole.admin && !isAdmin)
           ? IconButton(
-        icon: const Icon(Icons.person_remove_rounded, color: Colors.redAccent, size: 20),
-        onPressed: () => _confirmRemoveMember(m),
-      )
+              icon: const Icon(Icons.person_remove_rounded,
+                  color: Colors.redAccent, size: 20),
+              onPressed: () => _confirmRemoveMember(m),
+            )
           : null,
     );
   }
 
   Future<void> _handleRequest(dynamic r, String action) async {
-    final res = await ApiService.processJoinRequest(widget.team.uuid, r['user_id'], action);
+    final res = await ApiService.processJoinRequest(
+        widget.team.uuid, r['user_id'], action);
     if (res['success'] == true) {
       _loadData();
       widget.onRefresh();
@@ -1804,11 +2270,13 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
         title: const Text('移除成员'),
         content: Text('确定要将「${m['username']}」从团队中移除吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('取消')),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              final res = await ApiService.removeTeamMember(widget.team.uuid, m['user_id']);
+              final res = await ApiService.removeTeamMember(
+                  widget.team.uuid, m['user_id']);
               if (res['success'] == true) {
                 _loadData();
                 widget.onRefresh();

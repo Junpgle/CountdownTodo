@@ -13,7 +13,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'models.dart';
 
-
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
@@ -29,7 +28,6 @@ class StorageService {
 
   static String? _lastRecurrenceCheckDate;
   static final Map<String, bool> _recurrenceCheckCache = {};
-  
 
   // --- 常量定义 ---
   static const String KEY_USERS = "users_data";
@@ -177,7 +175,7 @@ class StorageService {
         model = "${androidInfo.manufacturer} ${androidInfo.model}";
         // 平板判断：最短边大于 600dp 通常认为是平板
         final double shortestSide = WidgetsBinding.instance.platformDispatcher
-            .views.first.physicalSize.shortestSide /
+                .views.first.physicalSize.shortestSide /
             WidgetsBinding
                 .instance.platformDispatcher.views.first.devicePixelRatio;
         type = shortestSide > 600 ? "Tablet" : "Phone";
@@ -185,7 +183,7 @@ class StorageService {
         IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
         model = iosInfo.utsname.machine ?? "iPhone";
         type =
-        iosInfo.model.toLowerCase().contains("ipad") ? "Tablet" : "Phone";
+            iosInfo.model.toLowerCase().contains("ipad") ? "Tablet" : "Phone";
       } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
         model = Platform.operatingSystem;
         type = "PC";
@@ -205,7 +203,8 @@ class StorageService {
     return p.getString(KEY_CURRENT_USER);
   }
 
-  static Future<bool> rollbackLocalItem(String table, int logId, String username) async {
+  static Future<bool> rollbackLocalItem(
+      String table, int logId, String username) async {
     try {
       // 1. 执行 SQL 层的物理回滚
       final success = await DatabaseHelper.instance.rollbackFromLocalLog(logId);
@@ -213,11 +212,14 @@ class StorageService {
 
       // 2. 🚀 关键：立即从 DB 重载该表的数据并刷新内存/Prefs 缓存
       if (table == 'todos') {
-        final List<TodoItem> freshTodos = await DatabaseHelper.instance.getTodos();
+        final List<TodoItem> freshTodos =
+            await DatabaseHelper.instance.getTodos();
         await saveTodos(username, freshTodos, sync: false, isSyncSource: true);
       } else if (table == 'countdowns') {
-        final List<CountdownItem> freshCds = await DatabaseHelper.instance.getCountdowns();
-        await saveCountdowns(username, freshCds, sync: false, isSyncSource: true);
+        final List<CountdownItem> freshCds =
+            await DatabaseHelper.instance.getCountdowns();
+        await saveCountdowns(username, freshCds,
+            sync: false, isSyncSource: true);
       }
 
       // 3. 触发 UI 刷新信号
@@ -323,7 +325,7 @@ class StorageService {
   }
 
   static Future<List<Map<String, dynamic>>>
-  getWindowsScheduledReminders() async {
+      getWindowsScheduledReminders() async {
     final prefs = await StorageService.prefs;
     String? jsonStr = prefs.getString(KEY_WINDOWS_SCHEDULED_REMINDERS);
     if (jsonStr == null || jsonStr.isEmpty) return [];
@@ -413,7 +415,7 @@ class StorageService {
       }
     }
     double accuracy =
-    totalQuestions == 0 ? 0.0 : (totalCorrect / totalQuestions);
+        totalQuestions == 0 ? 0.0 : (totalCorrect / totalQuestions);
     return {
       'accuracy': accuracy,
       'bestTime': hasPerfectScore ? bestTime : null,
@@ -461,8 +463,8 @@ class StorageService {
 
     // 🚀 异步保存到 Prefs
     unawaited(SharedPreferences.getInstance().then((prefs) async {
-       final jsonList = await compute(_serializeCountdowns, dedupeList);
-       await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
+      final jsonList = await compute(_serializeCountdowns, dedupeList);
+      await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
     }));
 
     final db = await DatabaseHelper.instance.database;
@@ -471,8 +473,8 @@ class StorageService {
     Map<String, Map<String, dynamic>> existingItemsMap = {};
     if (!isSyncSource && dedupeList.isNotEmpty) {
       final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
-      final List<Map<String, dynamic>> existing = await db.rawQuery(
-          'SELECT * FROM countdowns WHERE uuid IN ($uuids)');
+      final List<Map<String, dynamic>> existing =
+          await db.rawQuery('SELECT * FROM countdowns WHERE uuid IN ($uuids)');
       for (var row in existing) {
         existingItemsMap[row['uuid']] = row;
       }
@@ -484,13 +486,18 @@ class StorageService {
       final oldData = existingItemsMap[item.id];
       if (oldData != null) {
         hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
-          'title', 'target_time', 'is_deleted', 'is_completed', 'team_uuid'
+          'title',
+          'target_time',
+          'is_deleted',
+          'is_completed',
+          'team_uuid'
         ]);
       }
 
       if (!isSyncSource && hasChanged) {
-        unawaited(_recordLocalAuditOptimized('countdowns', item.id, item.toJson(), item.teamUuid, oldData));
-        
+        unawaited(_recordLocalAuditOptimized(
+            'countdowns', item.id, item.toJson(), item.teamUuid, oldData));
+
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'countdowns',
@@ -502,35 +509,39 @@ class StorageService {
       }
 
       if (hasChanged || oldData == null) {
-        batch.insert('countdowns', {
-          'uuid': item.id,
-          'team_uuid': item.teamUuid,
-          'team_name': item.teamName,
-          'creator_id': item.creatorId,
-          'creator_name': item.creatorName,
-          'title': item.title,
-          'target_time': item.targetDate.millisecondsSinceEpoch,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'is_completed': item.isCompleted ? 1 : 0,
-          'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt,
-          'has_conflict': item.hasConflict ? 1 : 0,
-          'conflict_data': item.conflictData != null ? jsonEncode(item.conflictData) : null,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        batch.insert(
+            'countdowns',
+            {
+              'uuid': item.id,
+              'team_uuid': item.teamUuid,
+              'team_name': item.teamName,
+              'creator_id': item.creatorId,
+              'creator_name': item.creatorName,
+              'title': item.title,
+              'target_time': item.targetDate.millisecondsSinceEpoch,
+              'is_deleted': item.isDeleted ? 1 : 0,
+              'is_completed': item.isCompleted ? 1 : 0,
+              'version': item.version,
+              'updated_at': item.updatedAt,
+              'created_at': item.createdAt,
+              'has_conflict': item.hasConflict ? 1 : 0,
+              'conflict_data': item.conflictData != null
+                  ? jsonEncode(item.conflictData)
+                  : null,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
       }
     }
-    
+
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
     }
-    
+
     if (sync) Future.microtask(() => syncData(username));
   }
 
-  static List<String> _serializeCountdowns(List<CountdownItem> items) => 
+  static List<String> _serializeCountdowns(List<CountdownItem> items) =>
       items.map((e) => jsonEncode(e.toJson())).toList();
-
 
   static Future<List<CountdownItem>> getCountdowns(String username,
       {bool includeDeleted = false}) async {
@@ -541,7 +552,7 @@ class StorageService {
 
       // 1. 迁移检查
       final List<Map<String, dynamic>> sqliteCount =
-      await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
+          await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
             prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
@@ -569,31 +580,35 @@ class StorageService {
       // 2. 从 SQL 读取
       final List<Map<String, dynamic>> maps = await db.query('countdowns',
           where: includeDeleted ? null : 'is_deleted = 0');
-      
+
       if (maps.isNotEmpty) {
         // 🚀 性能优化：当数量较多时，将对象映射逻辑移动到后台 Isolate，避免阻塞主线程（Choreographer 跳帧的主要原因）
         if (maps.length > 50) {
           return await compute(_parseCountdownItemsIsolate, maps);
         }
-        
+
         return maps
             .map((m) => CountdownItem(
-          id: m['uuid'],
-          title: m['title'] ?? '',
-          targetDate: DateTime.fromMillisecondsSinceEpoch(
-              m['target_time']),
-          isDeleted: m['is_deleted'] == 1,
-          isCompleted: m['is_completed'] == 1,
-          version: m['version'] ?? 1,
-          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          teamUuid: m['team_uuid'],
-          teamName: m['team_name'],
-          creatorId: m['creator_id'],
-          creatorName: m['creator_name'],
-          hasConflict: m['has_conflict'] == 1,
-          conflictData: m['conflict_data'] != null ? jsonDecode(m['conflict_data']) : null,
-        ))
+                  id: m['uuid'],
+                  title: m['title'] ?? '',
+                  targetDate:
+                      DateTime.fromMillisecondsSinceEpoch(m['target_time']),
+                  isDeleted: m['is_deleted'] == 1,
+                  isCompleted: m['is_completed'] == 1,
+                  version: m['version'] ?? 1,
+                  updatedAt:
+                      m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  createdAt:
+                      m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  teamUuid: m['team_uuid'],
+                  teamName: m['team_name'],
+                  creatorId: m['creator_id'],
+                  creatorName: m['creator_name'],
+                  hasConflict: m['has_conflict'] == 1,
+                  conflictData: m['conflict_data'] != null
+                      ? jsonDecode(m['conflict_data'])
+                      : null,
+                ))
             .toList();
       }
     } catch (e) {
@@ -603,7 +618,7 @@ class StorageService {
     // 逃生通道
     List<String> list =
         prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
-    
+
     // 🚀 逃生通道也使用 Isolate 优化
     if (list.length > 50) {
       return await compute(_parseCountdownJsonItemsIsolate, list);
@@ -619,33 +634,44 @@ class StorageService {
   }
 
   /// 🚀 Isolate 专用：静态解析方法
-  static List<CountdownItem> _parseCountdownItemsIsolate(List<Map<String, dynamic>> maps) {
-    return maps.map((m) => CountdownItem(
-          id: m['uuid'],
-          title: m['title'] ?? '',
-          targetDate: DateTime.fromMillisecondsSinceEpoch(m['target_time']),
-          isDeleted: m['is_deleted'] == 1,
-          isCompleted: m['is_completed'] == 1,
-          version: m['version'] ?? 1,
-          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          teamUuid: m['team_uuid'],
-          teamName: m['team_name'],
-          creatorId: m['creator_id'],
-          creatorName: m['creator_name'],
-          hasConflict: m['has_conflict'] == 1,
-          conflictData: m['conflict_data'] != null ? jsonDecode(m['conflict_data']) : null,
-        )).toList();
+  static List<CountdownItem> _parseCountdownItemsIsolate(
+      List<Map<String, dynamic>> maps) {
+    return maps
+        .map((m) => CountdownItem(
+              id: m['uuid'],
+              title: m['title'] ?? '',
+              targetDate: DateTime.fromMillisecondsSinceEpoch(m['target_time']),
+              isDeleted: m['is_deleted'] == 1,
+              isCompleted: m['is_completed'] == 1,
+              version: m['version'] ?? 1,
+              updatedAt:
+                  m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+              createdAt:
+                  m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+              teamUuid: m['team_uuid'],
+              teamName: m['team_name'],
+              creatorId: m['creator_id'],
+              creatorName: m['creator_name'],
+              hasConflict: m['has_conflict'] == 1,
+              conflictData: m['conflict_data'] != null
+                  ? jsonDecode(m['conflict_data'])
+                  : null,
+            ))
+        .toList();
   }
 
-  static List<CountdownItem> _parseCountdownJsonItemsIsolate(List<String> jsonList) {
-    return jsonList.map((e) {
-      try {
-        return CountdownItem.fromJson(jsonDecode(e));
-      } catch (_) {
-        return null;
-      }
-    }).whereType<CountdownItem>().toList();
+  static List<CountdownItem> _parseCountdownJsonItemsIsolate(
+      List<String> jsonList) {
+    return jsonList
+        .map((e) {
+          try {
+            return CountdownItem.fromJson(jsonDecode(e));
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<CountdownItem>()
+        .toList();
   }
 
   static Future<void> deleteCountdownGlobally(
@@ -688,9 +714,9 @@ class StorageService {
 
     // 🚀 异步保存到 Prefs，不阻塞主流程
     unawaited(SharedPreferences.getInstance().then((prefs) async {
-       // 如果列表极大，在后台 Isolate 进行序列化
-       final jsonList = await compute(_serializeTodos, dedupeList);
-       await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
+      // 如果列表极大，在后台 Isolate 进行序列化
+      final jsonList = await compute(_serializeTodos, dedupeList);
+      await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
     }));
 
     final db = await DatabaseHelper.instance.database;
@@ -699,8 +725,8 @@ class StorageService {
     Map<String, Map<String, dynamic>> existingItemsMap = {};
     if (!isSyncSource && dedupeList.isNotEmpty) {
       final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
-      final List<Map<String, dynamic>> existing = await db.rawQuery(
-          'SELECT * FROM todos WHERE uuid IN ($uuids)');
+      final List<Map<String, dynamic>> existing =
+          await db.rawQuery('SELECT * FROM todos WHERE uuid IN ($uuids)');
       for (var row in existing) {
         existingItemsMap[row['uuid']] = row;
       }
@@ -711,19 +737,28 @@ class StorageService {
     for (var item in dedupeList) {
       bool hasChanged = true;
       final oldData = existingItemsMap[item.id];
-      
+
       if (oldData != null) {
         // 检测是否有实质性变更，如果没有则跳过审计和 Oplog
         hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
-          'content', 'title', 'remark', 'is_completed', 'is_deleted', 
-          'due_date', 'group_id', 'recurrence', 'is_all_day', 'reminder_minutes'
+          'content',
+          'title',
+          'remark',
+          'is_completed',
+          'is_deleted',
+          'due_date',
+          'group_id',
+          'recurrence',
+          'is_all_day',
+          'reminder_minutes'
         ]);
       }
 
       if (!isSyncSource && hasChanged) {
         // 记录审计日志 (传入已有的 oldData 避免再次查询)
-        unawaited(_recordLocalAuditOptimized('todos', item.id, item.toJson(), item.teamUuid, oldData));
-        
+        unawaited(_recordLocalAuditOptimized(
+            'todos', item.id, item.toJson(), item.teamUuid, oldData));
+
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'todos',
@@ -735,34 +770,40 @@ class StorageService {
       }
 
       if (hasChanged || oldData == null) {
-        batch.insert('todos', {
-          'uuid': item.id,
-          'content': item.title,
-          'remark': item.remark,
-          'team_uuid': item.teamUuid,
-          'team_name': item.teamName,
-          'creator_id': item.creatorId,
-          'creator_name': item.creatorName,
-          'is_completed': item.isDone ? 1 : 0,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
-          'group_id': item.groupId,
-          'created_date': item.createdDate ?? item.createdAt,
-          'created_at': item.createdAt,
-          'updated_at': item.updatedAt,
-          'collab_type': item.collabType,
-          'recurrence': _normalizedRecurrenceIndex(item),
-          'custom_interval_days': _normalizedCustomIntervalDays(item),
-          'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
-          'reminder_minutes': item.reminderMinutes ?? -1,
-          'is_all_day': item.isAllDay ? 1 : 0,
-          'has_conflict': item.hasConflict ? 1 : 0,
-          'conflict_data': item.serverVersionData != null ? jsonEncode(item.serverVersionData) : null,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        batch.insert(
+            'todos',
+            {
+              'uuid': item.id,
+              'content': item.title,
+              'remark': item.remark,
+              'team_uuid': item.teamUuid,
+              'team_name': item.teamName,
+              'creator_id': item.creatorId,
+              'creator_name': item.creatorName,
+              'is_completed': item.isDone ? 1 : 0,
+              'is_deleted': item.isDeleted ? 1 : 0,
+              'version': item.version,
+              'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
+              'group_id': item.groupId,
+              'created_date': item.createdDate ?? item.createdAt,
+              'created_at': item.createdAt,
+              'updated_at': item.updatedAt,
+              'collab_type': item.collabType,
+              'recurrence': _normalizedRecurrenceIndex(item),
+              'custom_interval_days': _normalizedCustomIntervalDays(item),
+              'recurrence_end_date':
+                  item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
+              'reminder_minutes': item.reminderMinutes ?? -1,
+              'is_all_day': item.isAllDay ? 1 : 0,
+              'has_conflict': item.hasConflict ? 1 : 0,
+              'conflict_data': item.serverVersionData != null
+                  ? jsonEncode(item.serverVersionData)
+                  : null,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
       }
     }
-    
+
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
     }
@@ -773,18 +814,27 @@ class StorageService {
   }
 
   // --- 辅助方法 ---
-  static List<String> _serializeTodos(List<TodoItem> items) => 
+  static List<String> _serializeTodos(List<TodoItem> items) =>
       items.map((e) => jsonEncode(e.toJson())).toList();
 
-  static bool _hasSubstantialChange(Map<String, dynamic> before, Map<String, dynamic> after, List<String> fields) {
+  static bool _hasSubstantialChange(Map<String, dynamic> before,
+      Map<String, dynamic> after, List<String> fields) {
     for (var field in fields) {
       var valA = after[field];
       var valB = before[field];
-      
+
       // 归一化处理
-      bool isAEmpty = valA == null || valA == 0 || valA == "" || valA == false || (field == 'reminder_minutes' && valA == -1);
-      bool isBEmpty = valB == null || valB == 0 || valB == "" || valB == false || (field == 'reminder_minutes' && valB == -1);
-      
+      bool isAEmpty = valA == null ||
+          valA == 0 ||
+          valA == "" ||
+          valA == false ||
+          (field == 'reminder_minutes' && valA == -1);
+      bool isBEmpty = valB == null ||
+          valB == 0 ||
+          valB == "" ||
+          valB == false ||
+          (field == 'reminder_minutes' && valB == -1);
+
       if (isAEmpty && isBEmpty) continue;
       if (isAEmpty || isBEmpty) return true;
       if (valA != valB) return true;
@@ -792,7 +842,12 @@ class StorageService {
     return false;
   }
 
-  static Future<void> _recordLocalAuditOptimized(String table, String uuid, Map<String, dynamic> afterData, String? teamUuid, Map<String, dynamic>? existingData) async {
+  static Future<void> _recordLocalAuditOptimized(
+      String table,
+      String uuid,
+      Map<String, dynamic> afterData,
+      String? teamUuid,
+      Map<String, dynamic>? existingData) async {
     try {
       if (existingData == null) {
         await DatabaseHelper.instance.insertLocalAuditLog(
@@ -824,14 +879,14 @@ class StorageService {
     }
   }
 
-
-
   /// 🚀 Uni-Sync 4.0: 辅助方法 - 记录本地审计快照
-  static Future<void> _recordLocalAudit(String table, String uuid, Map<String, dynamic> afterData, String? teamUuid) async {
+  static Future<void> _recordLocalAudit(String table, String uuid,
+      Map<String, dynamic> afterData, String? teamUuid) async {
     try {
       final db = await DatabaseHelper.instance.database;
       // 1. 获取旧数据快照
-      final List<Map<String, dynamic>> existing = await db.query(table, where: 'uuid = ?', whereArgs: [uuid]);
+      final List<Map<String, dynamic>> existing =
+          await db.query(table, where: 'uuid = ?', whereArgs: [uuid]);
       if (existing.isEmpty) {
         // 新增操作，直接记录
         await DatabaseHelper.instance.insertLocalAuditLog(
@@ -847,31 +902,48 @@ class StorageService {
         return;
       }
 
-      Map<String, dynamic> beforeData = Map<String, dynamic>.from(existing.first);
-      
+      Map<String, dynamic> beforeData =
+          Map<String, dynamic>.from(existing.first);
+
       // 🚀 核心优化：实质性变更检测
       // 排除掉 version, updated_at 等会自动变动的字段，只对比业务字段
       bool hasSubstantialChange = false;
       final businessFields = [
-        'content', 'title', 'remark', 'is_completed', 'is_deleted', 
-        'due_date', 'target_time', 'group_id', 'category_id', 
-        'recurrence', 'is_all_day', 'reminder_minutes',
-        'recurrence_end_date', 'custom_interval_days'
+        'content',
+        'title',
+        'remark',
+        'is_completed',
+        'is_deleted',
+        'due_date',
+        'target_time',
+        'group_id',
+        'category_id',
+        'recurrence',
+        'is_all_day',
+        'reminder_minutes',
+        'recurrence_end_date',
+        'custom_interval_days'
       ];
 
       for (var field in businessFields) {
         if (afterData.containsKey(field) || beforeData.containsKey(field)) {
           var valA = afterData[field];
           var valB = beforeData[field];
-          
+
           // 🚀 核心修复：全面的值归一化处理
           // 处理 null 和 0/""/"false" 的等价性
           // 特别处理 reminder_minutes: -1 和 null 的等价性
-          bool isAEmpty = valA == null || valA == 0 || valA == "" || valA == false || 
-                         (field == 'reminder_minutes' && valA == -1);
-          bool isBEmpty = valB == null || valB == 0 || valB == "" || valB == false ||
-                         (field == 'reminder_minutes' && valB == -1);
-          
+          bool isAEmpty = valA == null ||
+              valA == 0 ||
+              valA == "" ||
+              valA == false ||
+              (field == 'reminder_minutes' && valA == -1);
+          bool isBEmpty = valB == null ||
+              valB == 0 ||
+              valB == "" ||
+              valB == false ||
+              (field == 'reminder_minutes' && valB == -1);
+
           if (isAEmpty && isBEmpty) continue; // 两个都是"空"，认为相同
           if (isAEmpty || isBEmpty) {
             // 一个是空，一个不是空，判断为有变更（除非都是0的情况）
@@ -879,7 +951,7 @@ class StorageService {
             hasSubstantialChange = true;
             break;
           }
-          
+
           // 两个都不是"空"，直接比较
           if (valA != valB) {
             hasSubstantialChange = true;
@@ -896,16 +968,26 @@ class StorageService {
       Future<String?> lookupName(String targetTable, String? targetUuid) async {
         if (targetUuid == null || targetUuid.isEmpty) return null;
         try {
-          final List<Map<String, dynamic>> res = await db.query(targetTable, 
+          final List<Map<String, dynamic>> res = await db.query(targetTable,
               columns: ['name'], where: 'uuid = ?', whereArgs: [targetUuid]);
           return res.isNotEmpty ? res.first['name'] as String? : null;
-        } catch (_) { return null; }
+        } catch (_) {
+          return null;
+        }
       }
 
-      if (beforeData['group_id'] != null) beforeData['group_name'] = await lookupName('todo_groups', beforeData['group_id']);
-      if (beforeData['team_uuid'] != null) beforeData['team_name'] = await lookupName('teams', beforeData['team_uuid']);
-      if (enrichedAfter['group_id'] != null) enrichedAfter['group_name'] = await lookupName('todo_groups', enrichedAfter['group_id']);
-      if (enrichedAfter['team_uuid'] != null) enrichedAfter['team_name'] = await lookupName('teams', enrichedAfter['team_uuid']);
+      if (beforeData['group_id'] != null)
+        beforeData['group_name'] =
+            await lookupName('todo_groups', beforeData['group_id']);
+      if (beforeData['team_uuid'] != null)
+        beforeData['team_name'] =
+            await lookupName('teams', beforeData['team_uuid']);
+      if (enrichedAfter['group_id'] != null)
+        enrichedAfter['group_name'] =
+            await lookupName('todo_groups', enrichedAfter['group_id']);
+      if (enrichedAfter['team_uuid'] != null)
+        enrichedAfter['team_name'] =
+            await lookupName('teams', enrichedAfter['team_uuid']);
 
       // 2. 存入本地审计表
       await DatabaseHelper.instance.insertLocalAuditLog(
@@ -918,7 +1000,6 @@ class StorageService {
         teamUuid: teamUuid,
         operatorName: '本人(离线)',
       );
-
     } catch (e) {
       debugPrint("⚠️ 记录本地审计失败: $e");
     }
@@ -928,43 +1009,48 @@ class StorageService {
     if (!BandSyncService.isInitialized || !BandSyncService.isConnected) return;
     try {
       final activeTodos =
-      items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
+          items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
       await BandSyncService.syncTodos(activeTodos);
     } catch (_) {}
   }
 
   /// 🚀 Uni-Sync 4.0 增强：原子化更新单条待办，避免全量读写性能开销
-  static Future<void> updateSingleTodo(String username, TodoItem item, {bool sync = true}) async {
+  static Future<void> updateSingleTodo(String username, TodoItem item,
+      {bool sync = true}) async {
     // 1. 记录本地审计日志 (必须在更新前，因为需要获取旧快照)
     await _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid);
 
     final db = await DatabaseHelper.instance.database;
 
     // 2. 同步更新 SQLite
-    await db.insert('todos', {
-      'uuid': item.id,
-      'content': item.title,
-      'remark': item.remark,
-      'team_uuid': item.teamUuid,
-      'team_name': item.teamName,
-      'creator_id': item.creatorId,
-      'creator_name': item.creatorName,
-      'is_completed': item.isDone ? 1 : 0,
-      'is_deleted': item.isDeleted ? 1 : 0,
-      'version': item.version,
-      'updated_at': item.updatedAt,
-      'created_at': item.createdAt,
-      // 🚀 核心防御：0 兜底
-      'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
-      'group_id': item.groupId,
-      'created_date': item.createdDate,
-      'collab_type': item.collabType,
-      'recurrence': _normalizedRecurrenceIndex(item),
-      'custom_interval_days': _normalizedCustomIntervalDays(item),
-      // 🚀 核心防御：0 兜底
-      'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
-      'reminder_minutes': item.reminderMinutes ?? -1,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+        'todos',
+        {
+          'uuid': item.id,
+          'content': item.title,
+          'remark': item.remark,
+          'team_uuid': item.teamUuid,
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
+          'is_completed': item.isDone ? 1 : 0,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'version': item.version,
+          'updated_at': item.updatedAt,
+          'created_at': item.createdAt,
+          // 🚀 核心防御：0 兜底
+          'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
+          'group_id': item.groupId,
+          'created_date': item.createdDate,
+          'collab_type': item.collabType,
+          'recurrence': _normalizedRecurrenceIndex(item),
+          'custom_interval_days': _normalizedCustomIntervalDays(item),
+          // 🚀 核心防御：0 兜底
+          'recurrence_end_date':
+              item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
+          'reminder_minutes': item.reminderMinutes ?? -1,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
 
     // 3. 补齐 Oplog，确保离线更新能被同步
     await db.insert('op_logs', {
@@ -980,7 +1066,8 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     List<TodoItem> allTodos = await getTodos(username, includeDeleted: true);
     // getTodos 已经从 DB 拿到了最新数据，直接保存即可
-    List<String> jsonList = allTodos.map((e) => jsonEncode(e.toJson())).toList();
+    List<String> jsonList =
+        allTodos.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
 
     if (sync) Future.microtask(() => syncData(username));
@@ -988,10 +1075,11 @@ class StorageService {
   }
 
   /// 🚀 Uni-Sync 4.0: 物理删除单条待办 (用于彻底删除)
-  static Future<void> permanentlyDeleteTodo(String username, String uuid) async {
+  static Future<void> permanentlyDeleteTodo(
+      String username, String uuid) async {
     final db = await DatabaseHelper.instance.database;
     await db.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
-    
+
     // 同步清理 Prefs 缓存
     final prefs = await SharedPreferences.getInstance();
     List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
@@ -999,10 +1087,12 @@ class StorageService {
       try {
         final map = jsonDecode(jsonStr);
         return map['id'] == uuid || map['uuid'] == uuid;
-      } catch (_) { return false; }
+      } catch (_) {
+        return false;
+      }
     });
     await prefs.setStringList("${KEY_TODOS}_$username", list);
-    
+
     // 记录删除操作到 Oplog (物理删除也需要同步给其它端)
     await db.insert('op_logs', {
       'op_type': 'DELETE',
@@ -1011,17 +1101,18 @@ class StorageService {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'is_synced': 0
     });
-    
+
     triggerRefresh();
   }
 
   /// 🚀 Uni-Sync 4.0: 清空待办回收站 (物理删除所有标记为已删除的项)
   static Future<void> clearTodoRecycleBin(String username) async {
     final db = await DatabaseHelper.instance.database;
-    
+
     // 1. 获取所有待删除的 UUID，用于记录 Oplog
-    final List<Map<String, dynamic>> deletedItems = await db.query('todos', columns: ['uuid'], where: 'is_deleted = 1');
-    
+    final List<Map<String, dynamic>> deletedItems =
+        await db.query('todos', columns: ['uuid'], where: 'is_deleted = 1');
+
     final batch = db.batch();
     for (var item in deletedItems) {
       final uuid = item['uuid']?.toString();
@@ -1044,26 +1135,32 @@ class StorageService {
       try {
         final map = jsonDecode(jsonStr);
         return map['is_deleted'] == 1 || map['is_deleted'] == true;
-      } catch (_) { return false; }
+      } catch (_) {
+        return false;
+      }
     });
     await prefs.setStringList("${KEY_TODOS}_$username", list);
-    
+
     triggerRefresh();
   }
 
   /// 🚀 Uni-Sync 4.0: 物理删除单条倒计时 (彻底删除)
-  static Future<void> permanentlyDeleteCountdown(String username, String uuid) async {
+  static Future<void> permanentlyDeleteCountdown(
+      String username, String uuid) async {
     final db = await DatabaseHelper.instance.database;
     await db.delete('countdowns', where: 'uuid = ?', whereArgs: [uuid]);
 
     // 同步清理 Prefs 缓存
     final prefs = await SharedPreferences.getInstance();
-    List<String> list = prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
+    List<String> list =
+        prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
     list.removeWhere((jsonStr) {
       try {
         final map = jsonDecode(jsonStr);
         return map['id'] == uuid || map['uuid'] == uuid;
-      } catch (_) { return false; }
+      } catch (_) {
+        return false;
+      }
     });
     await prefs.setStringList("${KEY_COUNTDOWNS}_$username", list);
 
@@ -1091,7 +1188,8 @@ class StorageService {
       bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
 
       if (!alreadyMigrated) {
-        List<String> legacyJsonList = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+        List<String> legacyJsonList =
+            prefs.getStringList("${KEY_TODOS}_$username") ?? [];
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
           legacyJsonList = prefs.getStringList(KEY_TODOS) ?? [];
         }
@@ -1100,10 +1198,13 @@ class StorageService {
           debugPrint("🚀 发现未迁移老数据，正在执行增量迁移...");
           List<TodoItem> legacyItems = [];
           for (var e in legacyJsonList) {
-            try { legacyItems.add(TodoItem.fromJson(jsonDecode(e))); } catch (_) {}
+            try {
+              legacyItems.add(TodoItem.fromJson(jsonDecode(e)));
+            } catch (_) {}
           }
           // 🚀 使用 saveTodos 触发迁移，这样会自动生成 op_logs 确保同步到云端
-          await saveTodos(username, legacyItems, sync: true, isSyncSource: false);
+          await saveTodos(username, legacyItems,
+              sync: true, isSyncSource: false);
           debugPrint("✅ 老数据增量迁移完成。");
         }
         await prefs.setBool(migrationKey, true);
@@ -1111,43 +1212,58 @@ class StorageService {
 
       final List<Map<String, dynamic>> maps = await db.query('todos',
           where: includeDeleted ? null : 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
-      );
+          );
       if (maps.isNotEmpty) {
         List<TodoItem> todos;
         // 🚀 性能优化：当待办数量较多时，使用 Isolate 解析，减少主线程解析耗时导致的 UI 卡顿
         if (maps.length > 50) {
           todos = await compute(_parseTodoItemsIsolate, maps);
         } else {
-          todos = maps.map((m) => TodoItem(
-            id: m['uuid'],
-            title: m['content'] ?? '',
-            remark: m['remark'],
-            isDone: m['is_completed'] == 1,
-            isDeleted: m['is_deleted'] == 1,
-            version: m['version'] ?? 1,
-            updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-            createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-            createdDate: m['created_date'] != null ? int.tryParse(m['created_date'].toString()) : null,
-            dueDate: (m['due_date'] != null && m['due_date'].toString() != '0' && m['due_date'].toString() != 'null' && m['due_date'].toString().isNotEmpty)
-                ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['due_date'].toString()) ?? 0)
-                : null,
-            teamUuid: m['team_uuid'],
-            teamName: m['team_name'],
-            creatorId: m['creator_id'],
-            creatorName: m['creator_name'],
-            groupId: m['group_id'],
-            collabType: m['collab_type'] ?? 0,
-            recurrence: RecurrenceType.values[
-            (_parseNullableInt(m['recurrence']) ?? 0)
-                .clamp(0, RecurrenceType.values.length - 1)],
-            customIntervalDays: _parseNullableInt(m['custom_interval_days']),
-            recurrenceEndDate: (m['recurrence_end_date'] != null && m['recurrence_end_date'].toString() != '0')
-                ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
-                : null,
-            reminderMinutes: (m['reminder_minutes'] != null && m['reminder_minutes'].toString() != '-1')
-                ? int.tryParse(m['reminder_minutes'].toString())
-                : null,
-          )).toList();
+          todos = maps
+              .map((m) => TodoItem(
+                    id: m['uuid'],
+                    title: m['content'] ?? '',
+                    remark: m['remark'],
+                    isDone: m['is_completed'] == 1,
+                    isDeleted: m['is_deleted'] == 1,
+                    version: m['version'] ?? 1,
+                    updatedAt: m['updated_at'] ??
+                        DateTime.now().millisecondsSinceEpoch,
+                    createdAt: m['created_at'] ??
+                        DateTime.now().millisecondsSinceEpoch,
+                    createdDate: m['created_date'] != null
+                        ? int.tryParse(m['created_date'].toString())
+                        : null,
+                    dueDate: (m['due_date'] != null &&
+                            m['due_date'].toString() != '0' &&
+                            m['due_date'].toString() != 'null' &&
+                            m['due_date'].toString().isNotEmpty)
+                        ? DateTime.fromMillisecondsSinceEpoch(
+                            int.tryParse(m['due_date'].toString()) ?? 0)
+                        : null,
+                    teamUuid: m['team_uuid'],
+                    teamName: m['team_name'],
+                    creatorId: m['creator_id'],
+                    creatorName: m['creator_name'],
+                    groupId: m['group_id'],
+                    collabType: m['collab_type'] ?? 0,
+                    recurrence: RecurrenceType.values[
+                        (_parseNullableInt(m['recurrence']) ?? 0)
+                            .clamp(0, RecurrenceType.values.length - 1)],
+                    customIntervalDays:
+                        _parseNullableInt(m['custom_interval_days']),
+                    recurrenceEndDate: (m['recurrence_end_date'] != null &&
+                            m['recurrence_end_date'].toString() != '0')
+                        ? DateTime.fromMillisecondsSinceEpoch(
+                            int.tryParse(m['recurrence_end_date'].toString()) ??
+                                0)
+                        : null,
+                    reminderMinutes: (m['reminder_minutes'] != null &&
+                            m['reminder_minutes'].toString() != '-1')
+                        ? int.tryParse(m['reminder_minutes'].toString())
+                        : null,
+                  ))
+              .toList();
         }
         return await _handleRecurrenceLogic(username, todos);
       } else {
@@ -1160,60 +1276,79 @@ class StorageService {
     // 🚀 逃生通道：兜底读取 Prefs
     List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
     List<TodoItem> legacyTodos;
-    
+
     if (list.length > 50) {
       legacyTodos = await compute(_parseTodoJsonItemsIsolate, list);
     } else {
       legacyTodos = [];
       for (var e in list) {
-        try { legacyTodos.add(TodoItem.fromJson(jsonDecode(e))); } catch (_) {}
+        try {
+          legacyTodos.add(TodoItem.fromJson(jsonDecode(e)));
+        } catch (_) {}
       }
     }
     return await _handleRecurrenceLogic(username, legacyTodos);
   }
 
   /// 🚀 Isolate 专用：静态待办解析方法
-  static List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
-    return maps.map((m) => TodoItem(
-          id: m['uuid'],
-          title: m['content'] ?? '',
-          remark: m['remark'],
-          isDone: m['is_completed'] == 1,
-          isDeleted: m['is_deleted'] == 1,
-          version: m['version'] ?? 1,
-          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          createdDate: m['created_date'] != null ? int.tryParse(m['created_date'].toString()) : null,
-          dueDate: (m['due_date'] != null && m['due_date'].toString() != '0' && m['due_date'].toString() != 'null' && m['due_date'].toString().isNotEmpty)
-              ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['due_date'].toString()) ?? 0)
-              : null,
-          teamUuid: m['team_uuid'],
-          teamName: m['team_name'],
-          creatorId: m['creator_id'],
-          creatorName: m['creator_name'],
-          groupId: m['group_id'],
-          collabType: m['collab_type'] ?? 0,
-          recurrence: RecurrenceType.values[
-              (_parseNullableInt(m['recurrence']) ?? 0)
-                  .clamp(0, RecurrenceType.values.length - 1)],
-          customIntervalDays: _parseNullableInt(m['custom_interval_days']),
-          recurrenceEndDate: (m['recurrence_end_date'] != null && m['recurrence_end_date'].toString() != '0')
-              ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
-              : null,
-          reminderMinutes: (m['reminder_minutes'] != null && m['reminder_minutes'].toString() != '-1')
-              ? int.tryParse(m['reminder_minutes'].toString())
-              : null,
-        )).toList();
+  static List<TodoItem> _parseTodoItemsIsolate(
+      List<Map<String, dynamic>> maps) {
+    return maps
+        .map((m) => TodoItem(
+              id: m['uuid'],
+              title: m['content'] ?? '',
+              remark: m['remark'],
+              isDone: m['is_completed'] == 1,
+              isDeleted: m['is_deleted'] == 1,
+              version: m['version'] ?? 1,
+              updatedAt:
+                  m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+              createdAt:
+                  m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+              createdDate: m['created_date'] != null
+                  ? int.tryParse(m['created_date'].toString())
+                  : null,
+              dueDate: (m['due_date'] != null &&
+                      m['due_date'].toString() != '0' &&
+                      m['due_date'].toString() != 'null' &&
+                      m['due_date'].toString().isNotEmpty)
+                  ? DateTime.fromMillisecondsSinceEpoch(
+                      int.tryParse(m['due_date'].toString()) ?? 0)
+                  : null,
+              teamUuid: m['team_uuid'],
+              teamName: m['team_name'],
+              creatorId: m['creator_id'],
+              creatorName: m['creator_name'],
+              groupId: m['group_id'],
+              collabType: m['collab_type'] ?? 0,
+              recurrence: RecurrenceType.values[
+                  (_parseNullableInt(m['recurrence']) ?? 0)
+                      .clamp(0, RecurrenceType.values.length - 1)],
+              customIntervalDays: _parseNullableInt(m['custom_interval_days']),
+              recurrenceEndDate: (m['recurrence_end_date'] != null &&
+                      m['recurrence_end_date'].toString() != '0')
+                  ? DateTime.fromMillisecondsSinceEpoch(
+                      int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
+                  : null,
+              reminderMinutes: (m['reminder_minutes'] != null &&
+                      m['reminder_minutes'].toString() != '-1')
+                  ? int.tryParse(m['reminder_minutes'].toString())
+                  : null,
+            ))
+        .toList();
   }
 
   static List<TodoItem> _parseTodoJsonItemsIsolate(List<String> jsonList) {
-    return jsonList.map((e) {
-      try {
-        return TodoItem.fromJson(jsonDecode(e));
-      } catch (_) {
-        return null;
-      }
-    }).whereType<TodoItem>().toList();
+    return jsonList
+        .map((e) {
+          try {
+            return TodoItem.fromJson(jsonDecode(e));
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<TodoItem>()
+        .toList();
   }
 
   /// 🚀 Uni-Sync 4.0: 当被移出团队时，彻底清理本地缓存的相关数据
@@ -1222,7 +1357,9 @@ class StorageService {
     final batch = db.batch();
 
     // 1. 从 SQLite 删除 (级联清理独立完成状态与核心业务表)
-    batch.execute('DELETE FROM todo_completions WHERE todo_uuid IN (SELECT uuid FROM todos WHERE team_uuid = ?)', [teamUuid]);
+    batch.execute(
+        'DELETE FROM todo_completions WHERE todo_uuid IN (SELECT uuid FROM todos WHERE team_uuid = ?)',
+        [teamUuid]);
     batch.delete('todos', where: 'team_uuid = ?', whereArgs: [teamUuid]);
     batch.delete('todo_groups', where: 'team_uuid = ?', whereArgs: [teamUuid]);
     batch.delete('countdowns', where: 'team_uuid = ?', whereArgs: [teamUuid]);
@@ -1262,7 +1399,8 @@ class StorageService {
     triggerRefresh(); // 🚀 触发 UI 刷新
   }
 
-  static Future<List<TodoItem>> _handleRecurrenceLogic(String username, List<TodoItem> todos) async {
+  static Future<List<TodoItem>> _handleRecurrenceLogic(
+      String username, List<TodoItem> todos) async {
     final today = DateTime.now();
     final todayKey = '${today.year}-${today.month}-${today.day}';
 
@@ -1272,7 +1410,8 @@ class StorageService {
     }
 
     final cacheKey = 'recurrence_$username';
-    if (_recurrenceCheckCache.containsKey(cacheKey) || _isCheckingRecurrence) return todos;
+    if (_recurrenceCheckCache.containsKey(cacheKey) || _isCheckingRecurrence)
+      return todos;
 
     _isCheckingRecurrence = true;
 
@@ -1280,18 +1419,23 @@ class StorageService {
       bool needSave = false;
       for (var todo in todos) {
         if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
-        if (todo.recurrenceEndDate != null && today.isAfter(todo.recurrenceEndDate!)) continue;
+        if (todo.recurrenceEndDate != null &&
+            today.isAfter(todo.recurrenceEndDate!)) continue;
 
         final DateTime baseLocal = _getRecurrenceBaseDate(todo);
-        final DateTime baseDay = DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
+        final DateTime baseDay =
+            DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
         final DateTime todayDay = DateTime(today.year, today.month, today.day);
 
-        if (todo.recurrence == RecurrenceType.daily && todayDay.isAfter(baseDay)) {
+        if (todo.recurrence == RecurrenceType.daily &&
+            todayDay.isAfter(baseDay)) {
           todo.isDone = false;
           _rollRecurrenceDateToToday(todo, today);
           todo.markAsChanged();
           needSave = true;
-        } else if (todo.recurrence == RecurrenceType.customDays && todo.customIntervalDays != null && todo.customIntervalDays! > 0) {
+        } else if (todo.recurrence == RecurrenceType.customDays &&
+            todo.customIntervalDays != null &&
+            todo.customIntervalDays! > 0) {
           int diffDays = todayDay.difference(baseDay).inDays;
           if (diffDays >= todo.customIntervalDays!) {
             todo.isDone = false;
@@ -1317,7 +1461,6 @@ class StorageService {
     }
   }
 
-
   static DateTime _getRecurrenceBaseDate(TodoItem todo) {
     if (todo.dueDate != null) return todo.dueDate!;
     final int ms = todo.createdDate ?? todo.createdAt;
@@ -1336,10 +1479,10 @@ class StorageService {
       );
     } else if (todo.createdDate != null) {
       final orig =
-      DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
-          .toLocal();
+          DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
+              .toLocal();
       todo.createdDate = DateTime(
-          now.year, now.month, now.day, orig.hour, orig.minute, orig.second)
+              now.year, now.month, now.day, orig.hour, orig.minute, orig.second)
           .millisecondsSinceEpoch;
     }
   }
@@ -1402,26 +1545,30 @@ class StorageService {
         });
       }
 
-      batch.insert('todo_groups', {
-        'uuid': item.id,
-        'team_uuid': item.teamUuid,
-        'team_name': item.teamName,
-        'creator_id': item.creatorId,
-        'creator_name': item.creatorName,
-        'name': item.name,
-        'is_expanded': item.isExpanded ? 1 : 0,
-        'is_deleted': item.isDeleted ? 1 : 0,
-        'version': item.version,
-        'updated_at': item.updatedAt,
-        'created_at': item.createdAt,
-        'has_conflict': item.hasConflict ? 1 : 0,
-        'conflict_data': item.conflictData != null ? jsonEncode(item.conflictData) : null
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+          'todo_groups',
+          {
+            'uuid': item.id,
+            'team_uuid': item.teamUuid,
+            'team_name': item.teamName,
+            'creator_id': item.creatorId,
+            'creator_name': item.creatorName,
+            'name': item.name,
+            'is_expanded': item.isExpanded ? 1 : 0,
+            'is_deleted': item.isDeleted ? 1 : 0,
+            'version': item.version,
+            'updated_at': item.updatedAt,
+            'created_at': item.createdAt,
+            'has_conflict': item.hasConflict ? 1 : 0,
+            'conflict_data':
+                item.conflictData != null ? jsonEncode(item.conflictData) : null
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
 
     List<String> jsonList =
-    dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
+        dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList("${KEY_TODO_GROUPS}_$username", jsonList);
     if (sync) Future.microtask(() => syncData(username));
   }
@@ -1435,9 +1582,10 @@ class StorageService {
 
       // 1. 迁移检查
       final List<Map<String, dynamic>> sqliteCount =
-      await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
+          await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
       if (sqliteCount.first['cnt'] == 0) {
-        List<String> legacyJsonList = prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+        List<String> legacyJsonList =
+            prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
 
         // 🚀 核心修复：增加一次性迁移保护
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
@@ -1465,20 +1613,24 @@ class StorageService {
       if (maps.isNotEmpty) {
         return maps
             .map((m) => TodoGroup(
-          id: m['uuid'],
-          name: m['name'] ?? '',
-          isExpanded: m['is_expanded'] == 1,
-          isDeleted: m['is_deleted'] == 1,
-          version: m['version'] ?? 1,
-          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          teamUuid: m['team_uuid'],
-          teamName: m['team_name'],
-          creatorId: m['creator_id'],
-          creatorName: m['creator_name'],
-          hasConflict: m['has_conflict'] == 1,
-          conflictData: m['conflict_data'] != null ? jsonDecode(m['conflict_data']) : null,
-        ))
+                  id: m['uuid'],
+                  name: m['name'] ?? '',
+                  isExpanded: m['is_expanded'] == 1,
+                  isDeleted: m['is_deleted'] == 1,
+                  version: m['version'] ?? 1,
+                  updatedAt:
+                      m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  createdAt:
+                      m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                  teamUuid: m['team_uuid'],
+                  teamName: m['team_name'],
+                  creatorId: m['creator_id'],
+                  creatorName: m['creator_name'],
+                  hasConflict: m['has_conflict'] == 1,
+                  conflictData: m['conflict_data'] != null
+                      ? jsonDecode(m['conflict_data'])
+                      : null,
+                ))
             .toList();
       } else {
         return [];
@@ -1685,7 +1837,7 @@ class StorageService {
     lastSyncMs ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
     if (lastSyncMs != null) {
       DateTime lastSyncDate =
-      DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
+          DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
       DateTime now = DateTime.now();
 
       // 如果缓存日期不是今天，说明缓存已过期，返回空列表触发新的同步
@@ -1713,7 +1865,9 @@ class StorageService {
   static Future<Map<String, List<dynamic>>> getScreenTimeHistory() async {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(KEY_CURRENT_USER);
-    final String key = (username != null && username.isNotEmpty) ? "${KEY_SCREEN_TIME_HISTORY}_$username" : KEY_SCREEN_TIME_HISTORY;
+    final String key = (username != null && username.isNotEmpty)
+        ? "${KEY_SCREEN_TIME_HISTORY}_$username"
+        : KEY_SCREEN_TIME_HISTORY;
 
     String? jsonStr = prefs.getString(key);
     jsonStr ??= prefs.getString(KEY_SCREEN_TIME_HISTORY);
@@ -1730,14 +1884,15 @@ class StorageService {
   static Future<void> updateLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
     final String? username = prefs.getString(KEY_CURRENT_USER);
-    await prefs.setInt(
-        _scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username), DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username),
+        DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<DateTime?> getLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
     final String? username = prefs.getString(KEY_CURRENT_USER);
-    int? timestamp = prefs.getInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username));
+    int? timestamp =
+        prefs.getInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username));
     timestamp ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
     if (timestamp != null) {
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
@@ -1752,7 +1907,7 @@ class StorageService {
     DateTime now = DateTime.now();
     if (lastSync != null) {
       DateTime lastDate =
-      DateTime.fromMillisecondsSinceEpoch(lastSync, isUtc: true).toLocal();
+          DateTime.fromMillisecondsSinceEpoch(lastSync, isUtc: true).toLocal();
       if (now.difference(lastDate).inDays < 7) return;
     }
     List<dynamic> mappings = await ApiService.fetchAppMappings();
@@ -1793,14 +1948,14 @@ class StorageService {
   }
 
   static Future<Map<String, dynamic>> syncData(
-      String username, {
-        bool syncTodos = true,
-        bool syncCountdowns = true,
-        bool forceFullSync = false,
-        BuildContext? context,
-        bool syncTimeLogs = true,
-        bool syncPomodoro = true,
-      }) async {
+    String username, {
+    bool syncTodos = true,
+    bool syncCountdowns = true,
+    bool forceFullSync = false,
+    BuildContext? context,
+    bool syncTimeLogs = true,
+    bool syncPomodoro = true,
+  }) async {
     // 1. 状态锁：防止重复进入
     if (!syncTodos && !syncCountdowns && !syncTimeLogs && !syncPomodoro) {
       return {'success': false, 'hasChanges': false};
@@ -1821,7 +1976,8 @@ class StorageService {
       // 2. 环境信息准备
       final String deviceId = await _getUniqueDeviceId(username);
       final String friendlyName = await _getDetailedDeviceName();
-      final String serverKey = ApiService.baseUrl == ApiService.aliyunProdUrl ? "aliyun" : "cf";
+      final String serverKey =
+          ApiService.baseUrl == ApiService.aliyunProdUrl ? "aliyun" : "cf";
       final int lastSyncTime = forceFullSync
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
@@ -1834,14 +1990,15 @@ class StorageService {
       List<Map<String, dynamic>> dirtyTimeLogs = [];
 
       List<TodoItem> allLocalTodos =
-      await getTodos(username, includeDeleted: true);
+          await getTodos(username, includeDeleted: true);
       List<TodoGroup> allLocalGroups =
-      await getTodoGroups(username, includeDeleted: true);
+          await getTodoGroups(username, includeDeleted: true);
       List<CountdownItem> allLocalCountdowns =
-      await getCountdowns(username, includeDeleted: true);
+          await getCountdowns(username, includeDeleted: true);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
 
-      final List<Map<String, dynamic>> pendingOps = await db.query('op_logs', where: 'is_synced = 0');
+      final List<Map<String, dynamic>> pendingOps =
+          await db.query('op_logs', where: 'is_synced = 0');
 
       for (var op in pendingOps) {
         final table = op['target_table'];
@@ -1861,7 +2018,10 @@ class StorageService {
       }
 
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
-      dirtyTimeLogs = allLocalTimeLogs.where((t) => t.updatedAt > lastSyncTime).map((t) => t.toJson()).toList();
+      dirtyTimeLogs = allLocalTimeLogs
+          .where((t) => t.updatedAt > lastSyncTime)
+          .map((t) => t.toJson())
+          .toList();
 
       // debugPrint('🔍 [同步判定] lastSyncTime: $lastSyncTime, 本地总任务数: ${allLocalTodos.length}');
 
@@ -1883,9 +2043,9 @@ class StorageService {
             'apps': localScreenStats
                 .whereType<Map>()
                 .map((e) => {
-              'app_name': e['app_name']?.toString() ?? 'Unknown',
-              'duration': (e['duration'] is int) ? e['duration'] : 0,
-            })
+                      'app_name': e['app_name']?.toString() ?? 'Unknown',
+                      'duration': (e['duration'] is int) ? e['duration'] : 0,
+                    })
                 .toList(),
           };
           debugPrint(
@@ -1914,14 +2074,13 @@ class StorageService {
 
       Map<String, dynamic> response = await sendSyncRequest();
 
-      bool likelyDebounceIgnored =
-          response['success'] == true &&
-              forceFullSync &&
-              (response['new_sync_time'] ?? -1) == lastSyncTime &&
-              (response['server_todos'] as List?)?.isEmpty == true &&
-              (response['server_todo_groups'] as List?)?.isEmpty == true &&
-              (response['server_countdowns'] as List?)?.isEmpty == true &&
-              (response['server_time_logs'] as List?)?.isEmpty == true;
+      bool likelyDebounceIgnored = response['success'] == true &&
+          forceFullSync &&
+          (response['new_sync_time'] ?? -1) == lastSyncTime &&
+          (response['server_todos'] as List?)?.isEmpty == true &&
+          (response['server_todo_groups'] as List?)?.isEmpty == true &&
+          (response['server_countdowns'] as List?)?.isEmpty == true &&
+          (response['server_time_logs'] as List?)?.isEmpty == true;
 
       if (likelyDebounceIgnored) {
         debugPrint('⏳ [全量同步] 命中服务端防抖空响应，3.2s 后自动重试一次');
@@ -1931,22 +2090,24 @@ class StorageService {
 
       if (response['success'] == true) {
         // 🚀 全部上报成功后，标记 op_logs 为已同步，并清空之前的错误
-        await db.update('op_logs', {
-          'is_synced': 1,
-          'sync_error': null
-        }, where: 'is_synced = 0');
+        await db.update('op_logs', {'is_synced': 1, 'sync_error': null},
+            where: 'is_synced = 0');
 
         // 🚀 处理独立待办完成情况
-        final List<dynamic>? indCompletions = response['independent_completions'];
+        final List<dynamic>? indCompletions =
+            response['independent_completions'];
         if (indCompletions != null) {
           final batch = db.batch();
           for (var ic in indCompletions) {
-            batch.insert('todo_completions', {
-              'todo_uuid': ic['todo_uuid'],
-              'user_id': userId,
-              'is_completed': ic['is_completed'],
-              'updated_at': DateTime.now().millisecondsSinceEpoch,
-            }, conflictAlgorithm: ConflictAlgorithm.replace);
+            batch.insert(
+                'todo_completions',
+                {
+                  'todo_uuid': ic['todo_uuid'],
+                  'user_id': userId,
+                  'is_completed': ic['is_completed'],
+                  'updated_at': DateTime.now().millisecondsSinceEpoch,
+                },
+                conflictAlgorithm: ConflictAlgorithm.replace);
           }
           await batch.commit(noResult: true);
         }
@@ -1954,7 +2115,8 @@ class StorageService {
         // 🚀 核心修复：清理本地孤立的团队数据 (处理离线被移出团队的情况)
         final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
         if (joinedTeamUuids != null) {
-          final Set<String> currentTeams = joinedTeamUuids.map((e) => e.toString()).toSet();
+          final Set<String> currentTeams =
+              joinedTeamUuids.map((e) => e.toString()).toSet();
 
           // 获取本地所有存在的 team_uuid (联合查询：待办、倒计时、文件夹)
           final localTeamRows = await db.rawQuery('''
@@ -1986,9 +2148,8 @@ class StorageService {
         final errorMsg = response['message']?.toString() ?? '同步失败';
 
         // 🚀 记录同步失败的原因，方便用户查看
-        await db.update('op_logs', {
-          'sync_error': errorMsg
-        }, where: 'is_synced = 0');
+        await db.update('op_logs', {'sync_error': errorMsg},
+            where: 'is_synced = 0');
         throw Exception(errorMsg);
       }
 
@@ -1998,7 +2159,6 @@ class StorageService {
             .map((c) => ConflictInfo.fromJson(c as Map<String, dynamic>))
             .toList();
       }
-
 
       // 🛡️ 屏幕时间逻辑优化：上传成功后，务必清理“待上传”缓存
       if (screenPayload != null) {
@@ -2011,13 +2171,13 @@ class StorageService {
       // 合并 Todos
       List<dynamic> serverTodos = response['server_todos'] ?? [];
 
-
       final Map<String, int> todosIndexMap = {
         for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
       };
       for (var raw in serverTodos) {
         TodoItem sItem = TodoItem.fromJson(raw);
-        final serverRaw = raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
+        final serverRaw =
+            raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
         final serverDeviceId = serverRaw['device_id']?.toString();
         final bool isUpdatedByOtherDevice = serverDeviceId != null &&
             serverDeviceId.isNotEmpty &&
@@ -2025,7 +2185,8 @@ class StorageService {
         if (todosIndexMap.containsKey(sItem.id)) {
           final idx = todosIndexMap[sItem.id]!;
           final local = allLocalTodos[idx];
-          debugPrint('🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
+          debugPrint(
+              '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
 
           if (sItem.isDeleted ||
               sItem.version > local.version ||
@@ -2142,8 +2303,8 @@ class StorageService {
           final serverVersion = c.conflictWith;
           final serverVersionId =
               (serverVersion['uuid'] ?? serverVersion['id'] ?? '').toString();
-          final bool isSameItemServerVersion =
-              serverVersionId.isNotEmpty && serverVersionId == itemId.toString();
+          final bool isSameItemServerVersion = serverVersionId.isNotEmpty &&
+              serverVersionId == itemId.toString();
 
           if (todosIndexMap.containsKey(itemId)) {
             final todo = allLocalTodos[todosIndexMap[itemId]!];
@@ -2188,10 +2349,17 @@ class StorageService {
       }
 
       // 7. 持久化数据
+      if (_recomputeLocalTeamTodoConflicts(allLocalTodos)) {
+        hasChanges = true;
+      }
+
       if (hasChanges) {
-        await saveTodos(username, allLocalTodos, sync: false, isSyncSource: true);
-        await saveTodoGroups(username, allLocalGroups, sync: false, isSyncSource: true);
-        await saveCountdowns(username, allLocalCountdowns, sync: false, isSyncSource: true);
+        await saveTodos(username, allLocalTodos,
+            sync: false, isSyncSource: true);
+        await saveTodoGroups(username, allLocalGroups,
+            sync: false, isSyncSource: true);
+        await saveCountdowns(username, allLocalCountdowns,
+            sync: false, isSyncSource: true);
         await saveTimeLogs(username, allLocalTimeLogs, sync: false);
       }
 
@@ -2224,6 +2392,128 @@ class StorageService {
     }
   }
 
+  static bool _recomputeLocalTeamTodoConflicts(List<TodoItem> todos) {
+    final buckets = <String, List<_TodoInterval>>{};
+
+    for (final todo in todos) {
+      final teamUuid = todo.teamUuid;
+      final dueDate = todo.dueDate;
+      if (teamUuid == null ||
+          teamUuid.isEmpty ||
+          todo.isDeleted ||
+          dueDate == null ||
+          todo.isAllDay) {
+        continue;
+      }
+
+      final startMs = todo.createdDate ?? todo.createdAt;
+      final endMs = dueDate.millisecondsSinceEpoch;
+      if (startMs <= 0 || endMs <= 0 || startMs >= endMs) continue;
+
+      final startDay = _localDayKey(startMs);
+      final endDay = _localDayKey(endMs);
+      if (startDay != endDay) continue;
+
+      buckets.putIfAbsent('$teamUuid|$startDay', () => <_TodoInterval>[]).add(
+            _TodoInterval(todo: todo, startMs: startMs, endMs: endMs),
+          );
+    }
+
+    final conflictMap = <String, List<Map<String, dynamic>>>{};
+    for (final bucket in buckets.values) {
+      bucket.sort((a, b) => a.startMs.compareTo(b.startMs));
+      for (var i = 0; i < bucket.length; i++) {
+        for (var j = i + 1; j < bucket.length; j++) {
+          final a = bucket[i];
+          final b = bucket[j];
+          if (b.startMs >= a.endMs) break;
+          if (a.startMs < b.endMs && b.startMs < a.endMs) {
+            conflictMap
+                .putIfAbsent(a.todo.id, () => <Map<String, dynamic>>[])
+                .add(_conflictPeerSummary(b));
+            conflictMap
+                .putIfAbsent(b.todo.id, () => <Map<String, dynamic>>[])
+                .add(_conflictPeerSummary(a));
+          }
+        }
+      }
+    }
+
+    var changed = false;
+    for (final todo in todos) {
+      final teamUuid = todo.teamUuid;
+      if (teamUuid == null || teamUuid.isEmpty || todo.isDeleted) continue;
+
+      final existing = todo.serverVersionData;
+      final isLocalScheduleConflict = _isLocalScheduleConflict(existing);
+      final peers = conflictMap[todo.id];
+
+      if (peers != null && peers.isNotEmpty) {
+        if (!_hasVersionConflict(existing)) {
+          final data = {
+            'uuid': todo.id,
+            'id': todo.id,
+            'content': todo.title,
+            'team_uuid': teamUuid,
+            'conflict_kind': 'logic',
+            'conflict_type': 'local_schedule_conflict',
+            'source': 'local_detector',
+            'start_time': todo.createdDate ?? todo.createdAt,
+            'end_time': todo.dueDate?.millisecondsSinceEpoch,
+            'conflict_with': peers,
+          };
+          if (!todo.hasConflict || jsonEncode(existing) != jsonEncode(data)) {
+            todo.hasConflict = true;
+            todo.serverVersionData = data;
+            changed = true;
+          }
+        } else if (!todo.hasConflict) {
+          todo.hasConflict = true;
+          changed = true;
+        }
+      } else if (isLocalScheduleConflict) {
+        todo.hasConflict = false;
+        todo.serverVersionData = null;
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
+  static bool _hasVersionConflict(Map<String, dynamic>? data) {
+    if (data == null || data.isEmpty) return false;
+    final type = data['conflict_type']?.toString();
+    final kind = data['conflict_kind']?.toString();
+    final source = data['source']?.toString();
+    return type == 'version_conflict' ||
+        kind == 'version' ||
+        (type != 'local_schedule_conflict' && source != 'local_detector');
+  }
+
+  static bool _isLocalScheduleConflict(Map<String, dynamic>? data) {
+    if (data == null || data.isEmpty) return false;
+    return data['conflict_type'] == 'local_schedule_conflict' ||
+        data['source'] == 'local_detector';
+  }
+
+  static Map<String, dynamic> _conflictPeerSummary(_TodoInterval interval) {
+    return {
+      'uuid': interval.todo.id,
+      'id': interval.todo.id,
+      'title': interval.todo.title,
+      'content': interval.todo.title,
+      'team_uuid': interval.todo.teamUuid,
+      'start_time': interval.startMs,
+      'end_time': interval.endMs,
+    };
+  }
+
+  static String _localDayKey(int ms) {
+    return DateFormat('yyyy-MM-dd')
+        .format(DateTime.fromMillisecondsSinceEpoch(ms));
+  }
+
   static Future<bool> syncScreenTimeAlone(
       String username, String deviceName) async {
     final prefs = await SharedPreferences.getInstance();
@@ -2246,9 +2536,9 @@ class StorageService {
       final formattedApps = apps
           .whereType<Map>()
           .map((e) => {
-        'app_name': e['app_name']?.toString() ?? 'Unknown',
-        'duration': (e['duration'] is int) ? e['duration'] : 0,
-      })
+                'app_name': e['app_name']?.toString() ?? 'Unknown',
+                'duration': (e['duration'] is int) ? e['duration'] : 0,
+              })
           .toList();
 
       final success = await ApiService.uploadScreenTime(
@@ -2304,7 +2594,8 @@ class StorageService {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(KEY_CURRENT_USER);
     if (username != null && username.isNotEmpty) {
-      return prefs.getInt("${KEY_SYNC_INTERVAL}_$username") ?? (prefs.getInt(KEY_SYNC_INTERVAL) ?? 0);
+      return prefs.getInt("${KEY_SYNC_INTERVAL}_$username") ??
+          (prefs.getInt(KEY_SYNC_INTERVAL) ?? 0);
     }
     return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0;
   }
@@ -2332,7 +2623,8 @@ class StorageService {
       return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
     }
 
-    final bool? scoped = prefs.getBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username");
+    final bool? scoped =
+        prefs.getBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username");
     if (scoped == null) {
       final bool global = prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
       await prefs.setBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username", global);
@@ -2808,7 +3100,7 @@ class StorageService {
       String username) async {
     final prefs = await StorageService.prefs;
     final jsonStr =
-    prefs.getString("${KEY_CATEGORY_REMINDER_MINUTES}_$username");
+        prefs.getString("${KEY_CATEGORY_REMINDER_MINUTES}_$username");
     if (jsonStr == null) return {};
     try {
       final Map<String, dynamic> rawResult = jsonDecode(jsonStr);
@@ -2827,7 +3119,9 @@ class StorageService {
 
   static Future<List<Map<String, dynamic>>> getSyncFailures() async {
     final db = await DatabaseHelper.instance.database;
-    return await db.query('op_logs', where: 'sync_error IS NOT NULL AND is_synced = 0', orderBy: 'timestamp DESC');
+    return await db.query('op_logs',
+        where: 'sync_error IS NOT NULL AND is_synced = 0',
+        orderBy: 'timestamp DESC');
   }
 
   /// Resolve a conflict locally: clear the has_conflict flag in the database.
@@ -2855,17 +3149,35 @@ class StorageService {
             'version': resolvedData['version'],
             'updated_at': now,
             'content': resolvedData['content'] ?? resolvedData['title'] ?? '',
-            'is_deleted': resolvedData['is_deleted'] == 1 || resolvedData['is_deleted'] == true ? 1 : 0,
-            'is_completed': resolvedData['is_completed'] == 1 || resolvedData['is_completed'] == true ? 1 : 0,
-            'due_date': resolvedData['due_date'] ?? resolvedData['dueDate'] ?? 0,
+            'is_deleted': resolvedData['is_deleted'] == 1 ||
+                    resolvedData['is_deleted'] == true
+                ? 1
+                : 0,
+            'is_completed': resolvedData['is_completed'] == 1 ||
+                    resolvedData['is_completed'] == true
+                ? 1
+                : 0,
+            'due_date':
+                resolvedData['due_date'] ?? resolvedData['dueDate'] ?? 0,
             'remark': resolvedData['remark'] ?? null,
-            'group_id': resolvedData['group_id'] ?? resolvedData['groupId'] ?? null,
-            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+            'group_id':
+                resolvedData['group_id'] ?? resolvedData['groupId'] ?? null,
+            'team_uuid':
+                resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
             'recurrence': resolvedData['recurrence'] ?? 0,
-            'is_all_day': resolvedData['is_all_day'] == 1 || resolvedData['is_all_day'] == true || resolvedData['isAllDay'] == true ? 1 : 0,
-            'reminder_minutes': resolvedData['reminder_minutes'] ?? resolvedData['reminderMinutes'] ?? -1,
-            'created_date': resolvedData['created_date'] ?? resolvedData['createdDate'] ?? 0,
-            'collab_type': resolvedData['collab_type'] ?? resolvedData['collabType'] ?? 0,
+            'is_all_day': resolvedData['is_all_day'] == 1 ||
+                    resolvedData['is_all_day'] == true ||
+                    resolvedData['isAllDay'] == true
+                ? 1
+                : 0,
+            'reminder_minutes': resolvedData['reminder_minutes'] ??
+                resolvedData['reminderMinutes'] ??
+                -1,
+            'created_date': resolvedData['created_date'] ??
+                resolvedData['createdDate'] ??
+                0,
+            'collab_type':
+                resolvedData['collab_type'] ?? resolvedData['collabType'] ?? 0,
           },
           where: 'uuid = ?',
           whereArgs: [uuid],
@@ -2873,7 +3185,10 @@ class StorageService {
         break;
 
       case 'countdowns':
-        final targetTime = resolvedData['target_time'] ?? resolvedData['targetTime'] ?? resolvedData['target_date'] ?? 0;
+        final targetTime = resolvedData['target_time'] ??
+            resolvedData['targetTime'] ??
+            resolvedData['target_date'] ??
+            0;
         batch.update(
           'countdowns',
           {
@@ -2881,10 +3196,17 @@ class StorageService {
             'version': resolvedData['version'],
             'updated_at': now,
             'title': resolvedData['title'] ?? '',
-            'is_deleted': resolvedData['is_deleted'] == 1 || resolvedData['is_deleted'] == true ? 1 : 0,
-            'is_completed': resolvedData['is_completed'] == 1 || resolvedData['is_completed'] == true ? 1 : 0,
+            'is_deleted': resolvedData['is_deleted'] == 1 ||
+                    resolvedData['is_deleted'] == true
+                ? 1
+                : 0,
+            'is_completed': resolvedData['is_completed'] == 1 ||
+                    resolvedData['is_completed'] == true
+                ? 1
+                : 0,
             'target_time': targetTime is int ? targetTime : 0,
-            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+            'team_uuid':
+                resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
           },
           where: 'uuid = ?',
           whereArgs: [uuid],
@@ -2899,9 +3221,16 @@ class StorageService {
             'version': resolvedData['version'],
             'updated_at': now,
             'name': resolvedData['name'] ?? '',
-            'is_deleted': resolvedData['is_deleted'] == 1 || resolvedData['is_deleted'] == true ? 1 : 0,
-            'is_expanded': resolvedData['is_expanded'] == 1 || resolvedData['is_expanded'] == true ? 1 : 0,
-            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+            'is_deleted': resolvedData['is_deleted'] == 1 ||
+                    resolvedData['is_deleted'] == true
+                ? 1
+                : 0,
+            'is_expanded': resolvedData['is_expanded'] == 1 ||
+                    resolvedData['is_expanded'] == true
+                ? 1
+                : 0,
+            'team_uuid':
+                resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
           },
           where: 'uuid = ?',
           whereArgs: [uuid],
@@ -2939,4 +3268,16 @@ class StorageService {
             : '${KEY_TODO_GROUPS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}';
     await prefs.remove(key);
   }
+}
+
+class _TodoInterval {
+  final TodoItem todo;
+  final int startMs;
+  final int endMs;
+
+  const _TodoInterval({
+    required this.todo,
+    required this.startMs,
+    required this.endMs,
+  });
 }

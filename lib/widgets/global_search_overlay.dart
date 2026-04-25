@@ -243,11 +243,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
             SafeArea(
               child: FadeTransition(
                 opacity: _fadeAnimation,
-                child: ScaleTransition(
-                  scale: _scaleAnimation,
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
                       constraints: BoxConstraints(maxWidth: isCompact ? size.width : 1180),
                       child: Container(
                         margin: const EdgeInsets.fromLTRB(20, 60, 20, 20),
@@ -277,7 +275,6 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                               _buildResultsPanel(colorScheme, isDark, size),
                           ],
                         ),
-                      ),
                     ),
                   ),
                 ),

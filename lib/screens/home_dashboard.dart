@@ -41,6 +41,7 @@ import 'add_todo_screen.dart';
 import 'course_screens.dart';
 import 'band_sync_screen.dart';
 import 'conflict_inbox_screen.dart';
+import 'team_management_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
@@ -122,9 +123,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _fabPomodoroKey = GlobalKey();
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
-  // 每次自增触发首页专注记录卡片刷新
   // 每次自增触发首页专注记录卡片与时间轴刷新
-  int _timelineRefreshTrigger = 0;
+  final ValueNotifier<int> _timelineRefreshTriggerNotifier = ValueNotifier<int>(0);
 
   int _selectedTabIndex = 0;
 
@@ -163,6 +163,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   late final ValueNotifier<Map<String, dynamic>> _courseDataNotifier;
   late final ValueNotifier<List<CountdownItem>> _countdownsNotifier;
   late final ValueNotifier<Map<String, dynamic>> _mathStatsNotifier;
+
+  final ValueNotifier<bool> _isGlobalLoadingNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<int> _todoUpdateSignalNotifier = ValueNotifier<int>(0);
 
   // 🚀 GlobalKeys for Zoom Animations
   final GlobalKey _searchButtonKey = GlobalKey();
@@ -381,7 +384,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 更新本地列表
     setState(() {
       _todos = [...newTodos, ..._todos];
-      _timelineRefreshTrigger++; // 🚀 触发时间轴刷新
+      _timelineRefreshTriggerNotifier.value++; // 🚀 触发时间轴刷新
     });
 
     // 保存到数据库
@@ -1010,7 +1013,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           sourceKey: _focusBannerKey,
         );
         if (mounted) {
-          setState(() => _timelineRefreshTrigger++);
+          _timelineRefreshTriggerNotifier.value++;
           _loadAllData();
         }
       },
@@ -1301,7 +1304,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       // 🚀 唤醒时重置壁纸重试计数，防止因最小化导致的短暂断网触发兜底
       _wallpaperRetryCount = 0;
       // 从番茄钟页或任何前台切换回来时，刷新专注记录卡片
-      if (mounted) setState(() => _timelineRefreshTrigger++);
+      if (mounted) _timelineRefreshTriggerNotifier.value++;
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
       _syncService.resumeSync();
     }
@@ -1349,7 +1352,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       sourceKey: _pomodoroCardKey,
     );
     if (mounted) {
-      setState(() => _timelineRefreshTrigger++);
+      _timelineRefreshTriggerNotifier.value++;
       _loadAllData();
     }
   }
@@ -1727,8 +1730,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   // 🚀 核心重构：渲染主页时，绝对不能将 isDeleted 的数据加载到视图层！
   Future<void> _loadAllData() async {
-    if (_isDataLoading) return;
-    _isDataLoading = true;
+    if (_isGlobalLoadingNotifier.value) return;
+    _isGlobalLoadingNotifier.value = true;
 
     try {
       final startTime = DateTime.now();
@@ -1771,9 +1774,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           _courseDataNotifier.value = courseData;
         }
 
-        setState(() {
-          _todoUpdateSignal++; // 🚀 触发部分全局状态重绘
-        });
+        _todoUpdateSignalNotifier.value++; // 🚀 触发待办局部更新
+        _timelineRefreshTriggerNotifier.value++; // 🚀 触发时间轴与专注卡片局部更新
 
         // 2. 交互与同步逻辑 (异步执行)
         _syncTodoNotification();
@@ -1791,9 +1793,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       debugPrint('❌ [DashboardLoader] 加载失败: $e');
     } finally {
       if (mounted) {
-        setState(() {
-          _isDataLoading = false;
-        });
+        _isGlobalLoadingNotifier.value = false;
       }
     }
   }
@@ -2424,27 +2424,18 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _isSearchOpen = false; // 🚀 记录搜索层是否打开
 
   void _showGlobalSearch() {
-    setState(() => _isSearchOpen = true);
-    showGeneralPage(
+    PageTransitions.pushFromRect(
       context: context,
-      pageBuilder: (ctx, anim1, anim2) => const GlobalSearchOverlay(),
-      transitionBuilder: (ctx, anim1, anim2, child) {
-        return FadeTransition(
-          opacity: anim1,
-          child: child,
-        );
-      },
-      transitionDuration: const Duration(milliseconds: 200),
-      barrierDismissible: true,
-      barrierColor: Colors.transparent,
-      barrierLabel: 'Search',
+      page: const GlobalSearchOverlay(),
+      sourceKey: _searchButtonKey,
     ).then((_) async {
       // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
       await Future.delayed(const Duration(milliseconds: 200));
       if (mounted) setState(() {
         _isSearchOpen = false;
-        _timelineRefreshTrigger++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
+        _timelineRefreshTriggerNotifier.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
       });
+      _loadAllData();
     });
   }
 
@@ -2541,10 +2532,20 @@ class _HomeDashboardState extends State<HomeDashboard>
                     isSyncing: _isSyncing,
                     onSync: _showSyncOptionsDialog,
                     onSearch: _showGlobalSearch,
+                    searchKey: _searchButtonKey,
+                    teamsKey: _teamsButtonKey,
                     settingsKey: _settingsButtonKey,
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,
                     teamPendingCount: _teamPendingCount, // 🚀 绑定计数
+                    onTeams: () async {
+                      await PageTransitions.pushFromRect(
+                        context: context,
+                        page: TeamManagementScreen(username: widget.username),
+                        sourceKey: _teamsButtonKey,
+                      );
+                      _loadAllData();
+                    },
                     onSettings: () async {
                       await PageTransitions.pushFromRect(
                         context: context,
@@ -2586,10 +2587,18 @@ class _HomeDashboardState extends State<HomeDashboard>
                   _buildPendingTodoConfirmCard(isLight),
 
                 Expanded(
-                  child: Stack(
-                    children: [
-                      LayoutBuilder(
-                        builder: (context, constraints) {
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _isGlobalLoadingNotifier,
+                    builder: (context, isLoading, child) {
+                      // 🚀 核心优化：只有当数据完全为空且正在加载时才显示骨架屏，避免背景刷新时的闪烁
+                      return (isLoading &&
+                              _todos.isEmpty &&
+                              (_dashboardCourseData['courses'] as List? ?? []).isEmpty)
+                          ? _buildDashboardSkeleton(isLight)
+                          : Stack(
+                              children: [
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
 
                       // ... (rest of section definitions)
                       Widget courseSection = CourseSectionWidget(
@@ -2601,81 +2610,83 @@ class _HomeDashboardState extends State<HomeDashboard>
                           isLight: isLight,
                           onDataChanged: () {
                             _loadAllData();
-                            setState(() => _timelineRefreshTrigger++);
+                            _timelineRefreshTriggerNotifier.value++;
                           });
-                      Widget todoSection = TodoSectionWidget(
-                        key: ValueKey('todo_section_$_todoUpdateSignal'), // 🚀 动态 Key 强制重绘
-                        todos: _todos,
-                        highlightedTodoIds: _updatedByOthersTodoIds,
-                        remoteUpdateHighlightSignal: _remoteTodoHighlightSignal,
-                        todoGroups: _todoGroups,
-                        username: widget.username,
-                        isLight: isLight,
-                        onTeamChanged: (teamUuid, teamName) {
-                          setState(() {
-                            _currentSelectedTeamUuid = teamUuid;
-                            _currentSelectedTeamName = teamName;
-                          });
-                        },
-                        onGroupsChanged: (newGroups) async {
-                          setState(() => _todoGroups = newGroups.where((g) => !g.isDeleted).toList());
-                          final allGroups = await StorageService.getTodoGroups(widget.username);
-                          for (var g in newGroups) {
-                            int idx = allGroups.indexWhere((x) => x.id == g.id);
-                            if (idx != -1) {
-                              if (g.updatedAt >= allGroups[idx].updatedAt) allGroups[idx] = g;
-                            } else {
-                              allGroups.add(g);
-                            }
-                          }
-                          await StorageService.saveTodoGroups(widget.username, allGroups, sync: true);
-                        },
-                        onTodosChanged: (newTodos) async {
-                          // 🚀 记录变更，用于通知清除
-                          final oldTodos = List<TodoItem>.from(_todos);
-                          setState(() {
-                            _todos = newTodos;
-                            _timelineRefreshTrigger++;
-                          });
-
-                          // 🚀 核心修复：任务完成后自动清除对应通知
-                          for (var nt in newTodos) {
-                            if (nt.isDone) {
-                              final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
-                              if (!ot.isDone) {
-                                // 刚完成
-                                debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
-                                NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
+                      Widget todoSection = ValueListenableBuilder<int>(
+                        valueListenable: _todoUpdateSignalNotifier,
+                        builder: (context, signal, _) {
+                          return TodoSectionWidget(
+                            todos: _todos,
+                            highlightedTodoIds: _updatedByOthersTodoIds,
+                            remoteUpdateHighlightSignal: _remoteTodoHighlightSignal,
+                            todoGroups: _todoGroups,
+                            username: widget.username,
+                            isLight: isLight,
+                            onTeamChanged: (teamUuid, teamName) {
+                              setState(() {
+                                _currentSelectedTeamUuid = teamUuid;
+                                _currentSelectedTeamName = teamName;
+                              });
+                            },
+                            onGroupsChanged: (newGroups) async {
+                              setState(() => _todoGroups = newGroups.where((g) => !g.isDeleted).toList());
+                              final allGroups = await StorageService.getTodoGroups(widget.username);
+                              for (var g in newGroups) {
+                                int idx = allGroups.indexWhere((x) => x.id == g.id);
+                                if (idx != -1) {
+                                  if (g.updatedAt >= allGroups[idx].updatedAt) allGroups[idx] = g;
+                                } else {
+                                  allGroups.add(g);
+                                }
                               }
-                            }
-                          }
+                              await StorageService.saveTodoGroups(widget.username, allGroups, sync: true);
+                            },
+                            onTodosChanged: (newTodos) async {
+                              // 🚀 记录变更，用于通知清除
+                              final oldTodos = List<TodoItem>.from(_todos);
+                              _todos = newTodos;
+                              _timelineRefreshTriggerNotifier.value++;
+    
+                              // 🚀 核心修复：任务完成后自动清除对应通知
+                              for (var nt in newTodos) {
+                                if (nt.isDone) {
+                                  final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
+                                  if (!ot.isDone) {
+                                    // 刚完成
+                                    debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
+                                    NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
+                                  }
+                                }
+                              }
 
-                          final allTodos =
-                              await StorageService.getTodos(widget.username);
-                          for (var newT in _todos) {
-                            int idx =
-                                allTodos.indexWhere((x) => x.id == newT.id);
-                            if (idx != -1) {
-                              allTodos[idx] = newT;
-                            } else {
-                              allTodos.add(newT);
-                            }
-                          }
-                          await StorageService.saveTodos(
-                              widget.username, allTodos);
-                          await _saveTodosToSharedFile(allTodos);
-                          FloatWindowService.triggerReminderCheck();
-                          FloatWindowService.invalidateSlotCache();
-                          FloatWindowService.update();
-                          _syncTodoNotification();
-                          _rescheduleAlarms();
-                          await WidgetService.updateTodoWidget(_todos);
-                        },
-                        initialSelectedTeamUuid: _currentSelectedTeamUuid,
-                        onRefreshRequested: _handleManualSync, 
-                        onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
-                          _navigateToTodoConfirm(
-                              results, imagePath, originalText, tUuid, tName);
+                              final allTodos = await StorageService.getTodos(widget.username);
+                              for (var newT in _todos) {
+                                int idx = allTodos.indexWhere((x) => x.id == newT.id);
+                                if (idx != -1) {
+                                  allTodos[idx] = newT;
+                                } else {
+                                  allTodos.add(newT);
+                                }
+                              }
+                              await StorageService.saveTodos(widget.username, allTodos);
+                              await _saveTodosToSharedFile(allTodos);
+
+                              FloatWindowService.triggerReminderCheck();
+                              FloatWindowService.invalidateSlotCache();
+                              FloatWindowService.update();
+                              _syncTodoNotification();
+                              _rescheduleAlarms();
+                              await WidgetService.updateTodoWidget(_todos);
+
+                              _todoUpdateSignalNotifier.value++; // 🚀 触发局部更新
+                            },
+                            initialSelectedTeamUuid: _currentSelectedTeamUuid,
+                            onRefreshRequested: _handleManualSync, 
+                            onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
+                              _navigateToTodoConfirm(
+                                  results, imagePath, originalText, tUuid, tName);
+                            },
+                          );
                         },
                       );
                       Widget screenTimeSection = RepaintBoundary(
@@ -2737,34 +2748,42 @@ class _HomeDashboardState extends State<HomeDashboard>
                           ),
                         ),
                       );
-                      Widget timelineSection = PersonalTimelineSection(
-                        username: widget.username,
-                        isLight: isLight,
-                        refreshTrigger: _timelineRefreshTrigger,
+                      Widget timelineSection = ValueListenableBuilder<int>(
+                        valueListenable: _timelineRefreshTriggerNotifier,
+                        builder: (context, trigger, _) {
+                          return PersonalTimelineSection(
+                            username: widget.username,
+                            isLight: isLight,
+                            refreshTrigger: trigger,
+                          );
+                        },
                       );
 
                       Widget pomodoroSection = RepaintBoundary(
-                        child: KeyedSubtree(
-                          key: _pomodoroCardKey,
-                          child: PomodoroTodaySection(
-                            username: widget.username,
-                            isLight: isLight,
-                            refreshTrigger: _timelineRefreshTrigger,
-                            onTap: () async {
-                              await PageTransitions.pushFromRect(
-                                context: context,
-                                page: PomodoroScreen(
-                                  username: widget.username,
-                                  initialTab: 1,
-                                ),
-                                sourceKey: _pomodoroCardKey,
-                              );
-                              if (mounted) {
-                                setState(() => _timelineRefreshTrigger++);
-                                _loadAllData();
-                              }
-                            },
-                          ),
+                        child: ValueListenableBuilder<int>(
+                          valueListenable: _timelineRefreshTriggerNotifier,
+                          builder: (context, trigger, _) {
+                            return KeyedSubtree(
+                              key: _pomodoroCardKey,
+                              child: PomodoroTodaySection(
+                                username: widget.username,
+                                isLight: isLight,
+                                refreshTrigger: trigger,
+                                onTap: () async {
+                                  await PageTransitions.pushFromRect(
+                                    context: context,
+                                    page: PomodoroScreen(
+                                      username: widget.username,
+                                      initialTab: 1,
+                                    ),
+                                    sourceKey: _pomodoroCardKey,
+                                  );
+                                  _timelineRefreshTriggerNotifier.value++;
+                                  _loadAllData();
+                                },
+                              ),
+                            );
+                          },
                         ),
                       );
 
@@ -2957,11 +2976,13 @@ class _HomeDashboardState extends State<HomeDashboard>
                           child: _buildCustomBottomBar(isDarkMode, isLight),
                         ),
                     ],
-                  ),
-                ),
-              ],
+                  );
+                },
+              ),
             ),
-          ),
+          ],
+        ),
+      ),
         ],
       ),
       bottomNavigationBar: null,
@@ -2980,7 +3001,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                 sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
               );
               if (mounted) {
-                setState(() => _timelineRefreshTrigger++);
+                _timelineRefreshTriggerNotifier.value++;
                 _loadAllData();
               }
             },
@@ -3187,5 +3208,32 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (!b.containsKey(key) || a[key] != b[key]) return false;
     }
     return true;
+  }
+  Widget _buildDashboardSkeleton(bool isLight) {
+    final baseColor = isLight ? Colors.white.withValues(alpha: 0.3) : Colors.grey[800]!;
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildSkeletonCard(baseColor, height: 120),
+          const SizedBox(height: 16),
+          _buildSkeletonCard(baseColor, height: 180),
+          const SizedBox(height: 16),
+          _buildSkeletonCard(baseColor, height: 240),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonCard(Color color, {required double height}) {
+    return Container(
+      width: double.infinity,
+      height: height,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
   }
 }

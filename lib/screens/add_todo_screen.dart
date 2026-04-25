@@ -61,6 +61,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   String? _llmRawResponse;
   String? _currentOriginalText;
   String? _selectedImagePath;
+  bool _isLoading = true; // 🚀 首页加载锁
 
   Map<String, int> _categoryReminderDefaults = {};
   String? _username;
@@ -97,6 +98,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (mounted) {
       setState(() {
         _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+        _isLoading = false; // 🚀 加载完成
       });
     }
   }

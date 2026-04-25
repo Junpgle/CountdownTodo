@@ -651,7 +651,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             ),
         ],
       ),
-      body: Column(
+      body: _isRetrying 
+          ? _buildSkeleton(Theme.of(context).brightness == Brightness.dark)
+          : Column(
         children: [
           // 图片预览（可折叠）
           if (hasImage)
@@ -1034,6 +1036,24 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         style: FilledButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSkeleton(bool isDark) {
+    final baseColor = isDark ? Colors.grey[800]! : Colors.white.withValues(alpha: 0.5);
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Container(height: 180, decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(20))),
+          const SizedBox(height: 20),
+          Container(height: 80, decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(16))),
+          const SizedBox(height: 12),
+          Container(height: 80, decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(16))),
+          const Spacer(),
+          Container(height: 50, decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(12))),
+        ],
       ),
     );
   }
