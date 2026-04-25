@@ -1354,7 +1354,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
     if (mounted) {
       _timelineRefreshTriggerNotifier.value++;
-      _loadAllData();
+      _loadAllData(deferred: true);
     }
   }
 
@@ -1730,8 +1730,15 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   // 🚀 核心重构：渲染主页时，绝对不能将 isDeleted 的数据加载到视图层！
-  Future<void> _loadAllData() async {
+  Future<void> _loadAllData({bool deferred = false}) async {
     if (_isGlobalLoadingNotifier.value) return;
+
+    if (deferred) {
+      // 🚀 核心优化：延迟 400ms 刷新，确保返回动画（Pop）执行完毕后再处理数据
+      // 避免 CPU 密集型任务与动画冲突导致卡顿
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+    
     _isGlobalLoadingNotifier.value = true;
 
     try {
@@ -2436,7 +2443,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         _isSearchOpen = false;
         _timelineRefreshTriggerNotifier.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
       });
-      _loadAllData();
+      _loadAllData(deferred: true);
     });
   }
 
@@ -2545,7 +2552,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                         page: TeamManagementScreen(username: widget.username),
                         sourceKey: _teamsButtonKey,
                       );
-                      _loadAllData();
+                      _loadAllData(deferred: true);
                     },
                     onSettings: () async {
                       await PageTransitions.pushFromRect(
@@ -2555,7 +2562,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       );
                       _loadSectionPreferences();
                       _loadSemesterSettings();
-                      _loadAllData();
+                      _loadAllData(deferred: true);
                     },
                   ),
 
@@ -2743,7 +2750,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                           username: widget.username),
                                       sourceKey: _mathCardKey,
                                     );
-                                    _loadAllData();
+                                    _loadAllData(deferred: true);
                                   }),
                             ],
                           ),
@@ -3003,7 +3010,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               );
               if (mounted) {
                 _timelineRefreshTriggerNotifier.value++;
-                _loadAllData();
+                _loadAllData(deferred: true);
               }
             },
             tooltip: '番茄钟',
@@ -3034,7 +3041,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                   _rescheduleAlarms();
                   await WidgetService.updateTodoWidget(allTodos);
                   if (mounted) {
-                    await _loadAllData();
+                    await _loadAllData(deferred: true);
                     // 🧪 额外加固：确保 UI 刷新
                     setState(() {}); 
                   }
@@ -3054,7 +3061,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                   _syncTodoNotification();
                   _rescheduleAlarms();
                   await WidgetService.updateTodoWidget(allTodos);
-                  if (mounted) await _loadAllData();
+                  if (mounted) await _loadAllData(deferred: true);
                 },
                 onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
                   Navigator.pop(context); // 关闭添加页面

@@ -79,18 +79,23 @@ class AccountSection extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text("账户等级", style: TextStyle(fontSize: 14)),
-                        isLoadingStatus
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : Text(
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: isLoadingStatus
+                              ? const SizedBox(
+                                  key: ValueKey('loading'),
+                                  width: 14,
+                                  height: 14,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2))
+                              : Text(
                                   userTier.toUpperCase(),
+                                  key: ValueKey(userTier),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: getTierColor(userTier)
-                          ),
+                                    color: getTierColor(userTier),
+                                  ),
+                                ),
                         ),
                       ],
                     ),
@@ -127,7 +132,8 @@ class AccountSection extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.redAccent),
                 title: const Text('退出当前账号',
-                    style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                    style: TextStyle(
+                        color: Colors.redAccent, fontWeight: FontWeight.w600)),
                 onTap: onLogout,
               ),
             ],
