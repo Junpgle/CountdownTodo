@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:CountDownTodo/services/pomodoro_sync_service.dart';
@@ -106,9 +107,16 @@ class StorageService {
   static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
 
-  /// 🚀 Uni-Sync: 全局数据刷新通知器
-  static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier(0);
-  static void triggerRefresh() => dataRefreshNotifier.value++;
+  static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
+  static Timer? _refreshDebouncer;
+
+  /// 🚀 优化：增加 100ms 防抖，防止背景同步或批量更新时产生高频重绘，减少主线程 GC 与帧丢弃
+  static void triggerRefresh() {
+    _refreshDebouncer?.cancel();
+    _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
+      dataRefreshNotifier.value++;
+    });
+  }
 
   static int _normalizedRecurrenceIndex(TodoItem item) {
     final int idx = item.recurrence.index;
@@ -441,7 +449,6 @@ class StorageService {
   // ==========================================
   static Future<void> saveCountdowns(String username, List<CountdownItem> items,
       {bool sync = true, bool isSyncSource = false}) async {
-    final prefs = await SharedPreferences.getInstance();
     Map<String, CountdownItem> dedupeMap = {};
     for (var item in items) {
       if (!dedupeMap.containsKey(item.id) ||
@@ -450,18 +457,40 @@ class StorageService {
       }
     }
 
-    // 🚀 核心修复：先等待所有本地审计日志记录完毕，再进行批处理
-    if (!isSyncSource) {
-      final auditTasks = dedupeMap.values.map((item) => 
-        _recordLocalAudit('countdowns', item.id, item.toJson(), item.teamUuid)
-      ).toList();
-      await Future.wait(auditTasks);
-    }
+    final dedupeList = dedupeMap.values.toList();
+
+    // 🚀 异步保存到 Prefs
+    unawaited(SharedPreferences.getInstance().then((prefs) async {
+       final jsonList = await compute(_serializeCountdowns, dedupeList);
+       await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
+    }));
 
     final db = await DatabaseHelper.instance.database;
+
+    // 🚀 批量获取现有数据，用于审计
+    Map<String, Map<String, dynamic>> existingItemsMap = {};
+    if (!isSyncSource && dedupeList.isNotEmpty) {
+      final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
+      final List<Map<String, dynamic>> existing = await db.rawQuery(
+          'SELECT * FROM countdowns WHERE uuid IN ($uuids)');
+      for (var row in existing) {
+        existingItemsMap[row['uuid']] = row;
+      }
+    }
+
     final batch = db.batch();
-    for (var item in dedupeMap.values) {
-      if (!isSyncSource) {
+    for (var item in dedupeList) {
+      bool hasChanged = true;
+      final oldData = existingItemsMap[item.id];
+      if (oldData != null) {
+        hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
+          'title', 'target_time', 'is_deleted', 'is_completed', 'team_uuid'
+        ]);
+      }
+
+      if (!isSyncSource && hasChanged) {
+        unawaited(_recordLocalAuditOptimized('countdowns', item.id, item.toJson(), item.teamUuid, oldData));
+        
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'countdowns',
@@ -472,30 +501,36 @@ class StorageService {
         });
       }
 
-      batch.insert('countdowns', {
-        'uuid': item.id,
-        'team_uuid': item.teamUuid,
-        'team_name': item.teamName,
-        'creator_id': item.creatorId,
-        'creator_name': item.creatorName,
-        'title': item.title,
-        'target_time': item.targetDate.millisecondsSinceEpoch,
-        'is_deleted': item.isDeleted ? 1 : 0,
-        'is_completed': item.isCompleted ? 1 : 0,
-        'version': item.version,
-        'updated_at': item.updatedAt,
-        'created_at': item.createdAt,
-        'has_conflict': item.hasConflict ? 1 : 0,
-        'conflict_data': item.conflictData != null ? jsonEncode(item.conflictData) : null,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      if (hasChanged || oldData == null) {
+        batch.insert('countdowns', {
+          'uuid': item.id,
+          'team_uuid': item.teamUuid,
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
+          'title': item.title,
+          'target_time': item.targetDate.millisecondsSinceEpoch,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'is_completed': item.isCompleted ? 1 : 0,
+          'version': item.version,
+          'updated_at': item.updatedAt,
+          'created_at': item.createdAt,
+          'has_conflict': item.hasConflict ? 1 : 0,
+          'conflict_data': item.conflictData != null ? jsonEncode(item.conflictData) : null,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
     }
-    await batch.commit(noResult: true);
-
-    List<String> jsonList =
-    dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
-    await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
+    
+    if (dedupeList.isNotEmpty) {
+      await batch.commit(noResult: true);
+    }
+    
     if (sync) Future.microtask(() => syncData(username));
   }
+
+  static List<String> _serializeCountdowns(List<CountdownItem> items) => 
+      items.map((e) => jsonEncode(e.toJson())).toList();
+
 
   static Future<List<CountdownItem>> getCountdowns(String username,
       {bool includeDeleted = false}) async {
@@ -534,7 +569,13 @@ class StorageService {
       // 2. 从 SQL 读取
       final List<Map<String, dynamic>> maps = await db.query('countdowns',
           where: includeDeleted ? null : 'is_deleted = 0');
+      
       if (maps.isNotEmpty) {
+        // 🚀 性能优化：当数量较多时，将对象映射逻辑移动到后台 Isolate，避免阻塞主线程（Choreographer 跳帧的主要原因）
+        if (maps.length > 50) {
+          return await compute(_parseCountdownItemsIsolate, maps);
+        }
+        
         return maps
             .map((m) => CountdownItem(
           id: m['uuid'],
@@ -562,6 +603,12 @@ class StorageService {
     // 逃生通道
     List<String> list =
         prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
+    
+    // 🚀 逃生通道也使用 Isolate 优化
+    if (list.length > 50) {
+      return await compute(_parseCountdownJsonItemsIsolate, list);
+    }
+
     List<CountdownItem> result = [];
     for (var e in list) {
       try {
@@ -569,6 +616,36 @@ class StorageService {
       } catch (_) {}
     }
     return result;
+  }
+
+  /// 🚀 Isolate 专用：静态解析方法
+  static List<CountdownItem> _parseCountdownItemsIsolate(List<Map<String, dynamic>> maps) {
+    return maps.map((m) => CountdownItem(
+          id: m['uuid'],
+          title: m['title'] ?? '',
+          targetDate: DateTime.fromMillisecondsSinceEpoch(m['target_time']),
+          isDeleted: m['is_deleted'] == 1,
+          isCompleted: m['is_completed'] == 1,
+          version: m['version'] ?? 1,
+          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+          teamUuid: m['team_uuid'],
+          teamName: m['team_name'],
+          creatorId: m['creator_id'],
+          creatorName: m['creator_name'],
+          hasConflict: m['has_conflict'] == 1,
+          conflictData: m['conflict_data'] != null ? jsonDecode(m['conflict_data']) : null,
+        )).toList();
+  }
+
+  static List<CountdownItem> _parseCountdownJsonItemsIsolate(List<String> jsonList) {
+    return jsonList.map((e) {
+      try {
+        return CountdownItem.fromJson(jsonDecode(e));
+      } catch (_) {
+        return null;
+      }
+    }).whereType<CountdownItem>().toList();
   }
 
   static Future<void> deleteCountdownGlobally(
@@ -592,7 +669,6 @@ class StorageService {
   // ==========================================
   static Future<void> saveTodos(String username, List<TodoItem> items,
       {bool sync = true, bool isSyncSource = false}) async {
-    final prefs = await SharedPreferences.getInstance();
     final Map<String, TodoItem> dedupeMap = {};
 
     // 🚀 核心优化：只有在非同步源保存时才清理，防止 saveTodos -> getTodos 循环触发
@@ -609,28 +685,45 @@ class StorageService {
 
     List<TodoItem> dedupeList = dedupeMap.values.toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    List<String> jsonList =
-    dedupeList.map((e) => jsonEncode(e.toJson())).toList();
-    await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
 
-    // 🚀 核心优化：只对真正有变化的任务记录审计日志并入库
-    // 此处已完成去重，直接遍历 dedupeList
-    if (!isSyncSource) {
-      final auditTasks = dedupeList.map((item) => 
-        _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid)
-      ).toList();
-      await Future.wait(auditTasks);
+    // 🚀 异步保存到 Prefs，不阻塞主流程
+    unawaited(SharedPreferences.getInstance().then((prefs) async {
+       // 如果列表极大，在后台 Isolate 进行序列化
+       final jsonList = await compute(_serializeTodos, dedupeList);
+       await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
+    }));
+
+    final db = await DatabaseHelper.instance.database;
+
+    // 🚀 核心优化：批量获取现有数据，用于审计对比，避免循环中重复查询 DB
+    Map<String, Map<String, dynamic>> existingItemsMap = {};
+    if (!isSyncSource && dedupeList.isNotEmpty) {
+      final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
+      final List<Map<String, dynamic>> existing = await db.rawQuery(
+          'SELECT * FROM todos WHERE uuid IN ($uuids)');
+      for (var row in existing) {
+        existingItemsMap[row['uuid']] = row;
+      }
     }
 
-    // 🚀 Batch 极速批量写入，彻底解决数据库锁死
-    final db = await DatabaseHelper.instance.database;
+    // 🚀 Batch 极速批量写入
     final batch = db.batch();
     for (var item in dedupeList) {
-      if (!isSyncSource) {
-        // 🚀 核心优化：如果 audit 检查发现没有任何实质性变更（例如只是被 saveTodos 批量扫到但没改内容），
-        // 则不应插入 op_logs，防止后端压力大且触发假冲突。
-        // 由于 _recordLocalAudit 是异步的且没返回结果，我们在此处简单判断 updatedAt 是否足够新（10秒内）
-        // 或者依赖 dedupeMap 的来源逻辑。
+      bool hasChanged = true;
+      final oldData = existingItemsMap[item.id];
+      
+      if (oldData != null) {
+        // 检测是否有实质性变更，如果没有则跳过审计和 Oplog
+        hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
+          'content', 'title', 'remark', 'is_completed', 'is_deleted', 
+          'due_date', 'group_id', 'recurrence', 'is_all_day', 'reminder_minutes'
+        ]);
+      }
+
+      if (!isSyncSource && hasChanged) {
+        // 记录审计日志 (传入已有的 oldData 避免再次查询)
+        unawaited(_recordLocalAuditOptimized('todos', item.id, item.toJson(), item.teamUuid, oldData));
+        
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'todos',
@@ -641,40 +734,96 @@ class StorageService {
         });
       }
 
-      batch.insert('todos', {
-        'uuid': item.id,
-        'content': item.title,
-        'remark': item.remark,
-        'team_uuid': item.teamUuid,
-        'team_name': item.teamName,
-        'creator_id': item.creatorId,
-        'creator_name': item.creatorName,
-        'is_completed': item.isDone ? 1 : 0,
-        'is_deleted': item.isDeleted ? 1 : 0,
-        'version': item.version,
-        // 🚀 核心防御：提供 0 兜底，防止 SQLite NOT NULL 报错
-        'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
-        'group_id': item.groupId,
-        'created_date': item.createdDate ?? item.createdAt,
-        'created_at': item.createdAt,
-        'updated_at': item.updatedAt,
-        'collab_type': item.collabType,
-        'recurrence': _normalizedRecurrenceIndex(item),
-        'custom_interval_days': _normalizedCustomIntervalDays(item),
-        // 🚀 核心防御：提供 0 兜底，防止 SQLite NOT NULL 报错
-        'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
-        'reminder_minutes': item.reminderMinutes ?? -1,
-        'is_all_day': item.isAllDay ? 1 : 0,
-        'has_conflict': item.hasConflict ? 1 : 0,
-        'conflict_data': item.serverVersionData != null ? jsonEncode(item.serverVersionData) : null,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      if (hasChanged || oldData == null) {
+        batch.insert('todos', {
+          'uuid': item.id,
+          'content': item.title,
+          'remark': item.remark,
+          'team_uuid': item.teamUuid,
+          'team_name': item.teamName,
+          'creator_id': item.creatorId,
+          'creator_name': item.creatorName,
+          'is_completed': item.isDone ? 1 : 0,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'version': item.version,
+          'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
+          'group_id': item.groupId,
+          'created_date': item.createdDate ?? item.createdAt,
+          'created_at': item.createdAt,
+          'updated_at': item.updatedAt,
+          'collab_type': item.collabType,
+          'recurrence': _normalizedRecurrenceIndex(item),
+          'custom_interval_days': _normalizedCustomIntervalDays(item),
+          'recurrence_end_date': item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
+          'reminder_minutes': item.reminderMinutes ?? -1,
+          'is_all_day': item.isAllDay ? 1 : 0,
+          'has_conflict': item.hasConflict ? 1 : 0,
+          'conflict_data': item.serverVersionData != null ? jsonEncode(item.serverVersionData) : null,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
     }
-    await batch.commit(noResult: true);
+    
+    if (dedupeList.isNotEmpty) {
+      await batch.commit(noResult: true);
+    }
 
     if (sync) Future.microtask(() => syncData(username));
     Future.microtask(() => _syncTodosToBand(dedupeList));
-    triggerRefresh(); // 🚀 触发 UI 刷新
+    triggerRefresh();
   }
+
+  // --- 辅助方法 ---
+  static List<String> _serializeTodos(List<TodoItem> items) => 
+      items.map((e) => jsonEncode(e.toJson())).toList();
+
+  static bool _hasSubstantialChange(Map<String, dynamic> before, Map<String, dynamic> after, List<String> fields) {
+    for (var field in fields) {
+      var valA = after[field];
+      var valB = before[field];
+      
+      // 归一化处理
+      bool isAEmpty = valA == null || valA == 0 || valA == "" || valA == false || (field == 'reminder_minutes' && valA == -1);
+      bool isBEmpty = valB == null || valB == 0 || valB == "" || valB == false || (field == 'reminder_minutes' && valB == -1);
+      
+      if (isAEmpty && isBEmpty) continue;
+      if (isAEmpty || isBEmpty) return true;
+      if (valA != valB) return true;
+    }
+    return false;
+  }
+
+  static Future<void> _recordLocalAuditOptimized(String table, String uuid, Map<String, dynamic> afterData, String? teamUuid, Map<String, dynamic>? existingData) async {
+    try {
+      if (existingData == null) {
+        await DatabaseHelper.instance.insertLocalAuditLog(
+          userId: ApiService.currentUserId ?? 0,
+          targetTable: table,
+          targetUuid: uuid,
+          opType: 'INSERT',
+          beforeData: null,
+          afterData: afterData,
+          teamUuid: teamUuid,
+          operatorName: '本人(离线)',
+        );
+        return;
+      }
+
+      // 已经在外部做过实质性变更检测了，此处直接记录
+      await DatabaseHelper.instance.insertLocalAuditLog(
+        userId: ApiService.currentUserId ?? 0,
+        targetTable: table,
+        targetUuid: uuid,
+        opType: 'UPDATE',
+        beforeData: existingData,
+        afterData: afterData,
+        teamUuid: teamUuid,
+        operatorName: '本人(离线)',
+      );
+    } catch (e) {
+      debugPrint("⚠️ 记录本地审计失败: $e");
+    }
+  }
+
 
 
   /// 🚀 Uni-Sync 4.0: 辅助方法 - 记录本地审计快照
@@ -964,7 +1113,68 @@ class StorageService {
           where: includeDeleted ? null : 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
       );
       if (maps.isNotEmpty) {
-      List<TodoItem> todos = maps.map((m) => TodoItem(
+        List<TodoItem> todos;
+        // 🚀 性能优化：当待办数量较多时，使用 Isolate 解析，减少主线程解析耗时导致的 UI 卡顿
+        if (maps.length > 50) {
+          todos = await compute(_parseTodoItemsIsolate, maps);
+        } else {
+          todos = maps.map((m) => TodoItem(
+            id: m['uuid'],
+            title: m['content'] ?? '',
+            remark: m['remark'],
+            isDone: m['is_completed'] == 1,
+            isDeleted: m['is_deleted'] == 1,
+            version: m['version'] ?? 1,
+            updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+            createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+            createdDate: m['created_date'] != null ? int.tryParse(m['created_date'].toString()) : null,
+            dueDate: (m['due_date'] != null && m['due_date'].toString() != '0' && m['due_date'].toString() != 'null' && m['due_date'].toString().isNotEmpty)
+                ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['due_date'].toString()) ?? 0)
+                : null,
+            teamUuid: m['team_uuid'],
+            teamName: m['team_name'],
+            creatorId: m['creator_id'],
+            creatorName: m['creator_name'],
+            groupId: m['group_id'],
+            collabType: m['collab_type'] ?? 0,
+            recurrence: RecurrenceType.values[
+            (_parseNullableInt(m['recurrence']) ?? 0)
+                .clamp(0, RecurrenceType.values.length - 1)],
+            customIntervalDays: _parseNullableInt(m['custom_interval_days']),
+            recurrenceEndDate: (m['recurrence_end_date'] != null && m['recurrence_end_date'].toString() != '0')
+                ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
+                : null,
+            reminderMinutes: (m['reminder_minutes'] != null && m['reminder_minutes'].toString() != '-1')
+                ? int.tryParse(m['reminder_minutes'].toString())
+                : null,
+          )).toList();
+        }
+        return await _handleRecurrenceLogic(username, todos);
+      } else {
+        return [];
+      }
+    } catch (e) {
+      debugPrint("⚠️ SQL 引擎异常，启动逃生通道: $e");
+    }
+
+    // 🚀 逃生通道：兜底读取 Prefs
+    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+    List<TodoItem> legacyTodos;
+    
+    if (list.length > 50) {
+      legacyTodos = await compute(_parseTodoJsonItemsIsolate, list);
+    } else {
+      legacyTodos = [];
+      for (var e in list) {
+        try { legacyTodos.add(TodoItem.fromJson(jsonDecode(e))); } catch (_) {}
+      }
+    }
+    return await _handleRecurrenceLogic(username, legacyTodos);
+  }
+
+  /// 🚀 Isolate 专用：静态待办解析方法
+  static List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
+    return maps.map((m) => TodoItem(
           id: m['uuid'],
           title: m['content'] ?? '',
           remark: m['remark'],
@@ -974,7 +1184,6 @@ class StorageService {
           updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
           createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
           createdDate: m['created_date'] != null ? int.tryParse(m['created_date'].toString()) : null,
-          // 🚀 核心修复：将 0 解析为 null
           dueDate: (m['due_date'] != null && m['due_date'].toString() != '0' && m['due_date'].toString() != 'null' && m['due_date'].toString().isNotEmpty)
               ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['due_date'].toString()) ?? 0)
               : null,
@@ -985,34 +1194,26 @@ class StorageService {
           groupId: m['group_id'],
           collabType: m['collab_type'] ?? 0,
           recurrence: RecurrenceType.values[
-          (_parseNullableInt(m['recurrence']) ?? 0)
-              .clamp(0, RecurrenceType.values.length - 1)],
+              (_parseNullableInt(m['recurrence']) ?? 0)
+                  .clamp(0, RecurrenceType.values.length - 1)],
           customIntervalDays: _parseNullableInt(m['custom_interval_days']),
-          // 🚀 核心修复：将 0 解析为 null
           recurrenceEndDate: (m['recurrence_end_date'] != null && m['recurrence_end_date'].toString() != '0')
               ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
               : null,
-          // 🚀 核心修复：将 -1 解析为 null
           reminderMinutes: (m['reminder_minutes'] != null && m['reminder_minutes'].toString() != '-1')
               ? int.tryParse(m['reminder_minutes'].toString())
               : null,
         )).toList();
-        return await _handleRecurrenceLogic(username, todos);
-      } else {
-        // 🚀 核心逻辑：如果 SQLite 有表但查无结果（例如全部过滤了），直接返回空列表，不要触发逃生通道
-        return [];
-      }
-    } catch (e) {
-      debugPrint("⚠️ SQL 引擎异常，启动逃生通道: $e");
-    }
+  }
 
-    // 🚀 逃生通道：兜底读取 Prefs
-    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
-    List<TodoItem> legacyTodos = [];
-    for (var e in list) {
-      try { legacyTodos.add(TodoItem.fromJson(jsonDecode(e))); } catch (_) {}
-    }
-    return await _handleRecurrenceLogic(username, legacyTodos);
+  static List<TodoItem> _parseTodoJsonItemsIsolate(List<String> jsonList) {
+    return jsonList.map((e) {
+      try {
+        return TodoItem.fromJson(jsonDecode(e));
+      } catch (_) {
+        return null;
+      }
+    }).whereType<TodoItem>().toList();
   }
 
   /// 🚀 Uni-Sync 4.0: 当被移出团队时，彻底清理本地缓存的相关数据
@@ -1116,9 +1317,6 @@ class StorageService {
     }
   }
 
-  static bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
 
   static DateTime _getRecurrenceBaseDate(TodoItem todo) {
     if (todo.dueDate != null) return todo.dueDate!;

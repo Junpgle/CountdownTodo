@@ -247,13 +247,22 @@ class BandSyncService {
     }
 
     try {
-      final message = jsonEncode({
+      final payload = {
         'type': type,
         'data': data,
         'batchNum': batchNum,
         'totalBatches': totalBatches,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
-      });
+      };
+
+      // 🚀 核心优化：对于较大数据量，使用 Isolate 处理 JSON 编码，避免主线程卡顿
+      String message;
+      if (data is List && data.length > 5) {
+        message = await compute(jsonEncode, payload);
+      } else {
+        message = jsonEncode(payload);
+      }
+
       await _channel.invokeMethod('sendMessage', {'data': message});
       return true;
     } catch (e) {
@@ -261,6 +270,7 @@ class BandSyncService {
       return false;
     }
   }
+
 
   /// 同步待办事项
   static Future<bool> syncTodos(List<Map<String, dynamic>> todos) async {

@@ -173,6 +173,9 @@ class CourseService {
       final db = await DatabaseHelper.instance.database;
       final List<Map<String, dynamic>> maps = await db.query('courses', orderBy: 'date ASC, start_time ASC');
       if (maps.isNotEmpty) {
+        if (maps.length > 50) {
+          return await compute(_parseCourseItemsIsolate, maps);
+        }
         return maps.map((m) => CourseItem.fromJson(m)).toList();
       }
     } catch (e) {
@@ -322,5 +325,10 @@ class CourseService {
       userId: userId,
       courses: courseMaps,
     );
+  }
+
+  /// ?? Isolate רãα
+  static List<CourseItem> _parseCourseItemsIsolate(List<Map<String, dynamic>> maps) {
+    return maps.map((m) => CourseItem.fromJson(m)).toList();
   }
 }

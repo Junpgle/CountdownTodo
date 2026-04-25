@@ -20,6 +20,7 @@ import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
 import 'widgets/privacy_policy_dialog.dart';
 import 'storage_service.dart';
+import 'models.dart';
 import 'services/float_window_service.dart';
 import 'services/window_service.dart';
 import 'services/band_sync_service.dart';
@@ -371,38 +372,59 @@ class _MyAppState extends State<MyApp> {
     switch (type) {
       case 'todo':
         final todos = await StorageService.getTodos(user);
-        return todos.where((t) => !t.isDeleted && !t.isDone).map((t) {
-          final j = t.toJson();
-          j['is_completed'] = 0;
-          j['content'] = t.title;
-          if (t.dueDate != null) {
-            j['due_date'] = t.dueDate!.millisecondsSinceEpoch;
-          }
-          if (t.createdDate != null) j['created_date'] = t.createdDate!;
-          if (t.remark != null && t.remark!.isNotEmpty) j['remark'] = t.remark;
-          return j;
-        }).toList();
+        // 使用 compute 在后台 Isolate 处理大量数据的转换，减少主线程 GC 压力
+        return await compute(_transformTodosForBand, todos);
 
       case 'course':
         final courses = await CourseService.getAllCourses(user);
-        return courses.map((c) => c.toJson()).toList();
+        return await compute(_transformCoursesForBand, courses);
 
       case 'countdown':
         final countdowns = await StorageService.getCountdowns(user);
-        return countdowns
-            .where((c) => !c.isDeleted)
-            .map((c) => c.toJson())
-            .toList();
+        return await compute(_transformCountdownsForBand, countdowns);
 
       case 'pomodoro':
         final records = await PomodoroService.getRecords();
         // 仅提供最近 30 条记录供手环查看，避免数据量过大
-        return records.take(30).map((r) => r.toJson()).toList();
+        final limitedRecords = records.take(30).toList();
+        return await compute(_transformPomodorosForBand, limitedRecords);
 
       default:
         return [];
     }
   }
+
+  // --- 静态转换方法，供 compute (Isolate) 调用 ---
+
+  static List<Map<String, dynamic>> _transformTodosForBand(List<TodoItem> todos) {
+    return todos.where((t) => !t.isDeleted && !t.isDone).map((t) {
+      final j = t.toJson();
+      j['is_completed'] = 0;
+      j['content'] = t.title;
+      if (t.dueDate != null) {
+        j['due_date'] = t.dueDate!.millisecondsSinceEpoch;
+      }
+      if (t.createdDate != null) j['created_date'] = t.createdDate!;
+      if (t.remark != null && t.remark!.isNotEmpty) j['remark'] = t.remark;
+      return j;
+    }).toList();
+  }
+
+  static List<Map<String, dynamic>> _transformCoursesForBand(List<dynamic> courses) {
+    return courses.map((c) => (c as dynamic).toJson() as Map<String, dynamic>).toList();
+  }
+
+  static List<Map<String, dynamic>> _transformCountdownsForBand(List<CountdownItem> countdowns) {
+    return countdowns
+        .where((c) => !c.isDeleted)
+        .map((c) => c.toJson())
+        .toList();
+  }
+
+  static List<Map<String, dynamic>> _transformPomodorosForBand(List<PomodoroRecord> records) {
+    return records.map((r) => r.toJson()).toList();
+  }
+
 
 
 
