@@ -1035,11 +1035,11 @@ class _WeekViewState extends State<_WeekView>
       ]));
 
   Widget _buildTagChips(BuildContext ctx, int ws, int we) => Container(
-      height: 52,
+      height: 56,
       color: _TC.topBar(ctx),
       child: ListView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           children: widget.tags.map((t) {
             int tw = widget.logs
                 .where((l) =>
@@ -1067,6 +1067,7 @@ class _WeekViewState extends State<_WeekView>
                         borderRadius: BorderRadius.circular(8)),
                     child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(t.name,
                               style: TextStyle(

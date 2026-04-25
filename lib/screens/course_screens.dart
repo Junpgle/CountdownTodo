@@ -126,39 +126,54 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
-    final weeks = await CourseService.getAvailableWeeks(widget.username);
-    final allTodosRaw = await StorageService.getTodos(widget.username);
 
+    // 🚀 核心优化：并行加载所有基础数据，消除重复调用
+    final results = await Future.wait([
+      CourseService.getAllCourses(widget.username),
+      StorageService.getTodos(widget.username),
+      StorageService.getTimeLogs(widget.username),
+      PomodoroService.getRecords(),
+      PomodoroService.getTags(),
+      StorageService.getSemesterStart(),
+    ]);
+
+    if (!mounted) return;
+
+    _allCourses = results[0] as List<CourseItem>;
+    final List<TodoItem> allTodosRaw = results[1] as List<TodoItem>;
+    final List<TimeLogItem> allLogsRaw = results[2] as List<TimeLogItem>;
+    _allPomodoroRecords = results[3] as List<PomodoroRecord>;
+    _pomodoroTags = results[4] as List<PomodoroTag>;
+    DateTime? semStart = results[5] as DateTime?;
+
+    // 1. 处理课程相关数据
+    if (_allCourses.isNotEmpty) {
+      _availableWeeks = _allCourses.map((c) => c.weekIndex).toSet().toList();
+      _availableWeeks.sort();
+    } else {
+      _availableWeeks = List.generate(20, (index) => index + 1);
+    }
+
+    // 2. 处理待办
     _allTodos = allTodosRaw.where((t) => !t.isDeleted).toList();
 
-    final allLogsRaw = await StorageService.getTimeLogs(widget.username);
+    // 3. 处理日志
     _allTimeLogs = allLogsRaw.where((l) => !l.isDeleted).toList();
-    _allPomodoroRecords = await PomodoroService.getRecords();
-    _pomodoroTags = await PomodoroService.getTags();
 
-    // 加载所有课程供月视图使用
-    _allCourses = await CourseService.getAllCourses(widget.username);
-
-    // 🚀 核心改进：优先从设置中读取开学日期，不要通过课程反推（课程周次索引在不同解析器间可能有 0/1 差异）
-    DateTime? semStart = await StorageService.getSemesterStart();
+    // 4. 计算学期起始周
     if (semStart != null) {
       _semesterMonday = semStart.subtract(Duration(days: semStart.weekday - 1));
-    } else {
-      // 没有任何设置时，尝试回退：
-      final allCourses = await CourseService.getAllCourses(widget.username);
-      if (allCourses.isNotEmpty) {
-        allCourses.sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
-        final firstCourse = allCourses.first;
-        if (firstCourse.date.isNotEmpty) {
-          DateTime firstCourseDate = DateFormat('yyyy-MM-dd').parse(
-              firstCourse.date);
-          _semesterMonday =
-              firstCourseDate.subtract(Duration(days: firstCourse.weekday - 1))
-                  .subtract(Duration(days: (firstCourse.weekIndex > 0
-                  ? firstCourse.weekIndex
-                  : 0) * 7));
-        }
+    } else if (_allCourses.isNotEmpty) {
+      final sortedCourses = List<CourseItem>.from(_allCourses)
+        ..sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
+      final firstCourse = sortedCourses.first;
+      if (firstCourse.date.isNotEmpty) {
+        DateTime firstCourseDate = DateFormat('yyyy-MM-dd').parse(firstCourse.date);
+        _semesterMonday = firstCourseDate
+            .subtract(Duration(days: firstCourse.weekday - 1))
+            .subtract(Duration(days: (firstCourse.weekIndex > 0 ? firstCourse.weekIndex : 0) * 7));
       }
     }
 
@@ -167,37 +182,21 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _semesterMonday = now.subtract(Duration(days: now.weekday - 1));
     }
 
-    // 计算当前周 (移除强制 1 的下限)
+    // 5. 计算当前周
     DateTime now = DateTime.now();
-    int daysOffset = now
-        .difference(_semesterMonday!)
-        .inDays;
+    int daysOffset = now.difference(_semesterMonday!).inDays;
     _currentWeek = (daysOffset ~/ 7) + 1;
 
-    // 🚀 核心修复：无论是否有课表，都必须加载日志和番茄钟
-    _allTimeLogs = await StorageService.getTimeLogs(widget.username);
-    _allPomodoroRecords = await PomodoroService.getRecords();
-    _allCourses = await CourseService.getAllCourses(widget.username);
+    // 6. 获取当前周课程
+    _weekCourses = _allCourses.where((c) => c.weekIndex == _currentWeek).toList();
 
-    if (weeks.isNotEmpty) {
-      _availableWeeks = weeks;
-      _weekCourses =
-      await CourseService.getCoursesByWeek(widget.username, _currentWeek);
-    } else {
-      _availableWeeks = List.generate(20, (index) => index + 1);
-      _weekCourses = [];
-    }
+    // 7. 🚀 性能优化：在主线程进行分组（如果后续发现依然卡顿，可考虑将 _groupDataForMonthView 移入 Isolate）
+    _groupDataForMonthView();
+    _updateWeekTodos();
+    _updateWeekTimeLogsAndPomodoros();
 
     if (mounted) {
-      _groupDataForMonthView();
-      _allTodos = await StorageService.getTodos(widget.username);
-      _updateWeekTodos();
-      _updateWeekTimeLogsAndPomodoros();
-
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-
+      setState(() => _isLoading = false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _courseExpandCtrl.forward();
       });
@@ -213,30 +212,36 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   void _groupDataForMonthView() {
     _monthCourseMap = {};
+    _monthTodoMap = {};
+    _monthCrossDayTodoMap = {};
+    _monthLogMap = {};
+    _monthPomMap = {};
+
+    final df = DateFormat('yyyy-MM-dd');
+
+    // 1. 课程分组
     for (var c in _allCourses) {
       if (c.date.isNotEmpty) {
         _monthCourseMap.putIfAbsent(c.date, () => []).add(c);
       } else if (_semesterMonday != null && c.weekIndex > 0) {
-        // 🚀 核心改进：将“第几周+星期几”投影到具体日期
-        final date = _semesterMonday!.add(Duration(
-          days: (c.weekIndex - 1) * 7 + (c.weekday - 1)
-        ));
-        final dStr = DateFormat('yyyy-MM-dd').format(date);
-        _monthCourseMap.putIfAbsent(dStr, () => []).add(c);
+        final date = _semesterMonday!.add(Duration(days: (c.weekIndex - 1) * 7 + (c.weekday - 1)));
+        _monthCourseMap.putIfAbsent(df.format(date), () => []).add(c);
       }
     }
 
-    _monthTodoMap = {};
-    _monthCrossDayTodoMap = {};
+    // 2. 待办分组 (优化：减少 DateFormat 调用)
     for (var t in _allTodos) {
       DateTime tStart = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
       DateTime tEnd = t.dueDate ?? tStart.add(const Duration(hours: 1));
+      
       bool isAllDay = t.dueDate != null && tStart.hour == 0 && tStart.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
       bool isAcross = !(tStart.year == tEnd.year && tStart.month == tEnd.month && tStart.day == tEnd.day);
+      
       DateTime cursor = DateTime(tStart.year, tStart.month, tStart.day);
       DateTime endCursor = DateTime(tEnd.year, tEnd.month, tEnd.day);
+      
       while (!cursor.isAfter(endCursor)) {
-        String dStr = DateFormat('yyyy-MM-dd').format(cursor);
+        final dStr = df.format(cursor);
         if (isAllDay || isAcross) {
           _monthCrossDayTodoMap.putIfAbsent(dStr, () => []).add(t);
         } else {
@@ -246,20 +251,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       }
     }
 
-    _monthLogMap = {};
+    // 3. 日志与番茄钟
     for (var l in _allTimeLogs) {
       DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime).toLocal();
       DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime).toLocal();
       DateTime cursor = DateTime(lStart.year, lStart.month, lStart.day);
       DateTime endCursor = DateTime(lEnd.year, lEnd.month, lEnd.day);
       while (!cursor.isAfter(endCursor)) {
-        String dStr = DateFormat('yyyy-MM-dd').format(cursor);
-        _monthLogMap.putIfAbsent(dStr, () => []).add(l);
+        _monthLogMap.putIfAbsent(df.format(cursor), () => []).add(l);
         cursor = cursor.add(const Duration(days: 1));
       }
     }
 
-    _monthPomMap = {};
     for (var p in _allPomodoroRecords) {
       if (p.startTime <= 0) continue;
       DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal();
@@ -268,8 +271,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       DateTime cursor = DateTime(pStart.year, pStart.month, pStart.day);
       DateTime endCursor = DateTime(pEnd.year, pEnd.month, pEnd.day);
       while (!cursor.isAfter(endCursor)) {
-        String dStr = DateFormat('yyyy-MM-dd').format(cursor);
-        _monthPomMap.putIfAbsent(dStr, () => []).add(p);
+        _monthPomMap.putIfAbsent(df.format(cursor), () => []).add(p);
         cursor = cursor.add(const Duration(days: 1));
       }
     }
@@ -376,18 +378,20 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   void _jumpToWeek(int newWeek) {
+    if (!mounted) return;
     setState(() {
       _currentWeek = newWeek;
       _isLoading = true;
     });
-    CourseService.getCoursesByWeek(widget.username, newWeek).then((courses) {
-      setState(() {
-        _weekCourses = courses;
-        _updateWeekTodos();
-        _updateWeekTimeLogsAndPomodoros();
-        _isLoading = false;
-      });
-    });
+
+    // 🚀 核心优化：直接使用已加载的 _allCourses 进行过滤，不再触发数据库/Isolate 开销
+    _weekCourses = _allCourses.where((c) => c.weekIndex == newWeek).toList();
+    _updateWeekTodos();
+    _updateWeekTimeLogsAndPomodoros();
+    
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   void _toggleViewMode(int mode) {
