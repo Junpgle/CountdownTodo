@@ -1614,8 +1614,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   );
                 },
                 child: KeyedSubtree(
-                  key: _getTodoCardKey(todo.id),
-                  child: Container(
+                    key: _getTodoCardKey(todo.id),
+                    child: Container(
                     margin: const EdgeInsets.only(bottom: 6),
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
@@ -1651,28 +1651,61 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             child: IgnorePointer(
                               child: TweenAnimationBuilder<double>(
                                 key: ValueKey(
-                                    'remote_update_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
-                                tween: Tween<double>(begin: 0, end: 1),
-                                duration: const Duration(milliseconds: 1500),
+                                    'remote_update_flash_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
+                                tween: Tween<double>(begin: 1, end: 0),
+                                duration: const Duration(milliseconds: 1100),
                                 curve: Curves.easeOutCubic,
                                 builder: (context, value, _) {
-                                  final alpha = (1 - value).clamp(0.0, 1.0);
                                   return Container(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: Colors.cyanAccent
-                                            .withValues(alpha: 0.75 * alpha),
-                                        width: 2.5,
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.amberAccent
+                                              .withValues(alpha: 0.35 * value),
+                                          Colors.amberAccent
+                                              .withValues(alpha: 0.12 * value),
+                                          Colors.transparent,
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.cyanAccent
-                                              .withValues(alpha: 0.45 * alpha),
-                                          blurRadius: 20,
-                                          spreadRadius: 2,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        if (isRecentlyUpdatedByOthers)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: TweenAnimationBuilder<double>(
+                                key: ValueKey(
+                                    'remote_update_sweep_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
+                                tween: Tween<double>(begin: 0, end: 1),
+                                duration: const Duration(milliseconds: 900),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, value, _) {
+                                  return Align(
+                                    alignment:
+                                        Alignment(-1.4 + 2.8 * value, 0),
+                                    child: FractionallySizedBox(
+                                      widthFactor: 0.3,
+                                      heightFactor: 1,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Colors.transparent,
+                                              Colors.amberAccent.withValues(
+                                                  alpha: 0.22),
+                                              Colors.transparent,
+                                            ],
+                                            begin: Alignment.centerLeft,
+                                            end: Alignment.centerRight,
+                                          ),
                                         ),
-                                      ],
+                                      ),
                                     ),
                                   );
                                 },
@@ -1909,7 +1942,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                   'remote_update_badge_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
                               tween: Tween<double>(begin: 0.8, end: 1.0),
                               duration: const Duration(milliseconds: 650),
-                              curve: Curves.elasticOut,
+                              curve: Curves.easeOutCubic,
                               builder: (context, scale, child) {
                                 return Transform.scale(
                                   scale: scale,
@@ -1920,11 +1953,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: Colors.cyanAccent.withValues(alpha: 0.2),
+                                  color: Colors.amberAccent.withValues(alpha: 0.24),
                                   borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
                                     color:
-                                        Colors.cyanAccent.withValues(alpha: 0.8),
+                                        Colors.amberAccent.withValues(alpha: 0.9),
                                     width: 1,
                                   ),
                                 ),
@@ -1932,14 +1965,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(Icons.bolt_rounded,
-                                        size: 12, color: Colors.cyanAccent),
+                                        size: 12, color: Colors.amberAccent),
                                     SizedBox(width: 4),
                                     Text(
                                       '远端更新',
                                       style: TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.w800,
-                                        color: Colors.cyanAccent,
+                                        color: Colors.amberAccent,
                                       ),
                                     ),
                                   ],
@@ -1950,11 +1983,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       ],
                     ),
                   ),
+                  ),
                 ),
               ),
             ),
-          ),
-        )
+          )
     );
   }
   Widget _buildAnimatedSection({required bool expanded, required Widget child}) {

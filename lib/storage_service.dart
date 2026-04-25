@@ -2140,11 +2140,15 @@ class StorageService {
           final itemId = c.item['uuid'] ?? c.item['id'] ?? '';
           if (itemId.isEmpty) continue;
           final serverVersion = c.conflictWith;
+          final serverVersionId =
+              (serverVersion['uuid'] ?? serverVersion['id'] ?? '').toString();
+          final bool isSameItemServerVersion =
+              serverVersionId.isNotEmpty && serverVersionId == itemId.toString();
 
           if (todosIndexMap.containsKey(itemId)) {
             final todo = allLocalTodos[todosIndexMap[itemId]!];
             todo.hasConflict = true;
-            if (serverVersion.isNotEmpty) {
+            if (serverVersion.isNotEmpty && isSameItemServerVersion) {
               todo.serverVersionData = serverVersion;
             }
             hasChanges = true;
@@ -2152,7 +2156,7 @@ class StorageService {
           if (countdownsIndexMap.containsKey(itemId)) {
             final countdown = allLocalCountdowns[countdownsIndexMap[itemId]!];
             countdown.hasConflict = true;
-            if (serverVersion.isNotEmpty) {
+            if (serverVersion.isNotEmpty && isSameItemServerVersion) {
               countdown.conflictData = serverVersion;
             }
             hasChanges = true;
@@ -2160,7 +2164,7 @@ class StorageService {
           if (groupsIndexMap.containsKey(itemId)) {
             final group = allLocalGroups[groupsIndexMap[itemId]!];
             group.hasConflict = true;
-            if (serverVersion.isNotEmpty) {
+            if (serverVersion.isNotEmpty && isSameItemServerVersion) {
               group.conflictData = serverVersion;
             }
             hasChanges = true;

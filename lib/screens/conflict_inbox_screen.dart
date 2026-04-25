@@ -45,12 +45,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     items.addAll(todos.where((t) => t.hasConflict));
     items.addAll(groups.where((g) => g.hasConflict));
     items.addAll(countdowns.where((c) => c.hasConflict));
-    _mergeSyncConflicts(
-      items: items,
-      todos: todos,
-      groups: groups,
-      countdowns: countdowns,
-    );
 
     items.sort((a, b) {
       int timeA = (a is TodoItem) ? a.updatedAt : (a is TodoGroup ? a.updatedAt : (a as CountdownItem).updatedAt);
@@ -63,75 +57,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         _conflictItems = items;
         _isLoading = false;
       });
-    }
-  }
-
-  void _mergeSyncConflicts({
-    required List<dynamic> items,
-    required List<TodoItem> todos,
-    required List<TodoGroup> groups,
-    required List<CountdownItem> countdowns,
-  }) {
-    if (widget.syncConflicts == null || widget.syncConflicts!.isEmpty) return;
-
-    final existingIds = <String>{
-      for (final it in items)
-        if (it is TodoItem) it.id else if (it is TodoGroup) it.id else if (it is CountdownItem) it.id,
-    };
-
-    for (final c in widget.syncConflicts!) {
-      final itemId = (c.item['uuid'] ?? c.item['id'] ?? '').toString();
-      if (itemId.isEmpty || existingIds.contains(itemId)) continue;
-
-      TodoItem? todo;
-      for (final t in todos) {
-        if (t.id == itemId) {
-          todo = t;
-          break;
-        }
-      }
-      if (todo != null) {
-        todo.hasConflict = true;
-        if (c.conflictWith.isNotEmpty) {
-          todo.serverVersionData = c.conflictWith;
-        }
-        items.add(todo);
-        existingIds.add(itemId);
-        continue;
-      }
-
-      TodoGroup? group;
-      for (final g in groups) {
-        if (g.id == itemId) {
-          group = g;
-          break;
-        }
-      }
-      if (group != null) {
-        group.hasConflict = true;
-        if (c.conflictWith.isNotEmpty) {
-          group.conflictData = c.conflictWith;
-        }
-        items.add(group);
-        existingIds.add(itemId);
-        continue;
-      }
-
-      CountdownItem? countdown;
-      for (final cd in countdowns) {
-        if (cd.id == itemId) {
-          countdown = cd;
-          break;
-        }
-      }
-      if (countdown != null) {
-        countdown.hasConflict = true;
-        if (c.conflictWith.isNotEmpty) {
-          countdown.conflictData = c.conflictWith;
-        }
-        items.add(countdown);
-        existingIds.add(itemId);
-      }
     }
   }
 
