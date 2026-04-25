@@ -1811,6 +1811,7 @@ class StorageService {
     _isSyncing = true;
     bool hasChanges = false;
     List<ConflictInfo> conflicts = [];
+    final Set<String> updatedTodoIds = <String>{};
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2016,6 +2017,11 @@ class StorageService {
       };
       for (var raw in serverTodos) {
         TodoItem sItem = TodoItem.fromJson(raw);
+        final serverRaw = raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
+        final serverDeviceId = serverRaw['device_id']?.toString();
+        final bool isUpdatedByOtherDevice = serverDeviceId != null &&
+            serverDeviceId.isNotEmpty &&
+            serverDeviceId != deviceId;
         if (todosIndexMap.containsKey(sItem.id)) {
           final idx = todosIndexMap[sItem.id]!;
           final local = allLocalTodos[idx];
@@ -2026,6 +2032,9 @@ class StorageService {
               sItem.updatedAt > local.updatedAt ||
               sItem.hasConflict != local.hasConflict) {
             allLocalTodos[idx] = sItem;
+            if (!sItem.isDeleted && isUpdatedByOtherDevice) {
+              updatedTodoIds.add(sItem.id);
+            }
             hasChanges = true;
           } else if (sItem.groupId != local.groupId &&
               sItem.updatedAt >= local.updatedAt) {
@@ -2038,6 +2047,9 @@ class StorageService {
           if (!sItem.isDeleted) {
             todosIndexMap[sItem.id] = allLocalTodos.length;
             allLocalTodos.add(sItem);
+            if (isUpdatedByOtherDevice) {
+              updatedTodoIds.add(sItem.id);
+            }
             hasChanges = true;
           }
         }
@@ -2194,7 +2206,12 @@ class StorageService {
         triggerRefresh();
       }
 
-      return {'success': true, 'hasChanges': hasChanges, 'conflicts': conflicts};
+      return {
+        'success': true,
+        'hasChanges': hasChanges,
+        'conflicts': conflicts,
+        'updatedTodoIds': updatedTodoIds.toList(),
+      };
     } catch (e) {
       debugPrint("syncData error: $e");
       return {'success': false, 'hasChanges': false, 'error': e.toString()};

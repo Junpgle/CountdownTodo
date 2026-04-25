@@ -28,6 +28,8 @@ class TodoSectionWidget extends StatefulWidget {
   final bool isLight;
   final Function(List<TodoItem>) onTodosChanged;
   final VoidCallback onRefreshRequested;
+  final Set<String> highlightedTodoIds;
+  final int remoteUpdateHighlightSignal;
   final List<TodoGroup> todoGroups;
   final Function(List<TodoGroup>) onGroupsChanged;
 
@@ -44,6 +46,8 @@ class TodoSectionWidget extends StatefulWidget {
     required this.isLight,
     required this.onTodosChanged,
     required this.onRefreshRequested,
+    this.highlightedTodoIds = const <String>{},
+    this.remoteUpdateHighlightSignal = 0,
     this.todoGroups = const [],
     this.onGroupsChanged = _defaultOnGroupsChanged,
     this.onLLMResultsParsed,
@@ -1426,6 +1430,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         : (isPast || isFuture
             ? colorScheme.onSurface.withValues(alpha: 0.65)
             : colorScheme.onSurface);
+    final bool isRecentlyUpdatedByOthers =
+        widget.highlightedTodoIds.contains(todo.id);
 
     // ── 进度计算 ──
     DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
@@ -1640,6 +1646,39 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     ),
                     child: Stack(
                       children: [
+                        if (isRecentlyUpdatedByOthers)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: TweenAnimationBuilder<double>(
+                                key: ValueKey(
+                                    'remote_update_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
+                                tween: Tween<double>(begin: 0, end: 1),
+                                duration: const Duration(milliseconds: 1500),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, value, _) {
+                                  final alpha = (1 - value).clamp(0.0, 1.0);
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: Colors.cyanAccent
+                                            .withValues(alpha: 0.75 * alpha),
+                                        width: 2.5,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.cyanAccent
+                                              .withValues(alpha: 0.45 * alpha),
+                                          blurRadius: 20,
+                                          spreadRadius: 2,
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
                         if (!todo.isDone)
                           Positioned.fill(
                             child: TweenAnimationBuilder<double>(
@@ -1861,6 +1900,53 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             ),
                           ),
                         ),
+                        if (isRecentlyUpdatedByOthers)
+                          Positioned(
+                            top: 8,
+                            right: 10,
+                            child: TweenAnimationBuilder<double>(
+                              key: ValueKey(
+                                  'remote_update_badge_${todo.id}_${widget.remoteUpdateHighlightSignal}'),
+                              tween: Tween<double>(begin: 0.8, end: 1.0),
+                              duration: const Duration(milliseconds: 650),
+                              curve: Curves.elasticOut,
+                              builder: (context, scale, child) {
+                                return Transform.scale(
+                                  scale: scale,
+                                  child: child,
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.cyanAccent.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color:
+                                        Colors.cyanAccent.withValues(alpha: 0.8),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.bolt_rounded,
+                                        size: 12, color: Colors.cyanAccent),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      '远端更新',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.cyanAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

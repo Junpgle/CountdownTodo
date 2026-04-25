@@ -146,6 +146,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   PomodoroRunState? _localPomodoro;
   bool _isDataLoading = false; // 🚀 加载锁，防止并发触发导致的数据库竞争
   int _todoUpdateSignal = 0; // 🚀 协同更新信号
+  final Set<String> _updatedByOthersTodoIds = <String>{};
+  int _remoteTodoHighlightSignal = 0;
+  Timer? _remoteTodoHighlightTimer;
   int _teamPendingCount = 0; // 🚀 Uni-Sync 4.0: 团队待处理消息数
   String? _currentSelectedTeamUuid; // 🚀 选中的团队 ID
   String? _currentSelectedTeamName; // 🚀 选中的团队名称
@@ -300,6 +303,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     ExternalShareHandler.dispose();
     _courseTimer?.cancel();
     _collaborativeSyncDebouncer?.cancel();
+    _remoteTodoHighlightTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -1880,7 +1884,27 @@ class _HomeDashboardState extends State<HomeDashboard>
           context: context,
         );
         hasChanges = syncResult['hasChanges'] ?? false;
-        
+        final List<String> updatedTodoIds =
+            (syncResult['updatedTodoIds'] as List?)
+                    ?.map((e) => e.toString())
+                    .where((e) => e.isNotEmpty)
+                    .toList() ??
+                const <String>[];
+        if (updatedTodoIds.isNotEmpty && mounted) {
+          _remoteTodoHighlightTimer?.cancel();
+          setState(() {
+            _updatedByOthersTodoIds
+              ..clear()
+              ..addAll(updatedTodoIds);
+            _remoteTodoHighlightSignal++;
+          });
+          _remoteTodoHighlightTimer =
+              Timer(const Duration(seconds: 8), () {
+            if (!mounted) return;
+            setState(() => _updatedByOthersTodoIds.clear());
+          });
+        }
+
         // 🚀 新增：处理冲突信息
         final List<ConflictInfo> conflicts = syncResult['conflicts'] ?? [];
         if (conflicts.isNotEmpty && mounted) {
@@ -2582,6 +2606,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                       Widget todoSection = TodoSectionWidget(
                         key: ValueKey('todo_section_$_todoUpdateSignal'), // 🚀 动态 Key 强制重绘
                         todos: _todos,
+                        highlightedTodoIds: _updatedByOthersTodoIds,
+                        remoteUpdateHighlightSignal: _remoteTodoHighlightSignal,
                         todoGroups: _todoGroups,
                         username: widget.username,
                         isLight: isLight,
