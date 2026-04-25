@@ -137,34 +137,30 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   /// Find the sync conflict info that matches this item.
   Map<String, dynamic>? _findServerVersion(dynamic item) {
+    final itemId = _itemId(item);
+    if (itemId == null || itemId.isEmpty) return null;
+
     // 优先使用本地持久化的 conflict_data，避免页面只在“刚同步后”才能看到服务器版本。
     if (item is TodoItem &&
         item.serverVersionData != null &&
-        item.serverVersionData!.isNotEmpty) {
+        item.serverVersionData!.isNotEmpty &&
+        _sameItem(item.serverVersionData!, itemId)) {
       return item.serverVersionData;
     }
     if (item is TodoGroup &&
         item.conflictData != null &&
-        item.conflictData!.isNotEmpty) {
+        item.conflictData!.isNotEmpty &&
+        _sameItem(item.conflictData!, itemId)) {
       return item.conflictData;
     }
     if (item is CountdownItem &&
         item.conflictData != null &&
-        item.conflictData!.isNotEmpty) {
+        item.conflictData!.isNotEmpty &&
+        _sameItem(item.conflictData!, itemId)) {
       return item.conflictData;
     }
 
     if (widget.syncConflicts == null) return null;
-    String itemId;
-    if (item is TodoItem) {
-      itemId = item.id;
-    } else if (item is TodoGroup) {
-      itemId = item.id;
-    } else if (item is CountdownItem) {
-      itemId = item.id;
-    } else {
-      return null;
-    }
 
     for (final c in widget.syncConflicts!) {
       final conflictItemId = c.item['uuid'] ?? c.item['id'] ?? '';
@@ -173,6 +169,18 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
     }
     return null;
+  }
+
+  String? _itemId(dynamic item) {
+    if (item is TodoItem) return item.id;
+    if (item is TodoGroup) return item.id;
+    if (item is CountdownItem) return item.id;
+    return null;
+  }
+
+  bool _sameItem(Map<String, dynamic> data, String itemId) {
+    final dataId = (data['uuid'] ?? data['id'] ?? '').toString();
+    return dataId.isNotEmpty && dataId == itemId;
   }
 
   String _resolveTable(dynamic item) {
