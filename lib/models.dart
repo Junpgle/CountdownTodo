@@ -5,6 +5,49 @@ import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 
+
+// ==========================================
+// 0. 时间轴相关 (Timeline)
+// ==========================================
+
+enum TimelineEventType {
+  pomodoroStart,
+  pomodoroEnd,
+  todoCompleted,
+  todoCreated,
+  countdownCreated,
+  searchQuery,
+}
+
+class TimelineEvent {
+  final String id;
+  final DateTime timestamp;
+  final TimelineEventType type;
+  final String title;
+  final String? subtitle;
+  final Map<String, dynamic>? extraData;
+
+  TimelineEvent({
+    required this.id,
+    required this.timestamp,
+    required this.type,
+    required this.title,
+    this.subtitle,
+    this.extraData,
+  });
+
+  factory TimelineEvent.fromMap(Map<String, dynamic> map) {
+    return TimelineEvent(
+      id: map['id'] ?? '',
+      timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp']),
+      type: TimelineEventType.values[map['type']],
+      title: map['title'] ?? '',
+      subtitle: map['subtitle'],
+      extraData: map['extraData'],
+    );
+  }
+}
+
 // ==========================================
 // 1. 测验相关 (完整保留原有逻辑)
 // ==========================================

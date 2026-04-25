@@ -54,6 +54,7 @@ import 'pomodoro_screen.dart';
 // 🚀 引入
 // 🚀 引入
 import '../widgets/global_search_overlay.dart';
+import '../widgets/personal_timeline_section.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -99,7 +100,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   DateTime? _semesterEnd;
 
   List<String> _leftSections = ['courses', 'todos', 'math'];
-  List<String> _rightSections = ['countdowns', 'screenTime', 'pomodoro'];
+  List<String> _rightSections = ['countdowns', 'screenTime', 'timeline', 'pomodoro'];
 
   Map<String, bool> _sectionVisibility = {
     'courses': true,
@@ -108,6 +109,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     'screenTime': true,
     'math': true,
     'pomodoro': true,
+    'timeline': true,
   };
   Timer? _courseTimer;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
@@ -120,7 +122,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
   // 每次自增触发首页专注记录卡片刷新
-  int _pomodoroRefreshTrigger = 0;
+  // 每次自增触发首页专注记录卡片与时间轴刷新
+  int _timelineRefreshTrigger = 0;
 
   int _selectedTabIndex = 0;
 
@@ -350,6 +353,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 更新本地列表
     setState(() {
       _todos = [...newTodos, ..._todos];
+      _timelineRefreshTrigger++; // 🚀 触发时间轴刷新
     });
 
     // 保存到数据库
@@ -561,7 +565,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             }
 
             _syncService.sendReconnectSyncSignal(
-              sessionUuid: saved.sessionUuid ?? const Uuid().v4(),
+              sessionUuid: saved.sessionUuid,
               todoUuid: saved.todoUuid,
               todoTitle: saved.todoTitle,
               durationSeconds: saved.phase == PomodoroPhase.focusing
@@ -978,7 +982,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           sourceKey: _focusBannerKey,
         );
         if (mounted) {
-          setState(() => _pomodoroRefreshTrigger++);
+          setState(() => _timelineRefreshTrigger++);
           _loadAllData();
         }
       },
@@ -1238,7 +1242,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     
     // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
     _leftSections = ['countdowns', 'todos'];
-    _rightSections = ['courses', 'pomodoro', 'screenTime', 'math'];
+    _rightSections = ['courses', 'timeline', 'pomodoro', 'screenTime', 'math'];
 
     // 忽略之前的可见性设置，全部强制显示
     _sectionVisibility = {
@@ -1248,6 +1252,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       'screenTime': true,
       'math': true,
       'pomodoro': true,
+      'timeline': true,
     };
 
     String? noCourseBehav = prefs.getString('no_course_behavior');
@@ -1268,7 +1273,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       // 🚀 唤醒时重置壁纸重试计数，防止因最小化导致的短暂断网触发兜底
       _wallpaperRetryCount = 0;
       // 从番茄钟页或任何前台切换回来时，刷新专注记录卡片
-      if (mounted) setState(() => _pomodoroRefreshTrigger++);
+      if (mounted) setState(() => _timelineRefreshTrigger++);
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
       _syncService.resumeSync();
     }
@@ -1316,7 +1321,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       sourceKey: _pomodoroCardKey,
     );
     if (mounted) {
-      setState(() => _pomodoroRefreshTrigger++);
+      setState(() => _timelineRefreshTrigger++);
       _loadAllData();
     }
   }
@@ -2359,7 +2364,10 @@ class _HomeDashboardState extends State<HomeDashboard>
     ).then((_) async {
       // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
       await Future.delayed(const Duration(milliseconds: 200));
-      if (mounted) setState(() => _isSearchOpen = false);
+      if (mounted) setState(() {
+        _isSearchOpen = false;
+        _timelineRefreshTrigger++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
+      });
     });
   }
 
@@ -2514,7 +2522,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                           countdowns: _countdowns,
                           username: widget.username,
                           isLight: isLight,
-                          onDataChanged: _loadAllData);
+                          onDataChanged: () {
+                            _loadAllData();
+                            setState(() => _timelineRefreshTrigger++);
+                          });
                       Widget todoSection = TodoSectionWidget(
                         key: ValueKey('todo_section_$_todoUpdateSignal'), // 🚀 动态 Key 强制重绘
                         todos: _todos,
@@ -2543,7 +2554,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                         onTodosChanged: (newTodos) async {
                           // 🚀 记录变更，用于通知清除
                           final oldTodos = List<TodoItem>.from(_todos);
-                          setState(() => _todos = newTodos);
+                          setState(() {
+                            _todos = newTodos;
+                            _timelineRefreshTrigger++;
+                          });
 
                           // 🚀 核心修复：任务完成后自动清除对应通知
                           for (var nt in newTodos) {
@@ -2644,13 +2658,19 @@ class _HomeDashboardState extends State<HomeDashboard>
                           ),
                         ),
                       );
+                      Widget timelineSection = PersonalTimelineSection(
+                        username: widget.username,
+                        isLight: isLight,
+                        refreshTrigger: _timelineRefreshTrigger,
+                      );
+
                       Widget pomodoroSection = RepaintBoundary(
                         child: KeyedSubtree(
                           key: _pomodoroCardKey,
                           child: PomodoroTodaySection(
                             username: widget.username,
                             isLight: isLight,
-                            refreshTrigger: _pomodoroRefreshTrigger,
+                            refreshTrigger: _timelineRefreshTrigger,
                             onTap: () async {
                               await PageTransitions.pushFromRect(
                                 context: context,
@@ -2661,7 +2681,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                 sourceKey: _pomodoroCardKey,
                               );
                               if (mounted) {
-                                setState(() => _pomodoroRefreshTrigger++);
+                                setState(() => _timelineRefreshTrigger++);
                                 _loadAllData();
                               }
                             },
@@ -2676,6 +2696,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                         'screenTime': screenTimeSection,
                         'math': mathSection,
                         'pomodoro': pomodoroSection,
+                        'timeline': timelineSection,
                       };
 
                       bool hasNoCourse = (_dashboardCourseData['courses'] ==
@@ -2702,7 +2723,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                 child: sectionsMap[key]!))
                             .toList();
 
-                        List<Widget> tab3Widgets = ['pomodoro', 'screenTime', 'math']
+                        List<Widget> tab3Widgets = ['timeline', 'pomodoro', 'screenTime', 'math']
                             .where((key) =>
                                 (_sectionVisibility[key] ?? true) &&
                                 sectionsMap.containsKey(key))
@@ -2769,7 +2790,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       List<Widget> buildColumnWidgets(List<String> keys) {
                         return keys
                             .where((key) =>
-                                _sectionVisibility[key] == true &&
+                                (_sectionVisibility[key] ?? true) &&
                                 sectionsMap.containsKey(key))
                             .map((key) => Padding(
                                 padding: const EdgeInsets.only(bottom: 24.0),
@@ -2880,7 +2901,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                 sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
               );
               if (mounted) {
-                setState(() => _pomodoroRefreshTrigger++);
+                setState(() => _timelineRefreshTrigger++);
                 _loadAllData();
               }
             },

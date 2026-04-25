@@ -219,8 +219,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             Column(
               children: [
                 _buildHourlyChart(subColor),
-                const SizedBox(height: 12),
-                _buildTagStatistics(subColor),
+                // 🚀 根据用户要求，首页移除“专注项目”统计，点击后在专注Tab查看
               ],
             ),
         ],
