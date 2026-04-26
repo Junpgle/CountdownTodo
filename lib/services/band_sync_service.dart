@@ -6,6 +6,17 @@ import 'package:flutter/services.dart';
 class BandSyncService {
   static const MethodChannel _channel =
       MethodChannel('com.math_quiz_app/band_communication');
+  static const int _maxPlatformMessageBytes = 64 * 1024;
+  static const int _maxSyncStringLength = 512;
+  static const Set<String> _excludedSyncKeys = {
+    'imagePath',
+    'image_path',
+    'originalText',
+    'original_text',
+    'analysisImagePath',
+    'conflict_data',
+    'serverVersionData',
+  };
 
   static bool _isInitialized = false;
   static bool _isConnected = false;
@@ -247,9 +258,10 @@ class BandSyncService {
     }
 
     try {
+      final sanitizedData = _sanitizeForBand(data);
       final payload = {
         'type': type,
-        'data': data,
+        'data': sanitizedData,
         'batchNum': batchNum,
         'totalBatches': totalBatches,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
@@ -257,10 +269,17 @@ class BandSyncService {
 
       // 🚀 核心优化：对于较大数据量，使用 Isolate 处理 JSON 编码，避免主线程卡顿
       String message;
-      if (data is List && data.length > 5) {
+      if (sanitizedData is List && sanitizedData.length > 5) {
         message = await compute(jsonEncode, payload);
       } else {
         message = jsonEncode(payload);
+      }
+
+      final messageBytes = utf8.encode(message).length;
+      if (messageBytes > _maxPlatformMessageBytes) {
+        _addLog(
+            '发送数据失败: $type 第 $batchNum/$totalBatches 批过大 (${(messageBytes / 1024).toStringAsFixed(1)}KB)');
+        return false;
       }
 
       await _channel.invokeMethod('sendMessage', {'data': message});
@@ -274,14 +293,14 @@ class BandSyncService {
 
   /// 同步待办事项
   static Future<bool> syncTodos(List<Map<String, dynamic>> todos) async {
-    final success = await sendData('todo', todos);
+    final success = await _sendListData('todo', todos);
     if (success) _updateLastSyncTime();
     return success;
   }
 
   /// 同步课程表
   static Future<bool> syncCourses(List<Map<String, dynamic>> courses) async {
-    final success = await sendData('course', courses);
+    final success = await _sendListData('course', courses);
     if (success) _updateLastSyncTime();
     return success;
   }
@@ -289,7 +308,7 @@ class BandSyncService {
   /// 同步倒计时
   static Future<bool> syncCountdowns(
       List<Map<String, dynamic>> countdowns) async {
-    final success = await sendData('countdown', countdowns);
+    final success = await _sendListData('countdown', countdowns);
     if (success) _updateLastSyncTime();
     return success;
   }
@@ -297,7 +316,7 @@ class BandSyncService {
   /// 同步番茄钟运行状态
   static Future<bool> syncPomodoro(
       List<Map<String, dynamic>> pomodoroData) async {
-    final success = await sendData('pomodoro', pomodoroData);
+    final success = await _sendListData('pomodoro', pomodoroData);
     if (success) _updateLastSyncTime();
     return success;
   }
@@ -309,6 +328,80 @@ class BandSyncService {
 
   static void _updateLastSyncTime() {
     _lastSyncTime = DateTime.now();
+  }
+
+  static dynamic _sanitizeForBand(dynamic value) {
+    if (value is Map) {
+      final sanitized = <String, dynamic>{};
+      value.forEach((key, mapValue) {
+        final stringKey = key.toString();
+        if (_excludedSyncKeys.contains(stringKey)) return;
+        sanitized[stringKey] = _sanitizeForBand(mapValue);
+      });
+      return sanitized;
+    }
+    if (value is List) {
+      return value.map(_sanitizeForBand).toList();
+    }
+    if (value is String && value.length > _maxSyncStringLength) {
+      return value.substring(0, _maxSyncStringLength);
+    }
+    return value;
+  }
+
+  static Future<bool> _sendListData(
+      String type, List<Map<String, dynamic>> items) async {
+    if (items.isEmpty) {
+      return sendData(type, const [], batchNum: 1, totalBatches: 1);
+    }
+
+    final chunks = <List<Map<String, dynamic>>>[];
+    var current = <Map<String, dynamic>>[];
+
+    for (final item in items) {
+      final sanitizedItem =
+          Map<String, dynamic>.from(_sanitizeForBand(item) as Map);
+      final candidate = [...current, sanitizedItem];
+      if (_estimatePayloadBytes(type, candidate) > _maxPlatformMessageBytes) {
+        if (current.isEmpty) {
+          _addLog('同步 $type 失败: 单条数据过大，已跳过');
+          continue;
+        }
+        chunks.add(current);
+        if (_estimatePayloadBytes(type, [sanitizedItem]) >
+            _maxPlatformMessageBytes) {
+          _addLog('同步 $type 失败: 单条数据过大，已跳过');
+          current = [];
+        } else {
+          current = [sanitizedItem];
+        }
+      } else {
+        current = candidate;
+      }
+    }
+    if (current.isNotEmpty) chunks.add(current);
+
+    if (chunks.isEmpty) return false;
+
+    var allSuccess = true;
+    for (var i = 0; i < chunks.length; i++) {
+      final success = await sendData(type, chunks[i],
+          batchNum: i + 1, totalBatches: chunks.length);
+      if (!success) allSuccess = false;
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+    return allSuccess;
+  }
+
+  static int _estimatePayloadBytes(String type, List<Map<String, dynamic>> data) {
+    final payload = {
+      'type': type,
+      'data': data,
+      'batchNum': 1,
+      'totalBatches': 1,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+    return utf8.encode(jsonEncode(payload)).length;
   }
 
   static DateTime? get lastSyncTime => _lastSyncTime;

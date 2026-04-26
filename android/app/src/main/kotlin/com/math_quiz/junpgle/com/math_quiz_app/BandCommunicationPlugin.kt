@@ -19,6 +19,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     companion object {
         private const val TAG = "BandCommunication"
+        private const val MAX_MESSAGE_BYTES = 64 * 1024
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -264,8 +265,18 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             return
         }
 
-        messageApi?.sendMessage(node.id, data.toByteArray())?.addOnSuccessListener {
-            Log.d(TAG, "消息发送成功: $data")
+        val dataBytes = data.toByteArray()
+        if (dataBytes.size > MAX_MESSAGE_BYTES) {
+            Log.e(TAG, "发送消息失败: 消息过大 ${dataBytes.size} bytes")
+            invokeMethod("onError", mapOf(
+                "code" to 1010,
+                "message" to "发送失败: 消息过大，请减少同步数据"
+            ))
+            return
+        }
+
+        messageApi?.sendMessage(node.id, dataBytes)?.addOnSuccessListener {
+            Log.d(TAG, "消息发送成功: ${dataBytes.size} bytes")
             invokeMethod("onMessageSent", mapOf("success" to true))
         }?.addOnFailureListener { e ->
             Log.e(TAG, "消息发送失败", e)
@@ -341,6 +352,14 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         unregisterMessageListener()
 
         messageListener = OnMessageReceivedListener { nodeId, message ->
+            if (message.size > MAX_MESSAGE_BYTES) {
+                Log.e(TAG, "丢弃过大的手环消息: ${message.size} bytes")
+                invokeMethod("onError", mapOf(
+                    "code" to 1011,
+                    "message" to "收到的手环消息过大，已丢弃"
+                ))
+                return@OnMessageReceivedListener
+            }
             val messageStr = String(message)
             Log.d(TAG, "收到手环消息: $messageStr")
             invokeMethod("onMessageReceived", mapOf("data" to messageStr))

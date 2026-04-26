@@ -1183,7 +1183,15 @@ class StorageService {
     if (!BandSyncService.isInitialized || !BandSyncService.isConnected) return;
     try {
       final activeTodos =
-          items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
+          items.where((t) => !t.isDeleted).map((t) {
+        final data = t.toJson();
+        data.remove('image_path');
+        data.remove('imagePath');
+        data.remove('original_text');
+        data.remove('originalText');
+        data.remove('conflict_data');
+        return data;
+      }).toList();
       await BandSyncService.syncTodos(activeTodos);
     } catch (_) {}
   }
