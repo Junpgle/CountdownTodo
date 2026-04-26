@@ -237,7 +237,7 @@ class TimelineService {
           subtitle: courseName,
         ));
       }
-
+      
     } catch (e) {
       debugPrint('❌ TimelineService.getEventsForDay error: $e');
     }
@@ -344,7 +344,7 @@ class TimelineService {
       // 5. 番茄钟 (完成次数)
       final poms = await db.query(
         'pomodoro_records',
-        where: "is_deleted = 0 AND status = 'completed' AND end_time >= ? AND end_time < ?",
+        where: "is_deleted = 0 AND status = 'completed' AND start_time >= ? AND start_time < ?",
         whereArgs: [startOfDayMs, endOfDayMs],
       );
       pomodoroCount = poms.length;
