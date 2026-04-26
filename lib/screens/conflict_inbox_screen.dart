@@ -62,7 +62,23 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final countdowns = results[2] as List<CountdownItem>;
 
     final List<dynamic> items = [];
-    items.addAll(todos.where((t) => t.hasConflict));
+    items.addAll(todos.where((t) {
+      if (!t.hasConflict) return false;
+      if (_isAllDayTask(t.toJson())) return false;
+
+      // 如果有详细的冲突数据，检查其冲突对象是否全是全天任务
+      final data = t.serverVersionData;
+      if (data != null &&
+          (data['type'] == 'schedule' || data['conflict_with'] != null)) {
+        final peers = data['conflict_with'];
+        if (peers is List) {
+          final validPeers = peers.where((p) =>
+              p is Map && !_isAllDayTask(Map<String, dynamic>.from(p)));
+          if (validPeers.isEmpty) return false;
+        }
+      }
+      return true;
+    }));
     items.addAll(groups.where((g) => g.hasConflict));
     items.addAll(countdowns.where((c) => c.hasConflict));
 
@@ -376,6 +392,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       body: Column(
         children: [
           _buildScanProgressBanner(),
+          _buildGhostConflictBanner(),
           if (!_isLoading) _buildConflictStats(),
           Expanded(
             child: _isLoading
@@ -453,6 +470,138 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         );
       },
     );
+  }
+
+  Widget _buildGhostConflictBanner() {
+    final ghostItems = _conflictItems.where((item) {
+      if (item is! TodoItem) return false;
+      final data = _findServerVersion(item);
+      return (data == null || data.isEmpty) &&
+          !(_conflictData(item)?['type'] == 'schedule');
+    }).toList();
+
+    if (ghostItems.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: Colors.orange, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              "发现 ${ghostItems.length} 项损坏的冲突（无云端快照）",
+              style: const TextStyle(
+                  fontSize: 13,
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: () => _batchResolveGhostConflicts(ghostItems),
+            child: const Text("一键修复"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _batchResolveGhostConflicts(List<dynamic> items) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("一键修复"),
+        content: Text("将强制保留这 ${items.length} 项任务的本地版本并清除冲突标记。确认继续？"),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("取消")),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("确认修复")),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. 一次性获取所有数据源
+      final results = await Future.wait([
+        StorageService.getTodos(widget.username, includeDeleted: true),
+        StorageService.getTodoGroups(widget.username, includeDeleted: true),
+        StorageService.getCountdowns(widget.username),
+      ]);
+
+      final allTodos = results[0] as List<TodoItem>;
+      final allGroups = results[1] as List<TodoGroup>;
+      final allCountdowns = results[2] as List<CountdownItem>;
+
+      bool todosChanged = false;
+      bool groupsChanged = false;
+      bool countdownsChanged = false;
+
+      // 2. 在内存中批量处理
+      for (final ghost in items) {
+        final id = _itemId(ghost);
+        if (id == null) continue;
+
+        if (ghost is TodoItem) {
+          final idx = allTodos.indexWhere((t) => t.id == id);
+          if (idx != -1) {
+            allTodos[idx].hasConflict = false;
+            allTodos[idx].serverVersionData = null;
+            allTodos[idx].markAsChanged();
+            todosChanged = true;
+          }
+        } else if (ghost is TodoGroup) {
+          final idx = allGroups.indexWhere((g) => g.id == id);
+          if (idx != -1) {
+            allGroups[idx].hasConflict = false;
+            allGroups[idx].conflictData = null;
+            allGroups[idx].markAsChanged();
+            groupsChanged = true;
+          }
+        } else if (ghost is CountdownItem) {
+          final idx = allCountdowns.indexWhere((c) => c.id == id);
+          if (idx != -1) {
+            allCountdowns[idx].hasConflict = false;
+            allCountdowns[idx].conflictData = null;
+            allCountdowns[idx].markAsChanged();
+            countdownsChanged = true;
+          }
+        }
+      }
+
+      // 3. 批量持久化（每种类型仅写入一次）
+      final saves = <Future>[];
+      if (todosChanged) saves.add(StorageService.saveTodos(widget.username, allTodos));
+      if (groupsChanged) saves.add(StorageService.saveTodoGroups(widget.username, allGroups));
+      if (countdownsChanged) saves.add(StorageService.saveCountdowns(widget.username, allCountdowns));
+      
+      if (saves.isNotEmpty) await Future.wait(saves);
+
+    } catch (e) {
+      debugPrint("批量修复失败: $e");
+    }
+
+    // 4. 统一刷新界面
+    await _loadConflicts();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("损坏的冲突已批量修复")),
+      );
+    }
   }
 
   Widget _buildConflictStats() {
@@ -867,24 +1016,89 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
               style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('知道了'),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await _resolveGhostConflict(item);
+                    },
+                    child: const Text('强制保留本地'),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 12),
           ],
         ),
       ),
     );
   }
 
+  Future<void> _resolveGhostConflict(dynamic item, {bool refresh = true}) async {
+    if (item is TodoItem) {
+      final all = await StorageService.getTodos(widget.username,
+          includeDeleted: true);
+      final idx = all.indexWhere((t) => t.id == item.id);
+      if (idx != -1) {
+        all[idx].hasConflict = false;
+        all[idx].serverVersionData = null;
+        all[idx].markAsChanged();
+        await StorageService.saveTodos(widget.username, all);
+      }
+    } else if (item is TodoGroup) {
+      final all = await StorageService.getTodoGroups(widget.username,
+          includeDeleted: true);
+      final idx = all.indexWhere((g) => g.id == item.id);
+      if (idx != -1) {
+        all[idx].hasConflict = false;
+        all[idx].conflictData = null;
+        all[idx].markAsChanged();
+        await StorageService.saveTodoGroups(widget.username, all);
+      }
+    } else if (item is CountdownItem) {
+      final all = await StorageService.getCountdowns(widget.username);
+      final idx = all.indexWhere((c) => c.id == item.id);
+      if (idx != -1) {
+        all[idx].hasConflict = false;
+        all[idx].conflictData = null;
+        all[idx].markAsChanged();
+        await StorageService.saveCountdowns(widget.username, all);
+      }
+    }
+
+    if (refresh) {
+      await _loadConflicts();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("已强制保留本地并清除冲突标记")),
+        );
+      }
+    }
+  }
+
   Future<void> _showLocalScheduleConflict(dynamic item) async {
     final data = _conflictData(item) ?? {};
-    final peers = data['conflict_with'] is List
-        ? data['conflict_with'] as List
-        : const [];
+    final peers = (data['conflict_with'] is List
+            ? data['conflict_with'] as List
+            : const [])
+        .where((p) =>
+            p is Map && !_isAllDayTask(Map<String, dynamic>.from(p)))
+        .toList();
+
+    // 如果过滤掉全天任务后不再冲突，则不显示详情（或提示已解决）
+    if (peers.isEmpty && (item is TodoItem)) {
+      // 这里的逻辑可以根据需要调整，目前保持能打开但列表为空
+    }
+
     final allTodos = item is TodoItem
         ? await StorageService.getTodos(widget.username, includeDeleted: true)
         : const <TodoItem>[];
@@ -1528,6 +1742,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 candidate != null &&
                 !candidate.isDeleted &&
                 !candidate.isAllDay &&
+                !_isAllDayTask(candidate.toJson()) &&
                 _todoEndMs(candidate) > _todoStartMs(candidate) &&
                 _isSameLocalDayMs(_todoStartMs(candidate), seedStart) &&
                 ((peerId != null && candidate.id == peerId) ||
@@ -1556,6 +1771,39 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   String? _itemIdFromData(Map<String, dynamic> data) {
     return (data['uuid'] ?? data['id'] ?? data['id_todo'])?.toString();
+  }
+
+  bool _isAllDayTask(Map<String, dynamic> data) {
+    if (data['is_all_day'] == 1 ||
+        data['is_all_day'] == true ||
+        data['isAllDay'] == true) return true;
+    final startMs = _parseMs(data['start_time'] ??
+        data['startTime'] ??
+        data['created_date'] ??
+        data['createdDate']);
+    final endMs = _parseMs(data['end_time'] ??
+        data['endTime'] ??
+        data['due_date'] ??
+        data['dueDate']);
+    if (startMs <= 0 || endMs <= startMs) return false;
+
+    final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+    final end = DateTime.fromMillisecondsSinceEpoch(endMs);
+
+    // 判定为全天任务：时间正好跨越 00:00 到 23:59 或次日 00:00
+    if (start.hour == 0 && start.minute == 0) {
+      if ((end.hour == 23 && end.minute == 59) ||
+          (end.hour == 0 && end.minute == 0 && end.isAfter(start))) {
+        return true;
+      }
+    }
+
+    // 跨度超过 23.5 小时也视为全天
+    if (endMs - startMs >= const Duration(hours: 23, minutes: 30).inMilliseconds) {
+      return true;
+    }
+
+    return false;
   }
 
   int _todoStartMs(TodoItem item) => item.createdDate ?? item.createdAt;

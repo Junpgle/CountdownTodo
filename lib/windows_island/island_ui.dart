@@ -902,7 +902,72 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         onLongPressStart: (_) => _startDrag(),
         child: Listener(
           onPointerSignal: (pointerSignal) {
-            if (pointerSignal is PointerScrollEvent) return;
+            if (pointerSignal is PointerScrollEvent) {
+              final delta = pointerSignal.scrollDelta.dy;
+              
+              // idle 态下滚轮切换卡片
+              if (!_cardsLoaded) {
+                _initCards();
+              }
+              
+              if (_cards.isEmpty) return;
+              
+              // 重置自动返回定时器
+              _resetIdleAutoReturnTimer();
+              
+              if (_isFocusing && _isScrolledInFocus) {
+                // 专注状态下已滚轮切换：继续在卡片间滚动
+                if (delta > 0) {
+                  // 向下滚 → 下一张卡片
+                  setState(() {
+                    _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
+                  });
+                } else if (delta < 0) {
+                  // 向上滚 → 上一张卡片
+                  setState(() {
+                    _currentCardIndex = _currentCardIndex == 0 
+                        ? _cards.length - 1 
+                        : _currentCardIndex - 1;
+                  });
+                }
+              } else if (!_isFocusing && _currentCardIndex > 0) {
+                // idle 态下非计时显示：已经在卡片上，继续滚轮切换
+                if (delta > 0) {
+                  setState(() {
+                    _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
+                  });
+                } else if (delta < 0) {
+                  setState(() {
+                    _currentCardIndex = _currentCardIndex == 0 
+                        ? _cards.length - 1 
+                        : _currentCardIndex - 1;
+                  });
+                }
+              } else if (_isFocusing && !_isScrolledInFocus) {
+                // 专注状态默认显示计时：滚轮切换到卡片
+                if (delta != 0) {
+                  setState(() {
+                    _isScrolledInFocus = true;
+                    _currentCardIndex = delta > 0 ? 1 : _cards.length - 1;
+                  });
+                }
+              } else if (!_isFocusing && _currentCardIndex == 0) {
+                // idle 态下显示计时：滚轮切换到卡片
+                if (delta != 0) {
+                  setState(() {
+                    _currentCardIndex = delta > 0 ? 1 : _cards.length - 1;
+                  });
+                }
+              }
+              
+              // 同时更新窗口大小
+              final newSize = _idleSizeForCard();
+              _sizeAnimation = Tween<Size>(
+                begin: _currentWindowSize,
+                end: newSize,
+              ).animate(_sizeController);
+              _resizeWindowOnce(newSize);
+            }
           },
           child: Container(
             color: Colors.transparent,
