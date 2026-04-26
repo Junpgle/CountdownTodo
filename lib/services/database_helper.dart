@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -389,6 +389,24 @@ class DatabaseHelper {
             }
           }
         }
+          if (oldVersion < 21) {
+            try {
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS screen_time (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  record_date TEXT,
+                  package_name TEXT,
+                  app_name TEXT,
+                  duration INTEGER,
+                  updated_at INTEGER
+                )
+              ''');
+              await db.execute('CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
+              debugPrint('✅ Database: 创建 screen_time 表 (V21)');
+            } catch (e) {
+              debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
+            }
+          }
     );
   }
 
@@ -730,6 +748,18 @@ class DatabaseHelper {
         night_count INTEGER DEFAULT 0
       )
     ''');
+    // 🚀 Version 21: 新增屏幕时间记录表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS screen_time (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_date TEXT,
+        package_name TEXT,
+        app_name TEXT,
+        duration INTEGER,
+        updated_at INTEGER
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)
