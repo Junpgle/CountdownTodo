@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:intl/intl.dart';
 import 'package:CountDownTodo/models.dart';
 import 'package:CountDownTodo/storage_service.dart';
@@ -31,9 +32,15 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     with TickerProviderStateMixin {
   final Map<String, AnimationController> _pulseControllers = {};
   String? _selectedTeamUuid; // 🚀 选中的团队视口
+  
+  // 🚀 桌面端滑动优化：增加控制器
+  late final ScrollController _listScrollController = ScrollController();
+  late final ScrollController _tabsScrollController = ScrollController();
 
   @override
   void dispose() {
+    _listScrollController.dispose();
+    _tabsScrollController.dispose();
     for (final controller in _pulseControllers.values) {
       controller.dispose();
     }
@@ -201,49 +208,63 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
       if (c.teamUuid != null) teams.add(c.teamUuid!);
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-                child: SectionHeader(
-                    title: "重要日",
-                    icon: Icons.timer,
-                    onAdd: _addCountdown,
-                    isLight: widget.isLight)),
-            IconButton(
-              icon: Icon(Icons.history,
-                  color: useDarkUI ? Colors.white70 : Colors.grey),
-              onPressed: () async {
-                await Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                        HistoricalCountdownsScreen(username: widget.username)));
-                widget.onDataChanged();
-              },
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(
+        dragDevices: {
+          PointerDeviceKind.touch,
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.trackpad,
+          PointerDeviceKind.stylus,
+        },
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                  child: SectionHeader(
+                      title: "重要日",
+                      icon: Icons.timer,
+                      onAdd: _addCountdown,
+                      isLight: widget.isLight)),
+              IconButton(
+                icon: Icon(Icons.history,
+                    color: useDarkUI ? Colors.white70 : Colors.grey),
+                onPressed: () async {
+                  await Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                          HistoricalCountdownsScreen(username: widget.username)));
+                  widget.onDataChanged();
+                },
+              ),
+            ],
+          ),
+          if (teams.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              controller: _tabsScrollController,
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildTeamTab("全部", null, useDarkUI),
+                  ...teams.map((uuid) {
+                    final name = widget.countdowns
+                            .firstWhere((c) => c.teamUuid == uuid)
+                            .teamName ??
+                        "团队项目";
+                    return _buildTeamTab(name, uuid, useDarkUI);
+                  }),
+                ],
+              ),
             ),
           ],
-        ),
-        if (teams.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildTeamTab("全部", null, useDarkUI),
-                ...teams.map((uuid) {
-                  final name = widget.countdowns.firstWhere((c) => c.teamUuid == uuid).teamName ?? "团队项目";
-                  return _buildTeamTab(name, uuid, useDarkUI);
-                }),
-              ],
-            ),
-          ),
+          const SizedBox(height: 12),
+          _buildList(),
         ],
-        const SizedBox(height: 12),
-        _buildList(),
-      ],
+      ),
     );
   }
 
@@ -288,6 +309,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     return SizedBox(
       height: 130, // 🚀 适度增加总高度，防止小屏幕溢出
       child: ListView.builder(
+        controller: _listScrollController,
         clipBehavior: Clip.none,
         scrollDirection: Axis.horizontal,
         itemCount: activeCountdowns.length,

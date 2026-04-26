@@ -1782,13 +1782,32 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       final List<TodoItem> allTodos =
           _safeListResult<TodoItem>(results[0]).where((t) => !t.isDeleted).toList();
-      final bool hasTeamConflict =
-          allTodos.any((t) => t.hasConflict && (t.teamUuid?.isNotEmpty ?? false));
       final List<TodoGroup> allGroups =
           _safeListResult<TodoGroup>(results[1]).where((g) => !g.isDeleted).toList();
       final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
         results[2],
       ).where((c) => !c.isDeleted).toList();
+
+      final bool hasTeamConflict = allTodos.any((t) {
+            if (!t.hasConflict || (t.teamUuid?.isEmpty ?? true)) return false;
+            if (t.isAllDayTask) return false;
+            final data = t.serverVersionData;
+            if (data != null &&
+                (data['type'] == 'schedule' || data['conflict_with'] != null)) {
+              final peers = data['conflict_with'];
+              if (peers is List) {
+                final hasValidPeer = peers.any((p) =>
+                    p is Map &&
+                    !TodoItem.fromJson(Map<String, dynamic>.from(p))
+                        .isAllDayTask);
+                if (!hasValidPeer) return false;
+              }
+            }
+            return true;
+          }) ||
+          allGroups.any((g) => g.hasConflict && (g.teamUuid?.isNotEmpty ?? false)) ||
+          allCountdowns.any((c) => c.hasConflict && (c.teamUuid?.isNotEmpty ?? false));
+
       final Map<String, dynamic> mathStats = (results[3] ?? {}) as Map<String, dynamic>;
       final Map<String, dynamic> courseData = (results[4] ?? {'title': '课程提醒', 'courses': []}) as Map<String, dynamic>;
 

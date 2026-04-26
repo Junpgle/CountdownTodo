@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:async';
@@ -28,12 +28,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   static List<dynamic> _cachedInvitations = [];
   static Map<String, int> _cachedPendingCounts = {};
   static Map<String, int> _cachedConflictCounts = {};
+  static int _cachedTotalConflictCount = 0;
   StreamSubscription? _wsSub;
   Team? _selectedTeam;
   List<Team> _teams = [];
   List<dynamic> _myInvitations = [];
   Map<String, int> _teamPendingCounts = {};
   Map<String, int> _teamConflictCounts = {};
+  int _totalConflictCount = 0;
   bool _isLoading = true;
   bool _isCheckingClipboard = false;
 
@@ -57,6 +59,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     _myInvitations = List<dynamic>.from(_cachedInvitations);
     _teamPendingCounts = Map<String, int>.from(_cachedPendingCounts);
     _teamConflictCounts = Map<String, int>.from(_cachedConflictCounts);
+    _totalConflictCount = _cachedTotalConflictCount;
     _selectedTeam = _selectedTeam != null
         ? _teams.where((t) => t.uuid == _selectedTeam!.uuid).firstOrNull
         : (_teams.isNotEmpty ? _teams.first : null);
@@ -295,20 +298,62 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   Future<void> _loadTeamConflictCounts() async {
     try {
-      final localTodos =
-          await StorageService.getTodos(widget.username, includeDeleted: false);
+      final results = await Future.wait([
+        StorageService.getTodos(widget.username, includeDeleted: false),
+        StorageService.getTodoGroups(widget.username),
+        StorageService.getCountdowns(widget.username, includeDeleted: false),
+      ]);
+
+      final allItems = results.expand((x) => x).toList();
       final conflictCounts = <String, int>{};
-      for (final todo in localTodos) {
-        final teamUuid = todo.teamUuid;
-        if (teamUuid != null && teamUuid.isNotEmpty && todo.hasConflict) {
-          conflictCounts[teamUuid] = (conflictCounts[teamUuid] ?? 0) + 1;
+      int total = 0;
+
+      for (final item in allItems) {
+        bool hasConflict = false;
+        String? teamUuid;
+
+        if (item is TodoItem) {
+          if (!item.hasConflict) continue;
+          // 🚀 对齐 ConflictInboxScreen：跳过全天任务的冲突
+          if (item.isAllDayTask) continue;
+
+          // 🚀 对齐 ConflictInboxScreen：如果是日程冲突，且所有冲突对象都是全天任务，也跳过
+          final data = item.serverVersionData;
+          if (data != null &&
+              (data['type'] == 'schedule' || data['conflict_with'] != null)) {
+            final peers = data['conflict_with'];
+            if (peers is List) {
+              final hasValidPeer = peers.any((p) =>
+                  p is Map &&
+                  !TodoItem.fromJson(Map<String, dynamic>.from(p)).isAllDayTask);
+              if (!hasValidPeer) continue;
+            }
+          }
+          hasConflict = true;
+          teamUuid = item.teamUuid;
+        } else if (item is TodoGroup) {
+          hasConflict = item.hasConflict;
+          teamUuid = item.teamUuid;
+        } else if (item is CountdownItem) {
+          hasConflict = item.hasConflict;
+          teamUuid = item.teamUuid;
+        }
+
+        if (hasConflict) {
+          total++;
+          if (teamUuid != null && teamUuid.isNotEmpty) {
+            conflictCounts[teamUuid] = (conflictCounts[teamUuid] ?? 0) + 1;
+          }
         }
       }
+
       if (!mounted) return;
       setState(() {
         _teamConflictCounts = conflictCounts;
+        _totalConflictCount = total;
       });
       _cachedConflictCounts = Map<String, int>.from(conflictCounts);
+      _cachedTotalConflictCount = total;
     } catch (_) {}
   }
 
@@ -835,13 +880,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
               desc: isWide ? "处理多终端同步产生的数据争议" : "解决多端同步冲突",
               icon: Icons.verified_user_rounded,
               color: Colors.orangeAccent,
-              badgeCount:
-                  _teamConflictCounts.values.fold(0, (sum, count) => sum + count),
-              onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) =>
-                          ConflictInboxScreen(username: widget.username))),
+              badgeCount: _totalConflictCount,
+              onTap: () async {
+                await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) =>
+                            ConflictInboxScreen(username: widget.username)));
+                _loadTeams(isSilent: true); // 🚀 返回后强制刷新，确保红点消失
+              },
             ),
           ],
         ),

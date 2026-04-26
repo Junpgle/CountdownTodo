@@ -889,6 +889,7 @@ class StorageService {
 
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
+      _inflightTodoRequests.clear();
     }
 
     if (recomputeScheduleConflicts) {
@@ -1803,6 +1804,7 @@ class StorageService {
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+    _inflightTodoRequests.clear();
 
     List<String> jsonList =
         dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
@@ -3698,6 +3700,7 @@ class StorageService {
     } catch (_) {}
 
     await batch.commit(noResult: true);
+    _inflightTodoRequests.clear();
 
     // Invalidate SharedPreferences cache so next load picks up the resolved item
     final prefs = await SharedPreferences.getInstance();

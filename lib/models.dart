@@ -226,6 +226,41 @@ class TodoItem {
     updatedAt = DateTime.now().millisecondsSinceEpoch;
   }
 
+  static int _parseMs(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  bool get isAllDayTask {
+    if (isAllDay) return true;
+    final data = toJson();
+    final startMs = _parseMs(data['start_time'] ??
+        data['startTime'] ??
+        data['created_date'] ??
+        data['createdDate']);
+    final endMs = _parseMs(data['end_time'] ??
+        data['endTime'] ??
+        data['due_date'] ??
+        data['dueDate']);
+    if (startMs <= 0 || endMs <= startMs) return false;
+
+    final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+    final end = DateTime.fromMillisecondsSinceEpoch(endMs);
+
+    // 判定为全天任务：时间正好跨越 00:00 到 23:59 或次日 00:00
+    if (start.hour == 0 && start.minute == 0) {
+      if ((end.hour == 23 && end.minute == 59) ||
+          (end.hour == 0 && end.minute == 0 && end.isAfter(start))) {
+        return true;
+      }
+    }
+    // 跨度超过 23.5 小时也视为全天
+    if (end.difference(start).inMinutes >= 1410) return true;
+
+    return false;
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'uuid': id,

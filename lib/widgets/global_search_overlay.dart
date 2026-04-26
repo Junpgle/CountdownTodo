@@ -220,34 +220,35 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         ? Color.fromRGBO(28, 28, 30, isCompact ? 0.96 : 1.0)
         : Color.fromRGBO(255, 255, 255, isCompact ? 0.98 : 1.0);
 
-    // 🚀 电脑端背景使用不透明主题色，移动端保持毛玻璃透明感
+    // 🚀 背景色：电脑端使用更深的遮罩和更强的模糊，产生“悬浮感”但又不会透出背景细节
     final backdropColor = isCompact
         ? (isDark
             ? const Color.fromRGBO(0, 0, 0, 0.26)
             : const Color.fromRGBO(255, 255, 255, 0.16))
-        : Theme.of(context).scaffoldBackgroundColor;
+        : (isDark
+            ? Colors.black.withValues(alpha: 0.75)
+            : Colors.black.withValues(alpha: 0.35));
 
     return Scaffold(
-      backgroundColor: isCompact ? Colors.transparent : backdropColor,
+      backgroundColor: Colors.transparent,
       resizeToAvoidBottomInset: false,
       body: KeyboardListener(
         focusNode: FocusNode(),
         onKeyEvent: _handleKeyEvent,
         child: Stack(
           children: [
-            // ── 背景 ──
+            // ── 背景遮罩 ──
             GestureDetector(
               onTap: _close,
-              child: isCompact
-                  ? BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                      child: Container(
-                        color: backdropColor,
-                      ),
-                    )
-                  : Container(
-                      color: backdropColor,
-                    ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                  sigmaX: isCompact ? 15 : 30,
+                  sigmaY: isCompact ? 15 : 30,
+                ),
+                child: Container(
+                  color: backdropColor,
+                ),
+              ),
             ),
             // ── 内容 ──
             SafeArea(
