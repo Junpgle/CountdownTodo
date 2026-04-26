@@ -1737,10 +1737,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       final start = DateTime.now();
       final result = await task.timeout(const Duration(seconds: 5));
       final duration = DateTime.now().difference(start).inMilliseconds;
-      debugPrint("⚡ [DashboardLoader] $name 加载成功 ($duration ms)");
+      //debugPrint("⚡ [DashboardLoader] $name 加载成功 ($duration ms)");
       return result;
     } catch (e) {
-      debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
+      //debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
       return null;
     }
   }
@@ -1769,7 +1769,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     try {
       final startTime = DateTime.now();
-      debugPrint("⏳ [DashboardLoader] 开始并发加载 5 项核心任务...");
+      //debugPrint("⏳ [DashboardLoader] 开始并发加载 5 项核心任务...");
 
       // 1. 读取基础数据 (并发执行，带超时保护)
       final results = await Future.wait([
@@ -1890,7 +1890,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               })
           .toList();
       await file.writeAsString(jsonEncode(todosJson));
-      debugPrint('[HomeDashboard] Saved ${todos.length} todos to shared file');
+      // debugPrint('[HomeDashboard] Saved ${todos.length} todos to shared file');
     } catch (e) {
       debugPrint('[HomeDashboard] Failed to save todos to shared file: $e');
     }
@@ -1910,6 +1910,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     });
 
     try {
+      // 🚀 核心加固：增加 30 秒超时强制释放锁，防止由于网络异常导致的图标“永动机”
+      Timer(const Duration(seconds: 30), () {
+        if (mounted && _isSyncing) {
+          setState(() => _isSyncing = false);
+        }
+      });
       final prefs = await SharedPreferences.getInstance();
       int? userId = prefs.getInt('current_user_id');
       if (userId == null) throw Exception("未登录");

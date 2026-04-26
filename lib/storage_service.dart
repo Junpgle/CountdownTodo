@@ -145,6 +145,38 @@ class StorageService {
     return int.tryParse(raw.toString());
   }
 
+  // --- 🚀 Uni-Sync 4.0: 忽略项管理 ---
+
+  /// 将特定的远端项加入忽略列表，防止其再次被同步回来
+  static Future<void> ignoreRemoteItem({
+    required String table,
+    required String uuid,
+    String? teamUuid,
+  }) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.insert('ignored_remote_items', {
+      'uuid': uuid,
+      'team_uuid': teamUuid,
+      'table_name': table,
+      'ignored_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    debugPrint("🚫 [忽略项] 已记录 $table.$uuid 至忽略表");
+  }
+
+  /// 移除忽略记录
+  static Future<void> unignoreRemoteItem(String uuid) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('ignored_remote_items', where: 'uuid = ?', whereArgs: [uuid]);
+  }
+
+  /// 检查项是否被忽略
+  static Future<bool> isItemIgnored(String uuid) async {
+    final db = await DatabaseHelper.instance.database;
+    final results = await db.query('ignored_remote_items',
+        where: 'uuid = ?', whereArgs: [uuid]);
+    return results.isNotEmpty;
+  }
+
   static String _todoRequestKey(
     String username, {
     required bool includeDeleted,
@@ -1444,8 +1476,8 @@ class StorageService {
               .toList();
         }
         final handledTodos = await _handleRecurrenceLogic(username, todos);
-        debugPrint(
-            "📦 getTodos(SQL) 完成: count=${handledTodos.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms");
+        //debugPrint(
+        //    "📦 getTodos(SQL) 完成: count=${handledTodos.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms");
         if (!includeDeleted) {
           return handledTodos.where((todo) => !todo.isDeleted).toList();
         }
@@ -2304,13 +2336,12 @@ class StorageService {
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
 
-      // 3. 🛡️ 核心修复：基于 op_logs 识别脏数据，不再依赖不可靠的时间戳对比
+      // 3. 🛡️ 核心修复：基于 op_logs 识别脏数据，并进行 UUID 去重处理（防止 1000+ 冗余同步）
       final db = await DatabaseHelper.instance.database;
       List<Map<String, dynamic>> dirtyTodos = [];
       List<Map<String, dynamic>> dirtyGroups = [];
       List<Map<String, dynamic>> dirtyCountdowns = [];
       List<Map<String, dynamic>> dirtyTimeLogs = [];
-
       List<TodoItem> allLocalTodos =
           await getTodos(username, includeDeleted: true);
       List<TodoGroup> allLocalGroups =
@@ -2318,26 +2349,37 @@ class StorageService {
       List<CountdownItem> allLocalCountdowns =
           await getCountdowns(username, includeDeleted: true);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
-
+      
+      // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps =
-          await db.query('op_logs', where: 'is_synced = 0');
+          await db.query('op_logs', where: 'is_synced = 0', orderBy: 'timestamp ASC');
+
+      final Map<String, Map<String, dynamic>> dedupTodos = {};
+      final Map<String, Map<String, dynamic>> dedupGroups = {};
+      final Map<String, Map<String, dynamic>> dedupCountdowns = {};
 
       for (var op in pendingOps) {
         final table = op['target_table'];
+        final uuid = op['target_uuid']?.toString();
         final dataJson = op['data_json'];
-        if (dataJson == null) continue; // 🛡️ 跳过损坏的离线记录
+        
+        if (dataJson == null || uuid == null) continue; 
         final data = jsonDecode(dataJson.toString());
 
         if (table == 'todos') {
           data.remove('image_path');
           data.remove('imagePath');
-          dirtyTodos.add(data);
+          dedupTodos[uuid] = data;
         } else if (table == 'todo_groups') {
-          dirtyGroups.add(data);
+          dedupGroups[uuid] = data;
         } else if (table == 'countdowns') {
-          dirtyCountdowns.add(data);
+          dedupCountdowns[uuid] = data;
         }
       }
+
+      dirtyTodos = dedupTodos.values.toList();
+      dirtyGroups = dedupGroups.values.toList();
+      dirtyCountdowns = dedupCountdowns.values.toList();
 
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
       dirtyTimeLogs = allLocalTimeLogs
@@ -2490,6 +2532,11 @@ class StorageService {
 
       // 6. 🛡️ 数据合并逻辑 (LWW - Last Write Wins) — O(1) HashMap lookup
 
+      // 🚀 核心修复：获取本地忽略表，防止“僵尸数据”复活
+      final ignoredRows = await db.query('ignored_remote_items');
+      final Set<String> ignoredUuids =
+          ignoredRows.map((e) => e['uuid'].toString()).toSet();
+
       // 合并 Todos
       List<dynamic> serverTodos = response['server_todos'] ?? [];
 
@@ -2498,6 +2545,10 @@ class StorageService {
       };
       for (var raw in serverTodos) {
         TodoItem sItem = TodoItem.fromJson(raw);
+        if (ignoredUuids.contains(sItem.id)) {
+          debugPrint('🚫 [合并跳过] UUID: ${sItem.id} 已在本地忽略列表中');
+          continue;
+        }
         final serverRaw =
             raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
         final serverDeviceId = serverRaw['device_id']?.toString();
@@ -2545,6 +2596,10 @@ class StorageService {
       };
       for (var raw in serverGroups) {
         TodoGroup sItem = TodoGroup.fromJson(raw);
+        if (ignoredUuids.contains(sItem.id)) {
+          debugPrint('🚫 [合并跳过] 文件夹 UUID: ${sItem.id} 已忽略');
+          continue;
+        }
         if (groupsIndexMap.containsKey(sItem.id)) {
           final idx = groupsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||
@@ -2571,6 +2626,10 @@ class StorageService {
       };
       for (var raw in serverCountdowns) {
         CountdownItem sItem = CountdownItem.fromJson(raw);
+        if (ignoredUuids.contains(sItem.id)) {
+          debugPrint('🚫 [合并跳过] 倒计时 UUID: ${sItem.id} 已忽略');
+          continue;
+        }
         if (countdownsIndexMap.containsKey(sItem.id)) {
           final idx = countdownsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||

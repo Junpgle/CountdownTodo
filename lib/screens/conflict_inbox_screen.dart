@@ -29,6 +29,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   bool _isScanning = false;
   bool _isApplyingScheduleFix = false;
   _ConflictFilter _selectedFilter = _ConflictFilter.all;
+  dynamic _selectedItem; // 🚀 新增：当前选中的冲突项，用于桌面端双栏展示
+
+  bool get _isWide => MediaQuery.of(context).size.width > 900;
 
   @override
   void initState() {
@@ -360,54 +363,431 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        title: const Text('数据冲突对齐中心',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        actions: [
-          IconButton(
-            icon: _isScanning
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.radar_rounded, size: 20),
-            tooltip: '扫描全部待办冲突',
-            onPressed: _isScanning ? null : _scanAllTodoConflicts,
-          ),
-          IconButton(
-            icon: const Icon(Icons.help_outline_rounded, size: 20),
-            onPressed: _showConflictHelp,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-            onPressed: _loadConflicts,
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          // 🚀 1. 现代沉浸式背景
+          _buildModernBackground(isDark),
+
+          // 🚀 2. 主内容区域
+          SafeArea(
+            child: Column(
+              children: [
+                _buildModernAppBar(isDark),
+                _buildScanProgressBanner(),
+                _buildGhostConflictBanner(),
+                if (!_isLoading) _buildConflictStats(),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth > 900) {
+                        return _buildWideLayout(isDark);
+                      }
+                      return _buildMobileLayout(isDark);
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      body: Column(
+    );
+  }
+
+  Widget _buildModernBackground(bool isDark) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+    );
+  }
+
+  Widget _buildModernAppBar(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
         children: [
-          _buildScanProgressBanner(),
-          _buildGhostConflictBanner(),
-          if (!_isLoading) _buildConflictStats(),
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+            color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+            tooltip: '返回',
+          ),
+          const SizedBox(width: 8),
           Expanded(
-            child: _isLoading
-                ? _buildSkeleton()
-                : _visibleConflictItems.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _visibleConflictItems.length,
-                        itemBuilder: (context, index) {
-                          return _buildConflictCard(_visibleConflictItems[index]);
-                        },
-                      ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '冲突对齐中心',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.blueGrey.shade900,
+                  ),
+                ),
+                Text(
+                  'Uni-Sync 4.0 智能数据对齐引擎',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white54 : Colors.blueGrey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16), // Replacement for Spacer to keep some gap if titles are short
+          _buildAppBarAction(
+            icon: _isScanning ? null : Icons.radar_rounded,
+            loading: _isScanning,
+            onTap: _isScanning ? null : _scanAllTodoConflicts,
+            tooltip: '扫描全部冲突',
+          ),
+          const SizedBox(width: 12),
+          _buildAppBarAction(
+            icon: Icons.refresh_rounded,
+            onTap: _loadConflicts,
+            tooltip: '刷新列表',
+          ),
+          const SizedBox(width: 12),
+          _buildAppBarAction(
+            icon: Icons.help_outline_rounded,
+            onTap: _showConflictHelp,
+            tooltip: '查看帮助',
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAppBarAction({
+    IconData? icon,
+    bool loading = false,
+    VoidCallback? onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: loading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(icon, size: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWideLayout(bool isDark) {
+    return Row(
+      children: [
+        // 左栏：列表
+        SizedBox(
+          width: 380,
+          child: _buildConflictList(isDark),
+        ),
+        // 分割线
+        VerticalDivider(
+          width: 1,
+          thickness: 1,
+          color: isDark ? Colors.white10 : Colors.black12,
+        ),
+        // 右栏：详情
+        Expanded(
+          child: _buildDetailPane(isDark),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout(bool isDark) {
+    return _buildConflictList(isDark);
+  }
+
+  Widget _buildConflictList(bool isDark) {
+    if (_isLoading) return _buildSkeleton();
+    if (_visibleConflictItems.isEmpty) return _buildEmptyState();
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(24),
+      itemCount: _visibleConflictItems.length,
+      itemBuilder: (context, index) {
+        final item = _visibleConflictItems[index];
+        final isSelected = _selectedItem == item;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildModernConflictCard(item, isSelected, isDark),
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailPane(bool isDark) {
+    if (_selectedItem == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.auto_awesome_motion_rounded,
+              size: 64,
+              color: isDark ? Colors.white10 : Colors.black12,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '请选择一个冲突项进行对齐',
+              style: TextStyle(
+                fontSize: 16,
+                color: isDark ? Colors.white38 : Colors.black38,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 根据选中的项目类型渲染不同的详情视图
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: Container(
+        key: ValueKey(_itemId(_selectedItem)),
+        child: _buildEmbeddedResolutionUI(_selectedItem, isDark),
+      ),
+    );
+  }
+
+  Widget _buildLocalScheduleDetail(dynamic item, bool isDark) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDetailHeader(
+            icon: Icons.schedule_rounded,
+            title: '时间冲突排查',
+            subtitle: '该待办与已有日程在时间上存在重叠，请调整其时间。',
+            isDark: isDark,
+          ),
+          const SizedBox(height: 32),
+          _buildLocalScheduleCard(item, isDark),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMissingSnapshotDetail(dynamic item, bool isDark) {
+    return Center(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 500),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDetailHeader(
+              icon: Icons.auto_fix_high_rounded,
+              title: '云端快照同步异常',
+              subtitle: '本地标记了冲突但未找到云端备份，可能是同步链路中断导致。建议执行一键修复。',
+              isDark: isDark,
+              center: true,
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: FilledButton.icon(
+                onPressed: () => _batchResolveGhostConflicts([item]),
+                icon: const Icon(Icons.flash_on_rounded),
+                label: const Text('立即修复并同步', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: FilledButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailHeader({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool isDark,
+    bool center = false,
+  }) {
+    return Column(
+      crossAxisAlignment: center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: Colors.blue, size: 32),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          title,
+          textAlign: center ? TextAlign.center : TextAlign.start,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.blueGrey.shade900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          subtitle,
+          textAlign: center ? TextAlign.center : TextAlign.start,
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: isDark ? Colors.white54 : Colors.blueGrey.shade500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmbeddedResolutionUI(dynamic item, bool isDark) {
+    if (_isLocalScheduleConflict(item)) {
+      return _buildLocalScheduleDetail(item, isDark);
+    }
+
+    final serverVersion = _findServerVersion(item);
+    if (serverVersion == null || serverVersion.isEmpty) {
+      return _buildMissingSnapshotDetail(item, isDark);
+    }
+
+    final localJson = _itemToJson(item);
+    final table = _resolveTable(item);
+
+    return _ConflictResolutionSheet(
+      localItem: localJson,
+      serverItem: serverVersion,
+      table: table,
+      username: widget.username,
+      isEmbedded: true,
+      onResolved: () {
+        setState(() => _selectedItem = null);
+        _loadConflicts();
+      },
+    );
+  }
+
+  Widget _buildModernConflictCard(dynamic item, bool isSelected, bool isDark) {
+    String title = "";
+    if (item is TodoItem) title = item.title;
+    else if (item is TodoGroup) title = item.name;
+    else if (item is CountdownItem) title = item.title;
+
+    final conflictColor = _conflictColor(item);
+    final isTodo = item is TodoItem;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        color: isSelected
+            ? (isDark ? Colors.blue.withValues(alpha: 0.15) : Colors.blue.withValues(alpha: 0.1))
+            : (isDark ? Colors.white.withValues(alpha: 0.03) : Colors.white.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected
+              ? Colors.blue
+              : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+          width: isSelected ? 1.5 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: () {
+          if (_isWide) {
+            setState(() => _selectedItem = item);
+          } else {
+            _resolveConflict(item);
+          }
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: conflictColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        color: isDark ? Colors.white : Colors.blueGrey.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  _buildMiniBadge(_conflictLabel(item), conflictColor.withValues(alpha: 0.1), conflictColor),
+                  _buildMiniBadge(_relationLabel(item), Colors.blue.withValues(alpha: 0.1), Colors.blue),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMiniBadge(String text, Color bgColor, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: textColor,
+        ),
       ),
     );
   }
@@ -423,11 +803,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         final total = (scanState['total'] as int?) ?? 0;
         final message = scanState['message']?.toString() ?? '正在扫描冲突';
         return Container(
-          margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.orangeAccent.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
                 color: Colors.orangeAccent.withValues(alpha: 0.18)),
           ),
@@ -436,35 +816,47 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.radar_rounded,
-                      size: 18, color: Colors.orangeAccent),
-                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orangeAccent.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.radar_rounded,
+                        size: 20, color: Colors.orangeAccent),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: Text(message,
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(message,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('已扫描 $current / $total',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                      ],
+                    ),
                   ),
                   Text('$progress%',
                       style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
                           color: Colors.orangeAccent)),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 16),
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
                   value: progress <= 0 ? null : progress / 100,
-                  minHeight: 6,
+                  minHeight: 8,
                   backgroundColor: Colors.orangeAccent.withValues(alpha: 0.12),
                   valueColor:
                       const AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text('已扫描 $current / $total',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
             ],
           ),
         );
@@ -483,17 +875,25 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     if (ghostItems.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.all(12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+        gradient: LinearGradient(
+          colors: [Colors.red.shade400, Colors.pink.shade400],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withValues(alpha: 0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          )
+        ],
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded,
-              color: Colors.orange, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -558,32 +958,59 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         if (ghost is TodoItem) {
           final idx = allTodos.indexWhere((t) => t.id == id);
           if (idx != -1) {
-            allTodos[idx].hasConflict = false;
-            allTodos[idx].serverVersionData = null;
-            // 🚀 极大幅度提升版本和时间戳，确保本地“修复”指令在云端冲突中绝对胜出
-            allTodos[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000; // 置后 1 分钟
-            allTodos[idx].version = (allTodos[idx].version ?? 1) + 1000; // 跳跃式提升版本号
-            allTodos[idx].markAsChanged();
+            final item = allTodos[idx];
+            // 🚀 精准清理：根据归属权决定动作
+            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
+              // A. 团队项 -> 加入忽略表并物理删除
+              await StorageService.ignoreRemoteItem(table: 'todos', uuid: item.id, teamUuid: item.teamUuid);
+              // 🚀 核心加固：同时同步给服务端，防止其他设备同步时拉回
+              ApiService.ignoreRemoteItem(uuid: item.id, table: 'todos', teamUuid: item.teamUuid);
+              allTodos.removeAt(idx);
+            } else {
+              // B. 个人项 -> 软删除 + 版本跃迁
+              item.isDeleted = true;
+              item.hasConflict = false;
+              item.serverVersionData = null;
+              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
+              item.version = item.version + 1000;
+              item.markAsChanged();
+            }
             todosChanged = true;
           }
         } else if (ghost is TodoGroup) {
           final idx = allGroups.indexWhere((g) => g.id == id);
           if (idx != -1) {
-            allGroups[idx].hasConflict = false;
-            allGroups[idx].conflictData = null;
-            allGroups[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-            allGroups[idx].version = (allGroups[idx].version ?? 1) + 1000;
-            allGroups[idx].markAsChanged();
+            final item = allGroups[idx];
+            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
+              await StorageService.ignoreRemoteItem(table: 'todo_groups', uuid: item.id, teamUuid: item.teamUuid);
+              ApiService.ignoreRemoteItem(uuid: item.id, table: 'todo_groups', teamUuid: item.teamUuid);
+              allGroups.removeAt(idx);
+            } else {
+              item.isDeleted = true;
+              item.hasConflict = false;
+              item.conflictData = null;
+              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
+              item.version = item.version + 1000;
+              item.markAsChanged();
+            }
             groupsChanged = true;
           }
         } else if (ghost is CountdownItem) {
           final idx = allCountdowns.indexWhere((c) => c.id == id);
           if (idx != -1) {
-            allCountdowns[idx].hasConflict = false;
-            allCountdowns[idx].conflictData = null;
-            allCountdowns[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-            allCountdowns[idx].version = (allCountdowns[idx].version ?? 1) + 1000;
-            allCountdowns[idx].markAsChanged();
+            final item = allCountdowns[idx];
+            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
+              await StorageService.ignoreRemoteItem(table: 'countdowns', uuid: item.id, teamUuid: item.teamUuid);
+              ApiService.ignoreRemoteItem(uuid: item.id, table: 'countdowns', teamUuid: item.teamUuid);
+              allCountdowns.removeAt(idx);
+            } else {
+              item.isDeleted = true;
+              item.hasConflict = false;
+              item.conflictData = null;
+              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
+              item.version = item.version + 1000;
+              item.markAsChanged();
+            }
             countdownsChanged = true;
           }
         }
@@ -612,34 +1039,168 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Widget _buildConflictStats() {
-    final timeCount = _timeConflictItems.length;
-    final otherCount = _otherConflictItems.length;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
       child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
+        spacing: 12,
+        runSpacing: 12,
         children: [
-          _buildStatChip(
-            label: '全部',
+          _buildModernStatCard(
+            label: '全部冲突',
             count: _conflictItems.length,
+            icon: Icons.all_inbox_rounded,
             color: Colors.blue,
             isSelected: _selectedFilter == _ConflictFilter.all,
             onTap: () => setState(() => _selectedFilter = _ConflictFilter.all),
           ),
-          _buildStatChip(
-            label: '时间冲突',
-            count: timeCount,
-            color: Colors.orangeAccent,
+          _buildModernStatCard(
+            label: '排程冲突',
+            count: _timeConflictItems.length,
+            icon: Icons.schedule_rounded,
+            color: Colors.orange,
             isSelected: _selectedFilter == _ConflictFilter.time,
             onTap: () => setState(() => _selectedFilter = _ConflictFilter.time),
           ),
-          _buildStatChip(
-            label: '其他冲突',
-            count: otherCount,
-            color: Colors.amber,
+          _buildModernStatCard(
+            label: '内容版本',
+            count: _otherConflictItems.length,
+            icon: Icons.difference_rounded,
+            color: Colors.indigo,
             isSelected: _selectedFilter == _ConflictFilter.other,
             onTap: () => setState(() => _selectedFilter = _ConflictFilter.other),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernStatCard({
+    required String label,
+    required int count,
+    required IconData icon,
+    required Color color,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? color.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.1),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: isSelected ? color : Colors.grey),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? color : Colors.grey,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: isSelected ? color : Colors.grey.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '$count',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocalScheduleCard(dynamic item, bool isDark) {
+    final conflictWith = _conflictData(item)?['conflict_with'];
+    final peers = conflictWith is List ? conflictWith : [];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.03) : Colors.white.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("受影响的项目", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          _buildScheduleItemRow(item, isMain: true),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            child: Icon(Icons.link_rounded, color: Colors.orangeAccent, size: 20),
+          ),
+          ...peers.map((p) => _buildScheduleItemRow(p)),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => _resolveConflict(item),
+              icon: const Icon(Icons.edit_calendar_rounded),
+              label: const Text("进入时间对齐助手", style: TextStyle(fontWeight: FontWeight.bold)),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScheduleItemRow(dynamic data, {bool isMain = false}) {
+    final Map<String, dynamic> map = data is Map ? Map<String, dynamic>.from(data) : (data as TodoItem).toJson();
+    final title = map['content'] ?? map['title'] ?? '未命名任务';
+    final start = _parseMs(map['created_date'] ?? map['createdDate'] ?? map['start_time'] ?? map['startTime']);
+    final end = _parseMs(map['due_date'] ?? map['dueDate'] ?? map['end_time'] ?? map['endTime']);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isMain ? Colors.orangeAccent.withValues(alpha: 0.05) : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isMain ? Colors.orangeAccent.withValues(alpha: 0.2) : Colors.transparent),
+      ),
+      child: Row(
+        children: [
+          Icon(isMain ? Icons.warning_amber_rounded : Icons.event_note_rounded, 
+               color: isMain ? Colors.orangeAccent : Colors.blue, size: 20),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                  '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(end))}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1939,12 +2500,15 @@ class _ConflictResolutionSheet extends StatefulWidget {
   final String username;
   final VoidCallback onResolved;
 
+  final bool isEmbedded;
+
   const _ConflictResolutionSheet({
     required this.localItem,
     required this.serverItem,
     required this.table,
     required this.username,
     required this.onResolved,
+    this.isEmbedded = false,
   });
 
   @override
@@ -1960,6 +2524,16 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isEmbedded) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: _buildContent(context),
+        ),
+      );
+    }
+
     return Container(
       constraints:
           BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
@@ -1984,14 +2558,23 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text("冲突对比",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(
-              "请选择保留哪个版本的数据",
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 20),
+            ..._buildContent(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildContent(BuildContext context) {
+    return [
+      const Text("版本对齐建议",
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      Text(
+        "检测到两端内容存在差异，请选择权威版本进行保留。",
+        style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+      ),
+      const SizedBox(height: 32),
 
             // Local version card
             _buildVersionCard(
@@ -2069,10 +2652,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
               const Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ],
             const SizedBox(height: 12),
-          ],
-        ),
-      ),
-    );
+          ];
   }
 
   Widget _buildVersionCard({

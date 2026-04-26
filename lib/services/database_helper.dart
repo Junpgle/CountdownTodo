@@ -72,9 +72,24 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 20, // 🚀 V20: 修复 op_logs.sync_error 字段缺失导致同步中断
+        version: 22, // 🚀 V20: 修复 op_logs.sync_error 字段缺失导致同步中断
         onCreate: _createDB,
-        onUpgrade: (db, oldVersion, newVersion) async {
+        onUpgrade: (db, oldVersion, newVersion) async { 
+          if (oldVersion < 22) {
+            try {
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS ignored_remote_items (
+                  uuid TEXT PRIMARY KEY,
+                  team_uuid TEXT,
+                  table_name TEXT,
+                  ignored_at INTEGER
+                )
+              ''');
+              debugPrint('✅ Database: 创建 ignored_remote_items 表 (V22)');
+            } catch (e) {
+              debugPrint('⚠️ Database: 创建 ignored_remote_items 表失败: $e');
+            }
+          }
           if (oldVersion < 3) {
             // 🚀 Uni-Sync 安全升级：为核心业务表补全协作元数据
             final tables = ['todos', 'countdowns', 'todo_groups'];
@@ -400,7 +415,17 @@ class DatabaseHelper {
                   updated_at INTEGER
                 )
               ''');
-              await db.execute('CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
+              await db.execute('CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)'); 
+    // 🚀 Version 22: 新增 ignored_remote_items 表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ignored_remote_items (
+        uuid TEXT PRIMARY KEY,
+        team_uuid TEXT,
+        table_name TEXT,
+        ignored_at INTEGER
+      )
+    ''');
+    debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
               debugPrint('✅ Database: 创建 screen_time 表 (V21)');
             } catch (e) {
               debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
@@ -759,7 +784,17 @@ class DatabaseHelper {
         updated_at INTEGER
       )
     ''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)'); 
+    // 🚀 Version 22: 新增 ignored_remote_items 表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ignored_remote_items (
+        uuid TEXT PRIMARY KEY,
+        team_uuid TEXT,
+        table_name TEXT,
+        ignored_at INTEGER
+      )
+    ''');
+    debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)
