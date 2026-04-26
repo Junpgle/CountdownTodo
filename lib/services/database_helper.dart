@@ -61,6 +61,29 @@ class DatabaseHelper {
     }
   }
 
+  static Future<void> ensureCourseTableSchema(Database db) async {
+    try {
+      final info = await db.rawQuery("PRAGMA table_info(courses)");
+      if (info.isEmpty) return;
+
+      final columnsToAdd = [
+        {'name': 'is_deleted', 'type': 'INTEGER DEFAULT 0'},
+        {'name': 'version', 'type': 'INTEGER DEFAULT 1'},
+        {'name': 'updated_at', 'type': 'INTEGER DEFAULT 0'},
+        {'name': 'created_at', 'type': 'INTEGER DEFAULT 0'},
+      ];
+
+      for (final column in columnsToAdd) {
+        if (!info.any((row) => row['name'] == column['name'])) {
+          await db.execute("ALTER TABLE courses ADD COLUMN ${column['name']} ${column['type']};");
+          debugPrint("✅ Database: 修复字段 courses.${column['name']}");
+        }
+      }
+    } catch (e) {
+      debugPrint("⚠️ Database: 检查/修复 courses 表结构失败: $e");
+    }
+  }
+
   Future<Database> _initDB(String filePath) async {
     // 🚀 桌面端 SQL 引擎初始化已由 main.dart 统一处理
 
@@ -72,9 +95,17 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 22, // 🚀 V20: 修复 op_logs.sync_error 字段缺失导致同步中断
+        version: 23, // 🚀 V23: 修复 courses 老库缺失核心字段导致课表迁移失败
         onCreate: _createDB,
-        onUpgrade: (db, oldVersion, newVersion) async { 
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 23) {
+            try {
+              await ensureCourseTableSchema(db);
+            } catch (e) {
+              debugPrint("⚠️ Database: 修复 courses 表字段失败 (V23): $e");
+            }
+          }
+
           if (oldVersion < 22) {
             try {
               await db.execute('''
@@ -138,6 +169,8 @@ class DatabaseHelper {
             // 2. 强制重建 FTS 架构（采用动态嗅探）
             await _setupFts(db);
           }
+
+          await ensureCourseTableSchema(db);
 
           if (oldVersion < 6) {
             try {
@@ -431,7 +464,10 @@ class DatabaseHelper {
               debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
             }
           }
-        }
+        },
+        onOpen: (db) async {
+          await ensureCourseTableSchema(db);
+        },
     );
   }
 

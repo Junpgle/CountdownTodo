@@ -373,7 +373,7 @@ class PomodoroService {
   // ── 私有助手：获取隔离的存储 Key ──────────────────────────
   static Future<String> _getScopedKey(String baseKey) async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString('current_user'); // 必须与 StorageService.KEY_CURRENT_USER 一致
+    final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
     if (username == null || username.isEmpty) return baseKey;
     return "${baseKey}_$username";
   }
@@ -387,7 +387,7 @@ class PomodoroService {
     
     // 迁移检查
     if (s == null) {
-      final String? username = prefs.getString('current_user');
+      final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
       if (username != null && username.isNotEmpty) {
         final markerKey = "${_keySettings}_${username}_migrated";
         if (!(prefs.getBool(markerKey) ?? false)) {
@@ -466,7 +466,7 @@ class PomodoroService {
     if (!(prefs.getBool(migrationKey) ?? false)) {
       String? s = prefs.getString(scopedKey);
       if (s == null) {
-        final username = prefs.getString('current_user');
+        final username = prefs.getString(StorageService.KEY_CURRENT_USER);
         if (username != null) s = prefs.getString(_keyTags);
       }
 
@@ -599,7 +599,8 @@ class PomodoroService {
         await saveTags(activeTags, isSyncSource: true);
 
         // 立即触发同步
-        final username = await SharedPreferences.getInstance().then((p) => p.getString('current_user') ?? '');
+        final username = await SharedPreferences.getInstance().then(
+            (p) => p.getString(StorageService.KEY_CURRENT_USER) ?? '');
         if (username.isNotEmpty) {
           StorageService.syncData(username);
         }
@@ -740,7 +741,7 @@ class PomodoroService {
 
     // 3. 立即尝试同步
     if (!isSyncSource) {
-      final username = prefs.getString('current_user') ?? '';
+      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
       if (username.isNotEmpty) {
         StorageService.syncData(username);
       }
@@ -813,6 +814,7 @@ class PomodoroService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final db = await DatabaseHelper.instance.database;
       // 获取上次拉取的时间戳，默认从 0 开始
       final lastDownloadKey = await _getScopedKey(_keyLastRecordDownload);
 
@@ -840,18 +842,27 @@ class PomodoroService {
           .map((e) => PomodoroRecord.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // 读取本地全量（含已删除 tombstone）
+      // 读取本地全量（SQL + 旧 prefs 兜底），避免只写入 prefs 导致 UI 读不到
+      final sqlRows = await db.query('pomodoro_records', orderBy: 'start_time DESC');
+      final sqlRecords = sqlRows.map((m) => PomodoroRecord.fromJson(m)).toList();
+
       final scopedKey = await _getScopedKey(_keyRecords);
-      final s = prefs.getString(scopedKey) ?? prefs.getString(_keyRecords);
-      final localAll = s == null
+      final legacyRaw = prefs.getString(scopedKey) ?? prefs.getString(_keyRecords);
+      final legacyRecords = legacyRaw == null
           ? <PomodoroRecord>[]
-          : (jsonDecode(s) as List)
+          : (jsonDecode(legacyRaw) as List)
               .map((e) => PomodoroRecord.fromJson(e))
               .toList();
 
       final Map<String, PomodoroRecord> merged = {
-        for (var r in localAll) r.uuid: r
+        for (var r in sqlRecords) r.uuid: r
       };
+      for (final lr in legacyRecords) {
+        final ex = merged[lr.uuid];
+        if (ex == null || lr.updatedAt > ex.updatedAt) {
+          merged[lr.uuid] = lr;
+        }
+      }
       bool hasChange = false;
 
       for (final rr in remoteRecords) {
@@ -893,11 +904,12 @@ class PomodoroService {
         }
       }
 
-      if (hasChange) {
-        await prefs.setString(
-          scopedKey,
-          jsonEncode(merged.values.map((r) => r.toJson()).toList()),
-        );
+      final mergedRecords = merged.values.toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
+
+      // 只要本次读到了旧 prefs 数据，或云端有变化，就同步回 SQL + prefs，确保统计页和历史页可见
+      if (hasChange || legacyRecords.isNotEmpty || sqlRows.isEmpty) {
+        await _saveRecords(mergedRecords);
       }
 
       // 更新最后拉取时间戳为当前服务器时间（或是本地当前时间，取决于业务场景）
@@ -966,7 +978,7 @@ class PomodoroService {
       String? s = prefs.getString(scopedKey);
       // 兜底旧全局 Key
       if (s == null) {
-        final username = prefs.getString('current_user');
+        final username = prefs.getString(StorageService.KEY_CURRENT_USER);
         if (username != null) s = prefs.getString(_keyRecords);
       }
 
