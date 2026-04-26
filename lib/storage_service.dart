@@ -2723,8 +2723,9 @@ class StorageService {
           // 顺序：拉取标签 -> 上传标签 -> 上传记录 -> 拉取记录
           await PomodoroService.syncTagsFromCloud();
           await PomodoroService.syncTagsToCloud();
-          await PomodoroService.syncRecordsToCloud();
-          bool pomodoroChanged = await PomodoroService.syncRecordsFromCloud();
+          await PomodoroService.syncRecordsToCloud(forceFullSync: forceFullSync);
+          bool pomodoroChanged =
+          await PomodoroService.syncRecordsFromCloud(forceFullSync: forceFullSync);
           if (pomodoroChanged) hasChanges = true;
         } catch (pe) {
           debugPrint("Pomodoro sync error: $pe");

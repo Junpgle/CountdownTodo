@@ -807,20 +807,34 @@ class PomodoroService {
   // ── 增量同步：从云端拉取并合并到本地 ────────────────────────
 
   /// 从云端增量拉取专注记录（LWW 合并），返回是否有新增/变更
-  static Future<bool> syncRecordsFromCloud({int? fromMs}) async {
+  static Future<bool> syncRecordsFromCloud({
+    int? fromMs,
+    bool forceFullSync = false,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       // 获取上次拉取的时间戳，默认从 0 开始
       final lastDownloadKey = await _getScopedKey(_keyLastRecordDownload);
-      int lastDownload = prefs.getInt(lastDownloadKey) ?? 0;
-      if (lastDownload > 0) {
-        lastDownload -= 3600 * 1000; // 往前推 1 小时
+
+      int effectiveFromMs;
+      if (forceFullSync) {
+        effectiveFromMs = 0;
+      } else if (fromMs != null) {
+        effectiveFromMs = fromMs;
+      } else {
+        effectiveFromMs = prefs.getInt(lastDownloadKey) ?? 0;
+        if (effectiveFromMs > 0) {
+          effectiveFromMs -= 3600 * 1000; // 增量同步保留 1 小时回看窗口
+        }
       }
 
-      final recordsRaw = await ApiService.fetchPomodoroSessions(
-        fromMs: lastDownload,
+      debugPrint(
+        '[PomodoroService] syncRecordsFromCloud forceFullSync=$forceFullSync, fromMs=$effectiveFromMs',
       );
-      if (recordsRaw.isEmpty) return false;
+
+      final recordsRaw = await ApiService.fetchPomodoroSessions(
+        fromMs: effectiveFromMs,
+      );
 
       final remoteRecords = recordsRaw
           .map((e) => PomodoroRecord.fromJson(e as Map<String, dynamic>))
@@ -907,14 +921,21 @@ class PomodoroService {
   static const _keyLastRecordUpload = 'pomodoro_last_record_upload';
   static const _keyLastRecordDownload = 'pomodoro_last_record_download';
 
-  static Future<void> syncRecordsToCloud() async {
+  static Future<void> syncRecordsToCloud({
+    bool forceFullSync = false,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
       final lastUpload = prefs.getInt(lastUploadKey) ?? 0;
       final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
-      final dirty = all.where((r) => r.updatedAt > lastUpload).toList();
+      final dirty = forceFullSync
+          ? all
+          : all.where((r) => r.updatedAt > lastUpload).toList();
+      debugPrint(
+        '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
+      );
       if (dirty.isEmpty) return;
       final ok = await ApiService.uploadPomodoroRecords(
           dirty.map((r) => r.toJson()).toList());
