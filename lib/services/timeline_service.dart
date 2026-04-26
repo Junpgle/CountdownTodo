@@ -14,9 +14,11 @@ class TimelineService {
 
   Future<List<TimelineEvent>> getEventsForDay(String username, DateTime day) async {
     final List<TimelineEvent> events = [];
+    // 确保 day 是整日期（无时间部分）
     final startOfDay = DateTime(day.year, day.month, day.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
     final startOfDayMs = startOfDay.millisecondsSinceEpoch;
-    final endOfDayMs = startOfDay.add(const Duration(days: 1)).millisecondsSinceEpoch;
+    final endOfDayMs = endOfDay.millisecondsSinceEpoch;
 
     final db = await DatabaseHelper.instance.database;
 
@@ -55,30 +57,61 @@ class TimelineService {
         }
       }
 
-      // 2. 待办 (新增 & 完成)
-      final todos = await db.query(
+      // 2. 待办 (新增 & 编辑 & 完成) - 分开查询以避免混淆
+      // 2a. 查询今天新增的待办
+      final createdTodos = await db.query(
         'todos',
-        where: 'is_deleted = 0 AND ((created_at >= ? AND created_at < ?) OR (is_completed = 1 AND updated_at >= ? AND updated_at < ?))',
+        where: 'is_deleted = 0 AND created_at >= ? AND created_at < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
+      );
+
+      for (var row in createdTodos) {
+        final title = row['content'] as String? ?? '';
+        final createdAt = row['created_at'] as int;
+        
+        events.add(TimelineEvent(
+          id: 'todo_create_${row['uuid']}',
+          timestamp: DateTime.fromMillisecondsSinceEpoch(createdAt),
+          type: TimelineEventType.todoCreated,
+          title: '新增待办',
+          subtitle: title,
+        ));
+      }
+
+      // 2b. 查询今天编辑的待办（已编辑但未完成，排除今天创建的）
+      final editedTodos = await db.query(
+        'todos',
+        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at AND NOT (created_at >= ? AND created_at < ?)',
         whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
       );
 
-      for (var row in todos) {
-        final createdAt = row['created_at'] as int?;
-        final updatedAt = row['updated_at'] as int?;
-        final isCompleted = row['is_completed'] == 1;
+      for (var row in editedTodos) {
         final title = row['content'] as String? ?? '';
-
-        if (createdAt != null && createdAt >= startOfDayMs && createdAt < endOfDayMs) {
+        final updatedAt = row['updated_at'] as int?;
+        
+        if (updatedAt != null) {
           events.add(TimelineEvent(
-            id: 'todo_create_${row['uuid']}',
-            timestamp: DateTime.fromMillisecondsSinceEpoch(createdAt),
-            type: TimelineEventType.todoCreated,
-            title: '新增待办',
+            id: 'todo_edit_${row['uuid']}',
+            timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
+            type: TimelineEventType.todoEdited,
+            title: '编辑待办',
             subtitle: title,
           ));
         }
+      }
 
-        if (isCompleted && updatedAt != null && updatedAt >= startOfDayMs && updatedAt < endOfDayMs) {
+      // 2c. 查询今天完成的待办（排除今天创建的，避免重复）
+      final completedTodos = await db.query(
+        'todos',
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? AND NOT (created_at >= ? AND created_at < ?)',
+        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+      );
+
+      for (var row in completedTodos) {
+        final title = row['content'] as String? ?? '';
+        final updatedAt = row['updated_at'] as int?;
+        
+        if (updatedAt != null) {
           events.add(TimelineEvent(
             id: 'todo_complete_${row['uuid']}',
             timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
@@ -89,28 +122,55 @@ class TimelineService {
         }
       }
 
-      // 3. 倒计时 (新增 & 完成)
-      final countdowns = await db.query(
+      // 3. 倒计时 (新增 & 编辑 & 完成) - 分开查询避免混淆
+      // 3a. 查询今天新增的倒计时
+      final createdCountdowns = await db.query(
         'countdowns',
-        where: 'is_deleted = 0 AND ((created_at >= ? AND created_at < ?) OR (is_completed = 1 AND updated_at >= ? AND updated_at < ?))',
+        where: 'is_deleted = 0 AND created_at >= ? AND created_at < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
+      );
+
+      for (var row in createdCountdowns) {
+        final createdAt = row['created_at'] as int;
+        events.add(TimelineEvent(
+          id: 'cd_create_${row['uuid']}',
+          timestamp: DateTime.fromMillisecondsSinceEpoch(createdAt),
+          type: TimelineEventType.countdownCreated,
+          title: '新增倒计时',
+          subtitle: row['title'] as String? ?? '',
+        ));
+      }
+
+      // 3b. 查询今天编辑的倒计时（已编辑但未完成，排除今天创建的）
+      final editedCountdowns = await db.query(
+        'countdowns',
+        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at AND NOT (created_at >= ? AND created_at < ?)',
         whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
       );
-      for (var row in countdowns) {
-        final createdAt = row['created_at'] as int?;
-        final updatedAt = row['updated_at'] as int?;
-        final isCompleted = row['is_completed'] == 1;
 
-        if (createdAt != null && createdAt >= startOfDayMs && createdAt < endOfDayMs) {
+      for (var row in editedCountdowns) {
+        final updatedAt = row['updated_at'] as int?;
+        if (updatedAt != null) {
           events.add(TimelineEvent(
-            id: 'cd_create_${row['uuid']}',
-            timestamp: DateTime.fromMillisecondsSinceEpoch(createdAt),
-            type: TimelineEventType.countdownCreated,
-            title: '新增倒计时',
+            id: 'cd_edit_${row['uuid']}',
+            timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
+            type: TimelineEventType.countdownEdited,
+            title: '编辑倒计时',
             subtitle: row['title'] as String? ?? '',
           ));
         }
+      }
 
-        if (isCompleted && updatedAt != null && updatedAt >= startOfDayMs && updatedAt < endOfDayMs) {
+      // 3c. 查询今天完成的倒计时（排除今天创建的，避免重复）
+      final completedCountdowns = await db.query(
+        'countdowns',
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? AND NOT (created_at >= ? AND created_at < ?)',
+        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+      );
+
+      for (var row in completedCountdowns) {
+        final updatedAt = row['updated_at'] as int?;
+        if (updatedAt != null) {
           events.add(TimelineEvent(
             id: 'cd_complete_${row['uuid']}',
             timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
@@ -137,12 +197,12 @@ class TimelineService {
         ));
       }
 
-      // 5. 课程 (开始 & 结束)
+      // 5. 课程 (开始 & 结束) - 仅查询指定日期的课程
       final dayStr = DateFormat('yyyy-MM-dd').format(day);
       final courses = await db.query(
         'courses',
-        where: 'date = ? OR weekday = ?',
-        whereArgs: [dayStr, day.weekday],
+        where: 'date = ?',
+        whereArgs: [dayStr],
       );
 
       final seenCourses = <String>{};
@@ -182,7 +242,7 @@ class TimelineService {
       debugPrint('❌ TimelineService.getEventsForDay error: $e');
     }
 
-    // 排序：按时间倒序
+    // 排序：按时间倒序（最新优先）
     events.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return events;
   }
@@ -190,12 +250,15 @@ class TimelineService {
   Future<TimelineSummary> getTodaySummary(String username) => getSummaryForDay(username, DateTime.now());
 
   Future<TimelineSummary> getSummaryForDay(String username, DateTime day) async {
+    // 确保 day 是整日期（无时间部分）
     final startOfDay = DateTime(day.year, day.month, day.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
     final startOfDayMs = startOfDay.millisecondsSinceEpoch;
-    final endOfDayMs = startOfDay.add(const Duration(days: 1)).millisecondsSinceEpoch;
+    final endOfDayMs = endOfDay.millisecondsSinceEpoch;
     
     final now = DateTime.now();
-    final isToday = startOfDay.isAtSameMomentAs(DateTime(now.year, now.month, now.day));
+    final today = DateTime(now.year, now.month, now.day);
+    final isToday = startOfDay.isAtSameMomentAs(today);
     final currentHHMM = isToday ? now.hour * 100 + now.minute : 2359;
     final dayStr = DateFormat('yyyy-MM-dd').format(day);
 
@@ -223,31 +286,35 @@ class TimelineService {
         lastSearchTime = DateTime.fromMillisecondsSinceEpoch(searches.first['timestamp'] as int);
       }
 
-      // 2. 待办
-      final todos = await db.query(
+      // 2. 待办 - 分开统计新增和完成
+      final createdTodos = await db.query(
         'todos',
-        where: 'is_deleted = 0 AND ((created_at >= ? AND created_at < ?) OR (is_completed = 1 AND updated_at >= ? AND updated_at < ?))',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND created_at >= ? AND created_at < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
-      for (var r in todos) {
-        final c = r['created_at'] as int?;
-        final u = r['updated_at'] as int?;
-        if (c != null && c >= startOfDayMs && c < endOfDayMs) todoCreated++;
-        if (r['is_completed'] == 1 && u != null && u >= startOfDayMs && u < endOfDayMs) todoCompleted++;
-      }
+      todoCreated = createdTodos.length;
 
-      // 3. 倒计时
-      final cds = await db.query(
-        'countdowns',
-        where: 'is_deleted = 0 AND ((created_at >= ? AND created_at < ?) OR (is_completed = 1 AND updated_at >= ? AND updated_at < ?))',
+      final completedTodos = await db.query(
+        'todos',
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? AND NOT (created_at >= ? AND created_at < ?)',
         whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
       );
-      for (var r in cds) {
-        final c = r['created_at'] as int?;
-        final u = r['updated_at'] as int?;
-        if (c != null && c >= startOfDayMs && c < endOfDayMs) countdownCreated++;
-        if (r['is_completed'] == 1 && u != null && u >= startOfDayMs && u < endOfDayMs) countdownCompleted++;
-      }
+      todoCompleted = completedTodos.length;
+
+      // 3. 倒计时 - 分开统计新增和完成
+      final createdCds = await db.query(
+        'countdowns',
+        where: 'is_deleted = 0 AND created_at >= ? AND created_at < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
+      );
+      countdownCreated = createdCds.length;
+
+      final completedCds = await db.query(
+        'countdowns',
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? AND NOT (created_at >= ? AND created_at < ?)',
+        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+      );
+      countdownCompleted = completedCds.length;
 
       // 4. 课程 (已上的)
       final courses = await db.query(

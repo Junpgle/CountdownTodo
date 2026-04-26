@@ -13,9 +13,11 @@ import 'dart:convert';
 enum TimelineEventType {
   pomodoroStart,
   pomodoroEnd,
-  todoCompleted,
   todoCreated,
+  todoEdited,
+  todoCompleted,
   countdownCreated,
+  countdownEdited,
   countdownCompleted,
   courseStart,
   courseEnd,
