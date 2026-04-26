@@ -130,7 +130,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── 窗口控制
   WindowController? _windowController;
-  Size _currentWindowSize = const Size(120, 34);
+  Size _currentWindowSize = const Size(100, 34);
   bool _isDragging = false;
 
   // ── 便捷 getter ─────────────────────────────────────────────────────────
@@ -159,8 +159,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
 
     _sizeAnimation = Tween<Size>(
-      begin: const Size(120, 34),
-      end: const Size(120, 34),
+      begin: const Size(100, 34),
+      end: const Size(100, 34),
     ).animate(CurvedAnimation(
       parent: _sizeController,
       curve: Curves.easeOutCubic,
@@ -579,25 +579,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Size _idleSizeForCard() {
     // 专注默认态：给字体留出更稳定的高度余量，避免不同 DPI 下溢出
     if (_isFocusing && !_isScrolledInFocus) {
-      return const Size(120, 64);
+      return const Size(90, 40);
     }
     if (_cards.isEmpty || _currentCardIndex >= _cards.length) {
-      return const Size(120, 40);
+      return const Size(100, 34);
     }
     final card = _cards[_currentCardIndex];
     final type = card['type'] as String;
     if (type == 'time') {
-      return const Size(120, 40);
+      return const Size(100, 34);
     }
     if (type == 'focusing') {
-      return const Size(120, 64);
+      return const Size(90, 40);
     }
     final title = card['title'] as String? ?? '';
     final subtitle = card['subtitle'] as String? ?? '';
     int maxLen = title.length;
     if (subtitle.length > maxLen) maxLen = subtitle.length;
     final textWidth = maxLen * 12.0;
-    final width = (24 + 16 + 6 + textWidth).clamp(140.0, 300.0);
+    final width = (24 + 16 + 6 + textWidth).clamp(100.0, 300.0);
     final height = subtitle.isNotEmpty ? 52.0 : 40.0;
     return Size(width, height);
   }
