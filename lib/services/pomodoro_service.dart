@@ -542,7 +542,8 @@ class PomodoroService {
           'target_uuid': t.uuid,
           'data_json': jsonEncode(t.toJson()),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0
+          'is_synced': 0,
+          'sync_error': ''
         });
       }
       batch.insert('pomodoro_tags', {
@@ -582,7 +583,8 @@ class PomodoroService {
           'target_uuid': tag.uuid,
           'data_json': jsonEncode(tag.toJson()),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0
+          'is_synced': 0,
+          'sync_error': ''
         });
         // 更新 SQL
         batch.update('pomodoro_tags', {
@@ -697,7 +699,8 @@ class PomodoroService {
         'target_uuid': record.uuid,
         'data_json': jsonEncode(record.toJson()),
         'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'is_synced': 0
+        'is_synced': 0,
+        'sync_error': ''
       });
     }
 

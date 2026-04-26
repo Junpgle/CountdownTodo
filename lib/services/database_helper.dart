@@ -1063,6 +1063,8 @@ class DatabaseHelper {
     String? where,
     List<String>? uuids,
     int? limit,
+    bool inlineTextColumns = false,
+    bool includeConflictData = false,
   }) async {
     final db = await instance.database;
     final whereParts = <String>[];
@@ -1080,13 +1082,24 @@ class DatabaseHelper {
       whereArgs.addAll(uuids);
     }
 
-    final sql = StringBuffer()
-      ..write('SELECT ')
-      ..write(_todoBaseColumns.join(', '))
-      ..write(', LENGTH(content) AS _content_length')
-      ..write(', LENGTH(remark) AS _remark_length')
-      ..write(', LENGTH(conflict_data) AS _conflict_length')
-      ..write(' FROM todos');
+    final sql = StringBuffer()..write('SELECT ');
+    if (inlineTextColumns) {
+      sql
+        ..write(_todoBaseColumns.join(', '))
+        ..write(', content, remark');
+      if (includeConflictData) {
+        sql.write(', conflict_data');
+      }
+    } else {
+      sql
+        ..write(_todoBaseColumns.join(', '))
+        ..write(', LENGTH(content) AS _content_length')
+        ..write(', LENGTH(remark) AS _remark_length');
+      if (includeConflictData) {
+        sql.write(', LENGTH(conflict_data) AS _conflict_length');
+      }
+    }
+    sql.write(' FROM todos');
     if (whereParts.isNotEmpty) {
       sql.write(' WHERE ${whereParts.join(' AND ')}');
     }
@@ -1096,21 +1109,28 @@ class DatabaseHelper {
     }
 
     final rows = await db.rawQuery(sql.toString(), whereArgs);
+    if (inlineTextColumns) {
+      return rows;
+    }
     final hydrated = <Map<String, dynamic>>[];
     for (final row in rows) {
-      hydrated.add(await _hydrateTodoRow(db, row));
+      hydrated.add(await _hydrateTodoRow(db, row,
+          includeConflictData: includeConflictData));
     }
     return hydrated;
   }
 
   Future<Map<String, dynamic>> _hydrateTodoRow(
-      Database db, Map<String, dynamic> row) async {
+      Database db, Map<String, dynamic> row,
+      {bool includeConflictData = false}) async {
     final hydrated = Map<String, dynamic>.from(row);
     final uuid = hydrated['uuid']?.toString();
     if (uuid == null || uuid.isEmpty) {
       hydrated.remove('_content_length');
       hydrated.remove('_remark_length');
-      hydrated.remove('_conflict_length');
+      if (includeConflictData) {
+        hydrated.remove('_conflict_length');
+      }
       return hydrated;
     }
 
@@ -1126,15 +1146,19 @@ class DatabaseHelper {
       'remark',
       _toNullableInt(row['_remark_length']),
     );
-    hydrated['conflict_data'] = await _readTodoTextColumn(
-      db,
-      uuid,
-      'conflict_data',
-      _toNullableInt(row['_conflict_length']),
-    );
+    if (includeConflictData) {
+      hydrated['conflict_data'] = await _readTodoTextColumn(
+        db,
+        uuid,
+        'conflict_data',
+        _toNullableInt(row['_conflict_length']),
+      );
+    }
     hydrated.remove('_content_length');
     hydrated.remove('_remark_length');
-    hydrated.remove('_conflict_length');
+    if (includeConflictData) {
+      hydrated.remove('_conflict_length');
+    }
     return hydrated;
   }
 

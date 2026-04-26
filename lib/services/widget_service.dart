@@ -41,6 +41,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
 class WidgetService {
   static const String androidWidgetName = 'TodoWidgetProvider';
   static bool _initialized = false;
+  static bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
   static Timer? _periodicTimer;
 
@@ -105,6 +106,7 @@ class WidgetService {
   static Future<void> updateAllWidgetData(
       String username, List<TodoItem> todos) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
     DateFormat dateFormat = DateFormat('yyyy-MM-dd');
@@ -154,6 +156,15 @@ class WidgetService {
     try {
       await HomeWidget.updateWidget(androidName: androidWidgetName);
     } catch (e) {
+      final message = e.toString();
+      if (Platform.isAndroid &&
+          (message.contains('TodoWidgetProvider') ||
+              message.contains('ClassNotFoundException'))) {
+        _widgetUpdateDisabled = true;
+        debugPrint(
+            '⚠️ [WidgetService] Android Widget provider unavailable in current build; disable further widget updates.');
+        return;
+      }
       debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
     }
   }

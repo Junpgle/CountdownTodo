@@ -104,6 +104,7 @@ class StorageService {
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
   static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
+  static final Map<String, Future<List<TodoItem>>> _inflightTodoRequests = {};
 
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
   static Timer? _refreshDebouncer;
@@ -134,6 +135,24 @@ class StorageService {
     if (raw is int) return raw;
     if (raw is num) return raw.toInt();
     return int.tryParse(raw.toString());
+  }
+
+  static String _todoRequestKey(
+    String username, {
+    required bool includeDeleted,
+    required int? limit,
+  }) {
+    return '$username|includeDeleted=$includeDeleted|limit=${limit ?? "all"}';
+  }
+
+  static List<TodoItem> _cloneTodoItems(List<TodoItem> items) {
+    return items.map((item) => TodoItem.fromJson(item.toJson())).toList();
+  }
+
+  static Future<void> _clearTodoPrefsMirror(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove("${KEY_TODOS}_$username");
+    await prefs.remove(KEY_TODOS);
   }
 
   static String _scopedKey(String baseKey, String? username) {
@@ -731,12 +750,9 @@ class StorageService {
     List<TodoItem> dedupeList = dedupeMap.values.toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-    // 🚀 异步保存到 Prefs，不阻塞主流程
-    unawaited(SharedPreferences.getInstance().then((prefs) async {
-      // 如果列表极大，在后台 Isolate 进行序列化
-      final jsonList = await compute(_serializeTodos, dedupeList);
-      await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
-    }));
+    // SQL 已是主存储。超大 Todo 列表写回 SharedPreferences 会在 Android 上触发 OOM，
+    // 因此这里仅清理旧镜像，不再持续维护整份 prefs 缓存。
+    unawaited(_clearTodoPrefsMirror(username));
 
     final db = await DatabaseHelper.instance.database;
 
@@ -1153,13 +1169,8 @@ class StorageService {
       'is_synced': 0
     });
 
-    // 4. 🚀 关键：同步更新 SharedPreferences 缓存，防止 getTodos 逃生通道读取旧数据
-    final prefs = await SharedPreferences.getInstance();
-    List<TodoItem> allTodos = await getTodos(username, includeDeleted: true);
-    // getTodos 已经从 DB 拿到了最新数据，直接保存即可
-    List<String> jsonList =
-        allTodos.map((e) => jsonEncode(e.toJson())).toList();
-    await prefs.setStringList("${KEY_TODOS}_$username", jsonList);
+    // 不再维护超大的 SharedPreferences Todo 镜像，避免 Android 插件层 OOM
+    await _clearTodoPrefsMirror(username);
 
     if (sync) Future.microtask(() => syncData(username));
     triggerRefresh(); // 🚀 触发 UI 刷新
@@ -1171,18 +1182,7 @@ class StorageService {
     final db = await DatabaseHelper.instance.database;
     await db.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
 
-    // 同步清理 Prefs 缓存
-    final prefs = await SharedPreferences.getInstance();
-    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
-    list.removeWhere((jsonStr) {
-      try {
-        final map = jsonDecode(jsonStr);
-        return map['id'] == uuid || map['uuid'] == uuid;
-      } catch (_) {
-        return false;
-      }
-    });
-    await prefs.setStringList("${KEY_TODOS}_$username", list);
+    await _clearTodoPrefsMirror(username);
 
     // 记录删除操作到 Oplog (物理删除也需要同步给其它端)
     await db.insert('op_logs', {
@@ -1219,18 +1219,7 @@ class StorageService {
     }
     await batch.commit(noResult: true);
 
-    // 2. 清理 Prefs 缓存
-    final prefs = await SharedPreferences.getInstance();
-    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
-    list.removeWhere((jsonStr) {
-      try {
-        final map = jsonDecode(jsonStr);
-        return map['is_deleted'] == 1 || map['is_deleted'] == true;
-      } catch (_) {
-        return false;
-      }
-    });
-    await prefs.setStringList("${KEY_TODOS}_$username", list);
+    await _clearTodoPrefsMirror(username);
 
     triggerRefresh();
   }
@@ -1269,7 +1258,39 @@ class StorageService {
 
   static Future<List<TodoItem>> getTodos(String username,
       {bool includeDeleted = false, int? limit}) async {
+    final requestKey = _todoRequestKey(
+      username,
+      includeDeleted: includeDeleted,
+      limit: limit,
+    );
+    final inflight = _inflightTodoRequests[requestKey];
+    if (inflight != null) {
+      debugPrint("🔁 getTodos 复用进行中请求: $requestKey");
+      final shared = await inflight;
+      return _cloneTodoItems(shared);
+    }
+
+    final future = _getTodosInternal(
+      username,
+      includeDeleted: includeDeleted,
+      limit: limit,
+    );
+    _inflightTodoRequests[requestKey] = future;
+
+    try {
+      final result = await future;
+      return _cloneTodoItems(result);
+    } finally {
+      if (identical(_inflightTodoRequests[requestKey], future)) {
+        _inflightTodoRequests.remove(requestKey);
+      }
+    }
+  }
+
+  static Future<List<TodoItem>> _getTodosInternal(String username,
+      {bool includeDeleted = false, int? limit}) async {
     final prefs = await StorageService.prefs;
+    final startedAt = DateTime.now();
     // 🚀 Uni-Sync 安全方案：双轨读取 + 逃生通道
     try {
       final dbHelper = DatabaseHelper.instance;
@@ -1277,6 +1298,10 @@ class StorageService {
 
       final migrationKey = "migration_marker_${username}_v4";
       bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
+
+      if (alreadyMigrated) {
+        await _clearTodoPrefsMirror(username);
+      }
 
       // 🚀 核心补丁：清理先前版本迁移后遗留的超大数据 (解决 170MB+ 内存占用与启动卡顿)
       final String cleanupKey = "cleanup_done_${username}_v4_repair";
@@ -1315,11 +1340,9 @@ class StorageService {
       }
 
       final List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
-          // where: includeDeleted ? null : 'is_deleted IS NOT 1',
-          // // 🚀 核心优化：针对主页加载，优先排序未完成项，并限制总量避免 OOM
-          // orderBy: includeDeleted ? 'updated_at DESC' : 'is_completed ASC, updated_at DESC',
-          // limit: limit,
-          );
+        includeDeleted: includeDeleted,
+        limit: limit,
+      );
       if (maps.isNotEmpty) {
         List<TodoItem> todos;
         // 🚀 性能优化：当待办数量较多时，使用 Isolate 解析，减少主线程解析耗时导致的 UI 卡顿
@@ -1372,7 +1395,13 @@ class StorageService {
                   ))
               .toList();
         }
-        return await _handleRecurrenceLogic(username, todos);
+        final handledTodos = await _handleRecurrenceLogic(username, todos);
+        debugPrint(
+            "📦 getTodos(SQL) 完成: count=${handledTodos.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms");
+        if (!includeDeleted) {
+          return handledTodos.where((todo) => !todo.isDeleted).toList();
+        }
+        return handledTodos;
       } else {
         return [];
       }
@@ -1394,7 +1423,19 @@ class StorageService {
         } catch (_) {}
       }
     }
-    return await _handleRecurrenceLogic(username, legacyTodos);
+    final handledLegacyTodos =
+        await _handleRecurrenceLogic(username, legacyTodos);
+    Iterable<TodoItem> filtered = handledLegacyTodos;
+    if (!includeDeleted) {
+      filtered = filtered.where((todo) => !todo.isDeleted);
+    }
+    if (limit != null && limit >= 0) {
+      filtered = filtered.take(limit);
+    }
+    final result = filtered.toList();
+    debugPrint(
+        "📦 getTodos(Prefs Fallback) 完成: count=${result.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms");
+    return result;
   }
 
   /// 🚀 Isolate 专用：静态待办解析方法

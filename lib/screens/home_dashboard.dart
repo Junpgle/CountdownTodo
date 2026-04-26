@@ -1743,6 +1743,16 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
+  List<TElement> _safeListResult<TElement>(dynamic value) {
+    if (value is List<TElement>) {
+      return value;
+    }
+    if (value is List) {
+      return value.whereType<TElement>().toList();
+    }
+    return <TElement>[];
+  }
+
   // 🚀 核心重构：渲染主页时，绝对不能将 isDeleted 的数据加载到视图层！
   Future<void> _loadAllData({bool deferred = false}) async {
     if (_isGlobalLoadingNotifier.value) return;
@@ -1761,16 +1771,20 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       // 1. 读取基础数据 (并发执行，带超时保护)
       final results = await Future.wait([
-        _loadDataTask("Todos", StorageService.getTodos(widget.username, limit: 500)),
+        _loadDataTask("Todos", StorageService.getTodos(widget.username, limit: 200)),
         _loadDataTask("Groups", StorageService.getTodoGroups(widget.username)),
         _loadDataTask("Countdowns", StorageService.getCountdowns(widget.username)),
         _loadDataTask("Math", StorageService.getMathStats(widget.username)),
         _loadDataTask("Courses", CourseService.getDashboardCourses(widget.username)),
       ]);
 
-      final List<TodoItem> allTodos = ((results[0] ?? []) as List<TodoItem>).where((t) => !t.isDeleted).toList();
-      final List<TodoGroup> allGroups = ((results[1] ?? []) as List<TodoGroup>).where((g) => !g.isDeleted).toList();
-      final List<CountdownItem> allCountdowns = ((results[2] ?? []) as List<CountdownItem>).where((c) => !c.isDeleted).toList();
+      final List<TodoItem> allTodos =
+          _safeListResult<TodoItem>(results[0]).where((t) => !t.isDeleted).toList();
+      final List<TodoGroup> allGroups =
+          _safeListResult<TodoGroup>(results[1]).where((g) => !g.isDeleted).toList();
+      final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
+        results[2],
+      ).where((c) => !c.isDeleted).toList();
       final Map<String, dynamic> mathStats = (results[3] ?? {}) as Map<String, dynamic>;
       final Map<String, dynamic> courseData = (results[4] ?? {'title': '课程提醒', 'courses': []}) as Map<String, dynamic>;
 
