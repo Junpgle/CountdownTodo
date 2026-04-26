@@ -1,4 +1,6 @@
+﻿import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models.dart';
@@ -220,35 +222,41 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         ? Color.fromRGBO(28, 28, 30, isCompact ? 0.96 : 1.0)
         : Color.fromRGBO(255, 255, 255, isCompact ? 0.98 : 1.0);
 
-    // 🚀 背景色：电脑端使用更深的遮罩和更强的模糊，产生“悬浮感”但又不会透出背景细节
-    final backdropColor = isCompact
-        ? (isDark
-            ? const Color.fromRGBO(0, 0, 0, 0.26)
-            : const Color.fromRGBO(255, 255, 255, 0.16))
-        : (isDark
-            ? Colors.black.withValues(alpha: 0.75)
-            : Colors.black.withValues(alpha: 0.35));
+    // 桌面平台 (Windows/Linux/macOS) 窗口本身是透明的，
+    // BackdropFilter 会模糊桌面而非 App 内容，必须改用纯色覆盖方案。
+    final bool isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
+    // 移动端/Web 磨砂遮罩色
+    final mobileBackdropColor = isDark
+        ? const Color.fromRGBO(0, 0, 0, 0.26)
+        : const Color.fromRGBO(255, 255, 255, 0.16);
+
+    // 桌面端：叠在不透明 Scaffold 背景上的半透明遮罩
+    final desktopOverlayColor = isDark
+        ? Colors.black.withValues(alpha: 0.55)
+        : Colors.black.withValues(alpha: 0.30);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      // 桌面端必须是不透明背景，防止透出操作系统桌面
+      backgroundColor: isDesktop
+          ? Theme.of(context).colorScheme.surface
+          : Colors.transparent,
       resizeToAvoidBottomInset: false,
       body: KeyboardListener(
         focusNode: FocusNode(),
         onKeyEvent: _handleKeyEvent,
         child: Stack(
           children: [
-            // ── 背景遮罩 ──
+            // 背景遮罩
             GestureDetector(
               onTap: _close,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: isCompact ? 15 : 30,
-                  sigmaY: isCompact ? 15 : 30,
-                ),
-                child: Container(
-                  color: backdropColor,
-                ),
-              ),
+              child: isDesktop
+                  ? Container(color: desktopOverlayColor)
+                  : BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                      child: Container(color: mobileBackdropColor),
+                    ),
             ),
             // ── 内容 ──
             SafeArea(

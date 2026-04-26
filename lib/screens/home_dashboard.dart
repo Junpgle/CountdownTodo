@@ -2551,7 +2551,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
-      backgroundColor: showWallpaper
+      backgroundColor: (showWallpaper && !Platform.isWindows)
           ? Colors.transparent
           : Theme.of(context).colorScheme.surface,
       body: Stack(
