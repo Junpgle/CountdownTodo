@@ -214,30 +214,40 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isCompact = size.shortestSide < 600;
+
+    // 🚀 电脑端（非 Compact）面板使用全不透明色
     final panelColor = isDark
-        ? Color.fromRGBO(28, 28, 30, isCompact ? 0.96 : 0.90)
-        : Color.fromRGBO(255, 255, 255, isCompact ? 0.98 : 0.94);
-    final backdropTint = isDark
-        ? Color.fromRGBO(0, 0, 0, isCompact ? 0.26 : 0.18)
-        : Color.fromRGBO(255, 255, 255, isCompact ? 0.16 : 0.10);
+        ? Color.fromRGBO(28, 28, 30, isCompact ? 0.96 : 1.0)
+        : Color.fromRGBO(255, 255, 255, isCompact ? 0.98 : 1.0);
+
+    // 🚀 电脑端背景使用不透明主题色，移动端保持毛玻璃透明感
+    final backdropColor = isCompact
+        ? (isDark
+            ? const Color.fromRGBO(0, 0, 0, 0.26)
+            : const Color.fromRGBO(255, 255, 255, 0.16))
+        : Theme.of(context).scaffoldBackgroundColor;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: isCompact ? Colors.transparent : backdropColor,
       resizeToAvoidBottomInset: false,
       body: KeyboardListener(
         focusNode: FocusNode(),
         onKeyEvent: _handleKeyEvent,
         child: Stack(
           children: [
-            // ── 磨砂背景 ──
+            // ── 背景 ──
             GestureDetector(
               onTap: _close,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                child: Container(
-                  color: backdropTint,
-                ),
-              ),
+              child: isCompact
+                  ? BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                      child: Container(
+                        color: backdropColor,
+                      ),
+                    )
+                  : Container(
+                      color: backdropColor,
+                    ),
             ),
             // ── 内容 ──
             SafeArea(
