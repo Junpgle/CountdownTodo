@@ -552,9 +552,20 @@ class StorageService {
       final db = await dbHelper.database;
 
       // 1. 迁移检查
+      final String migrationKey = "migrated_countdowns_$username";
+      final bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
+
+      // 🚀 核心补丁：物理清理残留
+      final String cleanupKey = "cleanup_done_countdowns_${username}_repair";
+      if (alreadyMigrated && !(prefs.getBool(cleanupKey) ?? false)) {
+        await prefs.remove("${KEY_COUNTDOWNS}_$username");
+        await prefs.remove(KEY_COUNTDOWNS);
+        await prefs.setBool(cleanupKey, true);
+      }
+
       final List<Map<String, dynamic>> sqliteCount =
           await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
-      if (sqliteCount.first['cnt'] == 0) {
+      if (sqliteCount.first['cnt'] == 0 && !alreadyMigrated) {
         List<String> legacyJsonList =
             prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
 
@@ -575,7 +586,12 @@ class StorageService {
               .map((e) => CountdownItem.fromJson(jsonDecode(e)))
               .toList();
           await saveCountdowns(username, legacyData, sync: false);
+          // 🚀 迁移成功后物理移除 Prefs 中的大对象
+          await prefs.remove("${KEY_COUNTDOWNS}_$username");
+          await prefs.remove(KEY_COUNTDOWNS);
+          debugPrint("✅ 倒数日老数据迁移完成并已物理清理。");
         }
+        await prefs.setBool(migrationKey, true);
       }
 
       // 2. 从 SQL 读取
@@ -868,6 +884,53 @@ class StorageService {
     } catch (e) {
       debugPrint('refreshTodoScheduleConflicts error: $e');
     }
+  }
+
+  static Future<Map<String, int>> scanAllTodoConflicts(String username) async {
+    final allTodos = await getTodos(username, includeDeleted: true);
+    final changed = _recomputeLocalTodoScheduleConflicts(allTodos);
+
+    if (changed) {
+      await saveTodos(
+        username,
+        allTodos,
+        sync: false,
+        isSyncSource: true,
+        recomputeScheduleConflicts: false,
+      );
+    } else {
+      triggerRefresh();
+    }
+
+    int total = 0;
+    int personalPersonal = 0;
+    int personalTeam = 0;
+    int teamTeam = 0;
+
+    for (final todo in allTodos) {
+      if (!todo.hasConflict) continue;
+      final data = todo.serverVersionData;
+      if (!_isLocalScheduleConflict(data)) continue;
+      total++;
+      switch (data?['relation_type']) {
+        case 'personal_personal':
+          personalPersonal++;
+          break;
+        case 'personal_team':
+          personalTeam++;
+          break;
+        case 'team_team':
+          teamTeam++;
+          break;
+      }
+    }
+
+    return {
+      'total': total,
+      'personal_personal': personalPersonal,
+      'personal_team': personalTeam,
+      'team_team': teamTeam,
+    };
   }
 
   static Future<void> _recordLocalAuditOptimized(
@@ -1205,7 +1268,7 @@ class StorageService {
   }
 
   static Future<List<TodoItem>> getTodos(String username,
-      {bool includeDeleted = false}) async {
+      {bool includeDeleted = false, int? limit}) async {
     final prefs = await StorageService.prefs;
     // 🚀 Uni-Sync 安全方案：双轨读取 + 逃生通道
     try {
@@ -1214,6 +1277,15 @@ class StorageService {
 
       final migrationKey = "migration_marker_${username}_v4";
       bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
+
+      // 🚀 核心补丁：清理先前版本迁移后遗留的超大数据 (解决 170MB+ 内存占用与启动卡顿)
+      final String cleanupKey = "cleanup_done_${username}_v4_repair";
+      if (alreadyMigrated && !(prefs.getBool(cleanupKey) ?? false)) {
+        await prefs.remove("${KEY_TODOS}_$username");
+        await prefs.remove(KEY_TODOS);
+        await prefs.setBool(cleanupKey, true);
+        debugPrint("🗑️ Todos 残留数据修复清理完成。");
+      }
 
       if (!alreadyMigrated) {
         List<String> legacyJsonList =
@@ -1233,13 +1305,20 @@ class StorageService {
           // 🚀 使用 saveTodos 触发迁移，这样会自动生成 op_logs 确保同步到云端
           await saveTodos(username, legacyItems,
               sync: true, isSyncSource: false);
-          debugPrint("✅ 老数据增量迁移完成。");
+          // 🚀 迁移成功后，必须物理清除 SharedPreferences 中的巨大 JSON 块
+          // 否则 Android 的原生 SharedPreferences 会一直将此 170MB+ 的数据留在内存中导致 OOM
+          await prefs.remove("${KEY_TODOS}_$username");
+          await prefs.remove(KEY_TODOS); 
+          debugPrint("✅ 老数据增量迁移完成并已物理清理。");
         }
         await prefs.setBool(migrationKey, true);
       }
 
       final List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
-          where: includeDeleted ? null : 'is_deleted IS NOT 1' // 🚀 兼容 0 或 NULL
+          // where: includeDeleted ? null : 'is_deleted IS NOT 1',
+          // // 🚀 核心优化：针对主页加载，优先排序未完成项，并限制总量避免 OOM
+          // orderBy: includeDeleted ? 'updated_at DESC' : 'is_completed ASC, updated_at DESC',
+          // limit: limit,
           );
       if (maps.isNotEmpty) {
         List<TodoItem> todos;
@@ -1737,30 +1816,71 @@ class StorageService {
     if (sync) Future.microtask(() => syncData(username));
   }
 
-  static Future<List<TimeLogItem>> getTimeLogs(String username) async {
-    final prefs = await StorageService.prefs;
-    List<String> list = prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
+  static Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final dbHelper = DatabaseHelper.instance;
 
-    // 🚀 核心修复：增加一次性迁移保护
-    if (list.isEmpty && username.isNotEmpty) {
-      final String markerKey = "${KEY_TIME_LOGS}_${username}_migrated";
-      if (!(prefs.getBool(markerKey) ?? false)) {
-        list = prefs.getStringList(KEY_TIME_LOGS) ?? [];
-        if (list.isNotEmpty) {
-          await prefs.setBool(markerKey, true);
+    try {
+      // 1. 迁移检查
+      final String migrationKey = "migrated_timelogs_$username";
+      final bool migrated = prefs.getBool(migrationKey) ?? false;
+
+      if (!migrated) {
+        // 🚀 核心补丁：清理残留
+        final String cleanupKey = "cleanup_done_timelogs_${username}_repair";
+        if (!(prefs.getBool(cleanupKey) ?? false)) {
+            await prefs.remove("${KEY_TIME_LOGS}_$username");
+            await prefs.remove(KEY_TIME_LOGS);
+            await prefs.setBool(cleanupKey, true);
         }
-      }
-    }
+        List<String> legacyJsonList =
+            prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
+        if (legacyJsonList.isEmpty && username.isNotEmpty) {
+          legacyJsonList = prefs.getStringList(KEY_TIME_LOGS) ?? [];
+        }
 
-    List<TimeLogItem> logs = [];
-    for (var e in list) {
-      try {
-        logs.add(TimeLogItem.fromJson(jsonDecode(e)));
-      } catch (err) {
-        debugPrint("Parse TimeLog Error: $err");
+        if (legacyJsonList.isNotEmpty) {
+          debugPrint("🚀 发现未迁移专注记录，正在执行迁移...");
+          List<TimeLogItem> legacyItems = [];
+          for (var e in legacyJsonList) {
+            try {
+              legacyItems.add(TimeLogItem.fromJson(jsonDecode(e)));
+            } catch (_) {}
+          }
+          await saveTimeLogs(username, legacyItems, sync: false);
+          // 🚀 迁移成功后物理移除 Prefs 中的大对象，防止 OOM
+          await prefs.remove("${KEY_TIME_LOGS}_$username");
+          await prefs.remove(KEY_TIME_LOGS);
+          debugPrint("✅ 专注记录迁移完成并已物理清理。");
+        }
+        await prefs.setBool(migrationKey, true);
       }
+
+      final db = await dbHelper.database;
+      // 2. 从 SQL 读取
+      final List<Map<String, dynamic>> maps = await db.query(
+        'time_logs',
+        where: 'is_deleted = 0',
+        orderBy: 'start_time DESC',
+        limit: limit,
+      );
+
+      return maps.map((m) => TimeLogItem(
+        id: m['uuid'] ?? m['id']?.toString(),
+        title: m['task_name'] ?? m['title'] ?? '',
+        startTime: m['start_time'] ?? 0,
+        endTime: m['end_time'] ?? 0,
+        remark: m['notes'] ?? m['remark'],
+        version: m['version'] ?? 1,
+        updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+        isDeleted: (m['is_deleted'] == 1),
+      )).toList();
+    } catch (e) {
+      debugPrint("⚠️ TimeLogs SQL 异常: $e");
+      // 逃生通道
+      List<String> list = prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
+      return list.map((e) => TimeLogItem.fromJson(jsonDecode(e))).toList();
     }
-    return logs;
   }
 
   static Future<bool> deleteTimeLogGlobally(
@@ -1843,7 +1963,17 @@ class StorageService {
     }
 
     // 4. 原子化写入本地存储
-    await prefs.setString(historyKey, jsonEncode(history));
+    // 🚀 核心优化：逐步弃用 Prefs 存储历史记录，迁移至 SQL
+    try {
+      await saveScreenTimeHistoryToSql(today, stats);
+      // 如果写入 SQL 成功，可以尝试清理一下 Prefs 里的旧数据（如果它太大了）
+      if (histStr != null && histStr.length > 1024 * 500) { // > 500KB
+         await prefs.remove(historyKey);
+         debugPrint("🗑️ 已清理过大的 ScreenTime Prefs 历史记录");
+      }
+    } catch (e) {
+      await prefs.setString(historyKey, jsonEncode(history));
+    }
 
     // 5. 更新“当前视图快照” (KEY_SCREEN_TIME_CACHE)
     // 🚀 核心修复：只有当最新更新日期确实是今天时，才更新首页显示的 Cache
@@ -1852,6 +1982,27 @@ class StorageService {
 
     // 更新最后同步成功的时间戳（记录到毫秒）
     await prefs.setInt(syncKey, now.millisecondsSinceEpoch);
+  }
+
+  /// 🚀 将屏幕时间持久化到 SQLite
+  static Future<void> saveScreenTimeHistoryToSql(String date, List<dynamic> stats) async {
+    final dbHelper = DatabaseHelper.instance;
+    final db = await dbHelper.database;
+    final batch = db.batch();
+    
+    // 覆盖写：先删除该日期的旧记录
+    batch.delete('screen_time', where: 'record_date = ?', whereArgs: [date]);
+    
+    for (var stat in stats) {
+      batch.insert('screen_time', {
+        'record_date': date,
+        'package_name': stat['package_name']?.toString() ?? '',
+        'app_name': stat['app_name']?.toString() ?? '',
+        'duration': (stat['duration'] is num) ? (stat['duration'] as num).toInt() : 0,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      });
+    }
+    await batch.commit(noResult: true);
   }
 
   static Future<List<dynamic>> getScreenTimeCache() async {
@@ -1891,20 +2042,65 @@ class StorageService {
   }
 
   static Future<Map<String, List<dynamic>>> getScreenTimeHistory() async {
-    final prefs = await StorageService.prefs;
+    final prefs = await SharedPreferences.getInstance();
     final String? username = prefs.getString(KEY_CURRENT_USER);
-    final String key = (username != null && username.isNotEmpty)
-        ? "${KEY_SCREEN_TIME_HISTORY}_$username"
-        : KEY_SCREEN_TIME_HISTORY;
+    final String historyKey = _scopedKey(KEY_SCREEN_TIME_HISTORY, username);
+    final dbHelper = DatabaseHelper.instance;
 
-    String? jsonStr = prefs.getString(key);
-    jsonStr ??= prefs.getString(KEY_SCREEN_TIME_HISTORY);
-    if (jsonStr != null) {
-      try {
-        Map<String, dynamic> raw = jsonDecode(jsonStr);
-        return raw
-            .map((key, value) => MapEntry(key, List<dynamic>.from(value)));
-      } catch (_) {}
+    try {
+      // 1. 迁移检查 (一次性从 Prefs 搬运到 SQL)
+      final String migrationKey = "migrated_screentime_$username";
+      if (!(prefs.getBool(migrationKey) ?? false)) {
+        String? jsonStr =
+            prefs.getString(historyKey) ?? prefs.getString(KEY_SCREEN_TIME_HISTORY);
+        if (jsonStr != null && jsonStr.isNotEmpty) {
+          debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
+          try {
+            Map<String, dynamic> history = jsonDecode(jsonStr);
+            for (var entry in history.entries) {
+              if (entry.value is List) {
+                await saveScreenTimeHistoryToSql(entry.key, entry.value as List);
+              }
+            }
+            await prefs.remove(historyKey);
+            await prefs.remove(KEY_SCREEN_TIME_HISTORY);
+            debugPrint("✅ ScreenTime 迁移完成并已清理 Prefs");
+          } catch (e) {
+            debugPrint("⚠️ ScreenTime 迁移解析失败: $e");
+          }
+        }
+        await prefs.setBool(migrationKey, true);
+      }
+
+      final db = await dbHelper.database;
+      // 2. 从 SQL 读取所有记录并按日期分组
+      final List<Map<String, dynamic>> maps = await db.query(
+        'screen_time',
+        orderBy: 'record_date DESC',
+      );
+
+      Map<String, List<dynamic>> result = {};
+      for (var m in maps) {
+        String date = m['record_date']?.toString() ?? '';
+        if (date.isEmpty) continue;
+        result.putIfAbsent(date, () => []);
+        result[date]!.add({
+          'package_name': m['package_name'],
+          'app_name': m['app_name'],
+          'duration': m['duration'],
+        });
+      }
+      return result;
+    } catch (e) {
+      debugPrint("⚠️ ScreenTime History SQL 异常: $e");
+      String? jsonStr =
+          prefs.getString(historyKey) ?? prefs.getString(KEY_SCREEN_TIME_HISTORY);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        try {
+          Map<String, dynamic> raw = jsonDecode(jsonStr);
+          return raw.map((key, value) => MapEntry(key, List<dynamic>.from(value)));
+        } catch (_) {}
+      }
     }
     return {};
   }
@@ -2474,12 +2670,15 @@ class StorageService {
         if (!_hasVersionConflict(existing)) {
           final bool isTeamTodo =
               todo.teamUuid != null && todo.teamUuid!.isNotEmpty;
+          final relationType =
+              _classifyScheduleRelation(todo, peers.cast<Map<String, dynamic>>());
           final data = {
             'uuid': todo.id,
             'id': todo.id,
             'content': todo.title,
             'team_uuid': todo.teamUuid,
             'schedule_scope': isTeamTodo ? 'team' : 'personal',
+            'relation_type': relationType,
             'conflict_kind': 'logic',
             'conflict_type': 'local_schedule_conflict',
             'source': 'local_detector',
@@ -2536,6 +2735,26 @@ class StorageService {
       'start_time': interval.startMs,
       'end_time': interval.endMs,
     };
+  }
+
+  static String _classifyScheduleRelation(
+      TodoItem current, List<Map<String, dynamic>> peers) {
+    final currentIsTeam =
+        current.teamUuid != null && current.teamUuid!.isNotEmpty;
+    final hasTeamPeer = peers.any((peer) {
+      final teamUuid = peer['team_uuid']?.toString();
+      return teamUuid != null && teamUuid.isNotEmpty;
+    });
+    final hasPersonalPeer = peers.any((peer) {
+      final teamUuid = peer['team_uuid']?.toString();
+      return teamUuid == null || teamUuid.isEmpty;
+    });
+
+    if ((currentIsTeam && hasPersonalPeer) || (!currentIsTeam && hasTeamPeer)) {
+      return 'personal_team';
+    }
+    if (currentIsTeam) return 'team_team';
+    return 'personal_personal';
   }
 
   static String _localDayKey(int ms) {

@@ -388,7 +388,6 @@ class DatabaseHelper {
               debugPrint("⚠️ Database: 升级 V20 失败: $e");
             }
           }
-        }
           if (oldVersion < 21) {
             try {
               await db.execute('''
@@ -407,6 +406,7 @@ class DatabaseHelper {
               debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
             }
           }
+        }
     );
   }
 

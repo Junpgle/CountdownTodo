@@ -21,6 +21,7 @@ class ConflictInboxScreen extends StatefulWidget {
 class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   List<dynamic> _conflictItems = [];
   bool _isLoading = true;
+  bool _isScanning = false;
 
   @override
   void initState() {
@@ -76,6 +77,32 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     }
   }
 
+  Future<void> _scanAllTodoConflicts() async {
+    if (_isScanning) return;
+    setState(() => _isScanning = true);
+    try {
+      final result = await StorageService.scanAllTodoConflicts(widget.username);
+      await _loadConflicts();
+      if (!mounted) return;
+      final total = result['total'] ?? 0;
+      final pp = result['personal_personal'] ?? 0;
+      final pt = result['personal_team'] ?? 0;
+      final tt = result['team_team'] ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('扫描完成：$total 项冲突，个人-个人 $pp，个人-团队 $pt，团队-团队 $tt'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('扫描失败: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isScanning = false);
+    }
+  }
+
   /// Find the sync conflict info that matches this item.
   Map<String, dynamic>? _findServerVersion(dynamic item) {
     final itemId = _itemId(item);
@@ -128,6 +155,49 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   String _conflictLabel(dynamic item) {
     return _isLocalScheduleConflict(item) ? '时间重叠' : '版本争议';
+  }
+
+  String? _relationType(dynamic item) {
+    final data = _conflictData(item);
+    if (data == null || data.isEmpty) return null;
+
+    final direct = data['relation_type']?.toString();
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    if (_isLocalScheduleConflict(item)) {
+      final peers = _conflictPeers(item);
+      final itemIsTeam = _isTeamScopedData(_itemToJson(item));
+      final hasTeamPeer = peers.any(_isTeamScopedData);
+      final hasPersonalPeer = peers.any((peer) => !_isTeamScopedData(peer));
+      if ((itemIsTeam && hasPersonalPeer) || (!itemIsTeam && hasTeamPeer)) {
+        return 'personal_team';
+      }
+      return itemIsTeam ? 'team_team' : 'personal_personal';
+    }
+
+    final localIsTeam = _isTeamScopedData(_itemToJson(item));
+    final server = _findServerVersion(item);
+    final remoteIsTeam = server != null && _isTeamScopedData(server);
+    if (localIsTeam != remoteIsTeam) return 'personal_team';
+    return localIsTeam ? 'team_team' : 'personal_personal';
+  }
+
+  bool _isTeamScopedData(Map<String, dynamic>? data) {
+    final teamUuid = data?['team_uuid']?.toString() ?? data?['teamUuid']?.toString();
+    return teamUuid != null && teamUuid.isNotEmpty;
+  }
+
+  String _relationLabel(dynamic item) {
+    switch (_relationType(item)) {
+      case 'personal_personal':
+        return '个人-个人';
+      case 'personal_team':
+        return '个人-团队';
+      case 'team_team':
+        return '团队-团队';
+      default:
+        return _isLocalScheduleConflict(item) ? '待办冲突' : '版本冲突';
+    }
   }
 
   String _scheduleScopeLabel(Map<String, dynamic> data) {
@@ -236,6 +306,17 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
+          IconButton(
+            icon: _isScanning
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.radar_rounded, size: 20),
+            tooltip: '扫描全部待办冲突',
+            onPressed: _isScanning ? null : _scanAllTodoConflicts,
+          ),
           IconButton(
             icon: const Icon(Icons.help_outline_rounded, size: 20),
             onPressed: _showConflictHelp,
@@ -369,6 +450,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final conflictColor = _conflictColor(item);
     final conflictIcon = _conflictIcon(item);
     final conflictLabel = _conflictLabel(item);
+    final relationLabel = _relationLabel(item);
     final conflictSummary = _conflictSummary(item);
     final conflictPeers = _conflictPeers(item);
 
@@ -402,6 +484,19 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                                 fontWeight: FontWeight.bold)),
                       ],
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(6)),
+                    child: Text(relationLabel,
+                        style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w600)),
                   ),
                   const Spacer(),
                   Text(
@@ -568,6 +663,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             const SizedBox(height: 16),
             const Text('时间重叠',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(_relationLabel(item),
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.orangeAccent,
+                    fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text('调整其中一个任务的时间后，冲突会在下次同步或刷新时自动解除。',
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
