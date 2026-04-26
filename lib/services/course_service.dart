@@ -281,6 +281,53 @@ class CourseService {
         return {'title': '明日课程', 'courses': tomorrowCourses};
       }
 
+      final futureCourses = <MapEntry<DateTime, CourseItem>>[];
+      DateTime? semMonday;
+      final DateTime? semStart = await StorageService.getSemesterStart();
+      if (semStart != null) {
+        semMonday = DateTime(semStart.year, semStart.month, semStart.day)
+            .subtract(Duration(days: semStart.weekday - 1));
+      }
+
+      for (final c in courses) {
+        DateTime? courseDay;
+        if (c.date.isNotEmpty) {
+          try {
+            courseDay = DateFormat('yyyy-MM-dd').parseStrict(c.date);
+          } catch (_) {
+            courseDay = null;
+          }
+        }
+        if (courseDay == null && semMonday != null && c.weekIndex > 0) {
+          courseDay = semMonday.add(
+            Duration(days: (c.weekIndex - 1) * 7 + c.weekday - 1),
+          );
+        }
+        if (courseDay == null) continue;
+
+        final normalizedDay =
+            DateTime(courseDay.year, courseDay.month, courseDay.day);
+        if (normalizedDay.isAfter(tomorrowNormalized)) {
+          futureCourses.add(MapEntry(normalizedDay, c));
+        }
+      }
+
+      if (futureCourses.isNotEmpty) {
+        futureCourses.sort((a, b) {
+          final dayCompare = a.key.compareTo(b.key);
+          if (dayCompare != 0) return dayCompare;
+          return a.value.startTime.compareTo(b.value.startTime);
+        });
+        final nextDay = futureCourses.first.key;
+        final nextCourses = futureCourses
+            .where((entry) => entry.key.isAtSameMomentAs(nextDay))
+            .map((entry) => entry.value)
+            .toList()
+          ..sort((a, b) => a.startTime.compareTo(b.startTime));
+        final days = nextDay.difference(todayNormalized).inDays;
+        return {'title': '${days}天后课程', 'courses': nextCourses};
+      }
+
       return {'title': '最近无课', 'courses': <CourseItem>[]};
     } catch (e) {
       print("获取主页课程时发生崩溃: $e");
