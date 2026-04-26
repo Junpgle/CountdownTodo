@@ -3,6 +3,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
 import 'package:intl/intl.dart';
+import '../widgets/todo_section_widget.dart';
 
 enum _ConflictFilter { all, time, other }
 
@@ -882,21 +883,25 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final peers = data['conflict_with'] is List
         ? data['conflict_with'] as List
         : const [];
+    final recommendedWindow =
+        item is TodoItem ? _suggestPreferredWindow(item, peers) : null;
+    final recommendedLabel = item is TodoItem && recommendedWindow != null
+        ? _buildRecommendedResolutionLabel(item, recommendedWindow)
+        : null;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
+      builder: (sheetContext) => Container(
         constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.75),
+            maxHeight: MediaQuery.of(sheetContext).size.height * 0.86),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
+          color: Theme.of(sheetContext).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
@@ -918,52 +923,146 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     color: Colors.orangeAccent,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Text('调整其中一个任务的时间后，冲突会在下次同步或刷新时自动解除。',
+            Text('调整时间即可解除冲突。推荐先看对比，再决定自动调整、手动编辑，还是整组顺排。',
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            if (recommendedLabel != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.green.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.auto_fix_high_rounded,
+                        size: 18, color: Colors.green),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        recommendedLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.green.shade800,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
-            _buildScheduleConflictRow('当前任务', data),
-            const SizedBox(height: 12),
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: peers.length,
-                itemBuilder: (context, index) {
-                  final peer = peers[index] is Map
-                      ? Map<String, dynamic>.from(peers[index] as Map)
-                      : <String, dynamic>{};
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _buildScheduleConflictRow('冲突对象', peer),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final useTwoColumns = constraints.maxWidth >= 560;
+                  if (!useTwoColumns) {
+                    return ListView(
+                      children: [
+                        _buildScheduleConflictPanel(
+                          title: '当前任务',
+                          icon: Icons.push_pin_rounded,
+                          children: [_buildScheduleConflictRow(data)],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildScheduleConflictPanel(
+                          title: '冲突对象',
+                          icon: Icons.compare_arrows_rounded,
+                          children: peers.isEmpty
+                              ? [_buildScheduleConflictEmpty()]
+                              : peers.map((peer) {
+                                  final peerData = peer is Map
+                                      ? Map<String, dynamic>.from(peer as Map)
+                                      : <String, dynamic>{};
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child:
+                                        _buildScheduleConflictRow(peerData),
+                                  );
+                                }).toList(),
+                        ),
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _buildScheduleConflictPanel(
+                          title: '当前任务',
+                          icon: Icons.push_pin_rounded,
+                          children: [_buildScheduleConflictRow(data)],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildScheduleConflictPanel(
+                          title: '冲突对象',
+                          icon: Icons.compare_arrows_rounded,
+                          child: peers.isEmpty
+                              ? _buildScheduleConflictEmpty()
+                              : ListView.builder(
+                                  itemCount: peers.length,
+                                  itemBuilder: (context, index) {
+                                    final peer = peers[index] is Map
+                                        ? Map<String, dynamic>.from(
+                                            peers[index] as Map)
+                                        : <String, dynamic>{};
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child:
+                                          _buildScheduleConflictRow(peer),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
             ),
             const SizedBox(height: 12),
             if (item is TodoItem) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isApplyingScheduleFix
-                          ? null
-                          : () => _applyScheduleResolution(
-                              item, peers, const Duration(minutes: 30)),
-                      icon: const Icon(Icons.schedule_send_rounded, size: 16),
-                      label: const Text('顺延 30 分钟'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _isApplyingScheduleFix
-                          ? null
-                          : () => _moveTodoAfterConflicts(item, peers),
-                      icon: const Icon(Icons.vertical_align_bottom_rounded,
-                          size: 16),
-                      label: const Text('移到冲突结束后'),
-                    ),
-                  ),
-                ],
+              _buildScheduleActionButton(
+                title: '推荐调整',
+                subtitle: recommendedWindow == null
+                    ? '当前没有可直接推荐的新时间'
+                    : '自动寻找最近的不冲突时段，只移动当前任务并保留原时长',
+                icon: Icons.auto_awesome_rounded,
+                filled: true,
+                enabled: !_isApplyingScheduleFix && recommendedWindow != null,
+                onPressed: () => _applyRecommendedScheduleResolution(
+                  item,
+                  recommendedWindow!,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _buildScheduleActionButton(
+                title: '手动编辑',
+                subtitle: '进入待办编辑页，自行调整开始时间、结束时间和其他信息',
+                icon: Icons.edit_calendar_rounded,
+                enabled: !_isApplyingScheduleFix,
+                onPressed: () async {
+                  Navigator.pop(sheetContext);
+                  await _openTodoEditor(item);
+                },
+              ),
+              const SizedBox(height: 10),
+              _buildScheduleActionButton(
+                title: '整组顺排',
+                subtitle: '把这一组互相重叠的待办按时间顺序整体后移，一次清掉冲突链',
+                icon: Icons.account_tree_rounded,
+                enabled: !_isApplyingScheduleFix,
+                onPressed: () => _resolveConflictChain(item),
               ),
               if (_isApplyingScheduleFix) ...[
                 const SizedBox(height: 12),
@@ -974,7 +1073,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(sheetContext),
                 child: const Text('知道了'),
               ),
             ),
@@ -984,7 +1083,60 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     );
   }
 
-  Widget _buildScheduleConflictRow(String label, Map<String, dynamic> data) {
+  Widget _buildScheduleConflictPanel({
+    required String title,
+    required IconData icon,
+    Widget? child,
+    List<Widget>? children,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.orangeAccent.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.16)),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: Colors.orangeAccent),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.orangeAccent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (child != null) Expanded(child: child),
+          if (children != null) ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScheduleConflictEmpty() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        '暂无可展示的冲突对象',
+        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+      ),
+    );
+  }
+
+  Widget _buildScheduleConflictRow(Map<String, dynamic> data) {
     final title = data['content'] ?? data['title'] ?? '未命名任务';
     final start = _parseMs(data['start_time'] ??
         data['startTime'] ??
@@ -997,15 +1149,17 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final time = start > 0 && end > 0
         ? '${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(end))}'
         : '时间未知';
+    final scope = _scheduleScopeLabel(data);
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.orangeAccent.withValues(alpha: 0.08),
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.2)),
+        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.14)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(Icons.schedule_rounded,
               color: Colors.orangeAccent, size: 20),
@@ -1014,17 +1168,25 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.orangeAccent,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
                 Text(title.toString(),
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w600),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _buildMiniInfoChip(scope, Colors.blue),
+                    if (start > 0 && end > 0)
+                      _buildMiniInfoChip(
+                        '${((end - start) / const Duration(minutes: 1).inMilliseconds).round()} 分钟',
+                        Colors.green,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
                 Text(time,
                     style:
                         TextStyle(fontSize: 12, color: Colors.grey.shade600)),
@@ -1036,46 +1198,305 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     );
   }
 
+  Widget _buildMiniInfoChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScheduleActionButton({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onPressed,
+    bool enabled = true,
+    bool filled = false,
+  }) {
+    final child = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 12, height: 1.35),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (filled) {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: enabled ? onPressed : null,
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            alignment: Alignment.centerLeft,
+          ),
+          child: child,
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: enabled ? onPressed : null,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          alignment: Alignment.centerLeft,
+        ),
+        child: child,
+      ),
+    );
+  }
+
   int _parseMs(dynamic value) {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
-  Future<void> _applyScheduleResolution(
-    TodoItem item,
-    List peers,
-    Duration offset,
-  ) async {
+  DateTimeRange? _suggestPreferredWindow(TodoItem item, List peers) {
     final startMs = item.createdDate ?? item.createdAt;
     final endMs = item.dueDate?.millisecondsSinceEpoch ?? 0;
-    if (startMs <= 0 || endMs <= 0 || endMs <= startMs) return;
-
-    final newStart = DateTime.fromMillisecondsSinceEpoch(startMs).add(offset);
-    final newEnd = DateTime.fromMillisecondsSinceEpoch(endMs).add(offset);
-    await _persistResolvedTodo(item, newStart, newEnd);
-  }
-
-  Future<void> _moveTodoAfterConflicts(TodoItem item, List peers) async {
-    final startMs = item.createdDate ?? item.createdAt;
-    final endMs = item.dueDate?.millisecondsSinceEpoch ?? 0;
-    if (startMs <= 0 || endMs <= 0 || endMs <= startMs) return;
+    if (startMs <= 0 || endMs <= 0 || endMs <= startMs) return null;
 
     final durationMs = endMs - startMs;
-    var latestEnd = endMs;
-    for (final peer in peers) {
-      if (peer is! Map) continue;
-      final peerEnd = _parseMs(peer['end_time'] ?? peer['endTime']);
-      if (peerEnd > latestEnd) latestEnd = peerEnd;
+    var candidateStart = startMs;
+    var candidateEnd = candidateStart + durationMs;
+    final busyRanges = peers
+        .whereType<Map>()
+        .map((peer) => Map<String, dynamic>.from(peer))
+        .map((peer) => (
+              start: _parseMs(peer['start_time'] ?? peer['startTime']),
+              end: _parseMs(peer['end_time'] ?? peer['endTime']),
+            ))
+        .where((range) => range.start > 0 && range.end > range.start)
+        .toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+
+    for (final range in busyRanges) {
+      if (!_rangesOverlap(candidateStart, candidateEnd, range.start, range.end)) {
+        continue;
+      }
+      candidateStart = range.end + const Duration(minutes: 5).inMilliseconds;
+      candidateEnd = candidateStart + durationMs;
     }
 
-    final newStart =
-        DateTime.fromMillisecondsSinceEpoch(latestEnd).add(const Duration(minutes: 5));
-    final newEnd =
-        DateTime.fromMillisecondsSinceEpoch(latestEnd + durationMs).add(
-      const Duration(minutes: 5),
+    if (candidateStart == startMs) return null;
+    return DateTimeRange(
+      start: DateTime.fromMillisecondsSinceEpoch(candidateStart),
+      end: DateTime.fromMillisecondsSinceEpoch(candidateEnd),
     );
-    await _persistResolvedTodo(item, newStart, newEnd);
+  }
+
+  String _buildRecommendedResolutionLabel(
+    TodoItem item,
+    DateTimeRange recommendedWindow,
+  ) {
+    final startMs = item.createdDate ?? item.createdAt;
+    final endMs = item.dueDate?.millisecondsSinceEpoch ?? 0;
+    final durationMinutes = startMs > 0 && endMs > startMs
+        ? ((endMs - startMs) / const Duration(minutes: 1).inMilliseconds).round()
+        : 0;
+    final shiftedMinutes = ((recommendedWindow.start.millisecondsSinceEpoch - startMs) /
+            const Duration(minutes: 1).inMilliseconds)
+        .round();
+    return '推荐：仅移动开始时间，保留 $durationMinutes 分钟时长。新时间为 '
+        '${DateFormat('MM-dd HH:mm').format(recommendedWindow.start)} ~ '
+        '${DateFormat('HH:mm').format(recommendedWindow.end)}'
+        '${shiftedMinutes > 0 ? '，整体后移 $shiftedMinutes 分钟' : ''}。';
+  }
+
+  bool _rangesOverlap(int startA, int endA, int startB, int endB) {
+    return startA < endB && endA > startB;
+  }
+
+  int _todoStartMs(TodoItem item) => item.createdDate ?? item.createdAt;
+
+  int _todoEndMs(TodoItem item) => item.dueDate?.millisecondsSinceEpoch ?? 0;
+
+  Future<void> _applyRecommendedScheduleResolution(
+    TodoItem item,
+    DateTimeRange recommendedWindow,
+  ) async {
+    await _persistResolvedTodos(
+      {
+        item.id: (
+          start: recommendedWindow.start,
+          end: recommendedWindow.end,
+        ),
+      },
+      successMessage: '已按推荐时间调整当前任务',
+    );
+  }
+
+  Future<void> _openTodoEditor(TodoItem item) async {
+    final allTodos =
+        await StorageService.getTodos(widget.username, includeDeleted: true);
+    final allGroups =
+        await StorageService.getTodoGroups(widget.username, includeDeleted: true);
+    final target = allTodos.cast<TodoItem?>().firstWhere(
+          (todo) => todo?.id == item.id,
+          orElse: () => null,
+        );
+    if (!mounted || target == null) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TodoEditScreen(
+          todo: target,
+          todos: allTodos,
+          onTodosChanged: (updatedTodos) {
+            StorageService.saveTodos(widget.username, updatedTodos);
+          },
+          todoGroups: allGroups,
+          onGroupsChanged: (updatedGroups) {
+            StorageService.saveTodoGroups(widget.username, updatedGroups);
+          },
+          username: widget.username,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _loadConflicts();
+  }
+
+  Future<void> _resolveConflictChain(TodoItem item) async {
+    final allTodos =
+        await StorageService.getTodos(widget.username, includeDeleted: true);
+    final conflictChain = _collectConflictChain(item, allTodos);
+    if (conflictChain.length <= 1) {
+      final recommendedWindow = _suggestPreferredWindow(item, _conflictPeers(item));
+      if (recommendedWindow != null) {
+        await _applyRecommendedScheduleResolution(item, recommendedWindow);
+      }
+      return;
+    }
+
+    conflictChain.sort((a, b) {
+      final byStart = _todoStartMs(a).compareTo(_todoStartMs(b));
+      if (byStart != 0) return byStart;
+      return _todoEndMs(a).compareTo(_todoEndMs(b));
+    });
+
+    final updates = <String, ({DateTime start, DateTime end})>{};
+    var anchorEnd = 0;
+    for (var i = 0; i < conflictChain.length; i++) {
+      final todo = conflictChain[i];
+      final startMs = _todoStartMs(todo);
+      final endMs = _todoEndMs(todo);
+      if (startMs <= 0 || endMs <= startMs) {
+        continue;
+      }
+
+      final durationMs = endMs - startMs;
+      if (i == 0) {
+        anchorEnd = endMs;
+        continue;
+      }
+
+      final minStart =
+          anchorEnd + const Duration(minutes: 5).inMilliseconds;
+      if (startMs < minStart) {
+        final shiftedStart = DateTime.fromMillisecondsSinceEpoch(minStart);
+        final shiftedEnd =
+            DateTime.fromMillisecondsSinceEpoch(minStart + durationMs);
+        updates[todo.id] = (
+          start: shiftedStart,
+          end: shiftedEnd,
+        );
+        anchorEnd = minStart + durationMs;
+      } else {
+        anchorEnd = endMs;
+      }
+    }
+
+    if (updates.isEmpty) {
+      final recommendedWindow = _suggestPreferredWindow(item, _conflictPeers(item));
+      if (recommendedWindow != null) {
+        await _applyRecommendedScheduleResolution(item, recommendedWindow);
+      }
+      return;
+    }
+
+    await _persistResolvedTodos(
+      updates,
+      successMessage: '已顺排处理 ${updates.length + 1} 项冲突链',
+    );
+  }
+
+  List<TodoItem> _collectConflictChain(TodoItem seed, List<TodoItem> todos) {
+    final candidates = todos.where((todo) {
+      final startMs = _todoStartMs(todo);
+      final endMs = _todoEndMs(todo);
+      return !todo.isDeleted &&
+          !todo.isAllDay &&
+          endMs > startMs &&
+          startMs > 0;
+    }).toList();
+
+    final seedInList = candidates.cast<TodoItem?>().firstWhere(
+          (todo) => todo?.id == seed.id,
+          orElse: () => null,
+        );
+    if (seedInList == null) return [seed];
+
+    final chain = <TodoItem>[];
+    final queue = <TodoItem>[seedInList];
+    final visited = <String>{};
+
+    while (queue.isNotEmpty) {
+      final current = queue.removeAt(0);
+      if (!visited.add(current.id)) continue;
+      chain.add(current);
+
+      final currentStart = _todoStartMs(current);
+      final currentEnd = _todoEndMs(current);
+      for (final candidate in candidates) {
+        if (visited.contains(candidate.id) || candidate.id == current.id) {
+          continue;
+        }
+        if (_rangesOverlap(
+          currentStart,
+          currentEnd,
+          _todoStartMs(candidate),
+          _todoEndMs(candidate),
+        )) {
+          queue.add(candidate);
+        }
+      }
+    }
+    return chain;
   }
 
   Future<void> _persistResolvedTodo(
@@ -1083,20 +1504,41 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     DateTime newStart,
     DateTime newEnd,
   ) async {
+    await _persistResolvedTodos(
+      {
+        item.id: (
+          start: newStart,
+          end: newEnd,
+        ),
+      },
+      successMessage: '已应用时间冲突处理方案',
+    );
+  }
+
+  Future<void> _persistResolvedTodos(
+    Map<String, ({DateTime start, DateTime end})> updates, {
+    required String successMessage,
+  }) async {
+    if (updates.isEmpty) return;
     setState(() => _isApplyingScheduleFix = true);
     try {
       final allTodos =
           await StorageService.getTodos(widget.username, includeDeleted: true);
-      final index = allTodos.indexWhere((t) => t.id == item.id);
-      if (index == -1) return;
-      allTodos[index].createdDate = newStart.millisecondsSinceEpoch;
-      allTodos[index].dueDate = newEnd;
-      allTodos[index].markAsChanged();
+      var appliedCount = 0;
+      for (final todo in allTodos) {
+        final update = updates[todo.id];
+        if (update == null) continue;
+        todo.createdDate = update.start.millisecondsSinceEpoch;
+        todo.dueDate = update.end;
+        todo.markAsChanged();
+        appliedCount++;
+      }
+      if (appliedCount == 0) return;
       await StorageService.saveTodos(widget.username, allTodos);
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已应用时间冲突处理方案')),
+        SnackBar(content: Text(successMessage)),
       );
       await _loadConflicts();
     } catch (e) {

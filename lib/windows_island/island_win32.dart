@@ -51,6 +51,7 @@ int? getSmallestFlutterWindow() {
   try {
     final currentPid = GetCurrentProcessId();
     final foundHwnds = <int>[];
+    final emptyTitleHwnds = <int>[];
 
     final lpEnumFunc =
         NativeCallable<WNDENUMPROC>.isolateLocal((int hwnd, int lParam) {
@@ -80,6 +81,12 @@ int? getSmallestFlutterWindow() {
 
           if (!isIgnored) {
             foundHwnds.add(hwnd);
+            try {
+              final titleLen = GetWindowTextLength(hwnd);
+              if (titleLen == 0) {
+                emptyTitleHwnds.add(hwnd);
+              }
+            } catch (_) {}
           }
         }
       });
@@ -92,10 +99,12 @@ int? getSmallestFlutterWindow() {
       lpEnumFunc.close();
     }
 
-    if (foundHwnds.isNotEmpty) {
+    final candidates = emptyTitleHwnds.isNotEmpty ? emptyTitleHwnds : foundHwnds;
+
+    if (candidates.isNotEmpty) {
       int? bestHwnd;
       int minArea = 999999999;
-      for (final h in foundHwnds) {
+      for (final h in candidates) {
         using((arena) {
           final rectPtr = arena<RECT>();
           if (GetWindowRect(h, rectPtr) != 0) {
@@ -156,6 +165,7 @@ void applyFramelessTransparent(int hwnd) {
 Future<void> initFfiTransparent() async {
   for (int i = 0; i < IslandConfig.ffiMaxAttempts; i++) {
     final hwnd = getSmallestFlutterWindow();
+    var matched = false;
     if (hwnd != null) {
       using((arena) {
         final rectPtr = arena<RECT>();
@@ -169,10 +179,13 @@ Future<void> initFfiTransparent() async {
                 '[IslandWin32] HWND found and shrunk on attempt $i: $hwnd (${w}x$hSize)');
             _islandHwndCache = hwnd;
             applyFramelessTransparent(hwnd);
-            return;
+            matched = true;
           }
         }
       });
+      if (matched) {
+        return;
+      }
     }
     await Future.delayed(IslandConfig.ffiRetryInterval);
   }

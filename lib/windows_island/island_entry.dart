@@ -316,7 +316,6 @@ Future<void> islandMain(List<String> args) async {
     } catch (_) {}
 
     Timer? boundsPollingTimer;
-    Timer? reminderCheckTimer;
     final Set<String> acknowledgedReminders = {};
     String? lastShownReminderId;
     Map<String, dynamic>? currentReminder;
@@ -441,15 +440,6 @@ Future<void> islandMain(List<String> args) async {
         debugPrint('[Island] Check reminder failed: $e');
       }
     }
-
-    reminderCheckTimer =
-        Timer.periodic(IslandConfig.reminderCheckInterval, (timer) async {
-      await checkAndShowReminder();
-    });
-
-    Timer(IslandConfig.initialReminderCheckDelay, () async {
-      await checkAndShowReminder();
-    });
 
     runApp(MaterialApp(
       debugShowCheckedModeBanner: false,

@@ -509,10 +509,36 @@ class FloatWindowService {
     }
 
     // Deliver to island
-    await _deliverToIsland(structured);
+    await _scheduleIslandDelivery(structured);
   }
 
   static int _lastDeliveryMs = 0;
+  static Timer? _pendingDeliveryTimer;
+  static Map<String, dynamic>? _pendingStructuredPayload;
+
+  static Future<void> _scheduleIslandDelivery(
+      Map<String, dynamic> structured) async {
+    final state = structured['state']?.toString() ?? 'idle';
+
+    if (state == 'idle') {
+      _pendingDeliveryTimer?.cancel();
+      _pendingStructuredPayload = Map<String, dynamic>.from(structured);
+      _pendingDeliveryTimer = Timer(const Duration(milliseconds: 180), () {
+        final payload = _pendingStructuredPayload;
+        _pendingStructuredPayload = null;
+        _pendingDeliveryTimer = null;
+        if (payload != null) {
+          _deliverToIsland(payload);
+        }
+      });
+      return;
+    }
+
+    _pendingDeliveryTimer?.cancel();
+    _pendingDeliveryTimer = null;
+    _pendingStructuredPayload = null;
+    await _deliverToIsland(structured);
+  }
 
   /// Deliver payload to island window
   static Future<void> _deliverToIsland(Map<String, dynamic> structured) async {
@@ -526,6 +552,7 @@ class FloatWindowService {
     try {
       final islandId = 'island-1';
       var winId = IslandManager().getCachedWindowId(islandId);
+      var createdWithInitialPayload = false;
       debugPrint(
           '[FloatWindow] _deliverToIsland: winId=$winId, state=${structured['state']}');
 
@@ -537,7 +564,9 @@ class FloatWindowService {
           winId = await _creatingIsland;
         } else {
           debugPrint('[FloatWindow] Creating island: $islandId');
-          final future = IslandManager().createIsland(islandId);
+          final future = IslandManager()
+              .createIsland(islandId, initialPayload: structured);
+          createdWithInitialPayload = true;
           _creatingIsland = future;
           try {
             winId = await future;
@@ -549,6 +578,14 @@ class FloatWindowService {
       }
 
       if (winId != null) {
+        if (createdWithInitialPayload) {
+          debugPrint(
+              '[FloatWindow] Island created with initial payload; skip duplicate send.');
+          try {
+            debugPayload.value = null;
+          } catch (_) {}
+          return;
+        }
         final sent =
             await IslandManager().sendStructuredPayload(islandId, structured);
         debugPrint('[FloatWindow] sendStructuredPayload result: $sent');

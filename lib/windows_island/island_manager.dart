@@ -54,7 +54,8 @@ class IslandManager {
 
   // ── Public API ─────────────────────────────────────────────────────────
 
-  Future<String?> createIsland(String islandId) async {
+  Future<String?> createIsland(String islandId,
+      {Map<String, dynamic>? initialPayload}) async {
     if (kIsWeb) return null;
 
     // Return cached id if present
@@ -71,7 +72,7 @@ class IslandManager {
     }
 
     // 立即注册 future 到 _creating, 阻止后续调用进入 (在任何 await 之前!)
-    final future = _createIslandInternal(islandId);
+    final future = _createIslandInternal(islandId, initialPayload: initialPayload);
     _creating[islandId] = future;
     try {
       final res = await future;
@@ -85,16 +86,18 @@ class IslandManager {
     }
   }
 
-  Future<String?> _createIslandInternal(String islandId) async {
+  Future<String?> _createIslandInternal(String islandId,
+      {Map<String, dynamic>? initialPayload}) async {
     // 只清缓存, 不销毁旧窗口 (避免 native 崩溃)
     _windowIdCache.remove(islandId);
     try {
       await _clearPersistedWindowId(islandId);
     } catch (_) {}
-    return await _doCreate(islandId);
+    return await _doCreate(islandId, initialPayload: initialPayload);
   }
 
-  Future<String?> _doCreate(String islandId) async {
+  Future<String?> _doCreate(String islandId,
+      {Map<String, dynamic>? initialPayload}) async {
     final initialLegacy = IslandPayload.fromMap(null).toMap();
     final initialStructured = {
       'state': 'idle',
@@ -112,13 +115,15 @@ class IslandManager {
       'legacy': initialLegacy,
     };
 
+    final structuredPayload = initialPayload ?? initialStructured;
+
     final args = {
       'arguments': 'islandMain',
       'hiddenAtLaunch': false,
       'alwaysOnTop': true,
       'skipTaskbar': true,
       'transparent': true,
-      'payload': initialStructured,
+      'payload': structuredPayload,
     };
     try {
       final bounds = await StorageService.getIslandBounds(islandId);
@@ -166,7 +171,7 @@ class IslandManager {
       debugPrint('[IslandManager] _doCreate result for $islandId -> $windowId');
       if (windowId != null) {
         try {
-          await IslandChannel.postMessage(windowId, initialStructured);
+          await IslandChannel.postMessage(windowId, structuredPayload);
         } catch (_) {}
         try {
           final ib = args['initialBounds'] as Map<String, dynamic>?;
