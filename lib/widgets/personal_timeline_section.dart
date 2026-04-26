@@ -148,7 +148,9 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                       ),
                     )
                   : Container(
-                      key: ValueKey(_summaryContentKey()),
+                      // 🚀 核心修复：增加 refreshTrigger 使 Key 在每次加载后唯一，
+                      // 彻底解决 AnimatedSwitcher 在快速加载时可能出现的 Duplicate Key 崩溃
+                      key: ValueKey('summary_${widget.refreshTrigger}_${_summaryContentKey()}'),
                       child: _buildSummaryGrid(subColor, textColor),
                     ),
             ),
