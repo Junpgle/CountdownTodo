@@ -95,9 +95,13 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 23, // 🚀 V23: 修复 courses 老库缺失核心字段导致课表迁移失败
+        version: 24, // V24: 强制触发 courses 老库字段自愈
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 24) {
+            await ensureCourseTableSchema(db);
+          }
+
           if (oldVersion < 23) {
             try {
               await ensureCourseTableSchema(db);

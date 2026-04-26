@@ -22,9 +22,36 @@ import '../models.dart';
 class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
 
-  static Future<void> _writeCoursesToSql(DatabaseHelper dbHelper, List<CourseItem> courses) async {
+  static Future<void> _ensureCoursesColumnsForWrite(dynamic db) async {
+    final info = await db.rawQuery("PRAGMA table_info(courses)");
+    final columns = info
+        .map((row) => row['name']?.toString())
+        .whereType<String>()
+        .toSet();
+    debugPrint("🔎 [Course] 写入前字段: ${columns.join(', ')}");
+
+    final requiredColumns = {
+      'is_deleted': 'INTEGER DEFAULT 0',
+      'version': 'INTEGER DEFAULT 1',
+      'updated_at': 'INTEGER DEFAULT 0',
+      'created_at': 'INTEGER DEFAULT 0',
+    };
+
+    for (final entry in requiredColumns.entries) {
+      if (!columns.contains(entry.key)) {
+        await db.execute(
+            "ALTER TABLE courses ADD COLUMN ${entry.key} ${entry.value}");
+        columns.add(entry.key);
+        debugPrint("✅ [Course] 已补齐字段 courses.${entry.key}");
+      }
+    }
+  }
+
+  static Future<void> _writeCoursesToSql(
+      DatabaseHelper dbHelper, List<CourseItem> courses) async {
     final db = await dbHelper.database;
     await DatabaseHelper.ensureCourseTableSchema(db);
+    await _ensureCoursesColumnsForWrite(db);
     final batch = db.batch();
     batch.delete('courses');
     for (var c in courses) {
