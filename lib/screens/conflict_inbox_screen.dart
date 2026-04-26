@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
 
 enum _ConflictFilter { all, time, other }
+enum _ScheduleResolutionMode { recommend, group, manual }
+
 
 class ConflictInboxScreen extends StatefulWidget {
   final String username;
@@ -878,266 +880,291 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     );
   }
 
-  void _showLocalScheduleConflict(dynamic item) {
+  Future<void> _showLocalScheduleConflict(dynamic item) async {
     final data = _conflictData(item) ?? {};
     final peers = data['conflict_with'] is List
         ? data['conflict_with'] as List
         : const [];
+    final allTodos = item is TodoItem
+        ? await StorageService.getTodos(widget.username, includeDeleted: true)
+        : const <TodoItem>[];
     final recommendedWindow =
         item is TodoItem ? _suggestPreferredWindow(item, peers) : null;
     final recommendedLabel = item is TodoItem && recommendedWindow != null
         ? _buildRecommendedResolutionLabel(item, recommendedWindow)
         : null;
+    final recommendedUpdates = item is TodoItem && recommendedWindow != null
+        ? <String, ({DateTime start, DateTime end})>{
+            item.id: (
+              start: recommendedWindow.start,
+              end: recommendedWindow.end,
+            ),
+          }
+        : <String, ({DateTime start, DateTime end})>{};
+    final groupUpdates = item is TodoItem
+        ? _buildGroupScheduleUpdates(item, peers, allTodos)
+        : <String, ({DateTime start, DateTime end})>{};
+    var selectedMode = item is TodoItem && recommendedUpdates.isNotEmpty
+        ? _ScheduleResolutionMode.recommend
+        : _ScheduleResolutionMode.manual;
+    var selectedIdToEdit = _itemId(item);
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (sheetContext) => Container(
-        constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(sheetContext).size.height * 0.86),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Theme.of(sheetContext).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2)),
-              ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final selectedUpdates = switch (selectedMode) {
+            _ScheduleResolutionMode.recommend => recommendedUpdates,
+            _ScheduleResolutionMode.group => groupUpdates,
+            _ScheduleResolutionMode.manual => <String, ({DateTime start, DateTime end})>{},
+          };
+          return Container(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(sheetContext).size.height * 0.88),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Theme.of(sheetContext).scaffoldBackgroundColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
             ),
-            const SizedBox(height: 16),
-            const Text('时间重叠',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(_relationLabel(item),
-                style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.orangeAccent,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Text('调整时间即可解除冲突。推荐先看对比，再决定自动调整、手动编辑，还是整组顺排。',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-            if (recommendedLabel != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.green.withValues(alpha: 0.18),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2)),
+                    ),
                   ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.auto_fix_high_rounded,
-                        size: 18, color: Colors.green),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        recommendedLabel,
-                        style: TextStyle(
+                  const SizedBox(height: 16),
+                  const Text('时间重叠',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(_relationLabel(item),
+                      style: const TextStyle(
                           fontSize: 12,
-                          color: Colors.green.shade800,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
+                          color: Colors.orangeAccent,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Text(
+                      selectedMode == _ScheduleResolutionMode.manual
+                          ? '手动模式：点击上方卡片可选中任一冲突任务进行编辑。'
+                          : '先横向查看当前任务和冲突任务，再选择处理方式。执行前会先给出预览。',
+                      style:
+                          TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                  if (recommendedLabel != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.green.withValues(alpha: 0.18),
                         ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.auto_fix_high_rounded,
+                              size: 18, color: Colors.green),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              recommendedLabel,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.green.shade800,
+                                fontWeight: FontWeight.w600,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final useTwoColumns = constraints.maxWidth >= 560;
-                  if (!useTwoColumns) {
-                    return ListView(
+                  const SizedBox(height: 16),
+                  _buildHorizontalConflictGallery(
+                    data,
+                    peers,
+                    selectedUpdates,
+                    mode: selectedMode,
+                    selectedIdToEdit: selectedIdToEdit,
+                    onSelect: (id) =>
+                        setSheetState(() => selectedIdToEdit = id),
+                  ),
+                  const SizedBox(height: 16),
+                  if (item is TodoItem) ...[
+                    _buildResolutionModeSelector(
+                      selectedMode: selectedMode,
+                      recommendedEnabled: recommendedUpdates.isNotEmpty,
+                      groupEnabled: groupUpdates.isNotEmpty,
+                      onChanged: (mode) =>
+                          setSheetState(() => selectedMode = mode),
+                    ),
+                    if (_isApplyingScheduleFix) ...[
+                      const SizedBox(height: 12),
+                      const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    ],
+                    const SizedBox(height: 16),
+                    Row(
                       children: [
-                        _buildScheduleConflictPanel(
-                          title: '当前任务',
-                          icon: Icons.push_pin_rounded,
-                          children: [_buildScheduleConflictRow(data)],
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            child: const Text('取消'),
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        _buildScheduleConflictPanel(
-                          title: '冲突对象',
-                          icon: Icons.compare_arrows_rounded,
-                          children: peers.isEmpty
-                              ? [_buildScheduleConflictEmpty()]
-                              : peers.map((peer) {
-                                  final peerData = peer is Map
-                                      ? Map<String, dynamic>.from(peer as Map)
-                                      : <String, dynamic>{};
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child:
-                                        _buildScheduleConflictRow(peerData),
-                                  );
-                                }).toList(),
-                        ),
-                      ],
-                    );
-                  }
-
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _buildScheduleConflictPanel(
-                          title: '当前任务',
-                          icon: Icons.push_pin_rounded,
-                          children: [_buildScheduleConflictRow(data)],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildScheduleConflictPanel(
-                          title: '冲突对象',
-                          icon: Icons.compare_arrows_rounded,
-                          child: peers.isEmpty
-                              ? _buildScheduleConflictEmpty()
-                              : ListView.builder(
-                                  itemCount: peers.length,
-                                  itemBuilder: (context, index) {
-                                    final peer = peers[index] is Map
-                                        ? Map<String, dynamic>.from(
-                                            peers[index] as Map)
-                                        : <String, dynamic>{};
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child:
-                                          _buildScheduleConflictRow(peer),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _isApplyingScheduleFix ||
+                                    (selectedMode !=
+                                            _ScheduleResolutionMode.manual &&
+                                        selectedUpdates.isEmpty)
+                                ? null
+                                : () async {
+                                    if (selectedMode ==
+                                        _ScheduleResolutionMode.manual) {
+                                      final target = allTodos
+                                          .cast<TodoItem?>()
+                                          .firstWhere(
+                                            (todo) =>
+                                                todo?.id == selectedIdToEdit,
+                                            orElse: () => null,
+                                          );
+                                      if (target != null) {
+                                        Navigator.pop(sheetContext);
+                                        await _openTodoEditor(target);
+                                      }
+                                      return;
+                                    }
+                                    if (selectedUpdates.isEmpty) return;
+                                    final successMessage = selectedMode ==
+                                            _ScheduleResolutionMode.recommend
+                                        ? '已按预览结果调整当前任务'
+                                        : '已按预览结果顺排冲突链';
+                                    await _persistResolvedTodos(
+                                      selectedUpdates,
+                                      successMessage: successMessage,
                                     );
                                   },
-                                ),
+                            child: Text(
+                              selectedMode == _ScheduleResolutionMode.manual
+                                  ? '进入编辑'
+                                  : '确认应用',
+                            ),
+                          ),
                         ),
+                      ],
+                    ),
+                  ] else
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        child: const Text('知道了'),
                       ),
-                    ],
-                  );
-                },
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            if (item is TodoItem) ...[
-              _buildScheduleActionButton(
-                title: '推荐调整',
-                subtitle: recommendedWindow == null
-                    ? '当前没有可直接推荐的新时间'
-                    : '自动寻找最近的不冲突时段，只移动当前任务并保留原时长',
-                icon: Icons.auto_awesome_rounded,
-                filled: true,
-                enabled: !_isApplyingScheduleFix && recommendedWindow != null,
-                onPressed: () => _applyRecommendedScheduleResolution(
-                  item,
-                  recommendedWindow!,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _buildScheduleActionButton(
-                title: '手动编辑',
-                subtitle: '进入待办编辑页，自行调整开始时间、结束时间和其他信息',
-                icon: Icons.edit_calendar_rounded,
-                enabled: !_isApplyingScheduleFix,
-                onPressed: () async {
-                  Navigator.pop(sheetContext);
-                  await _openTodoEditor(item);
-                },
-              ),
-              const SizedBox(height: 10),
-              _buildScheduleActionButton(
-                title: '整组顺排',
-                subtitle: '把这一组互相重叠的待办按时间顺序整体后移，一次清掉冲突链',
-                icon: Icons.account_tree_rounded,
-                enabled: !_isApplyingScheduleFix,
-                onPressed: () => _resolveConflictChain(item),
-              ),
-              if (_isApplyingScheduleFix) ...[
-                const SizedBox(height: 12),
-                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ],
-              const SizedBox(height: 12),
-            ],
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.pop(sheetContext),
-                child: const Text('知道了'),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildScheduleConflictPanel({
-    required String title,
-    required IconData icon,
-    Widget? child,
-    List<Widget>? children,
+  Widget _buildHorizontalConflictGallery(
+    Map<String, dynamic> data,
+    List peers,
+    Map<String, ({DateTime start, DateTime end})> updates, {
+    required _ScheduleResolutionMode mode,
+    String? selectedIdToEdit,
+    required ValueChanged<String> onSelect,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.orangeAccent.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.16)),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("冲突对比 (横向滑动)",
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 145,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
             children: [
-              Icon(icon, size: 18, color: Colors.orangeAccent),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.orangeAccent,
-                ),
+              _buildScheduleConflictCard(
+                Map<String, dynamic>.from(data)..['is_primary'] = true,
+                updates,
+                mode: mode,
+                isSelectedForEdit:
+                    selectedIdToEdit == _itemIdFromData(data),
+                onSelect: onSelect,
               ),
+              if (peers.isEmpty)
+                _buildScheduleConflictEmpty()
+              else
+                ...peers.map<Widget>((peer) {
+                  final Map<String, dynamic> peerMap = peer is Map
+                      ? Map<String, dynamic>.from(peer)
+                      : <String, dynamic>{};
+                  final peerId = _itemIdFromData(peerMap);
+                  return _buildScheduleConflictCard(
+                    peerMap,
+                    updates,
+                    mode: mode,
+                    isSelectedForEdit:
+                        peerId != null && selectedIdToEdit == peerId,
+                    onSelect: onSelect,
+                  );
+                }),
             ],
           ),
-          const SizedBox(height: 12),
-          if (child != null) Expanded(child: child),
-          if (children != null) ...children,
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildScheduleConflictEmpty() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      width: 200,
+      margin: const EdgeInsets.only(right: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.grey.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
-      child: Text(
-        '暂无可展示的冲突对象',
-        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+      child: const Center(
+        child: Text("无其他冲突对象",
+            style: TextStyle(fontSize: 12, color: Colors.grey)),
       ),
     );
   }
 
-  Widget _buildScheduleConflictRow(Map<String, dynamic> data) {
-    final title = data['content'] ?? data['title'] ?? '未命名任务';
+  Widget _buildScheduleConflictCard(
+    Map<String, dynamic> data,
+    Map<String, ({DateTime start, DateTime end})> updates, {
+    required _ScheduleResolutionMode mode,
+    bool isSelectedForEdit = false,
+    required ValueChanged<String> onSelect,
+  }) {
+    final isPrimary = data['is_primary'] == true;
+    final id = _itemIdFromData(data);
+    final update = id != null ? updates[id] : null;
+    final isManualMode = mode == _ScheduleResolutionMode.manual;
+
+    final title = _itemTitle(data);
     final start = _parseMs(data['start_time'] ??
         data['startTime'] ??
         data['created_date'] ??
@@ -1146,137 +1173,231 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         data['endTime'] ??
         data['due_date'] ??
         data['dueDate']);
-    final time = start > 0 && end > 0
-        ? '${DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(end))}'
-        : '时间未知';
-    final scope = _scheduleScopeLabel(data);
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.14)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.schedule_rounded,
-              color: Colors.orangeAccent, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final sf = DateFormat('HH:mm');
+    final originalTime = start > 0 && end > 0
+        ? '${sf.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(end))}'
+        : '时间未知';
+
+    return GestureDetector(
+      onTap: isManualMode && id != null ? () => onSelect(id) : null,
+      child: Container(
+        width: 190,
+        margin: const EdgeInsets.only(right: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelectedForEdit
+              ? Colors.blue.withValues(alpha: 0.1)
+              : (isPrimary
+                  ? Colors.orangeAccent.withValues(alpha: 0.08)
+                  : Colors.white),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelectedForEdit
+                ? Colors.blue
+                : (isPrimary
+                    ? Colors.orangeAccent.withValues(alpha: 0.25)
+                    : Colors.grey.withValues(alpha: 0.15)),
+            width: isSelectedForEdit || isPrimary ? 1.5 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(title.toString(),
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    _buildMiniInfoChip(scope, Colors.blue),
-                    if (start > 0 && end > 0)
-                      _buildMiniInfoChip(
-                        '${((end - start) / const Duration(minutes: 1).inMilliseconds).round()} 分钟',
-                        Colors.green,
-                      ),
-                  ],
+                Icon(
+                  isSelectedForEdit
+                      ? Icons.check_circle_rounded
+                      : (isPrimary
+                          ? Icons.push_pin_rounded
+                          : Icons.schedule_rounded),
+                  size: 14,
+                  color: isSelectedForEdit
+                      ? Colors.blue
+                      : (isPrimary ? Colors.orangeAccent : Colors.grey),
                 ),
-                const SizedBox(height: 6),
-                Text(time,
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                const SizedBox(width: 4),
+                Text(
+                  isPrimary ? "当前任务" : "冲突任务",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isSelectedForEdit
+                        ? Colors.blue
+                        : (isPrimary ? Colors.orangeAccent : Colors.grey),
+                  ),
+                ),
+                if (update != null) ...[
+                  const Spacer(),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text("待调",
+                        style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ],
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMiniInfoChip(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          color: color,
-          fontWeight: FontWeight.w600,
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const Spacer(),
+            _buildMiniInfoChip(_scheduleScopeLabel(data),
+                isPrimary ? Colors.orangeAccent : Colors.blue),
+            const SizedBox(height: 6),
+            if (update == null)
+              Text(
+                originalTime,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: isSelectedForEdit
+                        ? Colors.blue
+                        : (isPrimary
+                            ? Colors.orangeAccent
+                            : Colors.grey.shade600),
+                    fontWeight: isSelectedForEdit || isPrimary
+                        ? FontWeight.w600
+                        : FontWeight.normal),
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    originalTime,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade400,
+                      decoration: TextDecoration.lineThrough,
+                      height: 1.1,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      const Icon(Icons.arrow_right_alt_rounded,
+                          size: 14, color: Colors.blue),
+                      const SizedBox(width: 2),
+                      Text(
+                        '${sf.format(update.start)}~${sf.format(update.end)}',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildScheduleActionButton({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required VoidCallback onPressed,
-    bool enabled = true,
-    bool filled = false,
+  Widget _buildResolutionModeSelector({
+    required _ScheduleResolutionMode selectedMode,
+    required bool recommendedEnabled,
+    required bool groupEnabled,
+    required ValueChanged<_ScheduleResolutionMode> onChanged,
   }) {
-    final child = Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 3),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 12, height: 1.35),
-              ),
-            ],
-          ),
+        const Text("处理方式",
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildModeChip(
+              mode: _ScheduleResolutionMode.recommend,
+              label: "推荐调整",
+              icon: Icons.auto_awesome_rounded,
+              selected: selectedMode == _ScheduleResolutionMode.recommend,
+              enabled: recommendedEnabled,
+              onTap: () => onChanged(_ScheduleResolutionMode.recommend),
+            ),
+            const SizedBox(width: 10),
+            _buildModeChip(
+              mode: _ScheduleResolutionMode.group,
+              label: "整组顺排",
+              icon: Icons.account_tree_rounded,
+              selected: selectedMode == _ScheduleResolutionMode.group,
+              enabled: groupEnabled,
+              onTap: () => onChanged(_ScheduleResolutionMode.group),
+            ),
+            const SizedBox(width: 10),
+            _buildModeChip(
+              mode: _ScheduleResolutionMode.manual,
+              label: "手动编辑",
+              icon: Icons.edit_calendar_rounded,
+              selected: selectedMode == _ScheduleResolutionMode.manual,
+              enabled: true,
+              onTap: () => onChanged(_ScheduleResolutionMode.manual),
+            ),
+          ],
         ),
       ],
     );
+  }
 
-    if (filled) {
-      return SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          onPressed: enabled ? onPressed : null,
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            alignment: Alignment.centerLeft,
+  Widget _buildModeChip({
+    required _ScheduleResolutionMode mode,
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    final color = selected ? Colors.blue : (enabled ? Colors.grey : Colors.grey.shade300);
+    return Expanded(
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? Colors.blue.withValues(alpha: 0.1) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? Colors.blue : Colors.grey.withValues(alpha: 0.2),
+              width: selected ? 1.5 : 1,
+            ),
           ),
-          child: child,
+          child: Column(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(height: 4),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                      color: color)),
+            ],
+          ),
         ),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: enabled ? onPressed : null,
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          alignment: Alignment.centerLeft,
-        ),
-        child: child,
       ),
     );
   }
+
 
   int _parseMs(dynamic value) {
     if (value is int) return value;
@@ -1340,24 +1461,125 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return startA < endB && endA > startB;
   }
 
+  Map<String, ({DateTime start, DateTime end})> _buildGroupScheduleUpdates(
+    TodoItem seed,
+    List peers,
+    List<TodoItem> allTodos,
+  ) {
+    final conflictChain = _buildDirectConflictItems(seed, peers, allTodos);
+    if (conflictChain.length <= 1) return {};
+
+    conflictChain.sort((a, b) {
+      final byStart = _todoStartMs(a).compareTo(_todoStartMs(b));
+      if (byStart != 0) return byStart;
+      return _todoEndMs(a).compareTo(_todoEndMs(b));
+    });
+
+    final updates = <String, ({DateTime start, DateTime end})>{};
+    var anchorEnd = 0;
+    for (var i = 0; i < conflictChain.length; i++) {
+      final todo = conflictChain[i];
+      final startMs = _todoStartMs(todo);
+      final endMs = _todoEndMs(todo);
+      if (startMs <= 0 || endMs <= startMs) continue;
+
+      final durationMs = endMs - startMs;
+      if (i == 0) {
+        anchorEnd = endMs;
+        continue;
+      }
+
+      final minStart = anchorEnd + const Duration(minutes: 5).inMilliseconds;
+      if (startMs < minStart) {
+        updates[todo.id] = (
+          start: DateTime.fromMillisecondsSinceEpoch(minStart),
+          end: DateTime.fromMillisecondsSinceEpoch(minStart + durationMs),
+        );
+        anchorEnd = minStart + durationMs;
+      } else {
+        anchorEnd = endMs;
+      }
+    }
+    return updates;
+  }
+
+  List<TodoItem> _buildDirectConflictItems(
+    TodoItem seed,
+    List peers,
+    List<TodoItem> allTodos,
+  ) {
+    final seedStart = _todoStartMs(seed);
+    final matched = <TodoItem>[seed];
+
+    for (final peer in peers.whereType<Map>()) {
+      final peerData = Map<String, dynamic>.from(peer);
+      final peerId = _itemIdFromData(peerData);
+      final peerStart = _parseMs(peerData['start_time'] ??
+          peerData['startTime'] ??
+          peerData['created_date'] ??
+          peerData['createdDate']);
+      final peerEnd = _parseMs(peerData['end_time'] ??
+          peerData['endTime'] ??
+          peerData['due_date'] ??
+          peerData['dueDate']);
+
+      final todo = allTodos.cast<TodoItem?>().firstWhere(
+            (candidate) =>
+                candidate != null &&
+                !candidate.isDeleted &&
+                !candidate.isAllDay &&
+                _todoEndMs(candidate) > _todoStartMs(candidate) &&
+                _isSameLocalDayMs(_todoStartMs(candidate), seedStart) &&
+                ((peerId != null && candidate.id == peerId) ||
+                    (_itemTitle(peerData) == candidate.title &&
+                        _todoStartMs(candidate) == peerStart &&
+                        _todoEndMs(candidate) == peerEnd)),
+            orElse: () => null,
+          );
+      if (todo != null && !matched.any((existing) => existing.id == todo.id)) {
+        matched.add(todo);
+      }
+    }
+
+    return matched
+        .where((todo) => _isSameLocalDayMs(_todoStartMs(todo), seedStart))
+        .toList();
+  }
+
+  bool _isSameLocalDayMs(int leftMs, int rightMs) {
+    final left = DateTime.fromMillisecondsSinceEpoch(leftMs);
+    final right = DateTime.fromMillisecondsSinceEpoch(rightMs);
+    return left.year == right.year &&
+        left.month == right.month &&
+        left.day == right.day;
+  }
+
+  String? _itemIdFromData(Map<String, dynamic> data) {
+    return (data['uuid'] ?? data['id'] ?? data['id_todo'])?.toString();
+  }
+
   int _todoStartMs(TodoItem item) => item.createdDate ?? item.createdAt;
 
   int _todoEndMs(TodoItem item) => item.dueDate?.millisecondsSinceEpoch ?? 0;
 
-  Future<void> _applyRecommendedScheduleResolution(
-    TodoItem item,
-    DateTimeRange recommendedWindow,
-  ) async {
-    await _persistResolvedTodos(
-      {
-        item.id: (
-          start: recommendedWindow.start,
-          end: recommendedWindow.end,
+  Widget _buildMiniInfoChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w600,
         ),
-      },
-      successMessage: '已按推荐时间调整当前任务',
+      ),
     );
   }
+
 
   Future<void> _openTodoEditor(TodoItem item) async {
     final allTodos =
@@ -1391,129 +1613,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     await _loadConflicts();
   }
 
-  Future<void> _resolveConflictChain(TodoItem item) async {
-    final allTodos =
-        await StorageService.getTodos(widget.username, includeDeleted: true);
-    final conflictChain = _collectConflictChain(item, allTodos);
-    if (conflictChain.length <= 1) {
-      final recommendedWindow = _suggestPreferredWindow(item, _conflictPeers(item));
-      if (recommendedWindow != null) {
-        await _applyRecommendedScheduleResolution(item, recommendedWindow);
-      }
-      return;
-    }
-
-    conflictChain.sort((a, b) {
-      final byStart = _todoStartMs(a).compareTo(_todoStartMs(b));
-      if (byStart != 0) return byStart;
-      return _todoEndMs(a).compareTo(_todoEndMs(b));
-    });
-
-    final updates = <String, ({DateTime start, DateTime end})>{};
-    var anchorEnd = 0;
-    for (var i = 0; i < conflictChain.length; i++) {
-      final todo = conflictChain[i];
-      final startMs = _todoStartMs(todo);
-      final endMs = _todoEndMs(todo);
-      if (startMs <= 0 || endMs <= startMs) {
-        continue;
-      }
-
-      final durationMs = endMs - startMs;
-      if (i == 0) {
-        anchorEnd = endMs;
-        continue;
-      }
-
-      final minStart =
-          anchorEnd + const Duration(minutes: 5).inMilliseconds;
-      if (startMs < minStart) {
-        final shiftedStart = DateTime.fromMillisecondsSinceEpoch(minStart);
-        final shiftedEnd =
-            DateTime.fromMillisecondsSinceEpoch(minStart + durationMs);
-        updates[todo.id] = (
-          start: shiftedStart,
-          end: shiftedEnd,
-        );
-        anchorEnd = minStart + durationMs;
-      } else {
-        anchorEnd = endMs;
-      }
-    }
-
-    if (updates.isEmpty) {
-      final recommendedWindow = _suggestPreferredWindow(item, _conflictPeers(item));
-      if (recommendedWindow != null) {
-        await _applyRecommendedScheduleResolution(item, recommendedWindow);
-      }
-      return;
-    }
-
-    await _persistResolvedTodos(
-      updates,
-      successMessage: '已顺排处理 ${updates.length + 1} 项冲突链',
-    );
-  }
-
-  List<TodoItem> _collectConflictChain(TodoItem seed, List<TodoItem> todos) {
-    final candidates = todos.where((todo) {
-      final startMs = _todoStartMs(todo);
-      final endMs = _todoEndMs(todo);
-      return !todo.isDeleted &&
-          !todo.isAllDay &&
-          endMs > startMs &&
-          startMs > 0;
-    }).toList();
-
-    final seedInList = candidates.cast<TodoItem?>().firstWhere(
-          (todo) => todo?.id == seed.id,
-          orElse: () => null,
-        );
-    if (seedInList == null) return [seed];
-
-    final chain = <TodoItem>[];
-    final queue = <TodoItem>[seedInList];
-    final visited = <String>{};
-
-    while (queue.isNotEmpty) {
-      final current = queue.removeAt(0);
-      if (!visited.add(current.id)) continue;
-      chain.add(current);
-
-      final currentStart = _todoStartMs(current);
-      final currentEnd = _todoEndMs(current);
-      for (final candidate in candidates) {
-        if (visited.contains(candidate.id) || candidate.id == current.id) {
-          continue;
-        }
-        if (_rangesOverlap(
-          currentStart,
-          currentEnd,
-          _todoStartMs(candidate),
-          _todoEndMs(candidate),
-        )) {
-          queue.add(candidate);
-        }
-      }
-    }
-    return chain;
-  }
-
-  Future<void> _persistResolvedTodo(
-    TodoItem item,
-    DateTime newStart,
-    DateTime newEnd,
-  ) async {
-    await _persistResolvedTodos(
-      {
-        item.id: (
-          start: newStart,
-          end: newEnd,
-        ),
-      },
-      successMessage: '已应用时间冲突处理方案',
-    );
-  }
 
   Future<void> _persistResolvedTodos(
     Map<String, ({DateTime start, DateTime end})> updates, {
@@ -1608,107 +1707,109 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text("冲突对比",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(
-            "请选择保留哪个版本的数据",
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 20),
-
-          // Local version card
-          _buildVersionCard(
-            label: "本地版本",
-            icon: Icons.phone_android_rounded,
-            color: Colors.blue,
-            data: widget.localItem,
-          ),
-          const SizedBox(height: 12),
-
-          // Server version card
-          if (_hasServerData)
-            _buildVersionCard(
-              label: "服务器版本",
-              icon: Icons.cloud_rounded,
-              color: Colors.green,
-              data: widget.serverItem!,
-            )
-          else
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2)),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.cloud_off_rounded, color: Colors.grey),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      "服务器版本数据暂不可用\n请同步后重试",
-                      style:
-                          TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
+            const Text("冲突对比",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              "请选择保留哪个版本的数据",
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 20),
+
+            // Local version card
+            _buildVersionCard(
+              label: "本地版本",
+              icon: Icons.phone_android_rounded,
+              color: Colors.blue,
+              data: widget.localItem,
+            ),
+            const SizedBox(height: 12),
+
+            // Server version card
+            if (_hasServerData)
+              _buildVersionCard(
+                label: "服务器版本",
+                icon: Icons.cloud_rounded,
+                color: Colors.green,
+                data: widget.serverItem!,
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_off_rounded, color: Colors.grey),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        "服务器版本数据暂不可用\n请同步后重试",
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey.shade600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 24),
+
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isResolving ? null : _keepLocal,
+                    icon: const Icon(Icons.phone_android_rounded, size: 18),
+                    label: const Text("保留本地"),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _isResolving ? null : _acceptServer,
+                    icon: const Icon(Icons.cloud_done_rounded, size: 18),
+                    label: const Text("采用服务器"),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          const SizedBox(height: 24),
-
-          // Action buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _isResolving ? null : _keepLocal,
-                  icon: const Icon(Icons.phone_android_rounded, size: 18),
-                  label: const Text("保留本地"),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _isResolving ? null : _acceptServer,
-                  icon: const Icon(Icons.cloud_done_rounded, size: 18),
-                  label: const Text("采用服务器"),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
+            if (_isResolving) ...[
+              const SizedBox(height: 12),
+              const Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ],
-          ),
-          if (_isResolving) ...[
             const SizedBox(height: 12),
-            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
           ],
-          const SizedBox(height: 12),
-        ],
+        ),
       ),
     );
   }
