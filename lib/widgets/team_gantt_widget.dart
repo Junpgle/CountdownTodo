@@ -24,6 +24,8 @@ class TeamGanttWidget extends StatelessWidget {
     final timelineStart = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 2));
     final timelineEnd = timelineStart.add(Duration(days: viewDays));
     final totalDays = timelineEnd.difference(timelineStart).inDays;
+    const timelineWidth = 800.0;
+    const horizontalPadding = 16.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,8 +44,8 @@ class TeamGanttWidget extends StatelessWidget {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            width: 800, // 固定宽度以支持横向偏移
+            padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
+            width: timelineWidth + horizontalPadding * 2,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -53,7 +55,7 @@ class TeamGanttWidget extends StatelessWidget {
                     final date = timelineStart.add(Duration(days: i));
                     final isToday = date.day == now.day && date.month == now.month;
                     return Container(
-                      width: 800 / totalDays,
+                      width: timelineWidth / totalDays,
                       alignment: Alignment.center,
                       child: Text(
                         isToday ? "今天" : DateFormat('dd').format(date),
@@ -82,10 +84,10 @@ class TeamGanttWidget extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     child: Stack(
                       children: [
-                        Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(4))),
+                        Container(height: 14, width: timelineWidth, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(4))),
                         Positioned(
-                          left: 800 * startPos,
-                          width: 800 * duration,
+                          left: timelineWidth * startPos,
+                          width: timelineWidth * duration,
                           child: GestureDetector(
                             onTap: () => onTodoTap?.call(todo),
                             child: Container(

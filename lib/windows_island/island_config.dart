@@ -91,9 +91,9 @@ class IslandConfig {
       {bool hasSubtitle = false, String? expandedPart}) {
     switch (state) {
       case IslandStateConfig.idle:
-        return const Size(120, 34);
+        return const Size(100, 34);
       case IslandStateConfig.focusing:
-        return const Size(100, 46);
+        return const Size(90, 40);
       case IslandStateConfig.hoverWide:
         return const Size(380, 46);
       case IslandStateConfig.splitAlert:

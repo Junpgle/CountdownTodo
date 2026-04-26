@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../models.dart';
@@ -210,6 +212,11 @@ class PomodoroStatsState extends State<PomodoroStats> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return _buildSkeleton();
+    final bool isDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS);
+    final bool showDesktopActions = isDesktop || !widget.isCompact;
 
     final totalSecs = PomodoroService.totalFocusSeconds(_sessions);
     final byTag = PomodoroService.focusByTag(_sessions);
@@ -326,7 +333,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 const Text('详细记录', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 if (_syncing)
                   const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                else if (!widget.isCompact)
+                else if (showDesktopActions)
                   TextButton.icon(
                     onPressed: _syncAndRefresh,
                     icon: const Icon(Icons.sync, size: 16),
@@ -337,7 +344,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
             const SizedBox(height: 12),
             ..._buildSessionList(),
             
-            if (!widget.isCompact) ...[
+            if (showDesktopActions) ...[
                const SizedBox(height: 40),
                Center(
                  child: TextButton(

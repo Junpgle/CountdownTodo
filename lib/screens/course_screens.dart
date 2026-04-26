@@ -194,8 +194,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     // 6. 获取当前周课程
     _weekCourses = _allCourses.where((c) => c.weekIndex == _currentWeek).toList();
 
-    // 7. 🚀 性能优化：在主线程进行分组
-    _groupDataForMonthView();
+    // 7. 月视图数据按需构建，避免首次进入课程页就做全量逐日展开
+    _monthDataPrepared = false;
+    if (_viewMode == 2) {
+      _groupDataForMonthView();
+    }
     _updateWeekTodos();
     _updateWeekTimeLogsAndPomodoros();
 
@@ -213,8 +216,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   Map<String, List<TodoItem>> _monthCrossDayTodoMap = {};
   Map<String, List<TimeLogItem>> _monthLogMap = {};
   Map<String, List<PomodoroRecord>> _monthPomMap = {};
+  bool _monthDataPrepared = false;
+  static const int _maxExpandedSpanDays = 366;
 
   void _groupDataForMonthView() {
+    _monthDataPrepared = true;
     _monthCourseMap = {};
     _monthTodoMap = {};
     _monthCrossDayTodoMap = {};
@@ -241,30 +247,33 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       bool isAllDay = t.dueDate != null && tStart.hour == 0 && tStart.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
       bool isAcross = !(tStart.year == tEnd.year && tStart.month == tEnd.month && tStart.day == tEnd.day);
       
-      DateTime cursor = DateTime(tStart.year, tStart.month, tStart.day);
-      DateTime endCursor = DateTime(tEnd.year, tEnd.month, tEnd.day);
-      
-      while (!cursor.isAfter(endCursor)) {
-        final dStr = df.format(cursor);
-        if (isAllDay || isAcross) {
-          _monthCrossDayTodoMap.putIfAbsent(dStr, () => []).add(t);
-        } else {
-          _monthTodoMap.putIfAbsent(dStr, () => []).add(t);
-        }
-        cursor = cursor.add(const Duration(days: 1));
-      }
+      _forEachExpandedDay(
+        start: tStart,
+        end: tEnd,
+        debugLabel: 'todo:${t.id}',
+        onDay: (cursor) {
+          final dStr = df.format(cursor);
+          if (isAllDay || isAcross) {
+            _monthCrossDayTodoMap.putIfAbsent(dStr, () => []).add(t);
+          } else {
+            _monthTodoMap.putIfAbsent(dStr, () => []).add(t);
+          }
+        },
+      );
     }
 
     // 3. 日志与番茄钟
     for (var l in _allTimeLogs) {
       DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime).toLocal();
       DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime).toLocal();
-      DateTime cursor = DateTime(lStart.year, lStart.month, lStart.day);
-      DateTime endCursor = DateTime(lEnd.year, lEnd.month, lEnd.day);
-      while (!cursor.isAfter(endCursor)) {
-        _monthLogMap.putIfAbsent(df.format(cursor), () => []).add(l);
-        cursor = cursor.add(const Duration(days: 1));
-      }
+      _forEachExpandedDay(
+        start: lStart,
+        end: lEnd,
+        debugLabel: 'timeLog:${l.id}',
+        onDay: (cursor) {
+          _monthLogMap.putIfAbsent(df.format(cursor), () => []).add(l);
+        },
+      );
     }
 
     for (var p in _allPomodoroRecords) {
@@ -272,12 +281,40 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal();
       int pEndMs = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
       DateTime pEnd = DateTime.fromMillisecondsSinceEpoch(pEndMs).toLocal();
-      DateTime cursor = DateTime(pStart.year, pStart.month, pStart.day);
-      DateTime endCursor = DateTime(pEnd.year, pEnd.month, pEnd.day);
-      while (!cursor.isAfter(endCursor)) {
-        _monthPomMap.putIfAbsent(df.format(cursor), () => []).add(p);
-        cursor = cursor.add(const Duration(days: 1));
-      }
+      _forEachExpandedDay(
+        start: pStart,
+        end: pEnd,
+        debugLabel: 'pomodoro:${p.uuid}',
+        onDay: (cursor) {
+          _monthPomMap.putIfAbsent(df.format(cursor), () => []).add(p);
+        },
+      );
+    }
+  }
+
+  void _forEachExpandedDay({
+    required DateTime start,
+    required DateTime end,
+    required String debugLabel,
+    required void Function(DateTime day) onDay,
+  }) {
+    final dayStart = DateTime(start.year, start.month, start.day);
+    final dayEnd = DateTime(end.year, end.month, end.day);
+    final spanDays = dayEnd.difference(dayStart).inDays;
+
+    if (spanDays < 0) {
+      debugPrint('[CourseScreen] Skip invalid span for $debugLabel: start=$start end=$end');
+      return;
+    }
+    if (spanDays > _maxExpandedSpanDays) {
+      debugPrint('[CourseScreen] Skip oversized span for $debugLabel: ${spanDays + 1} days');
+      return;
+    }
+
+    var cursor = dayStart;
+    while (!cursor.isAfter(dayEnd)) {
+      onDay(cursor);
+      cursor = cursor.add(const Duration(days: 1));
     }
   }
 
@@ -404,6 +441,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _viewMode = mode;
       if (mode == 0) {
         _updateWeekTodos();
+      } else if (mode == 2 && !_monthDataPrepared) {
+        _groupDataForMonthView();
       }
     });
   }

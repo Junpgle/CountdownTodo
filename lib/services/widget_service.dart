@@ -41,6 +41,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
 class WidgetService {
   static const String androidWidgetName = 'TodoWidgetProvider';
   static bool _initialized = false;
+  static bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
   static Timer? _periodicTimer;
 
@@ -105,14 +106,12 @@ class WidgetService {
   static Future<void> updateAllWidgetData(
       String username, List<TodoItem> todos) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
-    DateFormat dateFormat = DateFormat('yyyy-MM-dd');
 
-    // 🚀 性能优化：如果提供了 preloadedTodos，则跳过部分读取（虽然 Widget 需要的数据比 HomeDashboard 更多）
-    // 但为了彻底解决启动卡顿，我们尽量减少同步调用。
     final results = await Future.wait([
-      todos != null ? Future.value(todos) : StorageService.getTodos(username),
+      Future.value(todos),
       CourseService.getAllCourses(username),
       StorageService.getCountdowns(username),
       StorageService.getTimeLogs(username),
@@ -127,22 +126,116 @@ class WidgetService {
     final List<PomodoroRecord> pomsRaw = results[4] as List<PomodoroRecord>;
     final List<PomodoroTag> allTags = results[5] as List<PomodoroTag>;
 
+    // 🛡️ OOM 修复：在主线程对数据做预过滤和字段裁剪，只把轻量 Map 传给 compute()
+    // 避免将全量 Dart 对象列表序列化后跨 Isolate 边界导致内存溢出（数据用久后可达 100MB+）
+
+    // 1. 待办：只保留未完成未删除的条目，且只取 Isolate 实际用到的字段
+    final List<Map<String, dynamic>> slimTodos = allTodos
+        .where((t) => !t.isDone && !t.isDeleted)
+        .map((t) => {
+              'title': t.title,
+              'isDone': t.isDone,
+              'id': t.id,
+              'dueDate': t.dueDate?.millisecondsSinceEpoch,
+              'createdDate': t.createdDate,
+              'createdAt': t.createdAt,
+            })
+        .toList();
+
+    // 2. 课程：只保留未来 14 天内的
+    final DateTime courseLimit = now.add(const Duration(days: 14));
+    final List<Map<String, dynamic>> slimCourses = allCourses
+        .where((c) {
+          try {
+            final cDate = DateFormat('yyyy-MM-dd').parse(c.date);
+            final cEnd = cDate.add(Duration(
+                hours: c.endTime ~/ 100, minutes: c.endTime % 100));
+            return cEnd.isAfter(now) && cDate.isBefore(courseLimit);
+          } catch (_) {
+            return false;
+          }
+        })
+        .map((c) => {
+              'date': c.date,
+              'courseName': c.courseName,
+              'startTime': c.startTime,
+              'endTime': c.endTime,
+              'roomName': c.roomName,
+              'formattedStartTime': c.formattedStartTime,
+              'formattedEndTime': c.formattedEndTime,
+            })
+        .toList();
+
+    // 3. 倒数日：只保留未删除且未过期的
+    final List<Map<String, dynamic>> slimCountdowns = countdownsRaw
+        .where((c) =>
+            !c.isDeleted &&
+            c.targetDate.difference(today).inDays >= 0)
+        .map((c) => {
+              'title': c.title,
+              'targetDateMs': c.targetDate.millisecondsSinceEpoch,
+            })
+        .toList();
+
+    // 4. 时间日志：只保留今日未删除的条目，且只取 Isolate 用到的字段
     final Map<String, String> tagNameByUuid = {
       for (var t in allTags) t.uuid: t.name
     };
+    final List<Map<String, dynamic>> slimTimeLogs = tlogsRaw
+        .where((l) {
+          if (l.isDeleted) return false;
+          final d = DateTime.fromMillisecondsSinceEpoch(l.startTime,
+                  isUtc: true)
+              .toLocal();
+          return d.year == today.year &&
+              d.month == today.month &&
+              d.day == today.day;
+        })
+        .map((l) => {
+              'title': l.title,
+              'startTime': l.startTime,
+              'endTime': l.endTime,
+              'tagNames': l.tagUuids
+                  .map((u) => tagNameByUuid[u] ?? u)
+                  .toList(),
+            })
+        .toList();
 
-    // 🚀 核心优化：将所有复杂的逻辑处理（排序、过滤、格式化、HTML 标签插入）全部移至后台 Isolate
+    // 5. 番茄钟：只保留今日未删除的条目
+    final List<Map<String, dynamic>> slimPoms = pomsRaw
+        .where((p) {
+          if (p.isDeleted) return false;
+          final d = DateTime.fromMillisecondsSinceEpoch(p.startTime,
+                  isUtc: true)
+              .toLocal();
+          return d.year == today.year &&
+              d.month == today.month &&
+              d.day == today.day;
+        })
+        .map((p) => {
+              'todoTitle': p.todoTitle,
+              'startTime': p.startTime,
+              'endTime': p.endTime,
+              'actualDuration': p.actualDuration,
+              'plannedDuration': p.plannedDuration,
+              'tagNames': p.tagUuids
+                  .map((u) => tagNameByUuid[u] ?? u)
+                  .toList(),
+            })
+        .toList();
+
+    // 只传轻量的 primitive Map 给 Isolate，彻底避免大对象序列化
     final Map<String, dynamic> rawInput = {
       'now': now.millisecondsSinceEpoch,
-      'todos': results[0],
-      'courses': results[1],
-      'countdowns': results[2],
-      'timelogs': results[3],
-      'poms': results[4],
-      'tags': results[5],
+      'todos': slimTodos,
+      'courses': slimCourses,
+      'countdowns': slimCountdowns,
+      'timelogs': slimTimeLogs,
+      'poms': slimPoms,
     };
 
-    final Map<String, dynamic> widgetData = await compute(_prepareWidgetDataIsolate, rawInput);
+    final Map<String, dynamic> widgetData =
+        await compute(_prepareWidgetDataIsolate, rawInput);
 
     // 批量写入结果
     final List<Future<void>> widgetWrites = [];
@@ -154,50 +247,72 @@ class WidgetService {
     try {
       await HomeWidget.updateWidget(androidName: androidWidgetName);
     } catch (e) {
+      final message = e.toString();
+      if (Platform.isAndroid &&
+          (message.contains('TodoWidgetProvider') ||
+              message.contains('ClassNotFoundException'))) {
+        _widgetUpdateDisabled = true;
+        debugPrint(
+            '⚠️ [WidgetService] Android Widget provider unavailable in current build; disable further widget updates.');
+        return;
+      }
       debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
     }
   }
 
-  /// 🚀 Isolate 内部逻辑：处理所有 Widget 展现逻辑
+  /// Isolate 内部逻辑：处理所有 Widget 展现逻辑
+  /// 注意：入参均为轻量 Map（primitive），不含 Dart 模型类对象
   static Map<String, dynamic> _prepareWidgetDataIsolate(Map<String, dynamic> input) {
-    final now = DateTime.fromMillisecondsSinceEpoch(input['now']);
+    final now = DateTime.fromMillisecondsSinceEpoch(input['now'] as int);
     final today = DateTime(now.year, now.month, now.day);
-    final List<TodoItem> allTodos = input['todos'] as List<TodoItem>;
-    final List<CourseItem> allCourses = input['courses'] as List<CourseItem>;
-    final List<CountdownItem> countdownsRaw = input['countdowns'] as List<CountdownItem>;
-    final List<TimeLogItem> tlogsRaw = input['timelogs'] as List<TimeLogItem>;
-    final List<PomodoroRecord> pomsRaw = input['poms'] as List<PomodoroRecord>;
-    final List<PomodoroTag> allTags = input['tags'] as List<PomodoroTag>;
+    final List<Map<String, dynamic>> allTodos =
+        (input['todos'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> allCourses =
+        (input['courses'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> countdownsRaw =
+        (input['countdowns'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> tlogsRaw =
+        (input['timelogs'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> pomsRaw =
+        (input['poms'] as List).cast<Map<String, dynamic>>();
 
-    final Map<String, String> tagNameByUuid = {for (var t in allTags) t.uuid: t.name};
     final Map<String, dynamic> resultData = {};
 
-    // 1. 待办事项处理
-    List<TodoItem> pendingTodos = allTodos.where((t) => !t.isDone && !t.isDeleted).toList();
-    List<TodoItem> pastTodos = [];
-    List<TodoItem> todayTodos = [];
-    List<TodoItem> futureTodos = [];
-    for (final t in pendingTodos) {
-      if (t.dueDate != null) {
-        DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-        if (d.isBefore(today)) pastTodos.add(t);
-        else if (d.isAfter(today)) futureTodos.add(t);
-        else todayTodos.add(t);
+    // 1. 待办事项处理（主线程已过滤掉 isDone/isDeleted，这里直接分组排序）
+    final List<Map<String, dynamic>> pastTodos = [];
+    final List<Map<String, dynamic>> todayTodos = [];
+    final List<Map<String, dynamic>> futureTodos = [];
+    for (final t in allTodos) {
+      final dueDateMs = t['dueDate'] as int?;
+      if (dueDateMs != null) {
+        final d = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
+        final dDay = DateTime(d.year, d.month, d.day);
+        if (dDay.isBefore(today)) {
+          pastTodos.add(t);
+        } else if (dDay.isAfter(today)) {
+          futureTodos.add(t);
+        } else {
+          todayTodos.add(t);
+        }
       } else {
         todayTodos.add(t);
       }
     }
-    int startMs(TodoItem t) => t.createdDate ?? t.createdAt;
-    int compareUrgency(TodoItem a, TodoItem b) {
-      if (a.dueDate != null && b.dueDate != null) return a.dueDate!.compareTo(b.dueDate!);
-      if (a.dueDate != null && b.dueDate == null) return -1;
-      if (a.dueDate == null && b.dueDate != null) return 1;
+    int startMs(Map<String, dynamic> t) =>
+        (t['createdDate'] as int?) ?? (t['createdAt'] as int? ?? 0);
+    int compareUrgency(Map<String, dynamic> a, Map<String, dynamic> b) {
+      final aMs = a['dueDate'] as int?;
+      final bMs = b['dueDate'] as int?;
+      if (aMs != null && bMs != null) return aMs.compareTo(bMs);
+      if (aMs != null && bMs == null) return -1;
+      if (aMs == null && bMs != null) return 1;
       return startMs(a).compareTo(startMs(b));
     }
     pastTodos.sort(compareUrgency);
     todayTodos.sort(compareUrgency);
     futureTodos.sort(compareUrgency);
-    final displayTodos = [...pastTodos, ...todayTodos, ...futureTodos].take(maxWidgetItems).toList();
+    final displayTodos =
+        [...pastTodos, ...todayTodos, ...futureTodos].take(maxWidgetItems).toList();
 
     for (int i = 1; i <= maxWidgetItems; i++) {
       resultData['todo_$i'] = '';
@@ -207,17 +322,20 @@ class WidgetService {
     }
     for (int i = 0; i < displayTodos.length; i++) {
       final todo = displayTodos[i];
-      String title = todo.title;
-      if (todo.dueDate == null || !DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day).isAfter(today)) {
-        title = "<b>$title</b>";
-      }
+      final dueDateMs = todo['dueDate'] as int?;
+      String title = todo['title'] as String? ?? '';
+      DateTime? dueDate;
+      if (dueDateMs != null) dueDate = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
+      final isDueToday = dueDate == null ||
+          !DateTime(dueDate.year, dueDate.month, dueDate.day).isAfter(today);
+      if (isDueToday) title = '<b>$title</b>';
       resultData['todo_${i + 1}'] = title;
-      resultData['todo_${i + 1}_done'] = todo.isDone;
-      resultData['todo_${i + 1}_id'] = todo.id;
-      resultData['todo_${i + 1}_due'] = _getDueDateLabel(todo.dueDate);
+      resultData['todo_${i + 1}_done'] = todo['isDone'] as bool? ?? false;
+      resultData['todo_${i + 1}_id'] = todo['id'] as String? ?? '';
+      resultData['todo_${i + 1}_due'] = _getDueDateLabelFromMs(dueDateMs);
     }
 
-    // 2. 课程处理
+    // 2. 课程处理（主线程已过滤为未来 14 天内）
     String urgentCourseId = '';
     for (int i = 1; i <= maxWidgetItems; i++) {
       resultData['course_date_$i'] = '';
@@ -228,110 +346,119 @@ class WidgetService {
     }
     try {
       final df = DateFormat('yyyy-MM-dd');
-      List<CourseItem> futureCourses = allCourses.where((c) {
-        try {
-          DateTime cDate = df.parse(c.date);
-          DateTime cEnd = cDate.add(Duration(hours: c.endTime ~/ 100, minutes: c.endTime % 100));
-          return cEnd.isAfter(now);
-        } catch (_) { return false; }
-      }).toList();
-      futureCourses.sort((a, b) {
-        int dateCmp = a.date.compareTo(b.date);
-        if (dateCmp != 0) return dateCmp;
-        return a.startTime.compareTo(b.startTime);
-      });
-      final displayCourses = futureCourses.take(maxWidgetItems).toList();
+      final sortedCourses = List<Map<String, dynamic>>.from(allCourses)
+        ..sort((a, b) {
+          final dateCmp = (a['date'] as String).compareTo(b['date'] as String);
+          if (dateCmp != 0) return dateCmp;
+          return (a['startTime'] as int).compareTo(b['startTime'] as int);
+        });
+      final displayCourses = sortedCourses.take(maxWidgetItems).toList();
       for (int i = 0; i < displayCourses.length; i++) {
         final course = displayCourses[i];
-        DateTime courseDate = df.parse(course.date);
-        int diffDays = DateTime(courseDate.year, courseDate.month, courseDate.day).difference(today).inDays;
-        String dayLabel = diffDays == 0 ? "今天" : (diffDays == 1 ? "明天" : (diffDays == 2 ? "后天" : "$diffDays天后"));
-        String fullDateHeader = "$dayLabel | ${courseDate.month}月${courseDate.day}日";
-        String cName = course.courseName;
+        final courseDate = df.parse(course['date'] as String);
+        final diffDays =
+            DateTime(courseDate.year, courseDate.month, courseDate.day)
+                .difference(today)
+                .inDays;
+        final String dayLabel = diffDays == 0
+            ? '今天'
+            : (diffDays == 1 ? '明天' : (diffDays == 2 ? '后天' : '$diffDays天后'));
+        String fullDateHeader = '$dayLabel | ${courseDate.month}月${courseDate.day}日';
+        String cName = course['courseName'] as String? ?? '';
         if (diffDays == 0) {
-          fullDateHeader = "<b>$fullDateHeader</b>";
-          cName = "<b>$cName</b>";
+          fullDateHeader = '<b>$fullDateHeader</b>';
+          cName = '<b>$cName</b>';
         }
-        String cId = '${course.courseName}_${course.date}_${course.startTime}';
+        final startTime = course['startTime'] as int;
+        final cId = '${course['courseName']}_${course['date']}_$startTime';
         resultData['course_date_${i + 1}'] = fullDateHeader;
         resultData['course_name_${i + 1}'] = cName;
-        resultData['course_time_${i + 1}'] = '${course.formattedStartTime} - ${course.formattedEndTime}';
-        resultData['course_room_${i + 1}'] = "@${course.roomName}";
+        resultData['course_time_${i + 1}'] =
+            '${course['formattedStartTime']} - ${course['formattedEndTime']}';
+        resultData['course_room_${i + 1}'] = '@${course['roomName']}';
         resultData['course_id_${i + 1}'] = cId;
         if (urgentCourseId.isEmpty) {
-          DateTime cStart = courseDate.add(Duration(hours: course.startTime ~/ 100, minutes: course.startTime % 100));
-          if (cStart.isAfter(now) && cStart.difference(now).inMinutes <= 30) urgentCourseId = cId;
+          final cStart = courseDate.add(
+              Duration(hours: startTime ~/ 100, minutes: startTime % 100));
+          if (cStart.isAfter(now) && cStart.difference(now).inMinutes <= 30) {
+            urgentCourseId = cId;
+          }
         }
       }
     } catch (_) {}
     resultData['urgent_course_id'] = urgentCourseId;
 
-    // 3. 倒数日
-    List<CountdownItem> countdowns = countdownsRaw.where((c) => !c.isDeleted && c.targetDate.difference(today).inDays >= 0).toList();
-    countdowns.sort((a, b) => a.targetDate.compareTo(b.targetDate));
+    // 3. 倒数日（主线程已过滤未过期）
+    final sortedCountdowns = List<Map<String, dynamic>>.from(countdownsRaw)
+      ..sort((a, b) =>
+          (a['targetDateMs'] as int).compareTo(b['targetDateMs'] as int));
     for (int i = 1; i <= maxWidgetItems; i++) {
       resultData['cd_title_$i'] = '';
       resultData['cd_days_$i'] = '';
     }
-    for (int i = 0; i < countdowns.length && i < maxWidgetItems; i++) {
-      final cd = countdowns[i];
-      final diff = cd.targetDate.difference(today).inDays;
-      resultData['cd_title_${i + 1}'] = diff == 0 ? "<b>${cd.title}</b>" : cd.title;
-      resultData['cd_days_${i + 1}'] = diff == 0 ? "就在今天" : "还有 $diff 天";
+    for (int i = 0; i < sortedCountdowns.length && i < maxWidgetItems; i++) {
+      final cd = sortedCountdowns[i];
+      final targetDate =
+          DateTime.fromMillisecondsSinceEpoch(cd['targetDateMs'] as int);
+      final diff =
+          DateTime(targetDate.year, targetDate.month, targetDate.day)
+              .difference(today)
+              .inDays;
+      final title = cd['title'] as String? ?? '';
+      resultData['cd_title_${i + 1}'] = diff == 0 ? '<b>$title</b>' : title;
+      resultData['cd_days_${i + 1}'] = diff == 0 ? '就在今天' : '还有 $diff 天';
     }
 
-    // 4. 专注日志统计
+    // 4. 专注日志统计（主线程已过滤为今日数据，tagNames 已展开为字符串列表）
     try {
-      final filteredTimeLogs = tlogsRaw.where((l) => !l.isDeleted).where((l) {
-        final d = DateTime.fromMillisecondsSinceEpoch(l.startTime, isUtc: true).toLocal();
-        return d.year == today.year && d.month == today.month && d.day == today.day;
-      }).toList();
-      final filteredPoms = pomsRaw.where((p) => !p.isDeleted).where((p) {
-        final d = DateTime.fromMillisecondsSinceEpoch(p.startTime, isUtc: true).toLocal();
-        return d.year == today.year && d.month == today.month && d.day == today.day;
-      }).toList();
-
       final List<Map<String, dynamic>> merged = [];
-      for (final l in filteredTimeLogs) {
-        if (l.endTime <= l.startTime) continue;
-        merged.add({'title': (l.title.isNotEmpty ? l.title : '专注任务'), 'start': l.startTime, 'minutes': ((l.endTime - l.startTime) ~/ 60000)});
-      }
-      for (final p in filteredPoms) {
-        int start = p.startTime;
-        int end = p.endTime ?? (p.startTime + (p.actualDuration ?? p.plannedDuration) * 1000);
+      for (final l in tlogsRaw) {
+        final start = l['startTime'] as int;
+        final end = l['endTime'] as int? ?? 0;
         if (end <= start) continue;
-        merged.add({'title': (p.todoTitle ?? '专注任务'), 'start': start, 'minutes': ((end - start) ~/ 60000)});
+        merged.add({
+          'title': ((l['title'] as String? ?? '').isNotEmpty) ? l['title'] : '专注任务',
+          'start': start,
+          'minutes': (end - start) ~/ 60000,
+          'tagNames': (l['tagNames'] as List<dynamic>?) ?? [],
+        });
       }
-      merged.sort((a, b) => b['start'].compareTo(a['start']));
-      final totalMins = merged.fold<int>(0, (s, e) => s + (e['minutes'] as int));
+      for (final p in pomsRaw) {
+        final start = p['startTime'] as int;
+        final end = p['endTime'] as int? ??
+            (start +
+                ((p['actualDuration'] as int?) ??
+                        (p['plannedDuration'] as int? ?? 0)) *
+                    1000);
+        if (end <= start) continue;
+        merged.add({
+          'title': (p['todoTitle'] as String?) ?? '专注任务',
+          'start': start,
+          'minutes': (end - start) ~/ 60000,
+          'tagNames': (p['tagNames'] as List<dynamic>?) ?? [],
+        });
+      }
+      merged.sort((a, b) => (b['start'] as int).compareTo(a['start'] as int));
+      final totalMins =
+          merged.fold<int>(0, (s, e) => s + (e['minutes'] as int));
       resultData['tl_total'] = '今日总专注: $totalMins 分钟';
 
       final Map<String, double> tagMinutes = {};
-      for (final l in filteredTimeLogs) {
-        final mins = ((l.endTime - l.startTime) ~/ 60000).toDouble();
-        if (l.tagUuids.isEmpty) tagMinutes['未分类'] = (tagMinutes['未分类'] ?? 0) + mins;
-        else {
-          final per = mins / l.tagUuids.length;
-          for (final tu in l.tagUuids) {
-            final name = tagNameByUuid[tu] ?? tu;
-            tagMinutes[name] = (tagMinutes[name] ?? 0) + per;
+      for (final entry in merged) {
+        final mins = (entry['minutes'] as int).toDouble();
+        final tagNames = entry['tagNames'] as List<dynamic>;
+        if (tagNames.isEmpty) {
+          tagMinutes['未分类'] = (tagMinutes['未分类'] ?? 0) + mins;
+        } else {
+          final per = mins / tagNames.length;
+          for (final name in tagNames) {
+            final key = name as String;
+            tagMinutes[key] = (tagMinutes[key] ?? 0) + per;
           }
         }
       }
-      for (final p in filteredPoms) {
-        final start = p.startTime;
-        final end = p.endTime ?? (p.startTime + (p.actualDuration ?? p.plannedDuration) * 1000);
-        final mins = ((end - start) ~/ 60000).toDouble();
-        if (p.tagUuids.isEmpty) tagMinutes['未分类'] = (tagMinutes['未分类'] ?? 0) + mins;
-        else {
-          final per = mins / p.tagUuids.length;
-          for (final tu in p.tagUuids) {
-            final name = tagNameByUuid[tu] ?? tu;
-            tagMinutes[name] = (tagMinutes[name] ?? 0) + per;
-          }
-        }
-      }
-      final tagEntries = tagMinutes.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+      final tagEntries = tagMinutes.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
       for (int i = 1; i <= maxWidgetItems; i++) {
         resultData['tl_tag_name_$i'] = '';
         resultData['tl_tag_mins_$i'] = '';
@@ -354,7 +481,12 @@ class WidgetService {
     return resultData;
   }
 
-  static String _hm(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  /// 根据 dueDate 毫秒时间戳生成显示标签
+  static String _getDueDateLabelFromMs(int? dueDateMs) {
+    if (dueDateMs == null) return '';
+    return _getDueDateLabel(DateTime.fromMillisecondsSinceEpoch(dueDateMs));
+  }
+
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
     final prefs = await SharedPreferences.getInstance();

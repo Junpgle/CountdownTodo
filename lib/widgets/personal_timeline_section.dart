@@ -148,7 +148,9 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                       ),
                     )
                   : Container(
-                      key: const ValueKey('content'),
+                      // 🚀 核心修复：增加 refreshTrigger 使 Key 在每次加载后唯一，
+                      // 彻底解决 AnimatedSwitcher 在快速加载时可能出现的 Duplicate Key 崩溃
+                      key: ValueKey('summary_${widget.refreshTrigger}_${_summaryContentKey()}'),
                       child: _buildSummaryGrid(subColor, textColor),
                     ),
             ),
@@ -177,29 +179,34 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     }
 
     // 2. 待办事项
-    if (_summary!.todoCreatedCount > 0 || _summary!.todoCompletedCount > 0) {
+    if (_summary!.todoCreatedCount > 0 || _summary!.todoEditedCount > 0 || _summary!.todoCompletedCount > 0) {
       if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
+      final parts = <String>[];
+      if (_summary!.todoCreatedCount > 0) parts.add('新增 ${_summary!.todoCreatedCount} 个');
+      if (_summary!.todoEditedCount > 0) parts.add('编辑 ${_summary!.todoEditedCount} 个');
+      if (_summary!.todoCompletedCount > 0) parts.add('完成 ${_summary!.todoCompletedCount} 个');
       rows.add(_buildSummaryRow(
         icon: Icons.task_alt_rounded,
         color: Colors.blue,
         title: '待办事项',
-        content:
-            '编辑了 ${_summary!.todoCreatedCount} 个，完成了 ${_summary!.todoCompletedCount} 个',
+        content: parts.join('、'),
         subColor: subColor,
         textColor: textColor,
       ));
     }
 
     // 3. 倒计时
-    if (_summary!.countdownCreatedCount > 0 ||
-        _summary!.countdownCompletedCount > 0) {
+    if (_summary!.countdownCreatedCount > 0 || _summary!.countdownEditedCount > 0 || _summary!.countdownCompletedCount > 0) {
       if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
+      final parts = <String>[];
+      if (_summary!.countdownCreatedCount > 0) parts.add('新增 ${_summary!.countdownCreatedCount} 个');
+      if (_summary!.countdownEditedCount > 0) parts.add('编辑 ${_summary!.countdownEditedCount} 个');
+      if (_summary!.countdownCompletedCount > 0) parts.add('完成 ${_summary!.countdownCompletedCount} 个');
       rows.add(_buildSummaryRow(
         icon: Icons.timer_outlined,
         color: Colors.redAccent,
         title: '倒计时',
-        content:
-            '新增了 ${_summary!.countdownCreatedCount} 个，完成了 ${_summary!.countdownCompletedCount} 个',
+        content: parts.join('、'),
         subColor: subColor,
         textColor: textColor,
       ));
@@ -249,6 +256,23 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     }
 
     return Column(children: rows);
+  }
+
+  String _summaryContentKey() {
+    final summary = _summary;
+    if (summary == null) return 'content-empty';
+    return [
+      summary.searchCount,
+      summary.todoCreatedCount,
+      summary.todoEditedCount,
+      summary.todoCompletedCount,
+      summary.countdownCreatedCount,
+      summary.countdownEditedCount,
+      summary.countdownCompletedCount,
+      summary.pomodoroCount,
+      summary.attendedCourses.join('|'),
+      summary.lastSearchTime?.millisecondsSinceEpoch ?? 0,
+    ].join('_');
   }
 
   Widget _buildSummaryRow({

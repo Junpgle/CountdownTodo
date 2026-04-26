@@ -13,21 +13,24 @@ class PersonalTimelineScreen extends StatefulWidget {
 
 class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final List<DateTime> _dates = List.generate(7, (i) => DateTime.now().subtract(Duration(days: i)));
+  late List<DateTime> _dates;
   
   final Map<int, List<TimelineEvent>> _eventsMap = {};
   final Map<int, TimelineSummary> _summariesMap = {};
   bool _isLoading = true;
+  
+  List<DateTime> _generateDates() {
+    // 生成过去7天，但确保都是"整日期"（不含时间部分）
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return List.generate(7, (i) => today.subtract(Duration(days: i)));
+  }
 
   @override
   void initState() {
     super.initState();
+    _dates = _generateDates();
     _tabController = TabController(length: _dates.length, vsync: this);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        setState(() {}); // 更新侧边栏选中状态
-      }
-    });
     _loadAllData();
   }
 
@@ -116,9 +119,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
             children: [
               const SizedBox(height: 12),
               Expanded(
-                child: ListView.builder(
-                  itemCount: _dates.length,
-                  itemBuilder: (context, i) => _buildSidebarItem(i, _getDateLabel(i), _dates[i], _eventsMap[i]?.length ?? 0),
+                child: AnimatedBuilder(
+                  animation: _tabController,
+                  builder: (context, _) => ListView.builder(
+                    itemCount: _dates.length,
+                    itemBuilder: (context, i) => _buildSidebarItem(i, _getDateLabel(i), _dates[i], _eventsMap[i]?.length ?? 0),
+                  ),
                 ),
               ),
               Padding(
@@ -140,8 +146,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
                 animation: _tabController,
                 builder: (context, _) {
                   final events = _eventsMap[_tabController.index] ?? [];
-                  final msg = '${_getDateLabel(_tabController.index)}还没有留下足迹哦';
-                  return _buildTimelineList(events, msg);
+                  final dateLabel = _getDateLabel(_tabController.index);
+                  final msg = '$dateLabel还没有留下足迹哦';
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Text(
+                          dateLabel,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Expanded(child: _buildTimelineList(events, msg)),
+                    ],
+                  );
                 },
               ),
             ),
@@ -173,12 +194,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
     final bool isSelected = _tabController.index == index;
     final color = isSelected ? Theme.of(context).colorScheme.primary : Colors.grey;
     final dateSub = DateFormat('MM月dd日').format(date);
+    final textColor = Theme.of(context).colorScheme.onSurface;
 
     return InkWell(
-      onTap: () {
-        _tabController.animateTo(index);
-        setState(() {});
-      },
+      onTap: () => _tabController.animateTo(index),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -192,7 +211,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: TextStyle(
-                  color: isSelected ? Colors.black87 : Colors.grey[700], 
+                  color: isSelected ? textColor : Colors.grey[700], 
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   fontSize: 15,
                 )),
@@ -216,7 +235,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
   }
 
   Widget _buildSummaryPanel(TimelineSummary? summary) {
-    if (summary == null) return const SizedBox.shrink();
+    if (summary == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.info_outline, size: 40, color: Colors.grey.withValues(alpha: 0.3)),
+            const SizedBox(height: 12),
+            Text('暂无数据', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+          ],
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -426,9 +456,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
     switch (type) {
       case TimelineEventType.pomodoroStart: return Colors.orange;
       case TimelineEventType.pomodoroEnd: return Colors.green;
-      case TimelineEventType.todoCompleted: return Colors.blue;
       case TimelineEventType.todoCreated: return Colors.purple;
+      case TimelineEventType.todoEdited: return Colors.amber;
+      case TimelineEventType.todoCompleted: return Colors.blue;
       case TimelineEventType.countdownCreated: return Colors.redAccent;
+      case TimelineEventType.countdownEdited: return Colors.deepOrange;
       case TimelineEventType.countdownCompleted: return Colors.red;
       case TimelineEventType.courseStart: return Colors.indigo;
       case TimelineEventType.courseEnd: return Colors.deepPurple;
@@ -440,9 +472,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
     switch (type) {
       case TimelineEventType.pomodoroStart: return Icons.play_arrow_rounded;
       case TimelineEventType.pomodoroEnd: return Icons.check_circle_outline_rounded;
-      case TimelineEventType.todoCompleted: return Icons.task_alt_rounded;
       case TimelineEventType.todoCreated: return Icons.add_rounded;
+      case TimelineEventType.todoEdited: return Icons.edit_rounded;
+      case TimelineEventType.todoCompleted: return Icons.task_alt_rounded;
       case TimelineEventType.countdownCreated: return Icons.timer_outlined;
+      case TimelineEventType.countdownEdited: return Icons.edit_note_rounded;
       case TimelineEventType.countdownCompleted: return Icons.celebration_rounded;
       case TimelineEventType.courseStart: return Icons.school_rounded;
       case TimelineEventType.courseEnd: return Icons.logout_rounded;

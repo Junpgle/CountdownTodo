@@ -22,37 +22,79 @@ import '../models.dart';
 class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
 
+  static Future<void> _ensureCoursesColumnsForWrite(dynamic db) async {
+    final info = await db.rawQuery("PRAGMA table_info(courses)");
+    final columns = info
+        .map((row) => row['name']?.toString())
+        .whereType<String>()
+        .toSet();
+    debugPrint("🔎 [Course] 写入前字段: ${columns.join(', ')}");
+
+    final requiredColumns = {
+      'is_deleted': 'INTEGER DEFAULT 0',
+      'version': 'INTEGER DEFAULT 1',
+      'updated_at': 'INTEGER DEFAULT 0',
+      'created_at': 'INTEGER DEFAULT 0',
+    };
+
+    for (final entry in requiredColumns.entries) {
+      if (!columns.contains(entry.key)) {
+        await db.execute(
+            "ALTER TABLE courses ADD COLUMN ${entry.key} ${entry.value}");
+        columns.add(entry.key);
+        debugPrint("✅ [Course] 已补齐字段 courses.${entry.key}");
+      }
+    }
+  }
+
+  static Future<void> _writeCoursesToSql(
+      DatabaseHelper dbHelper, List<CourseItem> courses) async {
+    final db = await dbHelper.database;
+    await DatabaseHelper.ensureCourseTableSchema(db);
+    await _ensureCoursesColumnsForWrite(db);
+    final batch = db.batch();
+    batch.delete('courses');
+    for (var c in courses) {
+      batch.insert('courses', {
+        'uuid': c.uuid,
+        'course_name': c.courseName,
+        'teacher_name': c.teacherName,
+        'date': c.date,
+        'weekday': c.weekday,
+        'start_time': c.startTime,
+        'end_time': c.endTime,
+        'week_index': c.weekIndex,
+        'room_name': c.roomName,
+        'lesson_type': c.lessonType,
+        'team_uuid': c.teamUuid,
+        'is_deleted': c.isDeleted ? 1 : 0,
+        'version': c.version,
+        'updated_at': c.updatedAt,
+        'created_at': c.createdAt,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
   // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
   static Future<void> saveCourses(String username, List<CourseItem> courses) async {
     // 1. 🚀 写入 SQL
     try {
-      final db = await DatabaseHelper.instance.database;
-      final batch = db.batch();
-      // 先清空旧课表（课表通常是覆盖式导入）
-      batch.delete('courses'); 
-      for (var c in courses) {
-        batch.insert('courses', {
-          'uuid': c.uuid,
-          'course_name': c.courseName,
-          'teacher_name': c.teacherName,
-          'date': c.date,
-          'weekday': c.weekday,
-          'start_time': c.startTime,
-          'end_time': c.endTime,
-          'week_index': c.weekIndex,
-          'room_name': c.roomName,
-          'lesson_type': c.lessonType,
-          'team_uuid': c.teamUuid,
-          'is_deleted': c.isDeleted ? 1 : 0,
-          'version': c.version,
-          'updated_at': c.updatedAt,
-          'created_at': c.createdAt,
-        });
-      }
-      await batch.commit(noResult: true);
+      final dbHelper = DatabaseHelper.instance;
+      await _writeCoursesToSql(dbHelper, courses);
       debugPrint("✅ [Course] SQL 保存成功: ${courses.length} 条");
     } catch (e) {
       debugPrint("❌ [Course] SQL 保存失败: $e");
+      final errorText = e.toString();
+      if (errorText.contains('no column named is_deleted') ||
+          errorText.contains('no such column: is_deleted')) {
+        try {
+          await _writeCoursesToSql(DatabaseHelper.instance, courses);
+          debugPrint("✅ [Course] SQL 兜底重试成功: ${courses.length} 条");
+        } catch (retryError) {
+          debugPrint("❌ [Course] SQL 兜底重试失败: $retryError");
+        }
+      }
     }
 
     // 2. 补齐 Prefs 备份
@@ -279,6 +321,53 @@ class CourseService {
       if (tomorrowCourses.isNotEmpty) {
         tomorrowCourses.sort((a, b) => a.startTime.compareTo(b.startTime));
         return {'title': '明日课程', 'courses': tomorrowCourses};
+      }
+
+      final futureCourses = <MapEntry<DateTime, CourseItem>>[];
+      DateTime? semMonday;
+      final DateTime? semStart = await StorageService.getSemesterStart();
+      if (semStart != null) {
+        semMonday = DateTime(semStart.year, semStart.month, semStart.day)
+            .subtract(Duration(days: semStart.weekday - 1));
+      }
+
+      for (final c in courses) {
+        DateTime? courseDay;
+        if (c.date.isNotEmpty) {
+          try {
+            courseDay = DateFormat('yyyy-MM-dd').parseStrict(c.date);
+          } catch (_) {
+            courseDay = null;
+          }
+        }
+        if (courseDay == null && semMonday != null && c.weekIndex > 0) {
+          courseDay = semMonday.add(
+            Duration(days: (c.weekIndex - 1) * 7 + c.weekday - 1),
+          );
+        }
+        if (courseDay == null) continue;
+
+        final normalizedDay =
+            DateTime(courseDay.year, courseDay.month, courseDay.day);
+        if (normalizedDay.isAfter(tomorrowNormalized)) {
+          futureCourses.add(MapEntry(normalizedDay, c));
+        }
+      }
+
+      if (futureCourses.isNotEmpty) {
+        futureCourses.sort((a, b) {
+          final dayCompare = a.key.compareTo(b.key);
+          if (dayCompare != 0) return dayCompare;
+          return a.value.startTime.compareTo(b.value.startTime);
+        });
+        final nextDay = futureCourses.first.key;
+        final nextCourses = futureCourses
+            .where((entry) => entry.key.isAtSameMomentAs(nextDay))
+            .map((entry) => entry.value)
+            .toList()
+          ..sort((a, b) => a.startTime.compareTo(b.startTime));
+        final days = nextDay.difference(todayNormalized).inDays;
+        return {'title': '${days}天后课程', 'courses': nextCourses};
       }
 
       return {'title': '最近无课', 'courses': <CourseItem>[]};

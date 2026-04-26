@@ -58,6 +58,8 @@ class PageTransitions {
     required BuildContext context,
     required Widget page,
     required GlobalKey sourceKey,
+    Rect? targetRect,
+    BorderRadius targetBorderRadius = BorderRadius.zero,
     Color? sourceColor,
     BorderRadius sourceBorderRadius =
         const BorderRadius.all(Radius.circular(16)),
@@ -85,6 +87,8 @@ class PageTransitions {
       ContainerTransformRoute<T>(
         page: page,
         sourceRect: rect,
+        targetRect: targetRect,
+        targetBorderRadius: targetBorderRadius,
         sourceColor: color,
         sourceBorderRadius: sourceBorderRadius,
       ),
@@ -107,6 +111,8 @@ class PageTransitions {
 class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
   final Rect sourceRect;
+  final Rect? targetRect;
+  final BorderRadius targetBorderRadius;
   final Color sourceColor;
   final BorderRadius sourceBorderRadius;
 
@@ -114,6 +120,8 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
     required this.page,
     required this.sourceRect,
     required this.sourceColor,
+    this.targetRect,
+    this.targetBorderRadius = BorderRadius.zero,
     this.sourceBorderRadius = const BorderRadius.all(Radius.circular(16)),
   }) : super(
           pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -125,6 +133,8 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
               animation: animation,
               secondaryAnimation: secondaryAnimation,
               sourceRect: sourceRect,
+              targetRect: targetRect,
+              targetBorderRadius: targetBorderRadius,
               sourceColor: sourceColor,
               sourceBorderRadius: sourceBorderRadius,
               child: child,
@@ -137,6 +147,8 @@ class _ContainerTransformWidget extends StatefulWidget {
   final Animation<double> animation;
   final Animation<double> secondaryAnimation;
   final Rect sourceRect;
+  final Rect? targetRect;
+  final BorderRadius targetBorderRadius;
   final Color sourceColor;
   final BorderRadius sourceBorderRadius;
   final Widget child;
@@ -145,6 +157,8 @@ class _ContainerTransformWidget extends StatefulWidget {
     required this.animation,
     required this.secondaryAnimation,
     required this.sourceRect,
+    this.targetRect,
+    this.targetBorderRadius = BorderRadius.zero,
     required this.sourceColor,
     required this.sourceBorderRadius,
     required this.child,
@@ -187,7 +201,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         final tBounce = tRaw.clamp(0.0, 1.0);
 
         final begin = widget.sourceRect;
-        final end = Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
+        final end = widget.targetRect ??
+            Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
 
         final left = begin.left + (end.left - begin.left) * tBounce;
         final top = begin.top + (end.top - begin.top) * tBounce;
@@ -195,7 +210,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         final height = begin.height + (end.height - begin.height) * tBounce;
 
         final beginR = widget.sourceBorderRadius;
-        final endR = BorderRadius.zero;
+        final endR = widget.targetBorderRadius;
         final borderRadius = BorderRadius.only(
           topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
           topRight: Radius.lerp(beginR.topRight, endR.topRight, t)!,

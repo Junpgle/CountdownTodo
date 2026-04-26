@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,6 +61,29 @@ class DatabaseHelper {
     }
   }
 
+  static Future<void> ensureCourseTableSchema(Database db) async {
+    try {
+      final info = await db.rawQuery("PRAGMA table_info(courses)");
+      if (info.isEmpty) return;
+
+      final columnsToAdd = [
+        {'name': 'is_deleted', 'type': 'INTEGER DEFAULT 0'},
+        {'name': 'version', 'type': 'INTEGER DEFAULT 1'},
+        {'name': 'updated_at', 'type': 'INTEGER DEFAULT 0'},
+        {'name': 'created_at', 'type': 'INTEGER DEFAULT 0'},
+      ];
+
+      for (final column in columnsToAdd) {
+        if (!info.any((row) => row['name'] == column['name'])) {
+          await db.execute("ALTER TABLE courses ADD COLUMN ${column['name']} ${column['type']};");
+          debugPrint("✅ Database: 修复字段 courses.${column['name']}");
+        }
+      }
+    } catch (e) {
+      debugPrint("⚠️ Database: 检查/修复 courses 表结构失败: $e");
+    }
+  }
+
   Future<Database> _initDB(String filePath) async {
     // 🚀 桌面端 SQL 引擎初始化已由 main.dart 统一处理
 
@@ -72,9 +95,36 @@ class DatabaseHelper {
 
     return await openDatabase(
         path,
-        version: 20, // 🚀 V20: 修复 op_logs.sync_error 字段缺失导致同步中断
+        version: 24, // V24: 强制触发 courses 老库字段自愈
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 24) {
+            await ensureCourseTableSchema(db);
+          }
+
+          if (oldVersion < 23) {
+            try {
+              await ensureCourseTableSchema(db);
+            } catch (e) {
+              debugPrint("⚠️ Database: 修复 courses 表字段失败 (V23): $e");
+            }
+          }
+
+          if (oldVersion < 22) {
+            try {
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS ignored_remote_items (
+                  uuid TEXT PRIMARY KEY,
+                  team_uuid TEXT,
+                  table_name TEXT,
+                  ignored_at INTEGER
+                )
+              ''');
+              debugPrint('✅ Database: 创建 ignored_remote_items 表 (V22)');
+            } catch (e) {
+              debugPrint('⚠️ Database: 创建 ignored_remote_items 表失败: $e');
+            }
+          }
           if (oldVersion < 3) {
             // 🚀 Uni-Sync 安全升级：为核心业务表补全协作元数据
             final tables = ['todos', 'countdowns', 'todo_groups'];
@@ -123,6 +173,8 @@ class DatabaseHelper {
             // 2. 强制重建 FTS 架构（采用动态嗅探）
             await _setupFts(db);
           }
+
+          await ensureCourseTableSchema(db);
 
           if (oldVersion < 6) {
             try {
@@ -388,7 +440,38 @@ class DatabaseHelper {
               debugPrint("⚠️ Database: 升级 V20 失败: $e");
             }
           }
-        }
+          if (oldVersion < 21) {
+            try {
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS screen_time (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  record_date TEXT,
+                  package_name TEXT,
+                  app_name TEXT,
+                  duration INTEGER,
+                  updated_at INTEGER
+                )
+              ''');
+              await db.execute('CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)'); 
+    // 🚀 Version 22: 新增 ignored_remote_items 表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ignored_remote_items (
+        uuid TEXT PRIMARY KEY,
+        team_uuid TEXT,
+        table_name TEXT,
+        ignored_at INTEGER
+      )
+    ''');
+    debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
+              debugPrint('✅ Database: 创建 screen_time 表 (V21)');
+            } catch (e) {
+              debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
+            }
+          }
+        },
+        onOpen: (db) async {
+          await ensureCourseTableSchema(db);
+        },
     );
   }
 
@@ -730,6 +813,28 @@ class DatabaseHelper {
         night_count INTEGER DEFAULT 0
       )
     ''');
+    // 🚀 Version 21: 新增屏幕时间记录表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS screen_time (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_date TEXT,
+        package_name TEXT,
+        app_name TEXT,
+        duration INTEGER,
+        updated_at INTEGER
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)'); 
+    // 🚀 Version 22: 新增 ignored_remote_items 表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ignored_remote_items (
+        uuid TEXT PRIMARY KEY,
+        team_uuid TEXT,
+        table_name TEXT,
+        ignored_at INTEGER
+      )
+    ''');
+    debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)
@@ -835,7 +940,8 @@ class DatabaseHelper {
       'target_uuid': uuid,
       'data_json': jsonEncode(data),
       'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'is_synced': 0
+      'is_synced': 0,
+      'sync_error': '',
     });
   }
 
@@ -1010,7 +1116,8 @@ class DatabaseHelper {
                 'version': newVersion,
               }),
               'timestamp': now,
-              'is_synced': 0
+              'is_synced': 0,
+              'sync_error': '',
             });
             totalRemoved++;
           }
@@ -1033,6 +1140,8 @@ class DatabaseHelper {
     String? where,
     List<String>? uuids,
     int? limit,
+    bool inlineTextColumns = false,
+    bool includeConflictData = false,
   }) async {
     final db = await instance.database;
     final whereParts = <String>[];
@@ -1050,13 +1159,24 @@ class DatabaseHelper {
       whereArgs.addAll(uuids);
     }
 
-    final sql = StringBuffer()
-      ..write('SELECT ')
-      ..write(_todoBaseColumns.join(', '))
-      ..write(', LENGTH(content) AS _content_length')
-      ..write(', LENGTH(remark) AS _remark_length')
-      ..write(', LENGTH(conflict_data) AS _conflict_length')
-      ..write(' FROM todos');
+    final sql = StringBuffer()..write('SELECT ');
+    if (inlineTextColumns) {
+      sql
+        ..write(_todoBaseColumns.join(', '))
+        ..write(', content, remark');
+      if (includeConflictData) {
+        sql.write(', conflict_data');
+      }
+    } else {
+      sql
+        ..write(_todoBaseColumns.join(', '))
+        ..write(', LENGTH(content) AS _content_length')
+        ..write(', LENGTH(remark) AS _remark_length');
+      if (includeConflictData) {
+        sql.write(', LENGTH(conflict_data) AS _conflict_length');
+      }
+    }
+    sql.write(' FROM todos');
     if (whereParts.isNotEmpty) {
       sql.write(' WHERE ${whereParts.join(' AND ')}');
     }
@@ -1066,21 +1186,28 @@ class DatabaseHelper {
     }
 
     final rows = await db.rawQuery(sql.toString(), whereArgs);
+    if (inlineTextColumns) {
+      return rows;
+    }
     final hydrated = <Map<String, dynamic>>[];
     for (final row in rows) {
-      hydrated.add(await _hydrateTodoRow(db, row));
+      hydrated.add(await _hydrateTodoRow(db, row,
+          includeConflictData: includeConflictData));
     }
     return hydrated;
   }
 
   Future<Map<String, dynamic>> _hydrateTodoRow(
-      Database db, Map<String, dynamic> row) async {
+      Database db, Map<String, dynamic> row,
+      {bool includeConflictData = false}) async {
     final hydrated = Map<String, dynamic>.from(row);
     final uuid = hydrated['uuid']?.toString();
     if (uuid == null || uuid.isEmpty) {
       hydrated.remove('_content_length');
       hydrated.remove('_remark_length');
-      hydrated.remove('_conflict_length');
+      if (includeConflictData) {
+        hydrated.remove('_conflict_length');
+      }
       return hydrated;
     }
 
@@ -1096,15 +1223,19 @@ class DatabaseHelper {
       'remark',
       _toNullableInt(row['_remark_length']),
     );
-    hydrated['conflict_data'] = await _readTodoTextColumn(
-      db,
-      uuid,
-      'conflict_data',
-      _toNullableInt(row['_conflict_length']),
-    );
+    if (includeConflictData) {
+      hydrated['conflict_data'] = await _readTodoTextColumn(
+        db,
+        uuid,
+        'conflict_data',
+        _toNullableInt(row['_conflict_length']),
+      );
+    }
     hydrated.remove('_content_length');
     hydrated.remove('_remark_length');
-    hydrated.remove('_conflict_length');
+    if (includeConflictData) {
+      hydrated.remove('_conflict_length');
+    }
     return hydrated;
   }
 

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include <desktop_multi_window/desktop_multi_window_plugin.h>
 #include "flutter/generated_plugin_registrant.h"
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
@@ -29,6 +30,12 @@ bool FlutterWindow::OnCreate() {
     }
 
     RegisterPlugins(flutter_controller_->engine());
+    DesktopMultiWindowSetWindowCreatedCallback([](void *controller) {
+        auto *flutter_view_controller =
+                reinterpret_cast<flutter::FlutterViewController *>(controller);
+        auto *registry = flutter_view_controller->engine();
+        RegisterPlugins(registry);
+    });
 
 
     SetChildContent(flutter_controller_->view()->GetNativeWindow());

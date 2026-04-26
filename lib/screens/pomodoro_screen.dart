@@ -33,9 +33,15 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   PomodoroPhase _currentPhase = PomodoroPhase.idle;
   bool _workbenchReady = false;
   final _statsKey = GlobalKey<PomodoroStatsState>();
-  final GlobalKey<PomodoroWorkbenchState> _workbenchKey =
+  final GlobalKey<PomodoroWorkbenchState> _workbenchKeyPortrait =
+      GlobalKey<PomodoroWorkbenchState>();
+  final GlobalKey<PomodoroWorkbenchState> _workbenchKeyLandscape =
       GlobalKey<PomodoroWorkbenchState>();
   bool _disposed = false;
+
+  /// 统一访问当前活跃的 workbench state（portrait 或 landscape）
+  PomodoroWorkbenchState? get _workbenchState =>
+      _workbenchKeyPortrait.currentState ?? _workbenchKeyLandscape.currentState;
 
   @override
   void initState() {
@@ -49,13 +55,9 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       // 🚀 性能优化：只有在确实需要刷新 UI 时才 setState
       if (!_tabController.indexIsChanging) {
         if (_tabController.index == 1) {
-          try {
-            _statsKey.currentState?.reload();
-          } catch (_) {}
+          try { _statsKey.currentState?.reload(); } catch (_) {}
         } else {
-          try {
-            _workbenchKey.currentState?.reload();
-          } catch (_) {}
+          try { _workbenchState?.reload(); } catch (_) {}
         }
         if (mounted && !_disposed) setState(() {});
       }
@@ -67,9 +69,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       debugPrint(
           '[PomodoroScreen] postFrameCallback firing; initialTab=${widget.initialTab}');
       if (widget.initialTab == 0) {
-        try {
-          _workbenchKey.currentState?.reload();
-        } catch (_) {}
+        try { _workbenchState?.reload(); } catch (_) {}
         debugPrint(
             '[PomodoroScreen] requested workbench reload from postFrameCallback');
       }
@@ -90,12 +90,12 @@ class _PomodoroScreenState extends State<PomodoroScreen>
         case 'pomodoroFinishEarly':
           debugPrint(
               '[PomodoroScreen] Triggering finishEarly from notification');
-          _workbenchKey.currentState?.handleFinishEarly();
+          _workbenchState?.handleFinishEarly();
           break;
         case 'pomodoroAbandon':
           debugPrint(
               '[PomodoroScreen] Triggering abandonFocus from notification');
-          _workbenchKey.currentState?.handleAbandonFocus();
+          _workbenchState?.handleAbandonFocus();
           break;
       }
     });
@@ -142,7 +142,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   alignment: Alignment.center,
                 child: PomodoroWorkbench(
-                  key: _workbenchKey,
+                  key: _workbenchKeyLandscape,
                   username: widget.username,
                   onPhaseChanged: (phase) {
                     if (!_disposed && mounted && _currentPhase != phase) {
@@ -248,7 +248,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 children: [
                   // portrait workbench
                   PomodoroWorkbench(
-                    key: _workbenchKey,
+                    key: _workbenchKeyPortrait,
                     username: widget.username,
                     onPhaseChanged: (phase) {
                       if (!_disposed && mounted && _currentPhase != phase) {

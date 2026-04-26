@@ -248,8 +248,16 @@ class IslandSlotProvider {
 
           final time = isOngoing ? c.formattedEndTime : c.formattedStartTime;
           final timeLabel = isOngoing ? '结束' : '开始';
-          final display =
-              isLeft ? '[$time] ${c.courseName}' : '${c.courseName} [$time]';
+          final dateLabel = _courseDateLabel(
+            course: c,
+            fallbackTomorrow: !isToday,
+            now: now,
+          );
+          final leadLabel = isToday ? time : dateLabel;
+          final detailTime = isToday ? '$time$timeLabel' : dateLabel;
+          final display = isLeft
+              ? '[$leadLabel] ${c.courseName}'
+              : '${c.courseName} [$leadLabel]';
 
           return IslandSlotData(
             display: display,
@@ -257,12 +265,39 @@ class IslandSlotProvider {
             detailTitle: c.courseName,
             detailSubtitle: c.teacherName,
             detailLocation: c.roomName,
-            detailTime: '$time$timeLabel',
+            detailTime: detailTime,
           );
         }
       }
     } catch (_) {}
     return const IslandSlotData(display: '', type: 'course');
+  }
+
+  static String _courseDateLabel({
+    required CourseItem course,
+    required bool fallbackTomorrow,
+    required DateTime now,
+  }) {
+    DateTime? courseDate;
+    if (course.date.isNotEmpty) {
+      try {
+        courseDate = DateFormat('yyyy-MM-dd').parseStrict(course.date);
+      } catch (_) {
+        courseDate = null;
+      }
+    }
+
+    final today = DateTime(now.year, now.month, now.day);
+    if (courseDate == null) {
+      return fallbackTomorrow ? '明天' : '今天';
+    }
+
+    final day = DateTime(courseDate.year, courseDate.month, courseDate.day);
+    final diff = day.difference(today).inDays;
+    if (diff <= 0) return '今天';
+    if (diff == 1) return '明天';
+    if (diff == 2) return '后天';
+    return '$diff天后';
   }
 
   /// Get pomodoro record slot data

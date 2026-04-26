@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
@@ -155,6 +156,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   int _remoteTodoHighlightSignal = 0;
   Timer? _remoteTodoHighlightTimer;
   int _teamPendingCount = 0; // 🚀 Uni-Sync 4.0: 团队待处理消息数
+  bool _hasTeamConflictDot = false;
   String? _currentSelectedTeamUuid; // 🚀 选中的团队 ID
   String? _currentSelectedTeamName; // 🚀 选中的团队名称
   Timer? _localPomodoroTicker;
@@ -1733,6 +1735,30 @@ class _HomeDashboardState extends State<HomeDashboard>
     });
   }
 
+  /// 🚀 辅助：带超时和错误捕获的任务加载器
+  Future<T?> _loadDataTask<T>(String name, Future<T> task) async {
+    try {
+      final start = DateTime.now();
+      final result = await task.timeout(const Duration(seconds: 5));
+      final duration = DateTime.now().difference(start).inMilliseconds;
+      //debugPrint("⚡ [DashboardLoader] $name 加载成功 ($duration ms)");
+      return result;
+    } catch (e) {
+      //debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
+      return null;
+    }
+  }
+
+  List<TElement> _safeListResult<TElement>(dynamic value) {
+    if (value is List<TElement>) {
+      return value;
+    }
+    if (value is List) {
+      return value.whereType<TElement>().toList();
+    }
+    return <TElement>[];
+  }
+
   // 🚀 核心重构：渲染主页时，绝对不能将 isDeleted 的数据加载到视图层！
   Future<void> _loadAllData({bool deferred = false}) async {
     if (_isGlobalLoadingNotifier.value) {
@@ -1755,25 +1781,48 @@ class _HomeDashboardState extends State<HomeDashboard>
     final int generation = ++_loadGeneration;
 
     try {
+      final startTime = DateTime.now();
+      //debugPrint("⏳ [DashboardLoader] 开始并发加载 5 项核心任务...");
 
-      // 1. 读取基础数据 (并发执行，提升冷启速度)
+      // 1. 读取基础数据 (并发执行，带超时保护)
       final results = await Future.wait([
-        StorageService.getTodos(widget.username),
-        StorageService.getTodoGroups(widget.username),
-        StorageService.getCountdowns(widget.username),
-        StorageService.getMathStats(widget.username),
-        CourseService.getDashboardCourses(widget.username),
+        _loadDataTask("Todos", StorageService.getTodos(widget.username, limit: 200)),
+        _loadDataTask("Groups", StorageService.getTodoGroups(widget.username)),
+        _loadDataTask("Countdowns", StorageService.getCountdowns(widget.username)),
+        _loadDataTask("Math", StorageService.getMathStats(widget.username)),
+        _loadDataTask("Courses", CourseService.getDashboardCourses(widget.username)),
       ]);
 
-      if (!mounted || generation != _loadGeneration) {
-        return;
-      }
+      final List<TodoItem> allTodos =
+          _safeListResult<TodoItem>(results[0]).where((t) => !t.isDeleted).toList();
+      final List<TodoGroup> allGroups =
+          _safeListResult<TodoGroup>(results[1]).where((g) => !g.isDeleted).toList();
+      final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
+        results[2],
+      ).where((c) => !c.isDeleted).toList();
 
-      final List<TodoItem> allTodos = (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList();
-      final List<TodoGroup> allGroups = (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList();
-      final List<CountdownItem> allCountdowns = (results[2] as List<CountdownItem>).where((c) => !c.isDeleted).toList();
-      final Map<String, dynamic> mathStats = results[3] as Map<String, dynamic>;
-      final Map<String, dynamic> courseData = results[4] as Map<String, dynamic>;
+      final bool hasTeamConflict = allTodos.any((t) {
+            if (!t.hasConflict || (t.teamUuid?.isEmpty ?? true)) return false;
+            if (t.isAllDayTask) return false;
+            final data = t.serverVersionData;
+            if (data != null &&
+                (data['type'] == 'schedule' || data['conflict_with'] != null)) {
+              final peers = data['conflict_with'];
+              if (peers is List) {
+                final hasValidPeer = peers.any((p) =>
+                    p is Map &&
+                    !TodoItem.fromJson(Map<String, dynamic>.from(p))
+                        .isAllDayTask);
+                if (!hasValidPeer) return false;
+              }
+            }
+            return true;
+          }) ||
+          allGroups.any((g) => g.hasConflict && (g.teamUuid?.isNotEmpty ?? false)) ||
+          allCountdowns.any((c) => c.hasConflict && (c.teamUuid?.isNotEmpty ?? false));
+
+      final Map<String, dynamic> mathStats = (results[3] ?? {}) as Map<String, dynamic>;
+      final Map<String, dynamic> courseData = (results[4] ?? {'title': '课程提醒', 'courses': []}) as Map<String, dynamic>;
 
       if (mounted) {
         // 🚀 Granular Update: Only update notifiers if content actually changed
@@ -1781,6 +1830,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           _todos = allTodos;
           _todosNotifier.value = allTodos;
         }
+        _hasTeamConflictDot = hasTeamConflict;
         if (!_isListEqual(_todoGroups, allGroups)) {
           _todoGroups = allGroups;
           _groupsNotifier.value = allGroups;
@@ -1874,7 +1924,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               })
           .toList();
       await file.writeAsString(jsonEncode(todosJson));
-      debugPrint('[HomeDashboard] Saved ${todos.length} todos to shared file');
+      // debugPrint('[HomeDashboard] Saved ${todos.length} todos to shared file');
     } catch (e) {
       debugPrint('[HomeDashboard] Failed to save todos to shared file: $e');
     }
@@ -1894,6 +1944,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     });
 
     try {
+      // 🚀 核心加固：增加 30 秒超时强制释放锁，防止由于网络异常导致的图标“永动机”
+      Timer(const Duration(seconds: 30), () {
+        if (mounted && _isSyncing) {
+          setState(() => _isSyncing = false);
+        }
+      });
       final prefs = await SharedPreferences.getInstance();
       int? userId = prefs.getInt('current_user_id');
       if (userId == null) throw Exception("未登录");
@@ -2450,10 +2506,24 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _isSearchOpen = false; // 🚀 记录搜索层是否打开
 
   void _showGlobalSearch() {
+    final size = MediaQuery.of(context).size;
+    final bool isCompact = size.shortestSide < 600;
+    final double maxWidth = isCompact ? size.width : 1180;
+    final double panelWidth = (size.width - 40).clamp(0, maxWidth);
+    final double left = (size.width - panelWidth) / 2;
+    
+    // 🚀 核心改进：计算搜索面板在 Overlay 中的实际位置，使动画不再铺满全屏，而是缩放到板块
+    // 修复对齐问题：需要加上 SafeArea 的顶部高度（状态栏）
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+    final targetRect = Rect.fromLTWH(left, statusBarHeight + 60, panelWidth, 150); // 150px 约等于搜索框+快捷提示的高度
+    final targetBorderRadius = BorderRadius.circular(28);
+
     PageTransitions.pushFromRect(
       context: context,
       page: const GlobalSearchOverlay(),
       sourceKey: _searchButtonKey,
+      targetRect: targetRect,
+      targetBorderRadius: targetBorderRadius,
     ).then((_) async {
       // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
       await Future.delayed(const Duration(milliseconds: 200));
@@ -2496,7 +2566,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
-      backgroundColor: showWallpaper
+      backgroundColor: (showWallpaper && !Platform.isWindows)
           ? Colors.transparent
           : Theme.of(context).colorScheme.surface,
       body: Stack(
@@ -2564,6 +2634,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,
                     teamPendingCount: _teamPendingCount, // 🚀 绑定计数
+                    hasTeamConflictDot: _hasTeamConflictDot,
                     onTeams: () async {
                       await PageTransitions.pushFromRect(
                         context: context,
@@ -2617,13 +2688,13 @@ class _HomeDashboardState extends State<HomeDashboard>
                     valueListenable: _isGlobalLoadingNotifier,
                     builder: (context, isLoading, child) {
                       // 🚀 核心优化：只有当数据完全为空且正在加载时才显示骨架屏，避免背景刷新时的闪烁
-                      return (isLoading &&
-                              _todos.isEmpty &&
-                              (_dashboardCourseData['courses'] as List? ?? []).isEmpty)
-                          ? _buildDashboardSkeleton(isLight)
-                          : Stack(
-                              children: [
-                                LayoutBuilder(
+                      return Stack(
+                        children: [
+                          (isLoading &&
+                                  _todos.isEmpty &&
+                                  (_dashboardCourseData['courses'] as List? ?? []).isEmpty)
+                              ? _buildDashboardSkeleton(isLight)
+                              : LayoutBuilder(
                                   builder: (context, constraints) {
 
                       // ... (rest of section definitions)
@@ -2993,12 +3064,12 @@ class _HomeDashboardState extends State<HomeDashboard>
                       );
                         },
                       ),
-                      // 🚀 移动端底部悬浮胶囊底栏 (放在 Stack 中以彻底透明)
+                      // 🚀 移动端底部悬浮胶囊底栏 (始终显示，不受加载状态影响)
                       if (!isTablet)
                         Positioned(
                           left: 0,
                           right: 0,
-                          bottom: 0, // 减小到底部的距离
+                          bottom: 0, 
                           child: _buildCustomBottomBar(isDarkMode, isLight),
                         ),
                     ],

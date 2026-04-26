@@ -327,6 +327,29 @@ class ApiService {
     }
   }
 
+  /// 🚀 Uni-Sync 4.0: 标记一个远端项为忽略，防止其再次被拉回
+  static Future<bool> ignoreRemoteItem({
+    required String uuid,
+    required String table,
+    String? teamUuid,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/sync/ignore_remote_item'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'uuid': uuid,
+          'table_name': table,
+          'team_uuid': teamUuid,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("🚫 [ApiService] 忽略上报失败: $e");
+      return false;
+    }
+  }
+
   // ==========================================
   // 4. 屏幕使用时间 (Screen Time)
   // ==========================================

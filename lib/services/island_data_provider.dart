@@ -246,6 +246,7 @@ class IslandDataProvider {
     final focusData = _buildFocusData(dto);
     final reminderData = _buildReminderData(dto);
     final dashboardData = _buildDashboardData(dto);
+    final slotCards = _buildSlotCards(slots, priority);
 
     final structured = <String, dynamic>{
       'state': currentState,
@@ -253,6 +254,7 @@ class IslandDataProvider {
       'focusData': focusData,
       'reminderData': reminderData,
       'dashboardData': dashboardData,
+      'slotCards': slotCards,
       'transparentSupported': transparentSupported,
       'legacy': dto.toMap(),
     };
@@ -336,6 +338,68 @@ class IslandDataProvider {
       'leftSlot': p.topBarLeft.isNotEmpty ? p.topBarLeft : p.left,
       'rightSlot': p.topBarRight.isNotEmpty ? p.topBarRight : p.right,
     };
+  }
+
+  /// Build typed idle-carousel cards from the same slot data used by the
+  /// dashboard. The island window should render these cards, not infer them
+  /// from left/right display strings.
+  List<Map<String, String>> _buildSlotCards(
+    Map<String, IslandSlotData> slots,
+    List<String> priority,
+  ) {
+    final cards = <Map<String, String>>[];
+    final seen = <String>{};
+
+    for (final type in priority) {
+      final slot = slots[type];
+      if (slot == null || slot.isEmpty) continue;
+
+      final title =
+          slot.detailTitle.isNotEmpty ? slot.detailTitle : slot.display;
+      if (title.trim().isEmpty) continue;
+
+      final subtitle = _slotCardSubtitle(slot);
+      final key = '$type|$title|$subtitle|${slot.detailTime}';
+      if (!seen.add(key)) continue;
+
+      cards.add({
+        'type': slot.type.isNotEmpty ? slot.type : type,
+        'display': slot.display,
+        'title': title,
+        'subtitle': subtitle,
+        'location': slot.detailLocation,
+        'time': slot.detailTime,
+        'note': slot.detailNote,
+        'specialType': slot.specialType,
+      });
+    }
+
+    return cards;
+  }
+
+  String _slotCardSubtitle(IslandSlotData slot) {
+    switch (slot.type) {
+      case 'course':
+        if (slot.detailTime.isNotEmpty && slot.detailLocation.isNotEmpty) {
+          return '${slot.detailTime} · ${slot.detailLocation}';
+        }
+        if (slot.detailTime.isNotEmpty) return slot.detailTime;
+        if (slot.detailLocation.isNotEmpty) return slot.detailLocation;
+        return slot.detailSubtitle;
+      case 'countdown':
+        return slot.detailNote.isNotEmpty ? slot.detailNote : slot.detailTime;
+      case 'todo':
+        if (slot.detailNote.isNotEmpty && slot.detailTime.isNotEmpty) {
+          return '${slot.detailNote} ${slot.detailTime}';
+        }
+        if (slot.detailNote.isNotEmpty) return slot.detailNote;
+        if (slot.detailTime.isNotEmpty) return slot.detailTime;
+        return slot.detailSubtitle;
+      default:
+        if (slot.detailSubtitle.isNotEmpty) return slot.detailSubtitle;
+        if (slot.detailNote.isNotEmpty) return slot.detailNote;
+        return slot.detailTime;
+    }
   }
 
   /// Invalidate all caches (call when data changes significantly)
