@@ -4,6 +4,8 @@ import '../storage_service.dart';
 import '../services/api_service.dart';
 import 'package:intl/intl.dart';
 
+enum _ConflictFilter { all, time, other }
+
 class ConflictInboxScreen extends StatefulWidget {
   final String username;
   final List<ConflictInfo>? syncConflicts;
@@ -22,6 +24,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   List<dynamic> _conflictItems = [];
   bool _isLoading = true;
   bool _isScanning = false;
+  bool _isApplyingScheduleFix = false;
+  _ConflictFilter _selectedFilter = _ConflictFilter.all;
 
   @override
   void initState() {
@@ -171,7 +175,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   String _conflictLabel(dynamic item) {
-    return _isLocalScheduleConflict(item) ? '时间重叠' : '版本争议';
+    return _isLocalScheduleConflict(item) ? '时间冲突' : '其他冲突';
   }
 
   bool _hasServerSnapshot(dynamic item) {
@@ -289,6 +293,23 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return '${_conflictLabel(item)}：$head$extra';
   }
 
+  List<dynamic> get _timeConflictItems =>
+      _conflictItems.where(_isLocalScheduleConflict).toList();
+
+  List<dynamic> get _otherConflictItems =>
+      _conflictItems.where((item) => !_isLocalScheduleConflict(item)).toList();
+
+  List<dynamic> get _visibleConflictItems {
+    switch (_selectedFilter) {
+      case _ConflictFilter.time:
+        return _timeConflictItems;
+      case _ConflictFilter.other:
+        return _otherConflictItems;
+      case _ConflictFilter.all:
+        return _conflictItems;
+    }
+  }
+
   String? _itemId(dynamic item) {
     if (item is TodoItem) return item.id;
     if (item is TodoGroup) return item.id;
@@ -349,17 +370,156 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? _buildSkeleton()
-          : _conflictItems.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _conflictItems.length,
-                  itemBuilder: (context, index) {
-                    return _buildConflictCard(_conflictItems[index]);
-                  },
+      body: Column(
+        children: [
+          _buildScanProgressBanner(),
+          if (!_isLoading) _buildConflictStats(),
+          Expanded(
+            child: _isLoading
+                ? _buildSkeleton()
+                : _visibleConflictItems.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _visibleConflictItems.length,
+                        itemBuilder: (context, index) {
+                          return _buildConflictCard(_visibleConflictItems[index]);
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScanProgressBanner() {
+    return ValueListenableBuilder<Map<String, dynamic>>(
+      valueListenable: StorageService.conflictScanNotifier,
+      builder: (context, scanState, _) {
+        final isScanning = scanState['isScanning'] == true;
+        if (!isScanning) return const SizedBox.shrink();
+        final progress = (scanState['progress'] as int?) ?? 0;
+        final current = (scanState['current'] as int?) ?? 0;
+        final total = (scanState['total'] as int?) ?? 0;
+        final message = scanState['message']?.toString() ?? '正在扫描冲突';
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.orangeAccent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: Colors.orangeAccent.withValues(alpha: 0.18)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.radar_rounded,
+                      size: 18, color: Colors.orangeAccent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(message,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600)),
+                  ),
+                  Text('$progress%',
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orangeAccent)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: progress <= 0 ? null : progress / 100,
+                  minHeight: 6,
+                  backgroundColor: Colors.orangeAccent.withValues(alpha: 0.12),
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
                 ),
+              ),
+              const SizedBox(height: 8),
+              Text('已扫描 $current / $total',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildConflictStats() {
+    final timeCount = _timeConflictItems.length;
+    final otherCount = _otherConflictItems.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _buildStatChip(
+            label: '全部',
+            count: _conflictItems.length,
+            color: Colors.blue,
+            isSelected: _selectedFilter == _ConflictFilter.all,
+            onTap: () => setState(() => _selectedFilter = _ConflictFilter.all),
+          ),
+          _buildStatChip(
+            label: '时间冲突',
+            count: timeCount,
+            color: Colors.orangeAccent,
+            isSelected: _selectedFilter == _ConflictFilter.time,
+            onTap: () => setState(() => _selectedFilter = _ConflictFilter.time),
+          ),
+          _buildStatChip(
+            label: '其他冲突',
+            count: otherCount,
+            color: Colors.amber,
+            isSelected: _selectedFilter == _ConflictFilter.other,
+            onTap: () => setState(() => _selectedFilter = _ConflictFilter.other),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatChip({
+    required String label,
+    required int count,
+    required Color color,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? color.withValues(alpha: 0.18)
+              : color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: isSelected
+                ? color.withValues(alpha: 0.45)
+                : color.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Text(
+          '$label $count',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      ),
     );
   }
 
@@ -431,6 +591,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Widget _buildEmptyState() {
+    final hasAnyConflicts = _conflictItems.isNotEmpty;
+    final title = hasAnyConflicts ? '当前筛选下没有冲突' : '所有数据已完全对齐';
+    final subtitle = hasAnyConflicts
+        ? '可以切换到“全部”或其他分类查看待处理项'
+        : '目前没有任何待解决的同步冲突';
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -438,10 +603,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           Icon(Icons.verified_user_rounded,
               size: 80, color: Colors.green.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
-          const Text("所有数据已完全对齐",
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-          const Text("目前没有任何待解决的同步冲突",
-              style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+          Text(subtitle,
+              style: const TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       ),
     );
@@ -773,6 +939,38 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            if (item is TodoItem) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isApplyingScheduleFix
+                          ? null
+                          : () => _applyScheduleResolution(
+                              item, peers, const Duration(minutes: 30)),
+                      icon: const Icon(Icons.schedule_send_rounded, size: 16),
+                      label: const Text('顺延 30 分钟'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _isApplyingScheduleFix
+                          ? null
+                          : () => _moveTodoAfterConflicts(item, peers),
+                      icon: const Icon(Icons.vertical_align_bottom_rounded,
+                          size: 16),
+                      label: const Text('移到冲突结束后'),
+                    ),
+                  ),
+                ],
+              ),
+              if (_isApplyingScheduleFix) ...[
+                const SizedBox(height: 12),
+                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              ],
+              const SizedBox(height: 12),
+            ],
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -842,6 +1040,73 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  Future<void> _applyScheduleResolution(
+    TodoItem item,
+    List peers,
+    Duration offset,
+  ) async {
+    final startMs = item.createdDate ?? item.createdAt;
+    final endMs = item.dueDate?.millisecondsSinceEpoch ?? 0;
+    if (startMs <= 0 || endMs <= 0 || endMs <= startMs) return;
+
+    final newStart = DateTime.fromMillisecondsSinceEpoch(startMs).add(offset);
+    final newEnd = DateTime.fromMillisecondsSinceEpoch(endMs).add(offset);
+    await _persistResolvedTodo(item, newStart, newEnd);
+  }
+
+  Future<void> _moveTodoAfterConflicts(TodoItem item, List peers) async {
+    final startMs = item.createdDate ?? item.createdAt;
+    final endMs = item.dueDate?.millisecondsSinceEpoch ?? 0;
+    if (startMs <= 0 || endMs <= 0 || endMs <= startMs) return;
+
+    final durationMs = endMs - startMs;
+    var latestEnd = endMs;
+    for (final peer in peers) {
+      if (peer is! Map) continue;
+      final peerEnd = _parseMs(peer['end_time'] ?? peer['endTime']);
+      if (peerEnd > latestEnd) latestEnd = peerEnd;
+    }
+
+    final newStart =
+        DateTime.fromMillisecondsSinceEpoch(latestEnd).add(const Duration(minutes: 5));
+    final newEnd =
+        DateTime.fromMillisecondsSinceEpoch(latestEnd + durationMs).add(
+      const Duration(minutes: 5),
+    );
+    await _persistResolvedTodo(item, newStart, newEnd);
+  }
+
+  Future<void> _persistResolvedTodo(
+    TodoItem item,
+    DateTime newStart,
+    DateTime newEnd,
+  ) async {
+    setState(() => _isApplyingScheduleFix = true);
+    try {
+      final allTodos =
+          await StorageService.getTodos(widget.username, includeDeleted: true);
+      final index = allTodos.indexWhere((t) => t.id == item.id);
+      if (index == -1) return;
+      allTodos[index].createdDate = newStart.millisecondsSinceEpoch;
+      allTodos[index].dueDate = newEnd;
+      allTodos[index].markAsChanged();
+      await StorageService.saveTodos(widget.username, allTodos);
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已应用时间冲突处理方案')),
+      );
+      await _loadConflicts();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('处理失败: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isApplyingScheduleFix = false);
+    }
   }
 
   Widget _buildSkeleton() {

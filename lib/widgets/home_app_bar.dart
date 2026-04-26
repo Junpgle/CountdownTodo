@@ -90,6 +90,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final GlobalKey? teamsKey; // 🚀 新增
   final bool showCourseButton;
   final int teamPendingCount; // 🚀 Uni-Sync 4.0: 团队待处理消息数
+  final bool hasTeamConflictDot;
 
   const HomeAppBar({
     super.key,
@@ -108,6 +109,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.teamsKey,
     this.showCourseButton = false,
     this.teamPendingCount = 0,
+    this.hasTeamConflictDot = false,
   });
 
   @override
@@ -158,6 +160,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       required VoidCallback onPressed,
       bool isLoading = false,
       int badgeCount = 0,
+      bool showAlertDot = false,
       EdgeInsetsGeometry? margin,
       bool isSmall = false,
       Key? buttonKey}) {
@@ -218,6 +221,25 @@ class _HomeAppBarState extends State<HomeAppBar>
                       fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
+                ),
+              ),
+          if (showAlertDot && badgeCount <= 0)
+            Positioned(
+              right: isSmall ? 2 : 7,
+              top: isSmall ? 2 : 7,
+              child: Container(
+                width: isSmall ? 8 : 10,
+                height: isSmall ? 8 : 10,
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: widget.isLight
+                        ? Colors.white.withValues(alpha: 0.85)
+                        : Theme.of(context).colorScheme.surface,
+                    width: 1.2,
+                  ),
+                ),
               ),
             ),
         ],
@@ -260,6 +282,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       onPressed: widget.onTeams ?? () => Navigator.pushNamed(context, '/teams'),
       buttonKey: widget.teamsKey,
       badgeCount: widget.teamPendingCount,
+      showAlertDot: widget.hasTeamConflictDot,
       isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );

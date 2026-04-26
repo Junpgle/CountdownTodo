@@ -770,9 +770,15 @@ class _SettingsPageState extends State<SettingsPage> {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('✅ 灵动岛优先级已更新')));
       }
-      FloatWindowService
-          .invalidateCache(); // invalidate all caches including priority
-      FloatWindowService.update(forceReset: true); // trigger a re-render
+      FloatWindowService.invalidateCache();
+      Future.delayed(const Duration(milliseconds: 300), () async {
+        if (!mounted) return;
+        try {
+          await FloatWindowService.update();
+        } catch (e) {
+          debugPrint('[Settings] Island priority refresh failed: $e');
+        }
+      });
     }
   }
 

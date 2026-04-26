@@ -24,6 +24,10 @@ class TeamManagementScreen extends StatefulWidget {
 
 class _TeamManagementScreenState extends State<TeamManagementScreen>
     with WidgetsBindingObserver {
+  static List<Team> _cachedTeams = [];
+  static List<dynamic> _cachedInvitations = [];
+  static Map<String, int> _cachedPendingCounts = {};
+  static Map<String, int> _cachedConflictCounts = {};
   StreamSubscription? _wsSub;
   Team? _selectedTeam;
   List<Team> _teams = [];
@@ -38,9 +42,25 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     StorageService.dataRefreshNotifier.addListener(_onDataRefreshed);
-    _loadTeams();
+    _restoreCachedSnapshot();
+    _loadTeams(isSilent: _hasCachedSnapshot);
     _setupWsListener();
     _checkClipboardForInvite();
+  }
+
+  bool get _hasCachedSnapshot =>
+      _cachedTeams.isNotEmpty || _cachedInvitations.isNotEmpty;
+
+  void _restoreCachedSnapshot() {
+    if (!_hasCachedSnapshot) return;
+    _teams = List<Team>.from(_cachedTeams);
+    _myInvitations = List<dynamic>.from(_cachedInvitations);
+    _teamPendingCounts = Map<String, int>.from(_cachedPendingCounts);
+    _teamConflictCounts = Map<String, int>.from(_cachedConflictCounts);
+    _selectedTeam = _selectedTeam != null
+        ? _teams.where((t) => t.uuid == _selectedTeam!.uuid).firstOrNull
+        : (_teams.isNotEmpty ? _teams.first : null);
+    _isLoading = false;
   }
 
   void _onDataRefreshed() {
@@ -209,17 +229,17 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   Future<void> _loadTeams({bool isSilent = false}) async {
-    if (!isSilent) setState(() => _isLoading = true);
+    final hasLocalContent = _teams.isNotEmpty || _myInvitations.isNotEmpty;
+    if (!isSilent && !hasLocalContent) {
+      setState(() => _isLoading = true);
+    }
     try {
       // 🚀 核心优化：并发加载团队列表和我的邀请
       final teamsFuture = ApiService.fetchTeams();
       final invitationsFuture = ApiService.fetchMyInvitations();
-      final localTodosFuture =
-          StorageService.getTodos(widget.username, includeDeleted: false);
 
       final rawTeams = await teamsFuture;
       final invitations = await invitationsFuture;
-      final localTodos = await localTodosFuture;
 
       // 并发加载所有管理团队的待处理请求数
       final adminTeamUuids = rawTeams
@@ -236,20 +256,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         }
       }
 
-      final conflictCounts = <String, int>{};
-      for (final todo in localTodos) {
-        final teamUuid = todo.teamUuid;
-        if (teamUuid != null && teamUuid.isNotEmpty && todo.hasConflict) {
-          conflictCounts[teamUuid] = (conflictCounts[teamUuid] ?? 0) + 1;
-        }
-      }
-
       if (mounted) {
         setState(() {
           _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
           _myInvitations = invitations;
           _teamPendingCounts = pendingCounts;
-          _teamConflictCounts = conflictCounts;
           _isLoading = false;
           // 🚀 默认选中第一个
           if (_selectedTeam == null && _teams.isNotEmpty) {
@@ -264,7 +275,12 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             }
           }
         });
+        _cachedTeams = List<Team>.from(_teams);
+        _cachedInvitations = List<dynamic>.from(_myInvitations);
+        _cachedPendingCounts = Map<String, int>.from(_teamPendingCounts);
       }
+
+      unawaited(_loadTeamConflictCounts());
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -275,6 +291,25 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         _handleInitialTarget(widget.initialTarget!);
       });
     }
+  }
+
+  Future<void> _loadTeamConflictCounts() async {
+    try {
+      final localTodos =
+          await StorageService.getTodos(widget.username, includeDeleted: false);
+      final conflictCounts = <String, int>{};
+      for (final todo in localTodos) {
+        final teamUuid = todo.teamUuid;
+        if (teamUuid != null && teamUuid.isNotEmpty && todo.hasConflict) {
+          conflictCounts[teamUuid] = (conflictCounts[teamUuid] ?? 0) + 1;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _teamConflictCounts = conflictCounts;
+      });
+      _cachedConflictCounts = Map<String, int>.from(conflictCounts);
+    } catch (_) {}
   }
 
   void _handleInitialTarget(String target) {
@@ -627,26 +662,25 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             parent: AlwaysScrollableScrollPhysics()),
         slivers: [
           _buildSliverAppBar(isDark),
-          if (_isLoading)
-            _buildTeamSkeleton(isDark)
-          else ...[
-            _buildQuickActionsSliver(isWide),
-            if (_myInvitations.isNotEmpty)
-              SliverToBoxAdapter(child: _buildInvitationsSection()),
-            if (_teams.isEmpty && _myInvitations.isEmpty)
-              SliverFillRemaining(
-                  hasScrollBody: false, child: _buildEmptyState(isDark))
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => _buildTeamCard(_teams[index], isDark),
-                    childCount: _teams.length,
-                  ),
+          SliverToBoxAdapter(child: _buildScanProgressBanner()),
+          _buildQuickActionsSliver(isWide),
+          if (_myInvitations.isNotEmpty)
+            SliverToBoxAdapter(child: _buildInvitationsSection()),
+          if (_isLoading && _teams.isEmpty && _myInvitations.isEmpty)
+            _buildInitialLoadingState(isDark)
+          else if (_teams.isEmpty && _myInvitations.isEmpty)
+            SliverFillRemaining(
+                hasScrollBody: false, child: _buildEmptyState(isDark))
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _buildTeamCard(_teams[index], isDark),
+                  childCount: _teams.length,
                 ),
               ),
-          ],
+            ),
         ],
       ),
       floatingActionButton: _buildSpeedDial(context, isDark),
@@ -673,6 +707,108 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
               fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
       centerTitle: false,
       actions: [_buildMessageCenterAction()],
+    );
+  }
+
+  Widget _buildInitialLoadingState(bool isDark) {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 42,
+              height: 42,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: isDark ? Colors.white70 : Colors.blueAccent,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '正在加载团队数据...',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '首次进入或同步中可能需要一点时间',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScanProgressBanner() {
+    return ValueListenableBuilder<Map<String, dynamic>>(
+      valueListenable: StorageService.conflictScanNotifier,
+      builder: (context, scanState, _) {
+        final isScanning = scanState['isScanning'] == true;
+        if (!isScanning) return const SizedBox.shrink();
+        final progress = (scanState['progress'] as int?) ?? 0;
+        final current = (scanState['current'] as int?) ?? 0;
+        final total = (scanState['total'] as int?) ?? 0;
+        final message = scanState['message']?.toString() ?? '正在扫描冲突';
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.orangeAccent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.orangeAccent.withValues(alpha: 0.18),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.radar_rounded,
+                        size: 18, color: Colors.orangeAccent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(message,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                    Text('$progress%',
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orangeAccent)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: progress <= 0 ? null : progress / 100,
+                    minHeight: 6,
+                    backgroundColor: Colors.orangeAccent.withValues(alpha: 0.12),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                        Colors.orangeAccent),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text('已扫描 $current / $total',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

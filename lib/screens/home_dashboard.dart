@@ -151,6 +151,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   int _remoteTodoHighlightSignal = 0;
   Timer? _remoteTodoHighlightTimer;
   int _teamPendingCount = 0; // 🚀 Uni-Sync 4.0: 团队待处理消息数
+  bool _hasTeamConflictDot = false;
   String? _currentSelectedTeamUuid; // 🚀 选中的团队 ID
   String? _currentSelectedTeamName; // 🚀 选中的团队名称
   Timer? _localPomodoroTicker;
@@ -1781,6 +1782,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       final List<TodoItem> allTodos =
           _safeListResult<TodoItem>(results[0]).where((t) => !t.isDeleted).toList();
+      final bool hasTeamConflict =
+          allTodos.any((t) => t.hasConflict && (t.teamUuid?.isNotEmpty ?? false));
       final List<TodoGroup> allGroups =
           _safeListResult<TodoGroup>(results[1]).where((g) => !g.isDeleted).toList();
       final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
@@ -1795,6 +1798,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           _todos = allTodos;
           _todosNotifier.value = allTodos;
         }
+        _hasTeamConflictDot = hasTeamConflict;
         if (!_isListEqual(_todoGroups, allGroups)) {
           _todoGroups = allGroups;
           _groupsNotifier.value = allGroups;
@@ -2590,6 +2594,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,
                     teamPendingCount: _teamPendingCount, // 🚀 绑定计数
+                    hasTeamConflictDot: _hasTeamConflictDot,
                     onTeams: () async {
                       await PageTransitions.pushFromRect(
                         context: context,

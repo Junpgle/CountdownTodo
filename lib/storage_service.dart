@@ -105,6 +105,14 @@ class StorageService {
   static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
   static final Map<String, Future<List<TodoItem>>> _inflightTodoRequests = {};
+  static final ValueNotifier<Map<String, dynamic>> conflictScanNotifier =
+      ValueNotifier<Map<String, dynamic>>({
+    'isScanning': false,
+    'progress': 0,
+    'current': 0,
+    'total': 0,
+    'message': '',
+  });
 
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
   static Timer? _refreshDebouncer;
@@ -908,18 +916,40 @@ class StorageService {
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) async {
     final allTodos = await getTodos(username, includeDeleted: true);
-    final changed = _recomputeLocalTodoScheduleConflicts(allTodos);
+    final changed = _recomputeLocalTodoScheduleConflicts(
+      allTodos,
+      onProgress: (current, total, message) {
+        final progress = total <= 0 ? 0 : ((current / total) * 100).round();
+        conflictScanNotifier.value = {
+          'isScanning': true,
+          'progress': progress.clamp(0, 100),
+          'current': current,
+          'total': total,
+          'message': message,
+        };
+      },
+    );
 
-    if (changed) {
-      await saveTodos(
-        username,
-        allTodos,
-        sync: false,
-        isSyncSource: true,
-        recomputeScheduleConflicts: false,
-      );
-    } else {
-      triggerRefresh();
+    try {
+      if (changed) {
+        await saveTodos(
+          username,
+          allTodos,
+          sync: false,
+          isSyncSource: true,
+          recomputeScheduleConflicts: false,
+        );
+      } else {
+        triggerRefresh();
+      }
+    } finally {
+      conflictScanNotifier.value = {
+        'isScanning': false,
+        'progress': 100,
+        'current': allTodos.length,
+        'total': allTodos.length,
+        'message': '扫描完成',
+      };
     }
 
     int total = 0;
@@ -2684,8 +2714,12 @@ class StorageService {
     }
   }
 
-  static bool _recomputeLocalTodoScheduleConflicts(List<TodoItem> todos) {
+  static bool _recomputeLocalTodoScheduleConflicts(
+    List<TodoItem> todos, {
+    void Function(int current, int total, String message)? onProgress,
+  }) {
     final buckets = <String, List<_TodoInterval>>{};
+    final eligibleTodos = <TodoItem>[];
 
     for (final todo in todos) {
       final dueDate = todo.dueDate;
@@ -2700,13 +2734,21 @@ class StorageService {
       final startDay = _localDayKey(startMs);
       final endDay = _localDayKey(endMs);
       if (startDay != endDay) continue;
+      eligibleTodos.add(todo);
 
       buckets.putIfAbsent(startDay, () => <_TodoInterval>[]).add(
             _TodoInterval(todo: todo, startMs: startMs, endMs: endMs),
           );
     }
 
+    onProgress?.call(
+      0,
+      eligibleTodos.length,
+      '正在分析 ${eligibleTodos.length} 条待办',
+    );
+
     final conflictMap = <String, List<Map<String, dynamic>>>{};
+    var processed = 0;
     for (final bucket in buckets.values) {
       bucket.sort((a, b) => a.startMs.compareTo(b.startMs));
       for (var i = 0; i < bucket.length; i++) {
@@ -2723,6 +2765,12 @@ class StorageService {
                 .add(_conflictPeerSummary(a));
           }
         }
+        processed++;
+        onProgress?.call(
+          processed,
+          eligibleTodos.length,
+          '正在扫描 ${bucket[i].todo.title}',
+        );
       }
     }
 
