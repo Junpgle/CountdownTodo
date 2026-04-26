@@ -2723,12 +2723,28 @@ class StorageService {
 
     for (final todo in todos) {
       final dueDate = todo.dueDate;
-      if (todo.isDeleted || dueDate == null || todo.isAllDay) {
+      final startMs = todo.createdDate ?? todo.createdAt;
+      final endMs = dueDate?.millisecondsSinceEpoch ?? 0;
+
+      // 🚀 核心修复：后台扫描也必须跳过时间范围全天（0:00-23:59）的任务
+      bool isAllDayRange = false;
+      if (startMs > 0 && endMs > 0) {
+        final duration = endMs - startMs;
+        if (duration >= 23.5 * 3600 * 1000) {
+          isAllDayRange = true;
+        } else {
+          final st = DateTime.fromMillisecondsSinceEpoch(startMs);
+          final et = DateTime.fromMillisecondsSinceEpoch(endMs);
+          if (st.hour == 0 && st.minute == 0 && et.hour == 23 && et.minute == 59) {
+            isAllDayRange = true;
+          }
+        }
+      }
+
+      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange) {
         continue;
       }
 
-      final startMs = todo.createdDate ?? todo.createdAt;
-      final endMs = dueDate.millisecondsSinceEpoch;
       if (startMs <= 0 || endMs <= 0 || startMs >= endMs) continue;
 
       final startDay = _localDayKey(startMs);
