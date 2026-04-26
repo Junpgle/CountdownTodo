@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/foundation.dart'; // 引入 kIsWeb
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'dart:io'; // 用于 Platform Check
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -64,8 +65,29 @@ class MyHttpOverrides extends HttpOverrides {
   }
 }
 
+void _configureRuntimeCaches() {
+  final imageCache = PaintingBinding.instance.imageCache;
+  if (kIsWeb) {
+    imageCache.maximumSize = 120;
+    imageCache.maximumSizeBytes = 80 << 20; // 80MB
+    return;
+  }
+
+  if (Platform.isAndroid || Platform.isIOS) {
+    imageCache.maximumSize = 100;
+    imageCache.maximumSizeBytes = 96 << 20; // 96MB
+  } else {
+    imageCache.maximumSize = 180;
+    imageCache.maximumSizeBytes = 192 << 20; // Desktop 192MB
+  }
+
+  // 启动时清理一次悬挂的 live image 引用，降低冷启动内存峰值。
+  imageCache.clearLiveImages();
+}
+
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  _configureRuntimeCaches();
 
   // 🚀 核心修复：桌面端 SQL 引擎初始化 (解决 databaseFactory not initialized)
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
@@ -121,6 +143,24 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  static const int _isolateTransformThreshold = 60;
+
+  late final ThemeData _lightTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: Colors.blue,
+      brightness: Brightness.light,
+    ),
+    useMaterial3: true,
+  );
+
+  late final ThemeData _darkTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: Colors.blue,
+      brightness: Brightness.dark,
+    ),
+    useMaterial3: true,
+  );
+
   String? _loggedInUser;
   bool _isChecking = true;
   bool _showFeatureGuide = false;
@@ -213,8 +253,10 @@ class _MyAppState extends State<MyApp> {
       final bool wasAgreed = results[4] as bool;
       final bool needGuide = results[5] as bool;
 
-      // 0.6 初始化壁纸(从manifest获取)
-      UpdateService.initWallpaper();
+      // 0.6 初始化壁纸(从manifest获取)，延后到首帧后避免占用启动关键路径
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        unawaited(UpdateService.initWallpaper());
+      });
 
       final wasLoggedIn = user != null && user.isNotEmpty;
 
@@ -246,14 +288,15 @@ class _MyAppState extends State<MyApp> {
       }
     }
 
-    // 5. 异步初始化耗时的底层插件 (非关键路径，放在 try-catch 之后或并行)
-    _initHeavyPlugins();
-
-    // 6. 初始化手环通信服务（全局）
-    _initBandService();
-
-    // 7. 后台预取今天的开屏内容（不阻塞启动）
-    _prefetchSplashContent();
+    // 5. 异步初始化耗时的底层插件 (非关键路径)。
+    // 推迟到首帧后执行，避免与首屏渲染竞争主线程时间片。
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      unawaited(_initHeavyPlugins());
+      // 6. 初始化手环通信服务（全局）
+      unawaited(_initBandService());
+      // 7. 后台预取今天的开屏内容（不阻塞启动）
+      unawaited(_prefetchSplashContent());
+    });
   }
 
   Future<void> _showPrivacyUpdateDialog() async {
@@ -375,26 +418,41 @@ class _MyAppState extends State<MyApp> {
     switch (type) {
       case 'todo':
         final todos = await StorageService.getTodos(user);
-        // 使用 compute 在后台 Isolate 处理大量数据的转换，减少主线程 GC 压力
-        return await compute(_transformTodosForBand, todos);
+        return _transformForBand<TodoItem>(todos, _transformTodosForBand);
 
       case 'course':
         final courses = await CourseService.getAllCourses(user);
-        return await compute(_transformCoursesForBand, courses);
+        return _transformForBand<dynamic>(courses, _transformCoursesForBand);
 
       case 'countdown':
         final countdowns = await StorageService.getCountdowns(user);
-        return await compute(_transformCountdownsForBand, countdowns);
+        return _transformForBand<CountdownItem>(
+          countdowns,
+          _transformCountdownsForBand,
+        );
 
       case 'pomodoro':
         final records = await PomodoroService.getRecords();
         // 仅提供最近 30 条记录供手环查看，避免数据量过大
         final limitedRecords = records.take(30).toList();
-        return await compute(_transformPomodorosForBand, limitedRecords);
+        return _transformForBand<PomodoroRecord>(
+          limitedRecords,
+          _transformPomodorosForBand,
+        );
 
       default:
         return [];
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _transformForBand<T>(
+    List<T> data,
+    List<Map<String, dynamic>> Function(List<T>) transformer,
+  ) async {
+    if (data.length < _isolateTransformThreshold) {
+      return transformer(data);
+    }
+    return compute(transformer, data);
   }
 
   // --- 静态转换方法，供 compute (Isolate) 调用 ---
