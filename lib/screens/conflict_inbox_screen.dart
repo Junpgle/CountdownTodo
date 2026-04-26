@@ -560,9 +560,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           if (idx != -1) {
             allTodos[idx].hasConflict = false;
             allTodos[idx].serverVersionData = null;
-            // 🚀 核心修复：强制提升版本和时间戳，确保在同步冲突中胜出，防止被云端旧状态拉回
-            allTodos[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 1000;
-            allTodos[idx].version += 1; 
+            // 🚀 极大幅度提升版本和时间戳，确保本地“修复”指令在云端冲突中绝对胜出
+            allTodos[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000; // 置后 1 分钟
+            allTodos[idx].version = (allTodos[idx].version ?? 1) + 1000; // 跳跃式提升版本号
             allTodos[idx].markAsChanged();
             todosChanged = true;
           }
@@ -571,8 +571,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           if (idx != -1) {
             allGroups[idx].hasConflict = false;
             allGroups[idx].conflictData = null;
-            allGroups[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 1000;
-            allGroups[idx].version += 1;
+            allGroups[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
+            allGroups[idx].version = (allGroups[idx].version ?? 1) + 1000;
             allGroups[idx].markAsChanged();
             groupsChanged = true;
           }
@@ -581,8 +581,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           if (idx != -1) {
             allCountdowns[idx].hasConflict = false;
             allCountdowns[idx].conflictData = null;
-            allCountdowns[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 1000;
-            allCountdowns[idx].version += 1;
+            allCountdowns[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
+            allCountdowns[idx].version = (allCountdowns[idx].version ?? 1) + 1000;
             allCountdowns[idx].markAsChanged();
             countdownsChanged = true;
           }
@@ -1058,8 +1058,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (idx != -1) {
         all[idx].hasConflict = false;
         all[idx].serverVersionData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 1000;
-        all[idx].version += 1;
+        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
+        all[idx].version = (all[idx].version ?? 1) + 1000;
         all[idx].markAsChanged();
         await StorageService.saveTodos(widget.username, all);
       }
@@ -1070,8 +1070,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (idx != -1) {
         all[idx].hasConflict = false;
         all[idx].conflictData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 1000;
-        all[idx].version += 1;
+        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
+        all[idx].version = (all[idx].version ?? 1) + 1000;
         all[idx].markAsChanged();
         await StorageService.saveTodoGroups(widget.username, all);
       }
@@ -1081,8 +1081,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (idx != -1) {
         all[idx].hasConflict = false;
         all[idx].conflictData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 1000;
-        all[idx].version += 1;
+        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
+        all[idx].version = (all[idx].version ?? 1) + 1000;
         all[idx].markAsChanged();
         await StorageService.saveCountdowns(widget.username, all);
       }

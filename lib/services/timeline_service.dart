@@ -267,8 +267,10 @@ class TimelineService {
     int searchCount = 0;
     DateTime? lastSearchTime;
     int todoCreated = 0;
+    int todoEdited = 0;
     int todoCompleted = 0;
     int countdownCreated = 0;
+    int countdownEdited = 0;
     int countdownCompleted = 0;
     List<String> attendedCourses = [];
     int pomodoroCount = 0;
@@ -286,13 +288,20 @@ class TimelineService {
         lastSearchTime = DateTime.fromMillisecondsSinceEpoch(searches.first['timestamp'] as int);
       }
 
-      // 2. 待办 - 分开统计新增和完成
+      // 2. 待办 - 分开统计新增/编辑/完成
       final createdTodos = await db.query(
         'todos',
         where: 'is_deleted = 0 AND created_at >= ? AND created_at < ?',
         whereArgs: [startOfDayMs, endOfDayMs],
       );
       todoCreated = createdTodos.length;
+
+      final editedTodos = await db.query(
+        'todos',
+        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at AND NOT (created_at >= ? AND created_at < ?)',
+        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+      );
+      todoEdited = editedTodos.length;
 
       final completedTodos = await db.query(
         'todos',
@@ -301,13 +310,20 @@ class TimelineService {
       );
       todoCompleted = completedTodos.length;
 
-      // 3. 倒计时 - 分开统计新增和完成
+      // 3. 倒计时 - 分开统计新增/编辑/完成
       final createdCds = await db.query(
         'countdowns',
         where: 'is_deleted = 0 AND created_at >= ? AND created_at < ?',
         whereArgs: [startOfDayMs, endOfDayMs],
       );
       countdownCreated = createdCds.length;
+
+      final editedCds = await db.query(
+        'countdowns',
+        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at AND NOT (created_at >= ? AND created_at < ?)',
+        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+      );
+      countdownEdited = editedCds.length;
 
       final completedCds = await db.query(
         'countdowns',
@@ -341,8 +357,10 @@ class TimelineService {
       searchCount: searchCount,
       lastSearchTime: lastSearchTime,
       todoCreatedCount: todoCreated,
+      todoEditedCount: todoEdited,
       todoCompletedCount: todoCompleted,
       countdownCreatedCount: countdownCreated,
+      countdownEditedCount: countdownEdited,
       countdownCompletedCount: countdownCompleted,
       attendedCourses: attendedCourses,
       pomodoroCount: pomodoroCount,
@@ -354,8 +372,10 @@ class TimelineSummary {
   final int searchCount;
   final DateTime? lastSearchTime;
   final int todoCreatedCount;
+  final int todoEditedCount;
   final int todoCompletedCount;
   final int countdownCreatedCount;
+  final int countdownEditedCount;
   final int countdownCompletedCount;
   final List<String> attendedCourses;
   final int pomodoroCount;
@@ -364,8 +384,10 @@ class TimelineSummary {
     required this.searchCount,
     this.lastSearchTime,
     required this.todoCreatedCount,
+    required this.todoEditedCount,
     required this.todoCompletedCount,
     required this.countdownCreatedCount,
+    required this.countdownEditedCount,
     required this.countdownCompletedCount,
     required this.attendedCourses,
     required this.pomodoroCount,
