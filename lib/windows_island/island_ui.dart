@@ -611,11 +611,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return const Size(300, 36);
       case IslandState.stackedCard:
         final hasSelected = _currentPayload?['selectedCard'] != null;
-        return hasSelected ? const Size(250, 150) : const Size(280, 140);
+        return hasSelected ? const Size(260, 150) : const Size(280, 150);
       case IslandState.finishConfirm:
       case IslandState.abandonConfirm:
       case IslandState.finishFinal:
-        return const Size(260, 130);
+        return const Size(270, 140);
       case IslandState.reminderPopup:
         return Size(320, hasSub ? 180 : 150);
       case IslandState.reminderSplit:
@@ -1348,10 +1348,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         final restored = _stack.pop(IslandState.stackedCard);
         _animateToState(restored);
       },
-      onPanStart: (_) => _startDrag(),
+      onLongPressStart: (_) => _startDrag(),
       child: Container(
         color: Colors.transparent,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1367,8 +1367,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                         : '$t | $title',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: 13,
                       fontWeight: FontWeight.w900,
+                      height: 1.0,
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
@@ -1381,11 +1382,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 tags,
                 style: const TextStyle(
                   color: Colors.white70,
-                  fontSize: 12,
+                  fontSize: 10,
+                  height: 1.0,
                 ),
                 overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             if (!isLocal)
               _btn('远端计时中，无法更改', Colors.white.withValues(alpha: 0.1), () {})
             else
@@ -1398,7 +1401,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       _animateToState(IslandState.finishConfirm);
                     }),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: _btn('放弃', IslandConfig.dangerColor, () {
                       _stack.push(IslandState.abandonConfirm,
@@ -1459,7 +1462,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         final restored = _stack.pop(IslandState.stackedCard);
         _animateToState(restored);
       },
-      onPanStart: (_) => _startDrag(),
+      onLongPressStart: (_) => _startDrag(),
       child: Container(
         color: Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1525,7 +1528,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final isReverse = mode == 'abandon';
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1534,8 +1537,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             text,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w900,
+              height: 1.0,
             ),
           ),
           const SizedBox(height: 4),
@@ -1544,7 +1548,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             style: const TextStyle(color: Colors.white70, fontSize: 11),
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           if (mode == 'final')
             // FinishFinal: 好的 → clearToIdle
             _btn(ok, IslandConfig.successColor, () {
@@ -1564,7 +1568,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       _animateToState(IslandState.finishFinal);
                     }),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   // FinishConfirm: 手滑了 → pop，回到 stackedCard
                   Expanded(
                     child: _btn(cancel, IslandConfig.dangerColor, () {
@@ -1580,7 +1584,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       _animateToState(restored);
                     }),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   // AbandonConfirm: 确认 → 发 action，清栈到 idle
                   Expanded(
                     child: _btn(ok, IslandConfig.dangerColor, () {
@@ -2324,7 +2328,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Widget _btn(String label, Color color, VoidCallback onTap) => GestureDetector(
         onTap: onTap,
         child: Container(
-          height: 36,
+          height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: color,
@@ -2335,7 +2339,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w900,
-              fontSize: 13,
+              fontSize: 12,
             ),
           ),
         ),
