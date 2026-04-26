@@ -195,10 +195,13 @@ class WindowService with WindowListener, TrayListener {
       debugPrint('[WindowService] showCloseDialog result: $shouldExit');
 
       if (shouldExit) {
-        debugPrint('[WindowService] User confirmed exit, destroying window');
-        // 尝试优雅销毁窗口并退出
-        await windowManager.setPreventClose(false);
-        await windowManager.destroy();
+        debugPrint('[WindowService] User confirmed exit, terminating process');
+        // 先尝试隐藏窗口，给予即时反馈
+        try {
+          await windowManager.hide();
+        } catch (_) {}
+        // 强制终止进程，避免因其他插件或后台任务清理导致的死锁卡死
+        TerminateProcess(GetCurrentProcess(), 0);
       } else {
         debugPrint('[WindowService] User chose to hide to tray');
         await windowManager.hide();
