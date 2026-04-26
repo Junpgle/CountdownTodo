@@ -32,6 +32,7 @@ import 'services/course_service.dart';
 import 'services/environment_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
+import 'windows_island/island_ui.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -583,7 +584,37 @@ class _MyAppState extends State<MyApp> {
             '/dev/island': (context) => const IslandDebugPage(),
           },
           builder: (context, child) {
-            return child ?? const SizedBox.shrink();
+            final content = child ?? const SizedBox.shrink();
+            if (!(Platform.isWindows && kDebugMode)) {
+              return content;
+            }
+
+            return Stack(
+              children: [
+                content,
+                ValueListenableBuilder<Map<String, dynamic>?>(
+                  valueListenable: FloatWindowService.debugPayload,
+                  builder: (context, payload, _) {
+                    if (payload == null || payload.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Positioned(
+                      top: 16,
+                      right: 16,
+                      child: SizedBox(
+                        width: 380,
+                        height: 220,
+                        child: IslandUI(
+                          inLayoutDebugMode: true,
+                          payloadNotifier: FloatWindowService.debugPayload,
+                          initialPayload: payload,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            );
           },
           home: _showDefaultSplash
               ? DefaultSplashScreen(onComplete: _onDefaultSplashComplete)

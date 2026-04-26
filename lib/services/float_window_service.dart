@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -60,11 +61,36 @@ class FloatWindowService {
   // Data provider with caching
   static final _dataProvider = IslandDataProvider();
 
+  static bool get _isRealIslandEnabled {
+    if (!Platform.isWindows) return false;
+    return true;
+  }
+
+  static bool get _isDebugOverlayEnabled {
+    if (!Platform.isWindows) return false;
+    return kDebugMode;
+  }
+
   /// Initialize the service
   static Future<void> init() async {
     if (!Platform.isWindows) return;
     if (_initialized) return;
     _initialized = true;
+    if (!_isRealIslandEnabled) {
+      debugPrint(
+          '[FloatWindow] Real island disabled on Windows debug build.');
+      try {
+        await IslandManager().destroyCachedIsland('island-1');
+      } catch (_) {}
+      try {
+        IslandManager().clearIslandCache('island-1');
+      } catch (_) {}
+      debugPayload.value = null;
+      if (_isDebugOverlayEnabled) {
+        _initClipboardListener();
+      }
+      return;
+    }
     try {
       _initIslandChannelSubscription();
     } catch (_) {}
@@ -86,6 +112,7 @@ class FloatWindowService {
   }
 
   static Future<void> _showCopiedLinkIsland(String url) async {
+    if (!_isRealIslandEnabled && !_isDebugOverlayEnabled) return;
     try {
       final displayUrl = _truncateUrlForDisplay(url);
       debugPrint('[FloatWindow] Attempting to send payload for: $displayUrl');
@@ -97,6 +124,12 @@ class FloatWindowService {
           'displayUrl': displayUrl,
         },
       };
+
+      if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
+        debugPayload.value = payload;
+        debugPrint('[FloatWindow] Routed copied_link payload to debug overlay.');
+        return;
+      }
 
       var winId = IslandManager().getCachedWindowId('island-1');
       debugPrint('[FloatWindow] island-1 windowId: $winId');
@@ -198,6 +231,7 @@ class FloatWindowService {
 
   /// 刷新岛的状态（在打开链接后恢复）
   static Future<void> _refreshIslandAfterLinkOpened() async {
+    if (!_isRealIslandEnabled) return;
     try {
       // 强制刷新槽位缓存
       _dataProvider.invalidateSlotCache();
@@ -234,6 +268,7 @@ class FloatWindowService {
   }
 
   static Future<void> _handleRemindLater() async {
+    if (!_isRealIslandEnabled) return;
     debugPrint('[FloatWindow] _handleRemindLater called');
     try {
       await windowManager.ensureInitialized();
@@ -249,6 +284,7 @@ class FloatWindowService {
   }
 
   static void _showSnoozeDialog() {
+    if (!_isRealIslandEnabled) return;
     final context = appNavigatorKey.currentContext;
     if (context == null) {
       debugPrint('[FloatWindow] Context is null, cannot show dialog');
@@ -424,9 +460,13 @@ class FloatWindowService {
     debugPrint('[FloatWindow] update: style=$style, forceReset=$forceReset');
     if (style != 1) {
       debugPrint('[FloatWindow] style != 1, destroying island');
-      try {
-        await IslandManager().destroyCachedIsland('island-1');
-      } catch (_) {}
+      if (_isRealIslandEnabled) {
+        try {
+          await IslandManager().destroyCachedIsland('island-1');
+        } catch (_) {}
+      } else if (_isDebugOverlayEnabled) {
+        debugPayload.value = null;
+      }
       return;
     }
 
@@ -461,6 +501,13 @@ class FloatWindowService {
       return;
     }
 
+    if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
+      debugPayload.value = Map<String, dynamic>.from(structured);
+      debugPrint(
+          '[FloatWindow] Routed payload to in-layout debug overlay: state=${structured['state']}');
+      return;
+    }
+
     // Deliver to island
     await _deliverToIsland(structured);
   }
@@ -469,6 +516,7 @@ class FloatWindowService {
 
   /// Deliver payload to island window
   static Future<void> _deliverToIsland(Map<String, dynamic> structured) async {
+    if (!_isRealIslandEnabled) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     // Throttle deliveries to at most once every 100ms to avoid clogging the channel
     if (now - _lastDeliveryMs < 100 && structured['state'] == 'focusing') {
@@ -578,7 +626,12 @@ class FloatWindowService {
 
   /// Trigger immediate reminder check on island
   static Future<void> triggerReminderCheck() async {
+    if (!_isRealIslandEnabled && !_isDebugOverlayEnabled) return;
     debugPrint('[FloatWindow] triggerReminderCheck called');
+    if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
+      await update(forceReset: true);
+      return;
+    }
     try {
       final islandId = 'island-1';
       final winId = IslandManager().getCachedWindowId(islandId);

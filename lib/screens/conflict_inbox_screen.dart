@@ -106,7 +106,24 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   /// Find the sync conflict info that matches this item.
   Map<String, dynamic>? _findServerVersion(dynamic item) {
     final itemId = _itemId(item);
-    if (itemId == null || itemId.isEmpty) return null;
+    if (itemId == null || itemId.isEmpty) {
+      return _conflictData(item);
+    }
+
+    final persisted = _conflictData(item);
+    if (persisted != null && persisted.isNotEmpty) {
+      final conflictType = persisted['conflict_type']?.toString();
+      final conflictKind = persisted['conflict_kind']?.toString();
+      final source = persisted['source']?.toString();
+      final isPersistedVersionConflict =
+          conflictType == 'version_conflict' ||
+              conflictKind == 'version' ||
+              (conflictType != 'local_schedule_conflict' &&
+                  source != 'local_detector');
+      if (isPersistedVersionConflict) {
+        return persisted;
+      }
+    }
 
     // 优先使用本地持久化的 conflict_data，避免页面只在“刚同步后”才能看到服务器版本。
     if (item is TodoItem &&
@@ -155,6 +172,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   String _conflictLabel(dynamic item) {
     return _isLocalScheduleConflict(item) ? '时间重叠' : '版本争议';
+  }
+
+  bool _hasServerSnapshot(dynamic item) {
+    final data = _findServerVersion(item);
+    return data != null && data.isNotEmpty;
   }
 
   String? _relationType(dynamic item) {
@@ -453,6 +475,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final relationLabel = _relationLabel(item);
     final conflictSummary = _conflictSummary(item);
     final conflictPeers = _conflictPeers(item);
+    final hasServerSnapshot = _hasServerSnapshot(item);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -587,10 +610,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     icon: Icon(
                         _isLocalScheduleConflict(item)
                             ? Icons.visibility_rounded
-                            : Icons.compare_arrows_rounded,
+                            : (hasServerSnapshot
+                                ? Icons.compare_arrows_rounded
+                                : Icons.info_outline_rounded),
                         size: 16),
                     label: Text(
-                        _isLocalScheduleConflict(item) ? "查看冲突" : "对比并解决",
+                        _isLocalScheduleConflict(item)
+                            ? "查看冲突"
+                            : (hasServerSnapshot ? "对比并解决" : "查看说明"),
                         style: const TextStyle(
                             fontSize: 13, fontWeight: FontWeight.bold)),
                   ),
@@ -610,6 +637,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     }
 
     final serverVersion = _findServerVersion(item);
+    if (serverVersion == null || serverVersion.isEmpty) {
+      _showMissingServerSnapshot(item);
+      return;
+    }
+
     final localJson = _itemToJson(item);
     final table = _resolveTable(item);
 
@@ -625,6 +657,56 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         onResolved: () {
           _loadConflicts();
         },
+      ),
+    );
+  }
+
+  void _showMissingServerSnapshot(dynamic item) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('暂无云端版本快照',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              '当前条目标记为${_conflictLabel(item)}，但本地没有保存可对比的服务器版本内容。',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '这通常表示当前只有本地冲突标记，或者版本冲突发生时服务器快照尚未落盘。',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('知道了'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

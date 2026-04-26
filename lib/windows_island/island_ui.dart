@@ -22,12 +22,14 @@ class IslandUI extends StatefulWidget {
   final void Function(String action, [int? modifiedSecs, String? data])?
       onAction;
   final ValueNotifier<Map<String, dynamic>?>? payloadNotifier;
+  final bool inLayoutDebugMode;
 
   const IslandUI({
     super.key,
     this.initialPayload,
     this.onAction,
     this.payloadNotifier,
+    this.inLayoutDebugMode = false,
   });
 
   @override
@@ -144,7 +146,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _getController();
+    if (!widget.inLayoutDebugMode) {
+      _getController();
+    }
 
     _splitController = AnimationController(
       vsync: this,
@@ -233,6 +237,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Timer? _resizeDebounce;
 
   Future<void> _resizeWindowOnce(Size targetSize) async {
+    if (widget.inLayoutDebugMode) return;
     if (targetSize == _currentWindowSize) return;
     // 防抖：快速连续调用只执行最后一次
     _resizeDebounce?.cancel();
@@ -575,9 +580,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ── 尺寸配置 ─────────────────────────────────────────────────────────────
 
   Size _idleSizeForCard() {
-    // 专注默认态：显示计时器，固定 100x46
+    // 专注默认态：给字体留出更稳定的高度余量，避免不同 DPI 下溢出
     if (_isFocusing && !_isScrolledInFocus) {
-      return const Size(100, 46);
+      return const Size(112, 52);
     }
     if (_cards.isEmpty || _currentCardIndex >= _cards.length) {
       return const Size(120, 34);
@@ -588,7 +593,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       return const Size(120, 34);
     }
     if (type == 'focusing') {
-      return const Size(100, 46);
+      return const Size(112, 52);
     }
     final title = card['title'] as String? ?? '';
     final subtitle = card['subtitle'] as String? ?? '';
@@ -607,7 +612,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.idle:
         return _idleSizeForCard();
       case IslandState.focusing:
-        return const Size(100, 46);
+        return const Size(112, 52);
       case IslandState.hoverWide:
         return const Size(380, 46);
       case IslandState.splitAlert:
@@ -944,62 +949,76 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           scale: _isPulsing ? _pulseAnimation.value : 1.0,
           child: Container(
             color: Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             alignment: Alignment.center,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxHeight <= 52;
+                return Column(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (fd?['isPaused'] == true) ...[
-                      const Text(
-                        '⏸️ ',
-                        style: TextStyle(fontSize: 10),
+                    if (!compact)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (fd?['isPaused'] == true) ...[
+                            const Text(
+                              '⏸️ ',
+                              style: TextStyle(fontSize: 10),
+                            ),
+                          ],
+                          Flexible(
+                            child: ValueListenableBuilder<String>(
+                              valueListenable: _pauseTimeNotifier,
+                              builder: (context, pauseTime, _) {
+                                return Text(
+                                  fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
+                                  style: TextStyle(
+                                    color: _isPulsing
+                                        ? _colorAnimation.value?.withValues(alpha: 0.7) ??
+                                            Colors.white70
+                                        : Colors.white70,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.0,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                    Flexible(
-                      child: ValueListenableBuilder<String>(
-                        valueListenable: _pauseTimeNotifier,
-                        builder: (context, pauseTime, _) {
-                          return Text(
-                            fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
+                    if (!compact) const SizedBox(height: 1),
+                    ValueListenableBuilder<String>(
+                      valueListenable: _timeNotifier,
+                      builder: (_, time, __) {
+                        if (_isCountdown && _remainingSecs == 0 && !_isPulsing) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            _triggerPomodoroAlert();
+                          });
+                        }
+                        return FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            time,
                             style: TextStyle(
                               color: _isPulsing
-                                  ? _colorAnimation.value?.withValues(alpha: 0.7) ??
-                                      Colors.white70
-                                  : Colors.white70,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                                  ? _colorAnimation.value ?? Colors.white
+                                  : Colors.white,
+                              fontSize: compact ? 16 : 16,
+                              fontWeight: FontWeight.w900,
+                              height: 1.0,
                             ),
-                            overflow: TextOverflow.ellipsis,
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
                     ),
                   ],
-                ),
-                ValueListenableBuilder<String>(
-                  valueListenable: _timeNotifier,
-                  builder: (_, time, __) {
-                    if (_isCountdown && _remainingSecs == 0 && !_isPulsing) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _triggerPomodoroAlert();
-                      });
-                    }
-                    return Text(
-                      time,
-                      style: TextStyle(
-                        color: _isPulsing
-                            ? _colorAnimation.value ?? Colors.white
-                            : Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    );
-                  },
-                ),
-              ],
+                );
+              },
             ),
           ),
         );
@@ -1167,52 +1186,64 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             scale: _isPulsing ? _pulseAnimation.value : 1.0,
             child: Container(
               color: Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ValueListenableBuilder<String>(
-                    valueListenable: _pauseTimeNotifier,
-                    builder: (context, pauseTime, _) {
-                      return Text(
-                        fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
-                        style: TextStyle(
-                          color: _isPulsing
-                              ? _colorAnimation.value?.withValues(alpha: 0.7) ??
-                                  Colors.white70
-                              : Colors.white70,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxHeight <= 52;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (!compact)
+                        ValueListenableBuilder<String>(
+                          valueListenable: _pauseTimeNotifier,
+                          builder: (context, pauseTime, _) {
+                            return Text(
+                              fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
+                              style: TextStyle(
+                                color: _isPulsing
+                                    ? _colorAnimation.value?.withValues(alpha: 0.7) ??
+                                        Colors.white70
+                                    : Colors.white70,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                height: 1.0,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            );
+                          },
                         ),
-                        overflow: TextOverflow.ellipsis,
-                      );
-                    },
-                  ),
-                  ValueListenableBuilder<String>(
-                    valueListenable: _timeNotifier,
-                    builder: (_, time, __) {
-                      // 检测倒计时是否结束
-                      if (_isCountdown && _remainingSecs == 0 && !_isPulsing) {
-                        // 触发番茄钟结束强提醒
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _triggerPomodoroAlert();
-                        });
-                      }
+                      if (!compact) const SizedBox(height: 1),
+                      ValueListenableBuilder<String>(
+                        valueListenable: _timeNotifier,
+                        builder: (_, time, __) {
+                          if (_isCountdown && _remainingSecs == 0 && !_isPulsing) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _triggerPomodoroAlert();
+                            });
+                          }
 
-                      return Text(
-                        time,
-                        style: TextStyle(
-                          color: _isPulsing
-                              ? _colorAnimation.value ?? Colors.white
-                              : Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      );
-                    },
-                  ),
-                ],
+                          return FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              time,
+                              style: TextStyle(
+                                color: _isPulsing
+                                    ? _colorAnimation.value ?? Colors.white
+                                    : Colors.white,
+                                fontSize: compact ? 16 : 16,
+                                fontWeight: FontWeight.w900,
+                                height: 1.0,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           );
@@ -2344,6 +2375,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       );
 
   void _startDrag() async {
+    if (widget.inLayoutDebugMode) return;
     _isDragging = true;
     try {
       (await _getController()).invokeMethod('startDragging');

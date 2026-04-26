@@ -865,7 +865,8 @@ class DatabaseHelper {
       'target_uuid': uuid,
       'data_json': jsonEncode(data),
       'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'is_synced': 0
+      'is_synced': 0,
+      'sync_error': '',
     });
   }
 
@@ -1040,7 +1041,8 @@ class DatabaseHelper {
                 'version': newVersion,
               }),
               'timestamp': now,
-              'is_synced': 0
+              'is_synced': 0,
+              'sync_error': '',
             });
             totalRemoved++;
           }

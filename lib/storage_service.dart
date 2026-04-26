@@ -524,7 +524,8 @@ class StorageService {
           'target_uuid': item.id,
           'data_json': jsonEncode(item.toJson()),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0
+          'is_synced': 0,
+          'sync_error': '',
         });
       }
 
@@ -555,6 +556,7 @@ class StorageService {
 
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
+      _inflightTodoRequests.clear();
     }
 
     if (sync) Future.microtask(() => syncData(username));
@@ -763,6 +765,7 @@ class StorageService {
           await DatabaseHelper.instance.getTodoMaps(
         includeDeleted: true,
         uuids: dedupeList.map((e) => e.id).toList(),
+        includeConflictData: true,
       );
       for (var row in existing) {
         existingItemsMap[row['uuid']] = row;
@@ -804,7 +807,8 @@ class StorageService {
           'target_uuid': item.id,
           'data_json': jsonEncode(item.toJson()),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0
+          'is_synced': 0,
+          'sync_error': '',
         });
       }
 
@@ -1166,7 +1170,8 @@ class StorageService {
       'target_uuid': item.id,
       'data_json': jsonEncode(item.toJson()),
       'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'is_synced': 0
+      'is_synced': 0,
+      'sync_error': '',
     });
 
     // 不再维护超大的 SharedPreferences Todo 镜像，避免 Android 插件层 OOM
@@ -1190,7 +1195,8 @@ class StorageService {
       'target_table': 'todos',
       'target_uuid': uuid,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'is_synced': 0
+      'is_synced': 0,
+      'sync_error': '',
     });
 
     triggerRefresh();
@@ -1214,7 +1220,8 @@ class StorageService {
         'target_table': 'todos',
         'target_uuid': uuid,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'is_synced': 0
+        'is_synced': 0,
+        'sync_error': '',
       });
     }
     await batch.commit(noResult: true);
@@ -1250,7 +1257,8 @@ class StorageService {
       'target_table': 'countdowns',
       'target_uuid': uuid,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'is_synced': 0
+      'is_synced': 0,
+      'sync_error': '',
     });
 
     triggerRefresh();
@@ -1342,6 +1350,7 @@ class StorageService {
       final List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
         includeDeleted: includeDeleted,
         limit: limit,
+        includeConflictData: true,
       );
       if (maps.isNotEmpty) {
         List<TodoItem> todos;
@@ -1391,6 +1400,15 @@ class StorageService {
                     reminderMinutes: (m['reminder_minutes'] != null &&
                             m['reminder_minutes'].toString() != '-1')
                         ? int.tryParse(m['reminder_minutes'].toString())
+                        : null,
+                    isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
+                    hasConflict:
+                        m['has_conflict'] == 1 || m['has_conflict'] == true,
+                    serverVersionData: m['conflict_data'] != null
+                        ? (m['conflict_data'] is String
+                            ? Map<String, dynamic>.from(
+                                jsonDecode(m['conflict_data']))
+                            : Map<String, dynamic>.from(m['conflict_data']))
                         : null,
                   ))
               .toList();
@@ -1481,6 +1499,14 @@ class StorageService {
               reminderMinutes: (m['reminder_minutes'] != null &&
                       m['reminder_minutes'].toString() != '-1')
                   ? int.tryParse(m['reminder_minutes'].toString())
+                  : null,
+              isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
+              hasConflict:
+                  m['has_conflict'] == 1 || m['has_conflict'] == true,
+              serverVersionData: m['conflict_data'] != null
+                  ? (m['conflict_data'] is String
+                      ? Map<String, dynamic>.from(jsonDecode(m['conflict_data']))
+                      : Map<String, dynamic>.from(m['conflict_data']))
                   : null,
             ))
         .toList();
@@ -1689,7 +1715,8 @@ class StorageService {
           'target_uuid': item.id,
           'data_json': jsonEncode(item.toJson()),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0
+          'is_synced': 0,
+          'sync_error': '',
         });
       }
 
@@ -2355,7 +2382,7 @@ class StorageService {
 
       if (response['success'] == true) {
         // 🚀 全部上报成功后，标记 op_logs 为已同步，并清空之前的错误
-        await db.update('op_logs', {'is_synced': 1, 'sync_error': null},
+        await db.update('op_logs', {'is_synced': 1, 'sync_error': ''},
             where: 'is_synced = 0');
 
         // 🚀 处理独立待办完成情况
@@ -3409,7 +3436,7 @@ class StorageService {
   static Future<List<Map<String, dynamic>>> getSyncFailures() async {
     final db = await DatabaseHelper.instance.database;
     return await db.query('op_logs',
-        where: 'sync_error IS NOT NULL AND is_synced = 0',
+        where: "sync_error IS NOT NULL AND sync_error != '' AND is_synced = 0",
         orderBy: 'timestamp DESC');
   }
 
@@ -3535,6 +3562,7 @@ class StorageService {
         'data_json': jsonEncode(resolvedData),
         'timestamp': now,
         'is_synced': 0,
+        'sync_error': '',
       });
     }
 

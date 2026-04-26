@@ -148,7 +148,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                       ),
                     )
                   : Container(
-                      key: const ValueKey('content'),
+                      key: ValueKey(_summaryContentKey()),
                       child: _buildSummaryGrid(subColor, textColor),
                     ),
             ),
@@ -249,6 +249,21 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     }
 
     return Column(children: rows);
+  }
+
+  String _summaryContentKey() {
+    final summary = _summary;
+    if (summary == null) return 'content-empty';
+    return [
+      summary.searchCount,
+      summary.todoCreatedCount,
+      summary.todoCompletedCount,
+      summary.countdownCreatedCount,
+      summary.countdownCompletedCount,
+      summary.pomodoroCount,
+      summary.attendedCourses.join('|'),
+      summary.lastSearchTime?.millisecondsSinceEpoch ?? 0,
+    ].join('_');
   }
 
   Widget _buildSummaryRow({
