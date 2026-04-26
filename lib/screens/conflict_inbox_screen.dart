@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
@@ -2525,9 +2526,10 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   @override
   Widget build(BuildContext context) {
     if (widget.isEmbedded) {
-      return Padding(
+      return SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: _buildContent(context),
         ),
@@ -2566,6 +2568,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   }
 
   List<Widget> _buildContent(BuildContext context) {
+    final diffs = _buildDiffFields(widget.localItem, widget.serverItem);
+
     return [
       const Text("版本对齐建议",
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
@@ -2574,6 +2578,13 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         "检测到两端内容存在差异，请选择权威版本进行保留。",
         style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
       ),
+      if (diffs.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        _buildDiffSummary(diffs),
+      ] else ...[
+        const SizedBox(height: 16),
+        _buildDiffFallbackHint(),
+      ],
       const SizedBox(height: 32),
 
             // Local version card
@@ -2653,6 +2664,115 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
             ],
             const SizedBox(height: 12),
           ];
+  }
+
+  Widget _buildDiffSummary(List<_ConflictFieldDiff> diffs) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.tune_rounded, size: 18, color: Colors.amber),
+              const SizedBox(width: 8),
+              Text(
+                '差异字段',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade900,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${diffs.length} 项',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: diffs
+                .map(
+                  (diff) => Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          diff.label,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '本地: ${diff.localValue}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '服务器: ${diff.serverValue}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiffFallbackHint() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.grey.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, size: 18, color: Colors.grey.shade600),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '当前没有匹配到可见字段差异。可能是其它隐藏字段、归一化值，或者服务端只保留了冲突标记。',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildVersionCard({
@@ -2737,6 +2857,171 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         ],
       ),
     );
+  }
+
+  List<_ConflictFieldDiff> _buildDiffFields(
+      Map<String, dynamic> local, Map<String, dynamic>? server) {
+    if (server == null || server.isEmpty) return const [];
+
+    final fields = <_ConflictFieldSpec>[
+      _ConflictFieldSpec(
+        label: '标题',
+        keys: const ['content', 'title', 'name', 'courseName', 'course_name'],
+      ),
+      _ConflictFieldSpec(
+        label: '备注',
+        keys: const ['remark'],
+      ),
+      _ConflictFieldSpec(
+        label: '完成状态',
+        keys: const ['is_completed', 'isCompleted'],
+      ),
+      _ConflictFieldSpec(
+        label: '删除状态',
+        keys: const ['is_deleted', 'isDeleted'],
+      ),
+      _ConflictFieldSpec(
+        label: '版本号',
+        keys: const ['version'],
+      ),
+      _ConflictFieldSpec(
+        label: '更新时间',
+        keys: const ['updated_at', 'updatedAt'],
+        formatter: _formatTimestamp,
+      ),
+      _ConflictFieldSpec(
+        label: '创建时间',
+        keys: const ['created_at', 'createdAt'],
+        formatter: _formatTimestamp,
+      ),
+      _ConflictFieldSpec(
+        label: '分组',
+        keys: const ['group_id', 'groupId'],
+      ),
+      _ConflictFieldSpec(
+        label: '团队',
+        keys: const ['team_uuid', 'teamUuid'],
+      ),
+      _ConflictFieldSpec(
+        label: '分类',
+        keys: const ['category_id', 'categoryId'],
+      ),
+      _ConflictFieldSpec(
+        label: '开始时间',
+        keys: const ['start_time', 'startTime', 'created_date', 'createdDate'],
+        formatter: _formatDateTimeMs,
+      ),
+      _ConflictFieldSpec(
+        label: '结束/截止',
+        keys: const ['end_time', 'endTime', 'due_date', 'dueDate', 'target_time', 'targetTime'],
+        formatter: _formatDateTimeMs,
+      ),
+      _ConflictFieldSpec(
+        label: '循环',
+        keys: const ['recurrence'],
+      ),
+      _ConflictFieldSpec(
+        label: '全天',
+        keys: const ['is_all_day', 'isAllDay'],
+      ),
+      _ConflictFieldSpec(
+        label: '协作类型',
+        keys: const ['collab_type', 'collabType'],
+      ),
+      _ConflictFieldSpec(
+        label: '提醒',
+        keys: const ['reminder_minutes', 'reminderMinutes'],
+      ),
+      _ConflictFieldSpec(
+        label: '星期',
+        keys: const ['weekday'],
+      ),
+      _ConflictFieldSpec(
+        label: '周次',
+        keys: const ['week_index', 'weekIndex'],
+      ),
+      _ConflictFieldSpec(
+        label: '地点',
+        keys: const ['room_name', 'roomName'],
+      ),
+      _ConflictFieldSpec(
+        label: '教师',
+        keys: const ['teacher_name', 'teacherName'],
+      ),
+      _ConflictFieldSpec(
+        label: '课名',
+        keys: const ['course_name', 'courseName'],
+      ),
+    ];
+
+    final diffs = <_ConflictFieldDiff>[];
+    for (final field in fields) {
+      final localValue = _extractFieldValue(local, field.keys);
+      final serverValue = _extractFieldValue(server, field.keys);
+      if (!_valuesEqual(localValue, serverValue)) {
+        diffs.add(
+          _ConflictFieldDiff(
+            label: field.label,
+            localValue: _formatFieldValue(localValue, field.formatter),
+            serverValue: _formatFieldValue(serverValue, field.formatter),
+          ),
+        );
+      }
+    }
+
+    return diffs;
+  }
+
+  dynamic _extractFieldValue(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      if (data.containsKey(key)) return data[key];
+    }
+    return null;
+  }
+
+  bool _valuesEqual(dynamic a, dynamic b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return _normalizeComparableValue(a) == _normalizeComparableValue(b);
+  }
+
+  String _normalizeComparableValue(dynamic value) {
+    if (value == null) return '';
+    if (value is bool) return value ? '1' : '0';
+    if (value is num) return value.toString();
+    if (value is Map || value is List) return jsonEncode(value);
+    return value.toString().trim();
+  }
+
+  String _formatFieldValue(dynamic value, String Function(dynamic value)? formatter) {
+    if (formatter != null) {
+      return formatter(value);
+    }
+    final normalized = _normalizeComparableValue(value);
+    return normalized.isEmpty ? '空' : normalized;
+  }
+
+  String _formatTimestamp(dynamic value) {
+    final ms = _toMillis(value);
+    if (ms == null || ms <= 0) return '空';
+    return DateFormat('yyyy-MM-dd HH:mm:ss').format(
+      DateTime.fromMillisecondsSinceEpoch(ms),
+    );
+  }
+
+  String _formatDateTimeMs(dynamic value) {
+    final ms = _toMillis(value);
+    if (ms == null || ms <= 0) return '空';
+    return DateFormat('MM-dd HH:mm').format(
+      DateTime.fromMillisecondsSinceEpoch(ms),
+    );
+  }
+
+  int? _toMillis(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   Widget _buildFieldRow(String label, String value, {Color? valueColor}) {
@@ -2870,4 +3155,28 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       if (mounted) setState(() => _isResolving = false);
     }
   }
+}
+
+class _ConflictFieldSpec {
+  final String label;
+  final List<String> keys;
+  final String Function(dynamic value)? formatter;
+
+  const _ConflictFieldSpec({
+    required this.label,
+    required this.keys,
+    this.formatter,
+  });
+}
+
+class _ConflictFieldDiff {
+  final String label;
+  final String localValue;
+  final String serverValue;
+
+  const _ConflictFieldDiff({
+    required this.label,
+    required this.localValue,
+    required this.serverValue,
+  });
 }
