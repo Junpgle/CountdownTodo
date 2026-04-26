@@ -520,11 +520,9 @@ class StorageService {
 
     final dedupeList = dedupeMap.values.toList();
 
-    // 🚀 异步保存到 Prefs
-    unawaited(SharedPreferences.getInstance().then((prefs) async {
-      final jsonList = await compute(_serializeCountdowns, dedupeList);
-      await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
-    }));
+    // SQL 已是主存储，清理旧 Prefs 镜像，避免全量倒计时 JSON
+    // 通过 shared_preferences MethodChannel 触发 Android OOM。
+    unawaited(_clearCountdownPrefsMirror(username));
 
     final dbHelper = DatabaseHelper.instance;
     final db = await dbHelper.database;
@@ -602,8 +600,11 @@ class StorageService {
     if (sync) Future.microtask(() => syncData(username));
   }
 
-  static List<String> _serializeCountdowns(List<CountdownItem> items) =>
-      items.map((e) => jsonEncode(e.toJson())).toList();
+  static Future<void> _clearCountdownPrefsMirror(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove("${KEY_COUNTDOWNS}_$username");
+    await prefs.remove(KEY_COUNTDOWNS);
+  }
 
   static Future<List<CountdownItem>> getCountdowns(String username,
       {bool includeDeleted = false}) async {
@@ -1766,7 +1767,6 @@ class StorageService {
   // ==========================================
   static Future<void> saveTodoGroups(String username, List<TodoGroup> items,
       {bool sync = true, bool isSyncSource = false}) async {
-    final prefs = await SharedPreferences.getInstance();
     final Map<String, TodoGroup> dedupeMap = {};
 
     for (var item in items) {
@@ -1814,10 +1814,14 @@ class StorageService {
     await batch.commit(noResult: true);
     _inflightTodoRequests.clear();
 
-    List<String> jsonList =
-        dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
-    await prefs.setStringList("${KEY_TODO_GROUPS}_$username", jsonList);
+    unawaited(_clearTodoGroupPrefsMirror(username));
     if (sync) Future.microtask(() => syncData(username));
+  }
+
+  static Future<void> _clearTodoGroupPrefsMirror(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove("${KEY_TODO_GROUPS}_$username");
+    await prefs.remove(KEY_TODO_GROUPS);
   }
 
   static Future<List<TodoGroup>> getTodoGroups(String username,

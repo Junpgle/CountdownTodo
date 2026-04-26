@@ -97,10 +97,11 @@ class CourseService {
       }
     }
 
-    // 2. 补齐 Prefs 备份
+    // 2. SQL 已是主存储，清理旧 Prefs 备份，避免全量课程 JSON
+    // 通过 shared_preferences MethodChannel 触发 Android OOM。
     final prefs = await SharedPreferences.getInstance();
-    final String encodedData = jsonEncode(courses.map((c) => c.toJson()).toList());
-    await prefs.setString("${_keyCourseData}_$username", encodedData);
+    await prefs.remove("${_keyCourseData}_$username");
+    await prefs.remove(_keyCourseData);
   }
 
   // ================= 导入与解析逻辑 =================
