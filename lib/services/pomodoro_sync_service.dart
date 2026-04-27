@@ -8,6 +8,8 @@ import 'api_service.dart';
 import 'notification_service.dart';
 import '../storage_service.dart';
 import '../models.dart';
+import '../update_service.dart';
+import '../main.dart';
 
 // ============================================================
 // 跨端专注感知：连接阿里云 WebSocket 服务器
@@ -327,6 +329,17 @@ class PomodoroSyncService {
 
       if (signal.action == 'UPDATE_AVAILABLE') {
         debugPrint('[PomodoroSync] 🎁 收到新版本推送: ${signal.latestVersion}');
+        final context = appNavigatorKey.currentContext;
+        if (context != null &&
+            signal.latestVersion != null &&
+            signal.downloadUrl != null) {
+          UpdateService.triggerWebSocketUpdate(
+            context,
+            latestVersion: signal.latestVersion!,
+            releaseNotes: signal.releaseNotes ?? "发现紧急更新，建议立即升级",
+            downloadUrl: signal.downloadUrl!,
+          );
+        }
       }
 
       // 🚀 Uni-Sync 4.0: 团队系统消息处理

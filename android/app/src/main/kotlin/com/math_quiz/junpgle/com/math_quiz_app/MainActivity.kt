@@ -1159,7 +1159,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             totalSteps = 0,
             isTodo = false,
             shortText = "New Update",
-            iconResId = R.drawable.ic_notification,
+            iconResId = R.drawable.update,
             notificationId = UPDATE_NOTIFICATION_ID,
             islandBizTag = UPDATE_ISLAND_BIZ_TAG
         )
