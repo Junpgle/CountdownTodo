@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:orientation="vertical"
+    android:layout_height="match_parent">
+    <Button
+        android:id="@+id/queryConnectionStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="query connection status" />
+
+    <Button
+        android:id="@+id/queryChargingStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="query charging status" />
+
+    <Button
+        android:id="@+id/querySleepStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="query sleep status" />
+
+    <Button
+        android:id="@+id/queryWearingStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="query wearing status" />
+
+    <Button
+        android:id="@+id/queryWarningStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="query warning status" />
+
+
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        />
+
+</androidx.appcompat.widget.LinearLayoutCompat>

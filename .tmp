@@ -1,0 +1,389 @@
+﻿class _TodoEditScreen extends StatefulWidget {
+  final TodoItem todo;
+  final List<TodoItem> todos;
+  final Function(List<TodoItem>) onTodosChanged;
+  final List<TodoGroup> todoGroups;
+
+  const _TodoEditScreen({
+    required this.todo,
+    required this.todos,
+    required this.onTodosChanged,
+    required this.todoGroups,
+  });
+
+  @override
+  State<_TodoEditScreen> createState() => _TodoEditScreenState();
+}
+
+class _TodoEditScreenState extends State<_TodoEditScreen> {
+  late TextEditingController _titleCtrl;
+  late TextEditingController _remarkCtrl;
+  late TextEditingController _customDaysCtrl;
+  late DateTime _createdDate;
+  DateTime? _dueDate;
+  late RecurrenceType _recurrence;
+  int? _customDays;
+  DateTime? _recurrenceEndDate;
+  late bool _isAllDay;
+  String? _selectedGroupId;
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.todo;
+    _titleCtrl = TextEditingController(text: t.title);
+    _remarkCtrl = TextEditingController(text: t.remark ?? '');
+    _createdDate = DateTime.fromMillisecondsSinceEpoch(
+            t.createdDate ?? t.createdAt,
+            isUtc: true)
+        .toLocal();
+    _dueDate = t.dueDate;
+    _recurrence = t.recurrence;
+    _customDays = t.customIntervalDays;
+    _customDaysCtrl =
+        TextEditingController(text: _customDays?.toString() ?? '');
+    _recurrenceEndDate = t.recurrenceEndDate;
+    _isAllDay = t.dueDate != null &&
+        _createdDate.hour == 0 &&
+        _createdDate.minute == 0 &&
+        _dueDate!.hour == 23 &&
+        _dueDate!.minute == 59;
+    _selectedGroupId = t.groupId;
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _remarkCtrl.dispose();
+    _customDaysCtrl.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (_titleCtrl.text.isEmpty) return;
+    final todo = widget.todo;
+    todo.title = _titleCtrl.text;
+    todo.createdDate = _createdDate.millisecondsSinceEpoch;
+    todo.dueDate = _dueDate;
+    todo.recurrence = _recurrence;
+    todo.customIntervalDays = _customDays;
+    todo.recurrenceEndDate = _recurrenceEndDate;
+    todo.remark =
+        _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim();
+    todo.groupId = _selectedGroupId;
+    todo.markAsChanged();
+    widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('编辑待办'),
+        actions: [
+          FilledButton.icon(
+              onPressed: _save,
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('保存'),
+              style: FilledButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)))),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+                controller: _titleCtrl,
+                decoration: InputDecoration(
+                    labelText: '待办内容',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 12),
+            TextField(
+                controller: _remarkCtrl,
+                decoration: InputDecoration(
+                    labelText: '备注 (可选)',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12))),
+                maxLines: 3,
+                minLines: 1),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _selectedGroupId,
+              decoration: InputDecoration(
+                labelText: '所属文件夹 (可选)',
+                prefixIcon: const Icon(Icons.folder_outlined),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: null,
+                  child: Text('无计划 / 未分类'),
+                ),
+                ...widget.todoGroups.map((g) => DropdownMenuItem<String>(
+                      value: g.id,
+                      child: Text(g.name),
+                    )),
+              ],
+              onChanged: (val) => setState(() => _selectedGroupId = val),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('全天事件',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              value: _isAllDay,
+              activeColor: Theme.of(context).colorScheme.primary,
+              onChanged: (val) {
+                setState(() {
+                  _isAllDay = val;
+                  if (_isAllDay) {
+                    _createdDate = DateTime(_createdDate.year,
+                        _createdDate.month, _createdDate.day, 0, 0);
+                    _dueDate = _dueDate != null
+                        ? DateTime(_dueDate!.year, _dueDate!.month,
+                            _dueDate!.day, 23, 59)
+                        : DateTime(_createdDate.year, _createdDate.month,
+                            _createdDate.day, 23, 59);
+                  }
+                });
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                  '开始时间: '),
+              trailing: Icon(Icons.edit_calendar,
+                  size: 20, color: Theme.of(context).colorScheme.primary),
+              onTap: () async {
+                final pickedDate = await showDatePicker(
+                    context: context,
+                    firstDate: DateTime(2000),
+                    lastDate: DateTime(2100),
+                    initialDate: _createdDate);
+                if (pickedDate != null) {
+                  if (_isAllDay) {
+                    setState(() => _createdDate = DateTime(pickedDate.year,
+                        pickedDate.month, pickedDate.day, 0, 0));
+                  } else {
+                    if (!mounted) return;
+                    final pickedTime = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(_createdDate));
+                    if (pickedTime != null) {
+                      setState(() => _createdDate = DateTime(
+                          pickedDate.year,
+                          pickedDate.month,
+                          pickedDate.day,
+                          pickedTime.hour,
+                          pickedTime.minute));
+                    }
+                  }
+                }
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(_dueDate == null
+                  ? '设置截止时间 (可选)'
+                  : '截止时间: '),
+              trailing: Icon(Icons.event,
+                  size: 20, color: Theme.of(context).colorScheme.primary),
+              onTap: () async {
+                final pickedDate = await showDatePicker(
+                    context: context,
+                    firstDate: DateTime(2000),
+                    lastDate: DateTime(2100),
+                    initialDate: _dueDate ?? _createdDate);
+                if (pickedDate != null) {
+                  if (_isAllDay) {
+                    setState(() => _dueDate = DateTime(pickedDate.year,
+                        pickedDate.month, pickedDate.day, 23, 59));
+                  } else {
+                    if (!mounted) return;
+                    final pickedTime = await showTimePicker(
+                        context: context,
+                        initialTime:
+                            TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
+                    if (pickedTime != null) {
+                      setState(() => _dueDate = DateTime(
+                          pickedDate.year,
+                          pickedDate.month,
+                          pickedDate.day,
+                          pickedTime.hour,
+                          pickedTime.minute));
+                    }
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 24),
+            const Text('重复设置',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<RecurrenceType>(
+              value: _recurrence,
+              decoration: InputDecoration(
+                labelText: '重复类型',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              items: const [
+                DropdownMenuItem(value: RecurrenceType.none, child: Text('不重复')),
+                DropdownMenuItem(value: RecurrenceType.daily, child: Text('每天')),
+                DropdownMenuItem(value: RecurrenceType.weekly, child: Text('每周')),
+                DropdownMenuItem(value: RecurrenceType.monthly, child: Text('每月')),
+                DropdownMenuItem(value: RecurrenceType.yearly, child: Text('每年')),
+                DropdownMenuItem(
+                    value: RecurrenceType.weekdays, child: Text('工作日')),
+                DropdownMenuItem(
+                    value: RecurrenceType.customDays, child: Text('自定义天数')),
+              ],
+              onChanged: (val) => setState(() => _recurrence = val!),
+            ),
+            if (_recurrence == RecurrenceType.customDays) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _customDaysCtrl,
+                decoration: InputDecoration(
+                    labelText: '间隔天数',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12))),
+                keyboardType: TextInputType.number,
+                onChanged: (v) {
+                  setState(() => _customDays = int.tryParse(v));
+                },
+              ),
+            ],
+            if (_recurrence != RecurrenceType.none) ...[
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(_recurrenceEndDate == null
+                    ? '设置截止日期 (可选)'
+                    : '截止重复日期: '),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_recurrenceEndDate != null)
+                      IconButton(
+                          onPressed: () =>
+                              setState(() => _recurrenceEndDate = null),
+                          icon: const Icon(Icons.clear, size: 18)),
+                    Icon(Icons.calendar_today,
+                        size: 20, color: Theme.of(context).colorScheme.primary),
+                  ],
+                ),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _recurrenceEndDate ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100));
+                  if (picked != null) {
+                    setState(() => _recurrenceEndDate = picked);
+                  }
+                },
+              ),
+            ],
+            if (widget.todo.imagePath != null) ...[
+              const SizedBox(height: 20),
+              const Text('分析原始图片',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () => _showFullImage(context, widget.todo.imagePath!),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.file(
+                    File(widget.todo.imagePath!),
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (ctx, _, __) => Container(
+                      height: 100,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                          child: Text('图片已过期或被删除',
+                              style: TextStyle(color: Colors.grey))),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (widget.todo.originalText != null &&
+                widget.todo.originalText!.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const Text('分析原始文字',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: SelectableText(
+                  widget.todo.originalText!,
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFullImage(BuildContext context, String imagePath) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text("图片预览"),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.file(
+                File(imagePath),
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Center(
+                    child: Text(
+                      "图片加载失败",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SortedDisplayItem {
+  final DateTime? date;
+  final Widget widget;
+  final bool isDone;
+  _SortedDisplayItem({this.date, required this.widget, this.isDone = false});
+}

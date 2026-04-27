@@ -1,0 +1,537 @@
+<template>
+  <div class="page">
+    <!-- 顶部导航 -->
+    <div class="header">
+      <text class="back-btn" onclick="goBack">‹</text>
+      <text class="title" static>番茄钟</text>
+      <div class="placeholder"></div>
+    </div>
+
+    <!-- 无运行中的番茄钟 -->
+    <div class="empty-state" if="{{!pomodoroState.isRunning}}">
+      <div class="empty-icon-wrap">
+        <text class="empty-icon-text" static>🍅</text>
+      </div>
+      <text class="empty-title" static>暂无运行中的番茄钟</text>
+      <text class="empty-desc" static>请在手机上开始专注</text>
+    </div>
+
+    <!-- 运行中的番茄钟 -->
+    <block if="{{pomodoroState.isRunning}}">
+      <!-- 计时显示区 -->
+      <div class="timer-section">
+        <div class="phase-badge {{pomodoroState.phaseClass}}">
+          <text class="phase-text">{{pomodoroState.phaseText}}</text>
+        </div>
+        <text class="timer-display">{{pomodoroState.timerText}}</text>
+        <div class="mode-tag" if="{{pomodoroState.modeText}}">
+          <text class="mode-text">{{pomodoroState.modeText}}</text>
+        </div>
+      </div>
+
+      <!-- 专注内容 -->
+      <div class="info-card" if="{{pomodoroState.todoTitle}}">
+        <text class="info-label" static>专注内容</text>
+        <text class="info-value">{{pomodoroState.todoTitle}}</text>
+      </div>
+
+      <!-- 标签 -->
+      <div class="info-card" if="{{pomodoroState.tagNames.length > 0}}">
+        <text class="info-label" static>标签</text>
+        <div class="tags-row">
+          <div for="{{pomodoroState.tagNames}}" class="tag-pill" style="background-color: {{$item.color}}">
+            <text class="tag-text">{{$item.name}}</text>
+          </div>
+        </div>
+      </div>
+
+      <!-- 循环进度 -->
+      <div class="info-card" if="{{pomodoroState.totalCycles > 1}}">
+        <text class="info-label" static>循环进度</text>
+        <text class="info-value">{{pomodoroState.cycleText}}</text>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="actions">
+        <div class="action-btn finish-btn" onclick="finishPomodoro">
+          <text class="action-text" static>提前完成</text>
+        </div>
+        <div class="action-btn abandon-btn" onclick="abandonPomodoro">
+          <text class="action-text" static>放弃专注</text>
+        </div>
+      </div>
+    </block>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import storage from '@system.storage'
+import SyncService from '../../common/sync_service.js'
+
+export default {
+  data: {
+    pomodoroState: {
+      isRunning: false,
+      phaseText: '专注中',
+      phaseClass: 'phase-focusing',
+      timerText: '00:00',
+      modeText: '',
+      todoTitle: '',
+      tagNames: [],
+      totalCycles: 1,
+      currentCycle: 1,
+      cycleText: '',
+      sessionUuid: '',
+      targetEndMs: 0,
+      plannedDuration: 0,
+      isCountUp: false,
+      phase: 'idle'
+    }
+  },
+
+  timerInterval: null,
+
+  onInit() {
+    this.loadPomodoroState()
+    this.registerSyncCallback()
+  },
+
+  onShow() {
+    this.loadPomodoroState()
+  },
+
+  onDestroy() {
+    this.stopTimer()
+    this.pomodoroState = null
+    SyncService.setOnSyncDataReceived(null)
+  },
+
+  registerSyncCallback() {
+    var self = this
+    SyncService.setOnSyncDataReceived(function(type, data) {
+      if (type === 'pomodoro') {
+        self.loadPomodoroState()
+      }
+    })
+  },
+
+  padZero(num) {
+    return num < 10 ? '0' + num : '' + num
+  },
+
+  loadPomodoroState() {
+    storage.get({
+      key: 'sync_pomodoro',
+      success: (data) => {
+        if (data) {
+          const items = JSON.parse(data)
+          if (items && items.length > 0) {
+            const item = items[0]
+            this.pomodoroState.sessionUuid = item.sessionUuid || ''
+            this.pomodoroState.targetEndMs = item.targetEndMs || 0
+            this.pomodoroState.plannedDuration = item.plannedDuration || 0
+            this.pomodoroState.todoTitle = item.todoTitle || ''
+            this.pomodoroState.isCountUp = item.isCountUp || false
+            this.pomodoroState.phase = item.phase || 'idle'
+            this.pomodoroState.totalCycles = item.totalCycles || 1
+            this.pomodoroState.currentCycle = item.currentCycle || 1
+
+            if (item.tagNames && Array.isArray(item.tagNames)) {
+              this.pomodoroState.tagNames = item.tagNames
+            } else if (item.tagUuids && Array.isArray(item.tagUuids)) {
+              this.pomodoroState.tagNames = item.tagUuids.map(function(uuid) {
+                return { name: uuid.substring(0, 8), color: '#607D8B' }
+              })
+            } else {
+              this.pomodoroState.tagNames = []
+            }
+
+            const wasRunning = this.pomodoroState.isRunning
+            this.updatePhaseInfo()
+            if (this.pomodoroState.isRunning) {
+              this.startTimer()
+            } else if (wasRunning) {
+              this.stopTimer()
+            }
+          } else {
+            if (this.pomodoroState.isRunning) {
+              this.pomodoroState.isRunning = false
+              this.stopTimer()
+              this.pomodoroState.phaseText = '未开始'
+              this.pomodoroState.phaseClass = 'phase-idle'
+              this.pomodoroState.timerText = '00:00'
+              this.pomodoroState.todoTitle = ''
+              this.pomodoroState.tagNames = []
+              this.pomodoroState.modeText = ''
+              this.pomodoroState.cycleText = ''
+            }
+          }
+        } else {
+          if (this.pomodoroState.isRunning) {
+            this.pomodoroState.isRunning = false
+            this.stopTimer()
+            this.pomodoroState.phaseText = '未开始'
+            this.pomodoroState.phaseClass = 'phase-idle'
+            this.pomodoroState.timerText = '00:00'
+            this.pomodoroState.todoTitle = ''
+            this.pomodoroState.tagNames = []
+            this.pomodoroState.modeText = ''
+            this.pomodoroState.cycleText = ''
+          }
+        }
+      },
+      fail: () => {
+        this.pomodoroState.isRunning = false
+      }
+    })
+  },
+
+  updatePhaseInfo() {
+    const phase = this.pomodoroState.phase
+    if (phase === 'focusing' || phase === 1) {
+      this.pomodoroState.phaseText = '专注中'
+      this.pomodoroState.phaseClass = 'phase-focusing'
+      this.pomodoroState.isRunning = true
+    } else if (phase === 'breaking' || phase === 2) {
+      this.pomodoroState.phaseText = '休息中'
+      this.pomodoroState.phaseClass = 'phase-breaking'
+      this.pomodoroState.isRunning = true
+    } else if (phase === 'finished' || phase === 3) {
+      this.pomodoroState.phaseText = '已完成'
+      this.pomodoroState.phaseClass = 'phase-finished'
+      this.pomodoroState.isRunning = false
+    } else if (phase === 'remoteWatching' || phase === 4) {
+      this.pomodoroState.phaseText = '远程监控'
+      this.pomodoroState.phaseClass = 'phase-focusing'
+      this.pomodoroState.isRunning = true
+    } else {
+      this.pomodoroState.phaseText = '未开始'
+      this.pomodoroState.phaseClass = 'phase-idle'
+      this.pomodoroState.isRunning = false
+    }
+
+    if (this.pomodoroState.isCountUp) {
+      this.pomodoroState.modeText = '正计时'
+    } else if (this.pomodoroState.plannedDuration > 0) {
+      this.pomodoroState.modeText = '倒计时'
+    } else {
+      this.pomodoroState.modeText = ''
+    }
+
+    if (this.pomodoroState.totalCycles > 1) {
+      this.pomodoroState.cycleText = '第 ' + this.pomodoroState.currentCycle + ' / ' + this.pomodoroState.totalCycles + ' 轮'
+    }
+  },
+
+  startTimer() {
+    this.stopTimer()
+    this.updateTimerDisplay()
+    this.timerInterval = setInterval(() => {
+      this.updateTimerDisplay()
+    }, 1000)
+  },
+
+  stopTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval)
+      this.timerInterval = null
+    }
+  },
+
+  updateTimerDisplay() {
+    if (!this.pomodoroState.isRunning) return
+
+    const now = Date.now()
+    const targetEndMs = this.pomodoroState.targetEndMs
+    const isCountUp = this.pomodoroState.isCountUp
+
+    let remainingSeconds
+    if (isCountUp) {
+      const startMs = targetEndMs - this.pomodoroState.plannedDuration * 1000
+      const elapsed = Math.floor((now - startMs) / 1000)
+      remainingSeconds = Math.max(0, elapsed)
+    } else {
+      remainingSeconds = Math.max(0, Math.ceil((targetEndMs - now) / 1000))
+    }
+
+    const hours = Math.floor(remainingSeconds / 3600)
+    const minutes = Math.floor((remainingSeconds % 3600) / 60)
+    const seconds = remainingSeconds % 60
+
+    if (hours > 0) {
+      this.pomodoroState.timerText = this.padZero(hours) + ':' + this.padZero(minutes) + ':' + this.padZero(seconds)
+    } else {
+      this.pomodoroState.timerText = this.padZero(minutes) + ':' + this.padZero(seconds)
+    }
+
+    if (!isCountUp && remainingSeconds <= 0) {
+      this.pomodoroState.timerText = '00:00'
+      this.autoFinishPomodoro()
+    }
+  },
+
+  autoFinishPomodoro() {
+    this.stopTimer()
+    this.pomodoroState.isRunning = false
+    this.pomodoroState.phase = 'finished'
+    this.pomodoroState.phaseText = '已完成'
+    this.pomodoroState.phaseClass = 'phase-finished'
+    storage.set({
+      key: 'sync_pomodoro',
+      value: JSON.stringify([]),
+      success: () => {},
+      fail: () => {}
+    })
+  },
+
+  finishPomodoro() {
+    var sent = this.sendActionToPhone('finish')
+    if (sent) {
+      prompt.showToast({
+        message: '已提前完成',
+        duration: 300
+      })
+    } else {
+      prompt.showToast({
+        message: '未连接手机，仅清除本地状态',
+        duration: 300
+      })
+    }
+    this.clearLocalState()
+  },
+
+  abandonPomodoro() {
+    var sent = this.sendActionToPhone('abandon')
+    if (sent) {
+      prompt.showToast({
+        message: '已放弃专注',
+        duration: 300
+      })
+    } else {
+      prompt.showToast({
+        message: '未连接手机，仅清除本地状态',
+        duration: 300
+      })
+    }
+    this.clearLocalState()
+  },
+
+  sendActionToPhone(action) {
+    return SyncService.sendPomodoroAction(action, this.pomodoroState.sessionUuid)
+  },
+
+  clearLocalState() {
+    this.stopTimer()
+    storage.set({
+      key: 'sync_pomodoro',
+      value: JSON.stringify([]),
+      success: () => {},
+      fail: () => {}
+    })
+    this.pomodoroState.isRunning = false
+    this.pomodoroState.phaseText = '未开始'
+    this.pomodoroState.phaseClass = 'phase-idle'
+    this.pomodoroState.timerText = '00:00'
+    this.pomodoroState.todoTitle = ''
+    this.pomodoroState.tagNames = []
+    this.pomodoroState.modeText = ''
+    this.pomodoroState.cycleText = ''
+  },
+
+  goBack() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  padding: 28px;
+  background-color: #000000;
+}
+
+.header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.back-btn {
+  width: 56px;
+  height: 56px;
+  font-size: 40px;
+  color: #ffffff;
+  background-color: #ffffff30;
+  border-radius: 28px;
+  text-align: center;
+  line-height: 56px;
+}
+
+.title {
+  font-size: 40px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.placeholder {
+  width: 56px;
+}
+
+.empty-state {
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.empty-icon-wrap {
+  width: 120px;
+  height: 120px;
+  border-radius: 60px;
+  background-color: #ffffff15;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.empty-icon-text {
+  font-size: 56px;
+}
+
+.empty-title {
+  font-size: 38px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 12px;
+}
+
+.empty-desc {
+  font-size: 24px;
+  color: #ffffffaa;
+}
+
+.timer-section {
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.phase-badge {
+  border-radius: 999px;
+  padding: 8px 24px;
+  margin-bottom: 20px;
+}
+
+.phase-badge.phase-focusing {
+  background-color: #e67e22;
+}
+
+.phase-badge.phase-breaking {
+  background-color: #27ae60;
+}
+
+.phase-badge.phase-finished {
+  background-color: #4caf50;
+}
+
+.phase-badge.phase-idle {
+  background-color: #555555;
+}
+
+.phase-text {
+  font-size: 26px;
+  color: #ffffff;
+  font-weight: bold;
+}
+
+.timer-display {
+  font-size: 72px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 12px;
+}
+
+.mode-tag {
+  background-color: #ffffff15;
+  border-radius: 999px;
+  padding: 6px 18px;
+}
+
+.mode-text {
+  font-size: 22px;
+  color: #ffffffaa;
+}
+
+.info-card {
+  background-color: #262626;
+  border-radius: 26px;
+  padding: 24px 28px;
+  margin-bottom: 18px;
+  flex-direction: column;
+}
+
+.info-label {
+  font-size: 22px;
+  color: #888888;
+  margin-bottom: 10px;
+}
+
+.info-value {
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.tags-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.tag-pill {
+  border-radius: 999px;
+  padding: 8px 18px;
+  margin-right: 12px;
+  margin-bottom: 8px;
+}
+
+.tag-text {
+  font-size: 22px;
+  color: #ffffff;
+}
+
+.actions {
+  flex-direction: row;
+  justify-content: space-between;
+  margin-top: 36px;
+}
+
+.action-btn {
+  flex: 1;
+  border-radius: 26px;
+  padding: 20px 0;
+  justify-content: center;
+  align-items: center;
+}
+
+.finish-btn {
+  background-color: #4caf50;
+  margin-right: 12px;
+}
+
+.abandon-btn {
+  background-color: #3a1111;
+  margin-left: 12px;
+}
+
+.action-text {
+  font-size: 28px;
+  font-weight: bold;
+  color: #ffffff;
+}
+</style>

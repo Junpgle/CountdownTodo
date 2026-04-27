@@ -1,0 +1,213 @@
+<template>
+  <div class="page">
+    <div class="alert-container">
+      <!-- 类型图标 -->
+      <div class="icon-circle" style="background-color: {{iconColor}}">
+        <text class="icon-text">{{iconLabel}}</text>
+      </div>
+
+      <!-- 标题 -->
+      <text class="alert-title">{{title}}</text>
+
+      <!-- 内容 -->
+      <text class="alert-content">{{content}}</text>
+
+      <!-- 时间戳 -->
+      <text class="alert-time">{{timeText}}</text>
+
+      <!-- 确认按钮 -->
+      <div class="confirm-btn" onclick="dismiss">
+        <text class="confirm-text">我知道了</text>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import storage from '@system.storage'
+import SyncService from '../../common/sync_service.js'
+
+export default {
+  data: {
+    title: '',
+    content: '',
+    todoType: 'default',
+    notificationId: 0,
+    timestamp: 0,
+    iconColor: '#FF9800',
+    iconLabel: '待办',
+    timeText: ''
+  },
+
+  onInit() {
+    this.loadAlertData()
+  },
+
+  loadAlertData() {
+    var params = this.$params || {}
+    if (params.title) {
+      this.applyAlertData({
+        title: params.title,
+        content: params.content || '',
+        todoType: params.todoType || 'default',
+        notificationId: parseInt(params.notificationId) || 0,
+        timestamp: parseInt(params.timestamp) || 0
+      })
+    } else {
+      var self = this
+      storage.get({
+        key: 'sync_pending_alert',
+        success: function(data) {
+          if (data) {
+            try {
+              self.applyAlertData(JSON.parse(data))
+            } catch (e) {
+              self.goHome()
+            }
+          } else {
+            self.goHome()
+          }
+        },
+        fail: function() {
+          self.goHome()
+        }
+      })
+    }
+  },
+
+  applyAlertData(data) {
+    this.title = data.title || '待办提醒'
+    this.content = data.content || ''
+    this.todoType = data.todoType || 'default'
+    this.notificationId = data.notificationId || 0
+    this.timestamp = data.timestamp || 0
+
+    var typeConfig = this.getTypeConfig(this.todoType)
+    this.iconColor = typeConfig.color
+    this.iconLabel = typeConfig.label
+
+    if (this.timestamp > 0) {
+      var date = new Date(this.timestamp)
+      var hours = date.getHours()
+      var minutes = date.getMinutes()
+      this.timeText = this.padZero(hours) + ':' + this.padZero(minutes)
+    }
+  },
+
+  padZero(num) {
+    return num < 10 ? '0' + num : '' + num
+  },
+
+  getTypeConfig(type) {
+    switch (type) {
+      case 'delivery':
+        return { color: '#4CAF50', label: '取件' }
+      case 'cafe':
+        return { color: '#795548', label: '取餐' }
+      case 'food':
+        return { color: '#FF5722', label: '取餐' }
+      case 'restaurant':
+        return { color: '#9C27B0', label: '堂食' }
+      default:
+        return { color: '#FF9800', label: '待办' }
+    }
+  },
+
+  onDestroy() {
+    // 兜底逻辑：防止用户非正常退出（如右滑返回）导致 storage 没清干净
+    // 从而被 index.ux 的 onShow 再次抓回来
+    SyncService.clearPendingAlert()
+  },
+
+  dismiss() {
+    var self = this
+    SyncService.clearPendingAlert().then(function() {
+      prompt.showToast({
+        message: '已确认',
+        duration: 300
+      })
+      self.goHome()
+    })
+  },
+
+  goHome() {
+    router.replace({ uri: '/pages/index' })
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: #000000;
+  padding: 32px;
+}
+
+.alert-container {
+  flex-direction: column;
+  align-items: center;
+  background-color: #1a1a1a;
+  border-radius: 32px;
+  padding: 36px 28px;
+  width: 100%;
+}
+
+.icon-circle {
+  width: 96px;
+  height: 96px;
+  border-radius: 48px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.icon-text {
+  font-size: 32px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.alert-title {
+  font-size: 36px;
+  font-weight: bold;
+  color: #ffffff;
+  text-align: center;
+  margin-bottom: 16px;
+  lines: 2;
+}
+
+.alert-content {
+  font-size: 28px;
+  color: #cccccc;
+  text-align: center;
+  margin-bottom: 20px;
+  lines: 3;
+}
+
+.alert-time {
+  font-size: 22px;
+  color: #888888;
+  margin-bottom: 32px;
+}
+
+.confirm-btn {
+  width: 100%;
+  height: 72px;
+  border-radius: 36px;
+  background-color: #4a90d9;
+  justify-content: center;
+  align-items: center;
+}
+
+.confirm-text {
+  font-size: 30px;
+  font-weight: bold;
+  color: #ffffff;
+}
+</style>

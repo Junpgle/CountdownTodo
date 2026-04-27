@@ -31,8 +31,20 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   bool _isApplyingScheduleFix = false;
   _ConflictFilter _selectedFilter = _ConflictFilter.all;
   dynamic _selectedItem; // 🚀 新增：当前选中的冲突项，用于桌面端双栏展示
+  
+  // 🚀 批量操作相关
+  bool _isBatchMode = false;
+  final Set<String> _selectedConflictIds = {};
+  bool _isBatchApplying = false;
 
   bool get _isWide => MediaQuery.of(context).size.width > 900;
+  
+  String _getConflictId(dynamic item) {
+    if (item is TodoItem) return 'todo_${item.id}';
+    if (item is TodoGroup) return 'group_${item.id}';
+    if (item is CountdownItem) return 'countdown_${item.id}';
+    return '';
+  }
 
   @override
   void initState() {
@@ -409,61 +421,105 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_rounded),
-            color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
-            tooltip: '返回',
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '冲突对齐中心',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.blueGrey.shade900,
-                  ),
-                ),
-                Text(
-                  'Uni-Sync 4.0 智能数据对齐引擎',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white54 : Colors.blueGrey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+          if (_isBatchMode) ...[
+            IconButton(
+              onPressed: () => setState(() {
+                _isBatchMode = false;
+                _selectedConflictIds.clear();
+              }),
+              icon: const Icon(Icons.close_rounded),
+              color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+              tooltip: '取消批量模式',
             ),
-          ),
-          const SizedBox(
-              width:
-                  16), // Replacement for Spacer to keep some gap if titles are short
-          _buildAppBarAction(
-            icon: _isScanning ? null : Icons.radar_rounded,
-            loading: _isScanning,
-            onTap: _isScanning ? null : _scanAllTodoConflicts,
-            tooltip: '扫描全部冲突',
-          ),
-          const SizedBox(width: 12),
-          _buildAppBarAction(
-            icon: Icons.refresh_rounded,
-            onTap: _loadConflicts,
-            tooltip: '刷新列表',
-          ),
-          const SizedBox(width: 12),
-          _buildAppBarAction(
-            icon: Icons.help_outline_rounded,
-            onTap: _showConflictHelp,
-            tooltip: '查看帮助',
-          ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '已选择 ${_selectedConflictIds.length} 项',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.blueGrey.shade900,
+                ),
+              ),
+            ),
+          ] else ...[
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back_rounded),
+              color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+              tooltip: '返回',
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '冲突对齐中心',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.blueGrey.shade900,
+                    ),
+                  ),
+                  Text(
+                    'Uni-Sync 4.0 智能数据对齐引擎',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white54 : Colors.blueGrey.shade500,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(width: 16),
+          if (!_isBatchMode) ...[
+            _buildAppBarAction(
+              icon: _isScanning ? null : Icons.radar_rounded,
+              loading: _isScanning,
+              onTap: _isScanning ? null : _scanAllTodoConflicts,
+              tooltip: '扫描全部冲突',
+            ),
+            const SizedBox(width: 12),
+            _buildAppBarAction(
+              icon: Icons.refresh_rounded,
+              onTap: _loadConflicts,
+              tooltip: '刷新列表',
+            ),
+            const SizedBox(width: 12),
+            _buildAppBarAction(
+              icon: Icons.help_outline_rounded,
+              onTap: _showConflictHelp,
+              tooltip: '查看帮助',
+            ),
+            const SizedBox(width: 12),
+            _buildAppBarAction(
+              icon: Icons.checklist_rounded,
+              onTap: _conflictItems.isNotEmpty ? () => setState(() => _isBatchMode = true) : null,
+              tooltip: '批量管理',
+            ),
+          ] else ...[
+            _buildAppBarAction(
+              icon: Icons.select_all_rounded,
+              onTap: _selectedConflictIds.length == _visibleConflictItems.length
+                  ? () => setState(() => _selectedConflictIds.clear())
+                  : () => setState(() {
+                        _selectedConflictIds.clear();
+                        for (final item in _visibleConflictItems) {
+                          _selectedConflictIds.add(_getConflictId(item));
+                        }
+                      }),
+              tooltip: _selectedConflictIds.length == _visibleConflictItems.length ? '取消全选' : '全选',
+            ),
+          ]
         ],
       ),
     );
@@ -499,29 +555,43 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Widget _buildWideLayout(bool isDark) {
-    return Row(
+    return Column(
       children: [
-        // 左栏：列表
-        SizedBox(
-          width: 380,
-          child: _buildConflictList(isDark),
-        ),
-        // 分割线
-        VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: isDark ? Colors.white10 : Colors.black12,
-        ),
-        // 右栏：详情
         Expanded(
-          child: _buildDetailPane(isDark),
+          child: Row(
+            children: [
+              // 左栏：列表
+              SizedBox(
+                width: 380,
+                child: _buildConflictList(isDark),
+              ),
+              // 分割线
+              VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: isDark ? Colors.white10 : Colors.black12,
+              ),
+              // 右栏：详情
+              Expanded(
+                child: _buildDetailPane(isDark),
+              ),
+            ],
+          ),
         ),
+        if (_isBatchMode && _selectedConflictIds.isNotEmpty)
+          _buildBatchActionBarWide(isDark),
       ],
     );
   }
 
   Widget _buildMobileLayout(bool isDark) {
-    return _buildConflictList(isDark);
+    return Column(
+      children: [
+        Expanded(child: _buildConflictList(isDark)),
+        if (_isBatchMode && _selectedConflictIds.isNotEmpty)
+          _buildBatchActionBar(isDark),
+      ],
+    );
   }
 
   Widget _buildConflictList(bool isDark) {
@@ -712,12 +782,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     final conflictColor = _conflictColor(item);
     final isTodo = item is TodoItem;
+    final itemId = _getConflictId(item);
+    final isBatchSelected = _selectedConflictIds.contains(itemId);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        color: isSelected
+        color: isSelected || isBatchSelected
             ? (isDark
                 ? Colors.blue.withValues(alpha: 0.15)
                 : Colors.blue.withValues(alpha: 0.1))
@@ -726,64 +798,99 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 : Colors.white.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isSelected
+          color: isSelected || isBatchSelected
               ? Colors.blue
               : (isDark
                   ? Colors.white.withValues(alpha: 0.05)
                   : Colors.black.withValues(alpha: 0.05)),
-          width: isSelected ? 1.5 : 1,
+          width: isSelected || isBatchSelected ? 1.5 : 1,
         ),
       ),
       child: InkWell(
         onTap: () {
-          if (_isWide) {
+          if (_isBatchMode) {
+            setState(() {
+              if (isBatchSelected) {
+                _selectedConflictIds.remove(itemId);
+              } else {
+                _selectedConflictIds.add(itemId);
+              }
+            });
+          } else if (_isWide) {
             setState(() => _selectedItem = item);
           } else {
             _resolveConflict(item);
           }
         },
+        onLongPress: _isBatchMode ? null : () {
+          setState(() {
+            _isBatchMode = true;
+            _selectedConflictIds.add(itemId);
+          });
+        },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: conflictColor,
-                      shape: BoxShape.circle,
+              if (_isBatchMode) ...[
+                Checkbox(
+                  value: isBatchSelected,
+                  onChanged: (value) {
+                    setState(() {
+                      if (value == true) {
+                        _selectedConflictIds.add(itemId);
+                      } else {
+                        _selectedConflictIds.remove(itemId);
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: conflictColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight:
+                                  isSelected || isBatchSelected ? FontWeight.bold : FontWeight.w500,
+                              color: isDark ? Colors.white : Colors.blueGrey.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isDark ? Colors.white : Colors.blueGrey.shade800,
-                      ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        _buildMiniBadge(_conflictLabel(item),
+                            conflictColor.withValues(alpha: 0.1), conflictColor),
+                        _buildMiniBadge(_relationLabel(item),
+                            Colors.blue.withValues(alpha: 0.1), Colors.blue),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  _buildMiniBadge(_conflictLabel(item),
-                      conflictColor.withValues(alpha: 0.1), conflictColor),
-                  _buildMiniBadge(_relationLabel(item),
-                      Colors.blue.withValues(alpha: 0.1), Colors.blue),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -806,6 +913,152 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           fontWeight: FontWeight.bold,
           color: textColor,
         ),
+      ),
+    );
+  }
+
+  Widget _buildBatchActionBar(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.black26 : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1),
+          ),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                  label: const Text('推荐方案'),
+                  onPressed: _isBatchApplying ? null : _batchApplyRecommended,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.phone_android_rounded, size: 18),
+                  label: const Text('保留本地'),
+                  onPressed: _isBatchApplying ? null : _batchKeepLocal,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.cloud_done_rounded, size: 18),
+                  label: const Text('使用服务器'),
+                  onPressed: _isBatchApplying ? null : _batchAcceptServer,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_isBatchApplying) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBatchActionBarWide(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.black26 : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1),
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Text(
+                '已选择 ${_selectedConflictIds.length} 项冲突',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+              const Spacer(),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                label: const Text('推荐方案'),
+                onPressed: _isBatchApplying ? null : _batchApplyRecommended,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  side: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.phone_android_rounded, size: 18),
+                label: const Text('保留本地'),
+                onPressed: _isBatchApplying ? null : _batchKeepLocal,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                icon: const Icon(Icons.cloud_done_rounded, size: 18),
+                label: const Text('使用服务器'),
+                onPressed: _isBatchApplying ? null : _batchAcceptServer,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_isBatchApplying) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
+        ],
       ),
     );
   }
@@ -1662,6 +1915,353 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _batchKeepLocal() async {
+    if (_selectedConflictIds.isEmpty) return;
+    setState(() => _isBatchApplying = true);
+    
+    try {
+      int successCount = 0;
+      final ids = _selectedConflictIds.toList();
+      
+      for (final itemId in ids) {
+        try {
+          // 根据 ID 格式查找对应的冲突项
+          final conflictItem = _visibleConflictItems.firstWhere(
+            (item) => _getConflictId(item) == itemId,
+            orElse: () => null,
+          );
+          if (conflictItem == null) continue;
+          
+          // 对于有服务器版本的冲突，使用 _ConflictResolutionSheet 的逻辑
+          final serverVersion = _findServerVersion(conflictItem);
+          if (serverVersion != null && serverVersion.isNotEmpty) {
+            final localJson = _itemToJson(conflictItem);
+            final table = _resolveTable(conflictItem);
+            
+            final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
+            final serverVer = serverVersion['version'] as int? ?? 0;
+            final currentVer = localJson['version'] as int? ?? 1;
+            final newVersion = serverVer > currentVer ? serverVer + 1 : currentVer + 1;
+            final now = DateTime.now().millisecondsSinceEpoch;
+            
+            localJson['version'] = newVersion;
+            localJson['updated_at'] = now;
+            localJson['has_conflict'] = 0;
+            localJson.remove('conflict_data');
+            localJson.remove('serverVersionData');
+            
+            await StorageService.resolveConflictLocally(
+              uuid: uuid,
+              table: table,
+              resolvedData: localJson,
+              createOplog: true,
+            );
+            
+            try {
+              await ApiService.resolveConflict(
+                uuid: uuid,
+                table: table,
+                resolution: 'keep_local',
+                bumpedVersion: newVersion,
+                data: localJson,
+              );
+            } catch (_) {}
+            
+            successCount++;
+          } else {
+            // 对于没有服务器版本的冲突，使用强制保留本地
+            await _resolveGhostConflict(conflictItem, refresh: false);
+            successCount++;
+          }
+        } catch (e) {
+          debugPrint('批量保留本地失败 $itemId: $e');
+        }
+      }
+      
+      if (mounted) {
+        _selectedConflictIds.clear();
+        _isBatchMode = false;
+        await _loadConflicts();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已保留本地版本，成功处理 $successCount 项冲突'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBatchApplying = false);
+    }
+  }
+
+  Future<void> _batchAcceptServer() async {
+    if (_selectedConflictIds.isEmpty) return;
+    setState(() => _isBatchApplying = true);
+    
+    try {
+      int successCount = 0;
+      final ids = _selectedConflictIds.toList();
+      
+      for (final itemId in ids) {
+        try {
+          final conflictItem = _visibleConflictItems.firstWhere(
+            (item) => _getConflictId(item) == itemId,
+            orElse: () => null,
+          );
+          if (conflictItem == null) continue;
+          
+          final serverVersion = _findServerVersion(conflictItem);
+          if (serverVersion == null || serverVersion.isEmpty) continue;
+          
+          final localJson = _itemToJson(conflictItem);
+          final table = _resolveTable(conflictItem);
+          final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
+          
+          serverVersion['has_conflict'] = 0;
+          
+          await StorageService.resolveConflictLocally(
+            uuid: uuid,
+            table: table,
+            resolvedData: serverVersion,
+            createOplog: false,
+            touchUpdatedAt: false,
+          );
+          
+          try {
+            await ApiService.resolveConflict(
+              uuid: uuid,
+              table: table,
+              resolution: 'accept_server',
+            );
+          } catch (_) {}
+          
+          successCount++;
+        } catch (e) {
+          debugPrint('批量采用服务器版本失败 $itemId: $e');
+        }
+      }
+      
+      if (mounted) {
+        _selectedConflictIds.clear();
+        _isBatchMode = false;
+        await _loadConflicts();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已采用服务器版本，成功处理 $successCount 项冲突'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBatchApplying = false);
+    }
+  }
+
+  Future<void> _batchApplyRecommended() async {
+    if (_selectedConflictIds.isEmpty) return;
+    
+    _showBatchResolutionDialog();
+  }
+
+  void _showBatchResolutionDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('批量推荐方案',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              '该操作将对选中的 ${_selectedConflictIds.length} 项冲突应用推荐的解决方案。',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 18, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '推荐方案将根据时间冲突自动调整任务时间，或选择最合适的版本。',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await _batchApplyRecommendedExecute();
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                    ),
+                    child: const Text('应用推荐方案'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _batchApplyRecommendedExecute() async {
+    setState(() => _isBatchApplying = true);
+    
+    try {
+      int successCount = 0;
+      int schedulerCount = 0;
+      final ids = _selectedConflictIds.toList();
+      
+      for (final itemId in ids) {
+        try {
+          final conflictItem = _visibleConflictItems.firstWhere(
+            (item) => _getConflictId(item) == itemId,
+            orElse: () => null,
+          );
+          if (conflictItem == null) continue;
+          
+          // 对于时间冲突，使用推荐时间调整
+          if (_isLocalScheduleConflict(conflictItem) && conflictItem is TodoItem) {
+            final peers = _conflictPeers(conflictItem);
+            final recommendedWindow = _suggestPreferredWindow(conflictItem, peers);
+            if (recommendedWindow != null) {
+              final allTodos =
+                  await StorageService.getTodos(widget.username, includeDeleted: true);
+              final idx = allTodos.indexWhere((t) => t.id == conflictItem.id);
+              if (idx != -1) {
+                allTodos[idx].createdDate = recommendedWindow.start.millisecondsSinceEpoch;
+                allTodos[idx].dueDate = recommendedWindow.end;
+                allTodos[idx].markAsChanged();
+                await StorageService.saveTodos(widget.username, allTodos);
+                schedulerCount++;
+              }
+            }
+          } else {
+            // 对于版本冲突，保留本地版本
+            final serverVersion = _findServerVersion(conflictItem);
+            if (serverVersion != null && serverVersion.isNotEmpty) {
+              final localJson = _itemToJson(conflictItem);
+              final table = _resolveTable(conflictItem);
+              
+              final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
+              final serverVer = serverVersion['version'] as int? ?? 0;
+              final currentVer = localJson['version'] as int? ?? 1;
+              final newVersion = serverVer > currentVer ? serverVer + 1 : currentVer + 1;
+              final now = DateTime.now().millisecondsSinceEpoch;
+              
+              localJson['version'] = newVersion;
+              localJson['updated_at'] = now;
+              localJson['has_conflict'] = 0;
+              localJson.remove('conflict_data');
+              localJson.remove('serverVersionData');
+              
+              await StorageService.resolveConflictLocally(
+                uuid: uuid,
+                table: table,
+                resolvedData: localJson,
+                createOplog: true,
+              );
+              
+              try {
+                await ApiService.resolveConflict(
+                  uuid: uuid,
+                  table: table,
+                  resolution: 'keep_local',
+                  bumpedVersion: newVersion,
+                  data: localJson,
+                );
+              } catch (_) {}
+              
+              successCount++;
+            }
+          }
+        } catch (e) {
+          debugPrint('批量推荐方案失败 $itemId: $e');
+        }
+      }
+      
+      if (mounted) {
+        _selectedConflictIds.clear();
+        _isBatchMode = false;
+        await _loadConflicts();
+        final message = schedulerCount > 0 && successCount > 0
+            ? '已应用推荐方案，调整时间 $schedulerCount 项，版本冲突 $successCount 项'
+            : schedulerCount > 0
+                ? '已应用推荐方案，调整时间 $schedulerCount 项'
+                : '已应用推荐方案，成功处理 $successCount 项冲突';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBatchApplying = false);
+    }
   }
 
   Future<void> _resolveGhostConflict(dynamic item,

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:layout_margin="20dp"
+    tools:context=".ui.message.MessageFragment">
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/inputEditText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="input message here"
+        />
+
+    <Button
+        android:id="@+id/sendMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="send message"
+        />
+
+    <Button
+        android:id="@+id/registerMessageListener"
+        android:layout_width="match_parent"
+        android:text="register message listener"
+        android:layout_height="wrap_content"/>
+
+    <Button
+        android:id="@+id/unRegisterMessageListener"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="unregister message listener"
+        />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        />
+</androidx.appcompat.widget.LinearLayoutCompat>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    >
+
+    <Button
+        android:id="@+id/registerConnectedChange"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="register connected change" />
+
+    <Button
+        android:id="@+id/registerChargingChange"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="register charging change" />
+
+    <Button
+        android:id="@+id/registerSleepChange"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="register sleep change" />
+
+    <Button
+        android:id="@+id/registerWearingChange"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="register wearing change" />
+
+
+
+    <Button
+        android:id="@+id/unRegisterConnectedChange"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="unregister connected change" />
+
+    <Button
+        android:id="@+id/unRegisterChargingChange"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="unregister charging change" />
+
+    <Button
+        android:id="@+id/unRegisterSleepChange"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="unregister sleep change" />
+
+    <Button
+        android:id="@+id/unRegisterWearingChange"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="unregister wearing change" />
+
+
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        />
+
+
+</androidx.appcompat.widget.LinearLayoutCompat>

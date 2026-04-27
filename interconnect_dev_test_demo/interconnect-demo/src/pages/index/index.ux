@@ -1,0 +1,290 @@
+<template>
+  <div class="page">
+    <div class="header-bar">
+      <text class="title">手环同步</text>
+      <text class="status" style="color: {{isConnected ? '#4CAF50' : '#F44336'}}">
+        {{isConnected ? '已连接' : '未连接'}}
+      </text>
+    </div>
+
+    <div class="content">
+      <!-- 数据展示区域 -->
+      <div class="section" if="{{currentData.type === 'todo'}}">
+        <text class="section-title">待办事项</text>
+        <div class="item" for="{{currentData.items}}">
+          <text class="item-title">{{$item.title}}</text>
+          <text class="item-time" if="{{$item.time}}">{{$item.time}}</text>
+        </div>
+      </div>
+
+      <div class="section" if="{{currentData.type === 'course'}}">
+        <text class="section-title">课程表</text>
+        <div class="item" for="{{currentData.items}}">
+          <text class="item-title">{{$item.name}}</text>
+          <text class="item-info">{{$item.time}} | {{$item.room}}</text>
+        </div>
+      </div>
+
+      <div class="section" if="{{currentData.type === 'countdown'}}">
+        <text class="section-title">倒计时</text>
+        <div class="item" for="{{currentData.items}}">
+          <text class="item-title">{{$item.title}}</text>
+          <text class="item-time">{{$item.targetTime}}</text>
+        </div>
+      </div>
+
+      <!-- 空状态 -->
+      <div class="empty" if="{{!hasData}}">
+        <text class="empty-text">暂无同步数据</text>
+        <text class="empty-hint">等待手机发送数据...</text>
+      </div>
+
+      <!-- 日志区域 -->
+      <div class="log-section">
+        <text class="log-title">日志</text>
+        <scroll class="log-scroll">
+          <text class="log-item" for="{{logs}}">{{$value}}</text>
+        </scroll>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import interconnect from '@system.interconnect'
+import storage from '@system.storage'
+
+export default {
+  private: {
+    isConnected: false,
+    hasData: false,
+    currentData: { type: '', items: [] },
+    logs: [],
+    conn: null
+  },
+
+  onInit() {
+    this.addLog('应用初始化')
+    this.initConnection()
+  },
+
+  initConnection() {
+    this.addLog('正在创建连接...')
+    this.conn = interconnect.instance()
+
+    // 检查连接状态
+    this.conn.getReadyState({
+      success: (data) => {
+        this.isConnected = data.status === 1
+        this.addLog(`连接状态: ${this.isConnected ? '已连接' : '未连接'}`)
+      },
+      fail: (data, code) => {
+        this.addLog(`检查连接失败: code=${code}`)
+      }
+    })
+
+    // 连接打开回调
+    this.conn.onopen = (data) => {
+      this.isConnected = true
+      this.addLog(`连接已建立 (重连: ${data.isReconnected})`)
+    }
+
+    // 连接关闭回调
+    this.conn.onclose = (data) => {
+      this.isConnected = false
+      this.addLog(`连接关闭: ${data.data} (code: ${data.code})`)
+    }
+
+    // 连接错误回调
+    this.conn.onerror = (data) => {
+      this.isConnected = false
+      this.addLog(`连接错误: ${data.data} (code: ${data.code})`)
+    }
+
+    // 接收消息回调
+    this.conn.onmessage = (data) => {
+      this.addLog(`收到消息: ${data.data}`)
+      this.handleMessage(data.data)
+    }
+  },
+
+  handleMessage(rawData) {
+    try {
+      const msg = JSON.parse(rawData)
+      const { type, action, data, timestamp } = msg
+
+      if (!type || !data) {
+        this.addLog('消息格式错误')
+        return
+      }
+
+      switch (action) {
+        case 'sync':
+          this.handleSync(type, data)
+          break
+        case 'add':
+          this.handleAdd(type, data)
+          break
+        case 'update':
+          this.handleUpdate(type, data)
+          break
+        case 'delete':
+          this.handleDelete(type, data)
+          break
+        default:
+          this.addLog(`未知操作: ${action}`)
+      }
+    } catch (e) {
+      this.addLog(`解析消息失败: ${e.message}`)
+    }
+  },
+
+  handleSync(type, data) {
+    const items = data.todos || data.courses || data.countdowns || []
+    this.currentData = { type, items }
+    this.hasData = items.length > 0
+    this.addLog(`同步 ${type}: ${items.length} 条数据`)
+
+    // 保存到本地存储
+    storage.set({
+      key: `sync_${type}`,
+      value: JSON.stringify({ items, timestamp: Date.now() }),
+      success: () => this.addLog('数据已保存'),
+      fail: (err) => this.addLog(`保存失败: ${err}`)
+    })
+  },
+
+  handleAdd(type, data) {
+    this.addLog(`添加 ${type} 数据`)
+    // TODO: 实现添加逻辑
+  },
+
+  handleUpdate(type, data) {
+    this.addLog(`更新 ${type} 数据`)
+    // TODO: 实现更新逻辑
+  },
+
+  handleDelete(type, data) {
+    this.addLog(`删除 ${type} 数据`)
+    // TODO: 实现删除逻辑
+  },
+
+  addLog(message) {
+    const time = new Date().toLocaleTimeString()
+    this.logs.push(`[${time}] ${message}`)
+    if (this.logs.length > 50) {
+      this.logs.shift()
+    }
+  }
+}
+</script>
+
+<style>
+.page {
+  flex-direction: column;
+  padding: 20px;
+  background-color: #f5f5f5;
+}
+
+.header-bar {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #333333;
+}
+
+.status {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.content {
+  flex-direction: column;
+}
+
+.section {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 12px;
+}
+
+.item {
+  flex-direction: column;
+  padding: 12px 0;
+  border-bottom-width: 1px;
+  border-bottom-color: #eeeeee;
+}
+
+.item-title {
+  font-size: 14px;
+  color: #333333;
+  margin-bottom: 4px;
+}
+
+.item-time,
+.item-info {
+  font-size: 12px;
+  color: #999999;
+}
+
+.empty {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.empty-text {
+  font-size: 16px;
+  color: #666666;
+  margin-bottom: 8px;
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: #999999;
+}
+
+.log-section {
+  background-color: #263238;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.log-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #80cbc4;
+  margin-bottom: 12px;
+}
+
+.log-scroll {
+  flex-direction: column;
+  height: 200px;
+}
+
+.log-item {
+  font-size: 11px;
+  color: #b0bec5;
+  font-family: monospace;
+  margin-bottom: 4px;
+}
+</style>

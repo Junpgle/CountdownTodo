@@ -1,0 +1,2 @@
+rootProject.name = "XMS Wearable Demo"
+include ':app'

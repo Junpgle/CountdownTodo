@@ -7,6 +7,7 @@ import './index.css';
 const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
 const AuthScreen = lazy(() => import('./pages/AuthScreen').then(m => ({ default: m.AuthScreen })));
 const WebApp = lazy(() => import('./pages/WebApp').then(m => ({ default: m.WebApp })));
+const TeamDisplayBoard = lazy(() => import('./pages/TeamDisplayBoard'));
 
 // 只有在加载大包时显示的极简 Loading
 const LoadingSpinner = () => (
@@ -19,7 +20,8 @@ const LoadingSpinner = () => (
 );
 
 const App = () => {
-  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp'>(() => {
+  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp' | 'dashboard'>(() => {
+    if (window.location.hash.includes('dashboard')) return 'dashboard';
     if (window.location.hash.includes('app') || window.location.search.includes('app')) return 'auth';
     return 'landing';
   });
@@ -27,6 +29,14 @@ const App = () => {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
+    // Listen for hash changes
+    const handleHashChange = () => {
+      if (window.location.hash.includes('dashboard')) {
+        setCurrentView('dashboard');
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+
     const token = ApiService.getToken();
     const savedUser = localStorage.getItem('cdt_user');
     if (token && savedUser) {
@@ -40,6 +50,8 @@ const App = () => {
         ApiService.clearAuthAndData();
       }
     }
+
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const handleOpenWeb = () => {
@@ -62,7 +74,9 @@ const App = () => {
 
   return (
     <Suspense fallback={<LoadingSpinner />}>
-      {currentView === 'auth' ? (
+      {currentView === 'dashboard' ? (
+        <TeamDisplayBoard user={user} />
+      ) : currentView === 'auth' ? (
         <AuthScreen onBack={() => setCurrentView('landing')} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
       ) : currentView === 'webapp' && user ? (
         <WebApp onBack={() => setCurrentView('landing')} user={user} onLogout={handleLogout} />

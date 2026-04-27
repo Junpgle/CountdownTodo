@@ -651,7 +651,8 @@ class StorageService {
           List<CountdownItem> legacyData = legacyJsonList
               .map((e) => CountdownItem.fromJson(jsonDecode(e)))
               .toList();
-          await saveCountdowns(username, legacyData, sync: false);
+          await saveCountdowns(username, legacyData,
+              sync: false, isSyncSource: true);
           // 🚀 迁移成功后物理移除 Prefs 中的大对象
           await prefs.remove("${KEY_COUNTDOWNS}_$username");
           await prefs.remove(KEY_COUNTDOWNS);
@@ -1410,9 +1411,9 @@ class StorageService {
               legacyItems.add(TodoItem.fromJson(jsonDecode(e)));
             } catch (_) {}
           }
-          // 🚀 使用 saveTodos 触发迁移，这样会自动生成 op_logs 确保同步到云端
+          // 本地存储迁移不是用户修改，不生成 oplog，避免用迁移时间和云端制造冲突。
           await saveTodos(username, legacyItems,
-              sync: true, isSyncSource: false);
+              sync: false, isSyncSource: true);
           // 🚀 迁移成功后，必须物理清除 SharedPreferences 中的巨大 JSON 块
           // 否则 Android 的原生 SharedPreferences 会一直将此 170MB+ 的数据留在内存中导致 OOM
           await prefs.remove("${KEY_TODOS}_$username");
@@ -1857,7 +1858,8 @@ class StorageService {
           List<TodoGroup> legacyData = legacyJsonList
               .map((e) => TodoGroup.fromJson(jsonDecode(e)))
               .toList();
-          await saveTodoGroups(username, legacyData, sync: false);
+          await saveTodoGroups(username, legacyData,
+              sync: false, isSyncSource: true);
         }
       }
 
@@ -2333,6 +2335,7 @@ class StorageService {
     bool syncTodos = true,
     bool syncCountdowns = true,
     bool forceFullSync = false,
+    bool uploadAllLocal = false,
     BuildContext? context,
     bool syncTimeLogs = true,
     bool syncPomodoro = true,
@@ -2407,6 +2410,32 @@ class StorageService {
       dirtyTodos = dedupTodos.values.toList();
       dirtyGroups = dedupGroups.values.toList();
       dirtyCountdowns = dedupCountdowns.values.toList();
+
+      if (forceFullSync && uploadAllLocal) {
+        for (final item in allLocalTodos) {
+          final data = item.toJson();
+          data.remove('image_path');
+          data.remove('imagePath');
+          data.remove('conflict_data');
+          data['has_conflict'] = 0;
+          dedupTodos.putIfAbsent(item.id, () => data);
+        }
+        for (final item in allLocalGroups) {
+          final data = item.toJson();
+          data.remove('conflict_data');
+          data['has_conflict'] = 0;
+          dedupGroups.putIfAbsent(item.id, () => data);
+        }
+        for (final item in allLocalCountdowns) {
+          final data = item.toJson();
+          data.remove('conflict_data');
+          data['has_conflict'] = 0;
+          dedupCountdowns.putIfAbsent(item.id, () => data);
+        }
+        dirtyTodos = dedupTodos.values.toList();
+        dirtyGroups = dedupGroups.values.toList();
+        dirtyCountdowns = dedupCountdowns.values.toList();
+      }
 
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
       dirtyTimeLogs = allLocalTimeLogs

@@ -1,0 +1,469 @@
+<!-- 源地址: https://iot.mi.com/vela/quickapp/zh/features/data/file.html -->
+
+# 文件存储 file
+
+## 接口声明
+
+```json
+{ "name": "system.file" }
+```
+
+## 导入模块
+
+```javascript
+import file from '@system.file' 
+// 或 
+const file = require('@system.file')
+```
+
+## 接口定义
+
+### file.move(OBJECT)
+
+将源文件移动到指定位置，接口中使用的 URI 描述请参考[文件组织](</vela/quickapp/zh/guide/framework/project-structure.html#uri>)
+
+#### 参数：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调 
+
+#### fail 返回错误代码：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误 
+
+#### 示例：
+
+```javascript
+file.move({
+  srcUri: 'internal://cache/path/to/file',
+  dstUri: 'internal://files/path/to/file',
+  success: function(uri) {
+    console.log(`move success: ${uri}`)
+  },
+  fail: function(data, code) {
+    console.log(`handling fail, code = ${code}`)
+  }
+})
+```
+
+### file.copy(OBJECT)
+
+将源文件复制一份并存储到指定位置，接口中使用的 URI 描述请参考[文件组织](</vela/quickapp/zh/guide/framework/project-structure.html#uri>)
+
+#### 参数：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调 
+
+#### fail 返回错误代码：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误 
+
+#### 示例：
+
+```javascript
+file.copy({
+  srcUri: 'internal://cache/path/to/file',
+  dstUri: 'internal://files/path/to/file',
+  success: function(uri) {
+    console.log(`copy success: ${uri}`)
+  },
+  fail: function(data, code) {
+    console.log(`handling fail, code = ${code}`)
+  }
+})
+```
+
+### file.list(OBJECT)
+
+获取指定目录下的文件列表，接口中使用的 URI 描述请参考[文件组织](</vela/quickapp/zh/guide/framework/project-structure.html#uri>)
+
+#### 参数：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+uri | String | 是 | 目录 uri
+success | Function | 否 | 成功回调，返回{fileList:[{uri:'file1', lastModifiedTime:1234456, length:123456} ...]}
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调 
+
+#### success 返回值：
+
+参数名 | 类型 | 说明
+---|---|---
+fileList | Array | 文件列表，每个文件的格式为{uri:'file1', lastModifiedTime:1234456, length:123456} 
+
+#### 每个文件的元信息：
+
+参数名 | 类型 | 说明
+---|---|---
+uri | String | 文件的 uri，该 uri 可以被其他组件或 Feature 访问
+length | Number | 文件大小，单位 B
+lastModifiedTime | Number | 文件的保存是的时间戳，从 1970/01/01 00:00:00 GMT 到当前时间的毫秒数 
+
+#### fail 返回错误代码：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误 
+
+#### 示例：
+
+```javascript
+file.list({
+  uri: 'internal://files/movies/',
+  success: function(data) {
+    console.log(data.fileList)
+  },
+  fail: function(data, code) {
+    console.log(`handling fail, code = ${code}`)
+  }
+})
+```
+
+### file.get(OBJECT)
+
+获取本地文件的文件信息，接口中使用的 URI 描述请参考[文件组织](</vela/quickapp/zh/guide/framework/project-structure.html#uri>)
+
+#### 参数：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+uri | String | 是 | 文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+recursive | Boolean | 否 | 是否递归获取子目录文件列表。默认 false
+success | Function | 否 | 成功回调，返回{uri:'file1', length:123456, lastModifiedTime:1233456}
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调 
+
+#### success 返回值：
+
+参数名 | 类型 | 说明
+---|---|---
+uri | String | 文件的 uri，该 uri 可以被其他组件或 Feature 访问
+length | Number | 文件大小，单位 B。当 type = dir 时，返回0
+lastModifiedTime | Number | 文件的保存时的时间戳，从 1970/01/01 08:00:00 到当前时间的毫秒数
+type | String | 文件类型，dir：目录；file：文件
+subFiles | Array | 当 type = dir 时，返回目录中的文件列表，recursive 为 true 时，同时返回其子目录中的文件信息 
+
+#### fail 返回错误代码：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误0 
+
+#### 示例：
+
+```javascript
+file.get({
+  uri: 'internal://files/path/to/file',
+  success: function(data) {
+    console.log(data.uri)
+    console.log(data.length)
+    console.log(data.lastModifiedTime)
+  },
+  fail: function(data, code) {
+    console.log(`handling fail, code = ${code}`)
+  }
+})
+```
+
+### file.delete(OBJECT)
+
+删除本地存储的文件，接口中使用的 URI 描述请参考[文件组织](</vela/quickapp/zh/guide/framework/project-structure.html#uri>)
+
+#### 参数：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误1 
+
+#### fail 返回错误代码：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误2 
+
+#### 示例：
+
+```javascript
+file.delete({
+  uri: 'internal://files/path/to/file',
+  success: function(data) {
+    console.log('handling success')
+  },
+  fail: function(data, code) {
+    console.log(`handling fail, code = ${code}`)
+  }
+})
+```
+
+### file.writeText(OBJECT)
+
+写文本到文件
+
+注意
+
+当您使用文件写入接口时，请务必注意及时清理无用的文件，特别是在 IoT 设备内存较小的情况下，可以避免内存过载和应用崩溃的问题。
+
+#### 参数：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误3 
+
+#### fail 返回错误代码：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误4 
+
+#### 示例：
+
+```javascript
+file.writeText({
+  uri: 'internal://files/work/demo.txt',
+  text: 'test',
+  success: function() {
+    console.log('handling success')
+  },
+  fail: function(data, code) {
+    console.log(`handling fail, code = ${code}`)
+  }
+})
+```
+
+### file.writeArrayBuffer(OBJECT)
+
+写 Buffer 到文件
+
+注意
+
+当您使用文件写入接口时，请务必注意及时清理无用的文件，特别是在 IoT 设备内存较小的情况下，可以避免内存过载和应用崩溃的问题。
+
+#### 参数：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误5 
+
+#### fail 返回错误代码：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误6 
+
+#### 示例：
+
+```javascript
+file.writeArrayBuffer({
+  uri: 'internal://files/work/demo',
+  buffer: buffer,
+  success: function() {
+    console.log('handling success')
+  },
+  fail: function(data, code) {
+    console.log(`handling fail, code = ${code}`)
+  }
+})
+```
+
+### file.readText(OBJECT)
+
+从文件中读取文本
+
+#### 参数：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误7 
+
+#### success 返回值：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误8 
+
+#### fail 返回错误代码：
+
+错误码 | 说明
+---|---
+202 | 参数错误
+300 | I/O 错误9 
+
+#### 示例：
+
+```javascript
+file.readText({
+  uri: 'internal://files/work/demo.txt',
+  success: function(data) {
+    console.log('text: ' + data.text)
+  },
+  fail: function(data, code) {
+    console.log(`handling fail, code = ${code}`)
+  }
+})
+```
+
+### file.readArrayBuffer(OBJECT)
+
+从文件中读取 Buffer
+
+#### 参数：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调0 
+
+#### success 返回值：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调1 
+
+#### fail 返回错误代码：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调2 
+
+#### 示例：
+
+```javascript
+import file from '@system.file' 
+// 或 
+const file = require('@system.file')
+```
+
+### file.access(OBJECT)
+
+判断文件或目录是否存在
+
+#### 参数：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调3 
+
+#### fail 返回错误代码：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调4 
+
+#### 示例：
+
+```javascript
+import file from '@system.file' 
+// 或 
+const file = require('@system.file')
+```
+
+### file.mkdir(OBJECT)
+
+创建目录
+
+#### 参数：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调5 
+
+#### fail 返回错误代码：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调6 
+
+#### 示例：
+
+```javascript
+import file from '@system.file' 
+// 或 
+const file = require('@system.file')
+```
+
+### file.rmdir(OBJECT)
+
+删除目录
+
+#### 参数：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调7 
+
+#### fail 返回错误代码：
+
+参数名 | 类型 | 必填 | 说明
+---|---|---|---
+srcUri | String | 是 | 源文件的 uri
+dstUri | String | 是 | 目标文件的 uri，不能是应用资源路径和 tmp 类型的 uri
+success | Function | 否 | 成功回调，返回目标文件的 uri
+fail | Function | 否 | 失败回调
+complete | Function | 否 | 执行结束后的回调8 
+
+#### 示例：
+
+```javascript
+import file from '@system.file' 
+// 或 
+const file = require('@system.file')
+```
