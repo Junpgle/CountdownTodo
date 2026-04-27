@@ -960,16 +960,19 @@ class _HomeDashboardState extends State<HomeDashboard>
     final events = _collectBannerEvents();
     if (events.isEmpty) return const SizedBox.shrink();
 
-    // 选取优先级最高的一个显示 (后续可扩展为可滑动的 PageView)
-    final event = events.first;
-
-    final baseColor = event.baseColor;
-
-    return GestureDetector(
+    return Column(
       key: _focusBannerKey,
+      mainAxisSize: MainAxisSize.min,
+      children: events.map((e) => _buildBannerCard(e, isLight)).toList(),
+    );
+  }
+
+  Widget _buildBannerCard(HomeBannerEvent event, bool isLight) {
+    final baseColor = event.baseColor;
+    return GestureDetector(
       onTap: event.onTap,
       child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: baseColor.withValues(alpha: isLight ? 0.85 : 0.15),
@@ -1033,30 +1036,13 @@ class _HomeDashboardState extends State<HomeDashboard>
               ),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  event.timeInfo,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: isLight ? Colors.white : baseColor,
-                  ),
-                ),
-                if (events.length > 1)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      '还有 ${events.length - 1} 个日程',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: isLight ? Colors.white60 : Colors.grey,
-                      ),
-                    ),
-                  ),
-              ],
+            Text(
+              event.timeInfo,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: isLight ? Colors.white : baseColor,
+              ),
             ),
             const SizedBox(width: 4),
             Icon(Icons.chevron_right,
@@ -1141,12 +1127,13 @@ class _HomeDashboardState extends State<HomeDashboard>
       final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
       
       if (isOngoing) {
+        final remaining = endTime.difference(now).inMinutes;
         events.add(HomeBannerEvent(
           type: 'course',
           title: course.courseName,
           subtitle: course.roomName,
           label: '📖 正在进行的课程',
-          timeInfo: '${course.formattedStartTime} - ${course.formattedEndTime}',
+          timeInfo: '剩 ${remaining}m',
           baseColor: Colors.teal,
           icon: '🏫',
           priority: 2,
@@ -1162,7 +1149,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           title: course.courseName,
           subtitle: course.roomName,
           label: '🔔 即将开始的课程',
-          timeInfo: '${course.formattedStartTime}开始',
+          timeInfo: '${diffStart}m 后开始',
           baseColor: Colors.cyan,
           icon: '🏫',
           priority: 4,
@@ -1183,21 +1170,25 @@ class _HomeDashboardState extends State<HomeDashboard>
       final startTime = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
       final endTime = todo.dueDate!.toLocal();
       
-      // 判定全天任务
+      // 判定全天任务或跨天任务
       bool isAllDay = startTime.hour == 0 && startTime.minute == 0 &&
                       endTime.hour == 23 && endTime.minute == 59;
-      if (isAllDay) continue;
+      bool isCrossDay = startTime.year != endTime.year || 
+                        startTime.month != endTime.month || 
+                        startTime.day != endTime.day;
+      if (isAllDay || isCrossDay) continue;
 
       final diffStart = startTime.difference(now).inMinutes;
       final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
 
       if (isOngoing) {
+        final remaining = endTime.difference(now).inMinutes;
         events.add(HomeBannerEvent(
           type: 'todo',
           title: todo.title,
           subtitle: todo.remark,
           label: '📌 正在进行的任务',
-          timeInfo: '进行中',
+          timeInfo: '剩 ${remaining}m',
           baseColor: Colors.amber[700]!,
           icon: '📝',
           priority: 3,
@@ -1209,7 +1200,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           title: todo.title,
           subtitle: todo.remark,
           label: '⏰ 即将开始的任务',
-          timeInfo: '${startTime.hour}:${startTime.minute.toString().padLeft(2, '0')} 开始',
+          timeInfo: '${diffStart}m 后开始',
           baseColor: Colors.orange,
           icon: '📝',
           priority: 5,
@@ -1424,7 +1415,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 专注页: 最近专注(pomodoro), 屏幕时间(screenTime), 测验(math)
     
     // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
-    _leftSections = ['countdowns', 'todos'];
+    _leftSections = ['banners', 'countdowns', 'todos'];
     _rightSections = ['courses', 'timeline', 'pomodoro', 'screenTime', 'math'];
 
     // 忽略之前的可见性设置，全部强制显示
@@ -2809,9 +2800,6 @@ class _HomeDashboardState extends State<HomeDashboard>
                     },
                   ),
 
-                // 🚀 统一处理本地与远程专注、课程、待办 Banner
-                if (_selectedTabIndex != 1 || isTablet)
-                  _buildUniversalBanner(isLight),
 
                 // 待确认待办入口卡片（从图片识别来）
                 if (_selectedTabIndex != 1 || isTablet)
@@ -3019,6 +3007,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       );
 
                       Map<String, Widget> sectionsMap = {
+                        'banners': _buildUniversalBanner(isLight),
                         'courses': courseSection,
                         'countdowns': countdownSection,
                         'todos': todoSection,
@@ -3033,7 +3022,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                           (_dashboardCourseData['courses'] as List).isEmpty);
 
                       if (!isTablet) {
-                        List<String> tab1Order = ['countdowns', 'courses', 'todos'];
+                        List<String> tab1Order = ['banners', 'countdowns', 'courses', 'todos'];
                         if (hasNoCourse) {
                           if (_noCourseBehavior == 'hide') {
                             tab1Order.remove('courses');
