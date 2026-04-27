@@ -146,6 +146,11 @@ class _HomeDashboardState extends State<HomeDashboard>
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
   bool _isDataLoading = false; // 🚀 加载锁，防止并发触发导致的数据库竞争
+  bool _pendingReloadRequested = false;
+  int _loadGeneration = 0;
+
+  static const MethodChannel _notificationChannel =
+      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   int _todoUpdateSignal = 0; // 🚀 协同更新信号
   final Set<String> _updatedByOthersTodoIds = <String>{};
   int _remoteTodoHighlightSignal = 0;
@@ -193,7 +198,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _todosNotifier = ValueNotifier<List<TodoItem>>(_todos);
     _groupsNotifier = ValueNotifier<List<TodoGroup>>(_todoGroups);
     _courseDataNotifier = ValueNotifier<Map<String, dynamic>>(_dashboardCourseData);
-    _countdownsNotifier = ValueNotifier<List<CountdownItem>>([]);
+    _countdownsNotifier = ValueNotifier<List<CountdownItem>>(_countdowns);
     _mathStatsNotifier = ValueNotifier<Map<String, dynamic>>(_mathStats);
     
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
@@ -201,9 +206,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // 🚀 桌面端拦截：确保只在移动设备监听通道
     if (Platform.isAndroid || Platform.isIOS) {
-      const platform = MethodChannel(
-          'com.math_quiz.junpgle.com.math_quiz_app/notifications');
-      platform.setMethodCallHandler((call) async {
+      _notificationChannel.setMethodCallHandler((call) async {
         switch (call.method) {
           case "markCurrentTodoDone":
             debugPrint(
@@ -1978,15 +1981,24 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   // 🚀 核心重构：渲染主页时，绝对不能将 isDeleted 的数据加载到视图层！
   Future<void> _loadAllData({bool deferred = false}) async {
-    if (_isGlobalLoadingNotifier.value) return;
+    if (_isGlobalLoadingNotifier.value) {
+      _pendingReloadRequested = true;
+      return;
+    }
 
     if (deferred) {
       // 🚀 核心优化：延迟 400ms 刷新，确保返回动画（Pop）执行完毕后再处理数据
       // 避免 CPU 密集型任务与动画冲突导致卡顿
       await Future.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
+      if (_isGlobalLoadingNotifier.value) {
+        _pendingReloadRequested = true;
+        return;
+      }
     }
-    
+
     _isGlobalLoadingNotifier.value = true;
+    final int generation = ++_loadGeneration;
 
     try {
       final startTime = DateTime.now();
@@ -2076,6 +2088,10 @@ class _HomeDashboardState extends State<HomeDashboard>
     } finally {
       if (mounted) {
         _isGlobalLoadingNotifier.value = false;
+        if (_pendingReloadRequested) {
+          _pendingReloadRequested = false;
+          unawaited(_loadAllData());
+        }
       }
     }
   }
@@ -2101,9 +2117,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (activeTodos.isEmpty || activeTodos.every((t) => t.isDone)) {
       // 🚀 桌面端拦截
       if (Platform.isAndroid || Platform.isIOS) {
-        const MethodChannel(
-                'com.math_quiz.junpgle.com.math_quiz_app/notifications')
-            .invokeMethod('cancelNotification');
+        _notificationChannel.invokeMethod('cancelNotification');
       }
     } else {
       NotificationService.updateTodoNotification(activeTodos);
