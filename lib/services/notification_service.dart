@@ -679,4 +679,51 @@ class NotificationService {
       await _channel.invokeMethod('cancelTodoRecognizeNotification');
     } catch (e) {}
   }
+
+  /// 🚀 显示版本更新实时通知
+  static Future<void> showUpdateNotification({
+    required String versionName,
+    required String updateTitle,
+    required String updateContent,
+  }) async {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    await ensureInitialized();
+
+    if (Platform.isWindows) {
+      await _plugin.show(
+        id: 12354, // 与 Android 的 UPDATE_NOTIFICATION_ID 保持一致
+        title: '🚀 $updateTitle',
+        body: '$versionName: $updateContent',
+        notificationDetails:
+            const NotificationDetails(windows: WindowsNotificationDetails()),
+      );
+      return;
+    }
+
+    try {
+      await _channel.invokeMethod('showOngoingNotification', {
+        'type': 'update_found',
+        'versionName': versionName,
+        'title': updateTitle,
+        'content': updateContent,
+      });
+    } catch (e) {
+      debugPrint("发送版本更新通知失败: $e");
+    }
+  }
+
+  /// 取消版本更新通知
+  static Future<void> cancelUpdateNotification() async {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+
+    if (Platform.isWindows) {
+      await ensureInitialized();
+      await _plugin.cancel(id: 12354);
+      return;
+    }
+
+    try {
+      await _channel.invokeMethod('cancelNotification'); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
+    } catch (e) {}
+  }
 }

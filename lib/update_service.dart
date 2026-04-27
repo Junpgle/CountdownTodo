@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:CountDownTodo/services/band_sync_service.dart';
+import 'package:CountDownTodo/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -757,6 +758,15 @@ class UpdateService {
       return;
     }
 
+    // 🚀 只要检测到更新，就推送系统通知
+    if (hasUpdate) {
+      NotificationService.showUpdateNotification(
+        versionName: manifest.versionName,
+        updateTitle: "🚀 官方通道：发现新版本",
+        updateContent: manifest.updateInfo.description,
+      );
+    }
+
     if (context.mounted) {
       if (hasNotice) {
         showAnnouncementDialog(context, announcementsToShow, () {
@@ -779,18 +789,23 @@ class UpdateService {
     required String releaseNotes,
     required String downloadUrl,
   }) async {
-    if (_isDialogShowing) return;
-
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
     String localVersion = packageInfo.version;
 
-    // 核心版本对比逻辑（提取出来复用）
+    // 核心版本对比逻辑
     bool hasUpdate = _compareVersions(latestVersion, localVersion);
-
     if (!hasUpdate) return;
 
+    // 🚀 即使弹窗已显示，也要更新通知栏，以显示“紧急直连”状态
+    NotificationService.showUpdateNotification(
+      versionName: latestVersion,
+      updateTitle: "🚀 紧急直连：发现新版本",
+      updateContent: releaseNotes,
+    );
+
+    if (_isDialogShowing) return;
+
     // 🚀 偷梁换柱：用 WebSocket 发来的直链数据，动态组装一个虚拟的 AppManifest
-    // 这样就能完美欺骗 showUpdateDialog，让它以为这是从 GitHub 抓下来的
     AppManifest mockManifest = AppManifest(
       versionCode: 0,
       versionName: latestVersion,
@@ -806,7 +821,6 @@ class UpdateService {
     );
 
     if (context.mounted) {
-      // 完美复用你原有的精美更新弹窗和底层下载框架！
       showUpdateDialog(context, mockManifest, localVersion,
           hasUpdate: true, hasNotice: false);
     }
@@ -868,6 +882,9 @@ class UpdateService {
       {bool hasUpdate = true, bool hasNotice = false}) async {
     if (_isDialogShowing) return;
     _isDialogShowing = true;
+
+    // 🚀 只要弹窗显示了，就说明用户已经进入更新流程，立即取消通知栏提醒
+    NotificationService.cancelUpdateNotification();
 
     if (!_isDownloading && !_isDownloaded) {
       String? existingPath =
@@ -966,6 +983,7 @@ class UpdateService {
                                       onPressed: () {
                                         if (_localPackagePath != null) {
                                           installPackage(_localPackagePath!);
+                                          NotificationService.cancelUpdateNotification();
                                         }
                                       },
                                     ),

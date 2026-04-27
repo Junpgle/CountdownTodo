@@ -46,12 +46,17 @@ void registerCloseDialogCallback(CloseDialogCallback callback) {
 }
 
 Future<bool> showCloseDialog() async {
+  debugPrint('[Main] showCloseDialog requested');
   if (_onShowCloseDialog != null) {
-    final result = await _onShowCloseDialog!();
-    debugPrint('[Main] Dialog result: $result');
-    return result;
+    try {
+      final result = await _onShowCloseDialog!();
+      debugPrint('[Main] Dialog result: $result');
+      return result;
+    } catch (e) {
+      debugPrint('[Main] Error in close dialog callback: $e');
+    }
   }
-  debugPrint('[Main] No callback registered, allowing close');
+  debugPrint('[Main] No callback registered or error occurred, allowing close by default');
   return true;
 }
 
@@ -115,7 +120,7 @@ Future<void> main(List<String> args) async {
   HttpOverrides.global = MyHttpOverrides();
 
   // 初始化 WindowService（监听窗口关闭事件）
-  WindowService.init();
+  await WindowService.init();
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load
   unawaited(StorageService.prefs);
@@ -460,6 +465,11 @@ class _MyAppState extends State<MyApp> {
   static List<Map<String, dynamic>> _transformTodosForBand(List<TodoItem> todos) {
     return todos.where((t) => !t.isDeleted && !t.isDone).map((t) {
       final j = t.toJson();
+      j.remove('image_path');
+      j.remove('imagePath');
+      j.remove('original_text');
+      j.remove('originalText');
+      j.remove('conflict_data');
       j['is_completed'] = 0;
       j['content'] = t.title;
       if (t.dueDate != null) {

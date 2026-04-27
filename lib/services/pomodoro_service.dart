@@ -679,12 +679,13 @@ class PomodoroService {
   static Future<void> _saveRecords(List<PomodoroRecord> records) async {
     // 🚀 双轨存储：优先 SQL
     await _saveRecordsToSql(records);
-    
-    // 保持 Prefs 缓存作为备份
+
+    // SQL 已是主存储。全量记录 JSON 写入 SharedPreferences 会通过
+    // Android MethodChannel 传输超大字符串，在低内存设备上触发 OOM。
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyRecords);
-    await prefs.setString(
-        scopedKey, jsonEncode(records.map((r) => r.toJson()).toList()));
+    await prefs.remove(scopedKey);
+    await prefs.remove(_keyRecords);
   }
 
   /// 添加一条专注记录，本地保存后立即尝试上传云端
@@ -724,18 +725,12 @@ class PomodoroService {
     
     await batch.commit(noResult: true);
 
-    // 2. 补齐备份缓存
-    final all = await _getAllRecordsRaw();
-    final idx = all.indexWhere((r) => r.uuid == record.uuid);
-    if (idx >= 0) {
-      all[idx] = record;
-    } else {
-      all.insert(0, record);
-    }
-    
+    // 2. 清理旧 Prefs 备份，避免 shared_preferences 通过 MethodChannel
+    // 写入全量记录 JSON 导致 Android OOM。
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyRecords);
-    await prefs.setString(scopedKey, jsonEncode(all.map((r) => r.toJson()).toList()));
+    await prefs.remove(scopedKey);
+    await prefs.remove(_keyRecords);
 
     debugPrint('[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
 
@@ -847,7 +842,13 @@ class PomodoroService {
       final sqlRecords = sqlRows.map((m) => PomodoroRecord.fromJson(m)).toList();
 
       final scopedKey = await _getScopedKey(_keyRecords);
-      final legacyRaw = prefs.getString(scopedKey) ?? prefs.getString(_keyRecords);
+      String? legacyRaw;
+      if (sqlRows.isEmpty) {
+        legacyRaw = prefs.getString(scopedKey) ?? prefs.getString(_keyRecords);
+      } else {
+        await prefs.remove(scopedKey);
+        await prefs.remove(_keyRecords);
+      }
       final legacyRecords = legacyRaw == null
           ? <PomodoroRecord>[]
           : (jsonDecode(legacyRaw) as List)
@@ -966,6 +967,7 @@ class PomodoroService {
     final List<Map<String, dynamic>> maps = await db.query('pomodoro_records', orderBy: 'start_time DESC');
     
     if (maps.isNotEmpty) {
+      unawaited(_clearRecordPrefsMirror());
       return maps.map((m) => PomodoroRecord.fromJson(m)).toList();
     }
 
@@ -989,6 +991,8 @@ class PomodoroService {
           final legacyRecords = decoded.map((e) => PomodoroRecord.fromJson(e)).toList();
           if (legacyRecords.isNotEmpty) {
             await _saveRecordsToSql(legacyRecords);
+            await prefs.remove(scopedKey);
+            await prefs.remove(_keyRecords);
             debugPrint("✅ [Pomodoro] 成功迁移 ${legacyRecords.length} 条记录至 SQL");
           }
           await prefs.setBool(migrationKey, true);
@@ -1000,6 +1004,13 @@ class PomodoroService {
     }
 
     return [];
+  }
+
+  static Future<void> _clearRecordPrefsMirror() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_keyRecords);
+    await prefs.remove(scopedKey);
+    await prefs.remove(_keyRecords);
   }
 
   /// 今日专注记录（本地，不含已删除）

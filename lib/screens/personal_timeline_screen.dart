@@ -317,70 +317,176 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
       );
     }
 
+    final processed = _processEventsForHierarchy(events);
+
     return RefreshIndicator(
       onRefresh: _loadAllData,
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        itemCount: events.length,
+        itemCount: processed.length,
         itemBuilder: (context, index) {
-          return _buildEnhancedTimelineItem(events[index], index == events.length - 1);
+          return _buildHierarchicalItem(processed[index], index == processed.length - 1);
         },
       ),
     );
   }
 
-  Widget _buildEnhancedTimelineItem(TimelineEvent event, bool isLast) {
-    final timeStr = DateFormat('HH:mm').format(event.timestamp);
-    final color = _getEventColor(event.type);
-    final icon = _getEventIcon(event.type);
+  List<_ProcessedEvent> _processEventsForHierarchy(List<TimelineEvent> events) {
+    if (events.isEmpty) return [];
 
+    // 1. 恢复倒序排列（最新优先）
+    final sorted = List<TimelineEvent>.from(events)..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    
+    // 2. 预扫描：在倒序序列中，End 事件会先出现，找到有匹配 Start 的 End
+    final Map<String, bool> hasStart = {};
+    final Map<String, int> endSeen = {};
+    for (int i = 0; i < sorted.length; i++) {
+       final eid = _getEntityId(sorted[i].id);
+       if (_isEndEvent(sorted[i].type)) {
+         endSeen[eid] = i;
+       } else if (_isStartEvent(sorted[i].type)) {
+         if (endSeen.containsKey(eid)) hasStart[eid] = true;
+       }
+    }
+
+    final List<_ProcessedEvent> result = [];
+    final List<String> stack = [];
+    
+    for (int i = 0; i < sorted.length; i++) {
+      final e = sorted[i];
+      final eid = _getEntityId(e.id);
+      
+      // 在倒序视图中：
+      // End 事件是“区间的顶部”（isIntervalTop）
+      // Start 事件是“区间的底部”（isIntervalBottom）
+      final bool isIntervalTop = _isEndEvent(e.type) && (hasStart[eid] ?? false);
+      final bool isIntervalBottom = _isStartEvent(e.type) && stack.contains(eid);
+      
+      if (isIntervalBottom) {
+        // 遇到 Start（底部），从栈中移除，线只到点为止
+        final level = stack.indexOf(eid);
+        final active = List.generate(stack.length, (idx) => idx).toSet();
+        active.remove(level); 
+        
+        result.add(_ProcessedEvent(e, level, active, false, true));
+        stack.remove(eid);
+      } else if (isIntervalTop) {
+        // 遇到 End（顶部），入栈，线从此开始向下
+        final level = stack.length;
+        final active = List.generate(stack.length, (idx) => idx).toSet();
+        result.add(_ProcessedEvent(e, level, active, true, false));
+        stack.add(eid);
+      } else {
+        // 普通点事件
+        final level = stack.length;
+        final active = List.generate(stack.length, (idx) => idx).toSet();
+        result.add(_ProcessedEvent(e, level, active, false, false));
+      }
+    }
+    return result;
+  }
+
+  String _getEntityId(String eventId) {
+    final parts = eventId.split('_');
+    if (parts.length >= 3) return parts[2];
+    return eventId;
+  }
+
+  bool _isStartEvent(TimelineEventType type) {
+    return type == TimelineEventType.pomodoroStart ||
+           type == TimelineEventType.courseStart ||
+           type == TimelineEventType.todoCreated ||
+           type == TimelineEventType.countdownCreated;
+  }
+
+  bool _isEndEvent(TimelineEventType type) {
+    return type == TimelineEventType.pomodoroEnd ||
+           type == TimelineEventType.courseEnd ||
+           type == TimelineEventType.todoCompleted ||
+           type == TimelineEventType.countdownCompleted;
+  }
+
+  Widget _buildHierarchicalItem(_ProcessedEvent pe, bool isLast) {
+    final event = pe.event;
+    final timeStr = DateFormat('HH:mm').format(event.timestamp);
+    final color = _getEventColor(pe.event.type);
+    final icon = _getEventIcon(pe.event.type);
+    
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            children: [
-              Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
-                  boxShadow: [
-                    BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 8, spreadRadius: 1)
-                  ],
-                ),
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [color.withValues(alpha: 0.5), Colors.grey.withValues(alpha: 0.1)],
+          // 渲染层级线
+          ...List.generate(pe.level + 1, (i) {
+            final bool isCurrentLevel = i == pe.level;
+            final bool hasActiveLine = pe.activeLevels.contains(i);
+            
+            return SizedBox(
+              width: 24,
+              child: Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  // 垂直背景线
+                  if (hasActiveLine)
+                    Container(
+                      width: 2,
+                      color: Colors.grey.withValues(alpha: 0.15),
+                    ),
+                  
+                  // 当前层级的特殊处理
+                  if (isCurrentLevel) ...[
+                    // 如果是结束点，线只到一半
+                    if (pe.isEnd)
+                      Positioned(
+                        top: 0,
+                        bottom: 16, // 到达点的位置
+                        child: Container(width: 2, color: Colors.grey.withValues(alpha: 0.15)),
+                      ),
+                    // 如果是开始点，线从点开始向下
+                    if (pe.isStart)
+                      Positioned(
+                        top: 16,
+                        bottom: 0,
+                        child: Container(width: 2, color: color.withValues(alpha: 0.3)),
+                      ),
+                    
+                    // 节点圆点
+                    Positioned(
+                      top: 12,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4)
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(width: 16),
+                  ],
+                ],
+              ),
+            );
+          }),
+          
+          const SizedBox(width: 8),
+          
+          // 内容卡片
           Expanded(
             child: Container(
-              margin: const EdgeInsets.only(bottom: 24),
-              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   )
                 ],
                 border: Border.all(color: Colors.grey.withValues(alpha: 0.05)),
@@ -393,56 +499,43 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
                       children: [
                         Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: color.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                timeStr,
-                                style: TextStyle(
-                                  color: color,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  fontFamily: 'monospace',
-                                ),
+                            Text(
+                              timeStr,
+                              style: TextStyle(
+                                color: color.withValues(alpha: 0.6),
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'monospace',
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            Text(
-                              event.title,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                event.title,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
                         ),
                         if (event.subtitle != null)
                           Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: const EdgeInsets.only(top: 4),
                             child: Text(
                               event.subtitle!,
                               style: TextStyle(
-                                fontSize: 13,
+                                fontSize: 12,
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                height: 1.4,
                               ),
                             ),
                           ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, size: 20, color: color),
-                  ),
+                  Icon(icon, size: 16, color: color.withValues(alpha: 0.5)),
                 ],
               ),
             ),
@@ -483,4 +576,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
       case TimelineEventType.searchQuery: return Icons.search_rounded;
     }
   }
+}
+
+class _ProcessedEvent {
+  final TimelineEvent event;
+  final int level;
+  final Set<int> activeLevels;
+  final bool isStart;
+  final bool isEnd;
+
+  _ProcessedEvent(this.event, this.level, this.activeLevels, this.isStart, this.isEnd);
 }

@@ -154,26 +154,30 @@ class StorageService {
     String? teamUuid,
   }) async {
     final db = await DatabaseHelper.instance.database;
-    await db.insert('ignored_remote_items', {
-      'uuid': uuid,
-      'team_uuid': teamUuid,
-      'table_name': table,
-      'ignored_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+        'ignored_remote_items',
+        {
+          'uuid': uuid,
+          'team_uuid': teamUuid,
+          'table_name': table,
+          'ignored_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
     debugPrint("🚫 [忽略项] 已记录 $table.$uuid 至忽略表");
   }
 
   /// 移除忽略记录
   static Future<void> unignoreRemoteItem(String uuid) async {
     final db = await DatabaseHelper.instance.database;
-    await db.delete('ignored_remote_items', where: 'uuid = ?', whereArgs: [uuid]);
+    await db
+        .delete('ignored_remote_items', where: 'uuid = ?', whereArgs: [uuid]);
   }
 
   /// 检查项是否被忽略
   static Future<bool> isItemIgnored(String uuid) async {
     final db = await DatabaseHelper.instance.database;
-    final results = await db.query('ignored_remote_items',
-        where: 'uuid = ?', whereArgs: [uuid]);
+    final results = await db
+        .query('ignored_remote_items', where: 'uuid = ?', whereArgs: [uuid]);
     return results.isNotEmpty;
   }
 
@@ -520,11 +524,9 @@ class StorageService {
 
     final dedupeList = dedupeMap.values.toList();
 
-    // 🚀 异步保存到 Prefs
-    unawaited(SharedPreferences.getInstance().then((prefs) async {
-      final jsonList = await compute(_serializeCountdowns, dedupeList);
-      await prefs.setStringList("${KEY_COUNTDOWNS}_$username", jsonList);
-    }));
+    // SQL 已是主存储，清理旧 Prefs 镜像，避免全量倒计时 JSON
+    // 通过 shared_preferences MethodChannel 触发 Android OOM。
+    unawaited(_clearCountdownPrefsMirror(username));
 
     final dbHelper = DatabaseHelper.instance;
     final db = await dbHelper.database;
@@ -602,8 +604,11 @@ class StorageService {
     if (sync) Future.microtask(() => syncData(username));
   }
 
-  static List<String> _serializeCountdowns(List<CountdownItem> items) =>
-      items.map((e) => jsonEncode(e.toJson())).toList();
+  static Future<void> _clearCountdownPrefsMirror(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove("${KEY_COUNTDOWNS}_$username");
+    await prefs.remove(KEY_COUNTDOWNS);
+  }
 
   static Future<List<CountdownItem>> getCountdowns(String username,
       {bool includeDeleted = false}) async {
@@ -1182,8 +1187,15 @@ class StorageService {
   static Future<void> _syncTodosToBand(List<TodoItem> items) async {
     if (!BandSyncService.isInitialized || !BandSyncService.isConnected) return;
     try {
-      final activeTodos =
-          items.where((t) => !t.isDeleted).map((t) => t.toJson()).toList();
+      final activeTodos = items.where((t) => !t.isDeleted).map((t) {
+        final data = t.toJson();
+        data.remove('image_path');
+        data.remove('imagePath');
+        data.remove('original_text');
+        data.remove('originalText');
+        data.remove('conflict_data');
+        return data;
+      }).toList();
       await BandSyncService.syncTodos(activeTodos);
     } catch (_) {}
   }
@@ -1404,7 +1416,7 @@ class StorageService {
           // 🚀 迁移成功后，必须物理清除 SharedPreferences 中的巨大 JSON 块
           // 否则 Android 的原生 SharedPreferences 会一直将此 170MB+ 的数据留在内存中导致 OOM
           await prefs.remove("${KEY_TODOS}_$username");
-          await prefs.remove(KEY_TODOS); 
+          await prefs.remove(KEY_TODOS);
           debugPrint("✅ 老数据增量迁移完成并已物理清理。");
         }
         await prefs.setBool(migrationKey, true);
@@ -1564,11 +1576,11 @@ class StorageService {
                   ? int.tryParse(m['reminder_minutes'].toString())
                   : null,
               isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
-              hasConflict:
-                  m['has_conflict'] == 1 || m['has_conflict'] == true,
+              hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
               serverVersionData: m['conflict_data'] != null
                   ? (m['conflict_data'] is String
-                      ? Map<String, dynamic>.from(jsonDecode(m['conflict_data']))
+                      ? Map<String, dynamic>.from(
+                          jsonDecode(m['conflict_data']))
                       : Map<String, dynamic>.from(m['conflict_data']))
                   : null,
             ))
@@ -1758,7 +1770,6 @@ class StorageService {
   // ==========================================
   static Future<void> saveTodoGroups(String username, List<TodoGroup> items,
       {bool sync = true, bool isSyncSource = false}) async {
-    final prefs = await SharedPreferences.getInstance();
     final Map<String, TodoGroup> dedupeMap = {};
 
     for (var item in items) {
@@ -1806,10 +1817,14 @@ class StorageService {
     await batch.commit(noResult: true);
     _inflightTodoRequests.clear();
 
-    List<String> jsonList =
-        dedupeMap.values.map((e) => jsonEncode(e.toJson())).toList();
-    await prefs.setStringList("${KEY_TODO_GROUPS}_$username", jsonList);
+    unawaited(_clearTodoGroupPrefsMirror(username));
     if (sync) Future.microtask(() => syncData(username));
+  }
+
+  static Future<void> _clearTodoGroupPrefsMirror(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove("${KEY_TODO_GROUPS}_$username");
+    await prefs.remove(KEY_TODO_GROUPS);
   }
 
   static Future<List<TodoGroup>> getTodoGroups(String username,
@@ -1948,7 +1963,8 @@ class StorageService {
     if (sync) Future.microtask(() => syncData(username));
   }
 
-  static Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) async {
+  static Future<List<TimeLogItem>> getTimeLogs(String username,
+      {int? limit}) async {
     final prefs = await SharedPreferences.getInstance();
     final dbHelper = DatabaseHelper.instance;
 
@@ -1961,9 +1977,9 @@ class StorageService {
         // 🚀 核心补丁：清理残留
         final String cleanupKey = "cleanup_done_timelogs_${username}_repair";
         if (!(prefs.getBool(cleanupKey) ?? false)) {
-            await prefs.remove("${KEY_TIME_LOGS}_$username");
-            await prefs.remove(KEY_TIME_LOGS);
-            await prefs.setBool(cleanupKey, true);
+          await prefs.remove("${KEY_TIME_LOGS}_$username");
+          await prefs.remove(KEY_TIME_LOGS);
+          await prefs.setBool(cleanupKey, true);
         }
         List<String> legacyJsonList =
             prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
@@ -1997,20 +2013,24 @@ class StorageService {
         limit: limit,
       );
 
-      return maps.map((m) => TimeLogItem(
-        id: m['uuid'] ?? m['id']?.toString(),
-        title: m['task_name'] ?? m['title'] ?? '',
-        startTime: m['start_time'] ?? 0,
-        endTime: m['end_time'] ?? 0,
-        remark: m['notes'] ?? m['remark'],
-        version: m['version'] ?? 1,
-        updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-        isDeleted: (m['is_deleted'] == 1),
-      )).toList();
+      return maps
+          .map((m) => TimeLogItem(
+                id: m['uuid'] ?? m['id']?.toString(),
+                title: m['task_name'] ?? m['title'] ?? '',
+                startTime: m['start_time'] ?? 0,
+                endTime: m['end_time'] ?? 0,
+                remark: m['notes'] ?? m['remark'],
+                version: m['version'] ?? 1,
+                updatedAt:
+                    m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                isDeleted: (m['is_deleted'] == 1),
+              ))
+          .toList();
     } catch (e) {
       debugPrint("⚠️ TimeLogs SQL 异常: $e");
       // 逃生通道
-      List<String> list = prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
+      List<String> list =
+          prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
       return list.map((e) => TimeLogItem.fromJson(jsonDecode(e))).toList();
     }
   }
@@ -2099,9 +2119,10 @@ class StorageService {
     try {
       await saveScreenTimeHistoryToSql(today, stats);
       // 如果写入 SQL 成功，可以尝试清理一下 Prefs 里的旧数据（如果它太大了）
-      if (histStr != null && histStr.length > 1024 * 500) { // > 500KB
-         await prefs.remove(historyKey);
-         debugPrint("🗑️ 已清理过大的 ScreenTime Prefs 历史记录");
+      if (histStr != null && histStr.length > 1024 * 500) {
+        // > 500KB
+        await prefs.remove(historyKey);
+        debugPrint("🗑️ 已清理过大的 ScreenTime Prefs 历史记录");
       }
     } catch (e) {
       await prefs.setString(historyKey, jsonEncode(history));
@@ -2117,20 +2138,22 @@ class StorageService {
   }
 
   /// 🚀 将屏幕时间持久化到 SQLite
-  static Future<void> saveScreenTimeHistoryToSql(String date, List<dynamic> stats) async {
+  static Future<void> saveScreenTimeHistoryToSql(
+      String date, List<dynamic> stats) async {
     final dbHelper = DatabaseHelper.instance;
     final db = await dbHelper.database;
     final batch = db.batch();
-    
+
     // 覆盖写：先删除该日期的旧记录
     batch.delete('screen_time', where: 'record_date = ?', whereArgs: [date]);
-    
+
     for (var stat in stats) {
       batch.insert('screen_time', {
         'record_date': date,
         'package_name': stat['package_name']?.toString() ?? '',
         'app_name': stat['app_name']?.toString() ?? '',
-        'duration': (stat['duration'] is num) ? (stat['duration'] as num).toInt() : 0,
+        'duration':
+            (stat['duration'] is num) ? (stat['duration'] as num).toInt() : 0,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
       });
     }
@@ -2183,15 +2206,16 @@ class StorageService {
       // 1. 迁移检查 (一次性从 Prefs 搬运到 SQL)
       final String migrationKey = "migrated_screentime_$username";
       if (!(prefs.getBool(migrationKey) ?? false)) {
-        String? jsonStr =
-            prefs.getString(historyKey) ?? prefs.getString(KEY_SCREEN_TIME_HISTORY);
+        String? jsonStr = prefs.getString(historyKey) ??
+            prefs.getString(KEY_SCREEN_TIME_HISTORY);
         if (jsonStr != null && jsonStr.isNotEmpty) {
           debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
           try {
             Map<String, dynamic> history = jsonDecode(jsonStr);
             for (var entry in history.entries) {
               if (entry.value is List) {
-                await saveScreenTimeHistoryToSql(entry.key, entry.value as List);
+                await saveScreenTimeHistoryToSql(
+                    entry.key, entry.value as List);
               }
             }
             await prefs.remove(historyKey);
@@ -2225,12 +2249,13 @@ class StorageService {
       return result;
     } catch (e) {
       debugPrint("⚠️ ScreenTime History SQL 异常: $e");
-      String? jsonStr =
-          prefs.getString(historyKey) ?? prefs.getString(KEY_SCREEN_TIME_HISTORY);
+      String? jsonStr = prefs.getString(historyKey) ??
+          prefs.getString(KEY_SCREEN_TIME_HISTORY);
       if (jsonStr != null && jsonStr.isNotEmpty) {
         try {
           Map<String, dynamic> raw = jsonDecode(jsonStr);
-          return raw.map((key, value) => MapEntry(key, List<dynamic>.from(value)));
+          return raw
+              .map((key, value) => MapEntry(key, List<dynamic>.from(value)));
         } catch (_) {}
       }
     }
@@ -2351,10 +2376,10 @@ class StorageService {
       List<CountdownItem> allLocalCountdowns =
           await getCountdowns(username, includeDeleted: true);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
-      
+
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
-      final List<Map<String, dynamic>> pendingOps =
-          await db.query('op_logs', where: 'is_synced = 0', orderBy: 'timestamp ASC');
+      final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
+          where: 'is_synced = 0', orderBy: 'timestamp ASC');
 
       final Map<String, Map<String, dynamic>> dedupTodos = {};
       final Map<String, Map<String, dynamic>> dedupGroups = {};
@@ -2364,8 +2389,8 @@ class StorageService {
         final table = op['target_table'];
         final uuid = op['target_uuid']?.toString();
         final dataJson = op['data_json'];
-        
-        if (dataJson == null || uuid == null) continue; 
+
+        if (dataJson == null || uuid == null) continue;
         final data = jsonDecode(dataJson.toString());
 
         if (table == 'todos') {
@@ -2723,9 +2748,10 @@ class StorageService {
           // 顺序：拉取标签 -> 上传标签 -> 上传记录 -> 拉取记录
           await PomodoroService.syncTagsFromCloud();
           await PomodoroService.syncTagsToCloud();
-          await PomodoroService.syncRecordsToCloud(forceFullSync: forceFullSync);
-          bool pomodoroChanged =
-          await PomodoroService.syncRecordsFromCloud(forceFullSync: forceFullSync);
+          await PomodoroService.syncRecordsToCloud(
+              forceFullSync: forceFullSync);
+          bool pomodoroChanged = await PomodoroService.syncRecordsFromCloud(
+              forceFullSync: forceFullSync);
           if (pomodoroChanged) hasChanges = true;
         } catch (pe) {
           debugPrint("Pomodoro sync error: $pe");
@@ -2797,7 +2823,10 @@ class StorageService {
         } else {
           final st = DateTime.fromMillisecondsSinceEpoch(startMs);
           final et = DateTime.fromMillisecondsSinceEpoch(endMs);
-          if (st.hour == 0 && st.minute == 0 && et.hour == 23 && et.minute == 59) {
+          if (st.hour == 0 &&
+              st.minute == 0 &&
+              et.hour == 23 &&
+              et.minute == 59) {
             isAllDayRange = true;
           }
         }
@@ -2864,8 +2893,8 @@ class StorageService {
         if (!_hasVersionConflict(existing)) {
           final bool isTeamTodo =
               todo.teamUuid != null && todo.teamUuid!.isNotEmpty;
-          final relationType =
-              _classifyScheduleRelation(todo, peers.cast<Map<String, dynamic>>());
+          final relationType = _classifyScheduleRelation(
+              todo, peers.cast<Map<String, dynamic>>());
           final data = {
             'uuid': todo.id,
             'id': todo.id,
@@ -3574,13 +3603,21 @@ class StorageService {
     required String table,
     required Map<String, dynamic> resolvedData,
     bool createOplog = false,
+    bool touchUpdatedAt = true,
   }) async {
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
 
     resolvedData['has_conflict'] = 0;
+    resolvedData.remove('conflict_data');
+    resolvedData.remove('serverVersionData');
     final now = DateTime.now().millisecondsSinceEpoch;
-    resolvedData['updated_at'] = now;
+    final resolvedUpdatedAt = touchUpdatedAt
+        ? now
+        : (resolvedData['updated_at'] ??
+            resolvedData['updatedAt'] ??
+            DateTime.now().millisecondsSinceEpoch);
+    resolvedData['updated_at'] = resolvedUpdatedAt;
 
     switch (table) {
       case 'todos':
@@ -3589,7 +3626,10 @@ class StorageService {
           {
             'has_conflict': 0,
             'version': resolvedData['version'],
-            'updated_at': now,
+            'updated_at': resolvedUpdatedAt,
+            'created_at': resolvedData['created_at'] ??
+                resolvedData['createdAt'] ??
+                resolvedUpdatedAt,
             'content': resolvedData['content'] ?? resolvedData['title'] ?? '',
             'is_deleted': resolvedData['is_deleted'] == 1 ||
                     resolvedData['is_deleted'] == true
@@ -3601,12 +3641,15 @@ class StorageService {
                 : 0,
             'due_date':
                 resolvedData['due_date'] ?? resolvedData['dueDate'] ?? 0,
-            'remark': resolvedData['remark'] ?? null,
-            'group_id':
-                resolvedData['group_id'] ?? resolvedData['groupId'] ?? null,
-            'team_uuid':
-                resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+            'remark': resolvedData['remark'],
+            'group_id': resolvedData['group_id'] ?? resolvedData['groupId'],
+            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'],
             'recurrence': resolvedData['recurrence'] ?? 0,
+            'custom_interval_days': resolvedData['custom_interval_days'] ??
+                resolvedData['customIntervalDays'] ??
+                0,
+            'recurrence_end_date': resolvedData['recurrence_end_date'] ??
+                resolvedData['recurrenceEndDate'],
             'is_all_day': resolvedData['is_all_day'] == 1 ||
                     resolvedData['is_all_day'] == true ||
                     resolvedData['isAllDay'] == true
@@ -3636,7 +3679,7 @@ class StorageService {
           {
             'has_conflict': 0,
             'version': resolvedData['version'],
-            'updated_at': now,
+            'updated_at': resolvedUpdatedAt,
             'title': resolvedData['title'] ?? '',
             'is_deleted': resolvedData['is_deleted'] == 1 ||
                     resolvedData['is_deleted'] == true
@@ -3647,8 +3690,7 @@ class StorageService {
                 ? 1
                 : 0,
             'target_time': targetTime is int ? targetTime : 0,
-            'team_uuid':
-                resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'],
           },
           where: 'uuid = ?',
           whereArgs: [uuid],
@@ -3661,7 +3703,7 @@ class StorageService {
           {
             'has_conflict': 0,
             'version': resolvedData['version'],
-            'updated_at': now,
+            'updated_at': resolvedUpdatedAt,
             'name': resolvedData['name'] ?? '',
             'is_deleted': resolvedData['is_deleted'] == 1 ||
                     resolvedData['is_deleted'] == true
@@ -3671,8 +3713,7 @@ class StorageService {
                     resolvedData['is_expanded'] == true
                 ? 1
                 : 0,
-            'team_uuid':
-                resolvedData['team_uuid'] ?? resolvedData['teamUuid'] ?? null,
+            'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'],
           },
           where: 'uuid = ?',
           whereArgs: [uuid],

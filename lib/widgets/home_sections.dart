@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'dart:math' as math;
 import 'package:intl/intl.dart' hide TextDirection;
 
@@ -599,29 +600,48 @@ class EmptyState extends StatelessWidget {
         : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3);
     Color textColor = isLight ? Colors.white70 : Colors.grey.shade600;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isLight
-              ? Colors.white30
-              : Theme.of(context).dividerColor.withValues(alpha: 0.5),
-          style: BorderStyle.solid,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bgColor.withValues(alpha: isLight ? 0.15 : 0.3),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isLight ? 0.1 : 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              )
+            ],
+            border: Border.all(
+              color: isLight
+                  ? Colors.white.withValues(alpha: 0.2)
+                  : Theme.of(context).dividerColor.withValues(alpha: 0.5),
+              style: BorderStyle.solid,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.inbox_rounded,
+                  size: 36, color: textColor.withValues(alpha: 0.5)),
+              const SizedBox(height: 12),
+              Text(
+                text,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.inbox_rounded,
-              size: 36, color: textColor.withValues(alpha: 0.5)),
-          const SizedBox(height: 12),
-          Text(text,
-              style: TextStyle(
-                  color: textColor, fontWeight: FontWeight.w500, fontSize: 14)),
-        ],
       ),
     );
   }

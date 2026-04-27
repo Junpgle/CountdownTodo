@@ -312,6 +312,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
         controller: _listScrollController,
         clipBehavior: Clip.none,
         scrollDirection: Axis.horizontal,
+        cacheExtent: 1000,
         itemCount: activeCountdowns.length,
         itemBuilder: (context, index) {
           final item = activeCountdowns[index];
@@ -396,9 +397,10 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               .onSurface
               .withAlpha((0.05 * 255).round());
 
-          return AnimatedBuilder(
-            animation:
-            _pulseControllers[item.id] ?? const AlwaysStoppedAnimation(0.0),
+          return RepaintBoundary(
+            child: AnimatedBuilder(
+              animation:
+              _pulseControllers[item.id] ?? const AlwaysStoppedAnimation(0.0),
             builder: (context, child) {
               if (!isUrgent) return child!;
               final pulse = _pulseControllers[item.id]?.value ?? 0.0;
@@ -420,8 +422,12 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 child: child,
               );
             },
-            child: Container(
-              width: 130,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  width: 130,
               margin: const EdgeInsets.only(right: 12, bottom: 8), // 🚀 微调边距
               decoration: BoxDecoration(
                 color: bgColor,
@@ -550,9 +556,12 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 ),
               ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
+  },
+),
+);
   }
 }

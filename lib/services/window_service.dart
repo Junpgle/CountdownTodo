@@ -188,18 +188,38 @@ class WindowService with WindowListener, TrayListener {
   void onWindowClose() async {
     debugPrint('[WindowService] onWindowClose called');
 
-    // 使用 Win32 原生消息框，不受 Flutter context 影响
-    final result = _showNativeMessageBox();
-    debugPrint('[WindowService] MessageBox result: $result');
+    try {
+      // 优先使用 main.dart 中定义的 Flutter 确认对话框
+      // 这能保证 UI 风格一致且受 Theme 控制
+      final bool shouldExit = await showCloseDialog();
+      debugPrint('[WindowService] showCloseDialog result: $shouldExit');
 
-    if (result == 6) {
-      // IDYES = 6
-      debugPrint('[WindowService] User chose to exit');
-      // 强制终止进程
-      TerminateProcess(GetCurrentProcess(), 0);
-    } else {
-      debugPrint('[WindowService] User chose to hide to tray');
-      await windowManager.hide();
+      if (shouldExit) {
+        debugPrint('[WindowService] User confirmed exit, terminating process');
+        // 先尝试隐藏窗口，给予即时反馈
+        try {
+          await windowManager.hide();
+        } catch (_) {}
+        // 强制终止进程，避免因其他插件或后台任务清理导致的死锁卡死
+        TerminateProcess(GetCurrentProcess(), 0);
+      } else {
+        debugPrint('[WindowService] User chose to hide to tray');
+        await windowManager.hide();
+      }
+    } catch (e) {
+      debugPrint('[WindowService] onWindowClose Flutter dialog error: $e');
+      // 如果 Flutter 对话框逻辑失败（例如 Navigator 尚未就绪），退而求其次使用原生 Win32 弹窗
+      final result = _showNativeMessageBox();
+      debugPrint('[WindowService] Native MessageBox result: $result');
+
+      if (result == 6) {
+        // IDYES = 6
+        debugPrint('[WindowService] User chose to exit (native)');
+        TerminateProcess(GetCurrentProcess(), 0);
+      } else {
+        debugPrint('[WindowService] User chose to hide (native)');
+        await windowManager.hide();
+      }
     }
   }
 
@@ -208,7 +228,6 @@ class WindowService with WindowListener, TrayListener {
     const mbDefbutton2 = 0x00000100;
     const mbTopmost = 0x00040000;
     const mbIconquestion = 0x00000020;
-    const IDYES = 6;
 
     final hwnd = GetForegroundWindow();
     final title = '关闭确认'.toNativeUtf16();

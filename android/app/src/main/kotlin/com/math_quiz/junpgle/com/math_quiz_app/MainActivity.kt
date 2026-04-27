@@ -53,6 +53,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val COURSE_NOTIFICATION_ID   = 12347 // 📚 课程提醒独立通知 ID
     private val SPECIAL_TODO_NOTIFICATION_ID = 12352 // 🚴 特殊待办独立通知 ID
     private val TODO_RECOGNIZE_NOTIFICATION_ID = 12353 // 📸 图片识别待办通知 ID
+    private val UPDATE_NOTIFICATION_ID = 12354 // 🚀 版本更新通知 ID
     private val ALERT_COURSE_ID   = 12348 // 🔔 课程普通提醒
     private val ALERT_TODO_ID     = 12349 // 🔔 待办普通提醒
     private val ALERT_POMO_START_ID = 12350 // 🔔 番茄开始普通提醒
@@ -61,6 +62,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val COURSE_ISLAND_BIZ_TAG   = "math_quiz_course"   // 📚 课程独立岛 bizTag
     private val POMODORO_ISLAND_BIZ_TAG = "math_quiz_pomodoro" // 🍅 番茄钟独立岛 bizTag
     private val SPECIAL_TODO_ISLAND_BIZ_TAG = "math_quiz_special_todo" // 🚴 特殊待办独立岛 bizTag
+    private val UPDATE_ISLAND_BIZ_TAG = "math_quiz_update" // 🚀 版本更新独立岛 bizTag
     private val TAG = "MathQuizApp"
 
     private val notificationExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -396,23 +398,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
                         val type = args["type"] as? String
-                        notificationExecutor.execute {
-                            try {
-                                when (type) {
-                                    "quiz" -> updateQuizNotification(args)
-                                    "course" -> updateCourseNotification(args)
-                                    "upcoming_todo" -> updateUpcomingTodoNotification(args)
-                                    "special_todo" -> updateSpecialTodoNotification(args)
-                                    "pomodoro" -> updatePomodoroNotification(args)
-                                    "pomodoro_end" -> sendPomodoroEndAlert(args)
-                                    "todo_recognize_progress" -> updateTodoRecognizeProgressNotification(args)
-                                    "todo_recognize_success" -> updateTodoRecognizeSuccessNotification(args)
-                                    "todo_recognize_failed" -> updateTodoRecognizeFailedNotification(args)
-                                    else -> updateTodoNotification(args)
-                                }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "showOngoingNotification worker failed", e)
-                            }
+                        when (type) {
+                            "quiz" -> updateQuizNotification(args)
+                            "course" -> updateCourseNotification(args)
+                            "upcoming_todo" -> updateUpcomingTodoNotification(args)
+                            "special_todo" -> updateSpecialTodoNotification(args)
+                            "pomodoro" -> updatePomodoroNotification(args)
+                            "pomodoro_end" -> sendPomodoroEndAlert(args)
+                            "todo_recognize_progress" -> updateTodoRecognizeProgressNotification(args)
+                            "todo_recognize_success" -> updateTodoRecognizeSuccessNotification(args)
+                            "todo_recognize_failed" -> updateTodoRecognizeFailedNotification(args)
+                            "update_found" -> updateUpdateNotification(args)
+                            else -> updateTodoNotification(args)
                         }
                         result.success(null)
                     } else result.error("INVALID_ARGS", "Arguments were null", null)
@@ -424,14 +421,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     nm.cancel(COURSE_NOTIFICATION_ID)          // 📚 清除课程独立通知
                     nm.cancel(POMODORO_NOTIFICATION_ID)        // 🍅 清除番茄钟独立通知
                     nm.cancel(SPECIAL_TODO_NOTIFICATION_ID)   // 🚴 清除特殊待办独立通知
-                    lastNotificationFingerprint.remove(NOTIFICATION_ID)
-                    lastNotificationFingerprint.remove(COURSE_NOTIFICATION_ID)
-                    lastNotificationFingerprint.remove(POMODORO_NOTIFICATION_ID)
-                    lastNotificationFingerprint.remove(SPECIAL_TODO_NOTIFICATION_ID)
-                    lastNotificationTimestampMs.remove(NOTIFICATION_ID)
-                    lastNotificationTimestampMs.remove(COURSE_NOTIFICATION_ID)
-                    lastNotificationTimestampMs.remove(POMODORO_NOTIFICATION_ID)
-                    lastNotificationTimestampMs.remove(SPECIAL_TODO_NOTIFICATION_ID)
+                    nm.cancel(UPDATE_NOTIFICATION_ID)         // 🚀 清除版本更新通知
                     result.success(null)
                 }
 
@@ -1191,6 +1181,30 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             isTodo = false,
             iconResId = R.drawable.hourglass,
             notificationId = TODO_RECOGNIZE_NOTIFICATION_ID
+        )
+    }
+
+    // 🚀 版本更新实时通知
+    private fun updateUpdateNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val versionName = args["versionName"] as? String ?: "New Version"
+        val title = args["title"] as? String ?: "发现新版本"
+        val content = args["content"] as? String ?: "点击查看详情并下载"
+
+        buildAndNotify(
+            title = title,
+            text = content,
+            subText = "🚀 $versionName",
+            progress = 0,
+            isOngoing = true,
+            color = 0xFF4CAF50.toInt(), // 绿色
+            currentStep = 0,
+            totalSteps = 0,
+            isTodo = false,
+            shortText = "New Update",
+            iconResId = R.drawable.update,
+            notificationId = UPDATE_NOTIFICATION_ID,
+            islandBizTag = UPDATE_ISLAND_BIZ_TAG
         )
     }
 
