@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:CountDownTodo/services/band_sync_service.dart';
+import 'package:CountDownTodo/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -757,6 +758,15 @@ class UpdateService {
       return;
     }
 
+    // 🚀 只要检测到更新，就推送系统通知
+    if (hasUpdate) {
+      NotificationService.showUpdateNotification(
+        versionName: manifest.versionName,
+        updateTitle: "🚀 官方通道：发现新版本",
+        updateContent: manifest.updateInfo.description,
+      );
+    }
+
     if (context.mounted) {
       if (hasNotice) {
         showAnnouncementDialog(context, announcementsToShow, () {
@@ -806,6 +816,13 @@ class UpdateService {
     );
 
     if (context.mounted) {
+      // 🚀 推送系统通知
+      NotificationService.showUpdateNotification(
+        versionName: latestVersion,
+        updateTitle: "🚀 紧急直连：发现新版本",
+        updateContent: releaseNotes,
+      );
+
       // 完美复用你原有的精美更新弹窗和底层下载框架！
       showUpdateDialog(context, mockManifest, localVersion,
           hasUpdate: true, hasNotice: false);
@@ -966,6 +983,7 @@ class UpdateService {
                                       onPressed: () {
                                         if (_localPackagePath != null) {
                                           installPackage(_localPackagePath!);
+                                          NotificationService.cancelUpdateNotification();
                                         }
                                       },
                                     ),
