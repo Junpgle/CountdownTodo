@@ -222,7 +222,7 @@ class _AnnouncementCarouselDialogState
 
 class UpdateService {
   static const String MANIFEST_URL =
-      "https://raw.githubusercontent.com/Junpgle2/CountdownTodo/refs/heads/master/update_manifest.json";
+      "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
   static const String _manifestCacheKey = 'update_manifest_cache_json';
   static const String _manifestCacheTimeKey = 'update_manifest_cache_time';
   static Future<AppManifest?>? _manifestRefreshFuture;
@@ -882,6 +882,9 @@ class UpdateService {
       {bool hasUpdate = true, bool hasNotice = false}) async {
     if (_isDialogShowing) return;
     _isDialogShowing = true;
+
+    // 🚀 只要弹窗显示了，就说明用户已经进入更新流程，立即取消通知栏提醒
+    NotificationService.cancelUpdateNotification();
 
     if (!_isDownloading && !_isDownloaded) {
       String? existingPath =
