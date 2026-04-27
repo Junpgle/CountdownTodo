@@ -1729,6 +1729,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final allTodos = item is TodoItem
         ? await StorageService.getTodos(widget.username, includeDeleted: true)
         : const <TodoItem>[];
+    if (!mounted) return;
     final recommendedWindow =
         item is TodoItem ? _suggestPreferredWindow(item, peers) : null;
     final recommendedLabel = item is TodoItem && recommendedWindow != null
@@ -1899,6 +1900,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                                     await _persistResolvedTodos(
                                       selectedUpdates,
                                       successMessage: successMessage,
+                                      popContext: sheetContext,
                                     );
                                   },
                             child: Text(
@@ -2498,6 +2500,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   Future<void> _persistResolvedTodos(
     Map<String, ({DateTime start, DateTime end})> updates, {
     required String successMessage,
+    BuildContext? popContext,
   }) async {
     if (updates.isEmpty) return;
     setState(() => _isApplyingScheduleFix = true);
@@ -2516,8 +2519,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (appliedCount == 0) return;
       await StorageService.saveTodos(widget.username, allTodos);
       if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      final messenger = ScaffoldMessenger.of(context);
+      if (popContext != null && popContext.mounted) {
+        Navigator.pop(popContext);
+      } else if (mounted) {
+        Navigator.pop(context);
+      }
+      messenger.showSnackBar(
         SnackBar(content: Text(successMessage)),
       );
       await _loadConflicts();
@@ -3156,9 +3164,12 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       }
 
       if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         widget.onResolved();
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (!widget.isEmbedded) {
+          Navigator.pop(context);
+        }
+        messenger.showSnackBar(
           const SnackBar(
               content: Text('已保留本地版本，冲突已解决'), backgroundColor: Colors.green),
         );
@@ -3209,9 +3220,12 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       } catch (_) {}
 
       if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         widget.onResolved();
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (!widget.isEmbedded) {
+          Navigator.pop(context);
+        }
+        messenger.showSnackBar(
           const SnackBar(
               content: Text('已采用服务器版本，冲突已解决'), backgroundColor: Colors.green),
         );
