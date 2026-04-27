@@ -3131,6 +3131,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       widget.localItem['version'] = newVersion;
       widget.localItem['updated_at'] = now;
       widget.localItem['has_conflict'] = 0;
+      widget.localItem.remove('conflict_data');
+      widget.localItem.remove('serverVersionData');
 
       // Persist locally and create oplog to push bumped version to server
       await StorageService.resolveConflictLocally(

@@ -158,6 +158,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
+  Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
 
   // 🚀 Granular Refresh Notifiers
   late final ValueNotifier<List<TodoItem>> _todosNotifier;
@@ -282,9 +283,18 @@ class _HomeDashboardState extends State<HomeDashboard>
       _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
         _checkUpcomingEvents();
       });
+
+      // 🚀 Banner 倒计时实时刷新：每 10 秒强制触发一次 UI 重绘，确保“剩 Xm”动态更新
+      _bannerRefreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+        if (mounted) setState(() {});
+      });
+
       // 立即执行一次
       Future.delayed(Duration(milliseconds: 500), () {
-        if (mounted) _checkUpcomingEvents();
+        if (mounted) {
+          _checkUpcomingEvents();
+          setState(() {});
+        }
       });
       _checkAndNavigateToPomodoro();
       // 🚀 预热搜索索引，确保首次点击秒开
@@ -310,6 +320,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _courseTimer?.cancel();
     _collaborativeSyncDebouncer?.cancel();
     _remoteTodoHighlightTimer?.cancel();
+    _bannerRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -843,15 +854,19 @@ class _HomeDashboardState extends State<HomeDashboard>
         timer.cancel();
         return;
       }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final pomMode = _localPomodoro!.mode;
+      final isActuallyCountUp = pomMode == TimerMode.countUp;
+      
+      final rem = isActuallyCountUp
+          ? ((now - _localPomodoro!.sessionStartMs) / 1000).floor()
+          : ((_localPomodoro!.targetEndMs - now) / 1000).ceil();
+          
       setState(() {
-        if (isCountUp) {
-          _localPomodoroRemaining++;
-        } else {
-          _localPomodoroRemaining--;
-          if (_localPomodoroRemaining <= 0) {
-            _localPomodoroRemaining = 0;
-            _stopLocalTicker();
-          }
+        _localPomodoroRemaining = rem;
+        if (!isActuallyCountUp && _localPomodoroRemaining <= 0) {
+          _localPomodoroRemaining = 0;
+          _stopLocalTicker();
         }
       });
     });
@@ -997,15 +1012,39 @@ class _HomeDashboardState extends State<HomeDashboard>
                     ),
                   ),
                   const SizedBox(height: 1),
-                  Text(
-                    event.title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: isLight ? Colors.white : null,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          event.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: isLight ? Colors.white : null,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (event.isTeam)
+                        Container(
+                          margin: const EdgeInsets.only(left: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: isLight ? Colors.white.withValues(alpha: 0.2) : baseColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: isLight ? Colors.white38 : baseColor.withValues(alpha: 0.3)),
+                          ),
+                          child: Text(
+                            '团队',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: isLight ? Colors.white : baseColor,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   if (event.subtitle != null && event.subtitle!.isNotEmpty)
                     Padding(
@@ -1059,10 +1098,14 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // 1. 番茄钟 (优先级最高)
     if (_localPomodoro != null) {
-      final rem = _localPomodoroRemaining;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final isCountUp = _localPomodoro!.mode == TimerMode.countUp;
+      final rem = isCountUp
+          ? ((nowMs - _localPomodoro!.sessionStartMs) / 1000).floor()
+          : ((_localPomodoro!.targetEndMs - nowMs) / 1000).ceil();
+          
       final m = rem ~/ 60;
       final s = rem % 60;
-      final isCountUp = _localPomodoro!.mode == TimerMode.countUp;
       final timeStr = isCountUp
           ? '已专注 ${rem ~/ 60}m'
           : (rem > 60 ? '$m 分钟' : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
@@ -1137,10 +1180,10 @@ class _HomeDashboardState extends State<HomeDashboard>
           baseColor: Colors.teal,
           icon: '🏫',
           priority: 2,
-          onTap: () => PageTransitions.pushFromRect(
-            context: context,
-            page: WeeklyCourseScreen(username: widget.username),
-            sourceKey: _courseButtonKey,
+          isTeam: course.teamUuid != null,
+          onTap: () => Navigator.push(
+            context,
+            PageTransitions.slideHorizontal(CourseDetailScreen(course: course)),
           ),
         ));
       } else if (diffStart >= 0 && diffStart <= 20) {
@@ -1153,10 +1196,10 @@ class _HomeDashboardState extends State<HomeDashboard>
           baseColor: Colors.cyan,
           icon: '🏫',
           priority: 4,
-          onTap: () => PageTransitions.pushFromRect(
-            context: context,
-            page: WeeklyCourseScreen(username: widget.username),
-            sourceKey: _courseButtonKey,
+          isTeam: course.teamUuid != null,
+          onTap: () => Navigator.push(
+            context,
+            PageTransitions.slideHorizontal(CourseDetailScreen(course: course)),
           ),
         ));
       }
@@ -1192,7 +1235,26 @@ class _HomeDashboardState extends State<HomeDashboard>
           baseColor: Colors.amber[700]!,
           icon: '📝',
           priority: 3,
-          onTap: () {}, // 待办详情可跳转
+          isTeam: todo.teamUuid != null,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TodoEditScreen(
+                todo: todo,
+                todos: _todos,
+                onTodosChanged: (newTodos) {
+                  setState(() => _todos = newTodos);
+                  _loadAllData();
+                },
+                todoGroups: _todoGroups,
+                onGroupsChanged: (newGroups) {
+                  setState(() => _todoGroups = newGroups);
+                  _loadAllData();
+                },
+                username: widget.username,
+              ),
+            ),
+          ),
         ));
       } else if (diffStart >= 0 && diffStart <= 30) {
         events.add(HomeBannerEvent(
@@ -1204,7 +1266,26 @@ class _HomeDashboardState extends State<HomeDashboard>
           baseColor: Colors.orange,
           icon: '📝',
           priority: 5,
-          onTap: () {},
+          isTeam: todo.teamUuid != null,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TodoEditScreen(
+                todo: todo,
+                todos: _todos,
+                onTodosChanged: (newTodos) {
+                  setState(() => _todos = newTodos);
+                  _loadAllData();
+                },
+                todoGroups: _todoGroups,
+                onGroupsChanged: (newGroups) {
+                  setState(() => _todoGroups = newGroups);
+                  _loadAllData();
+                },
+                username: widget.username,
+              ),
+            ),
+          ),
         ));
       }
     }
@@ -3469,6 +3550,7 @@ class HomeBannerEvent {
   final String icon;
   final VoidCallback onTap;
   final int priority;
+  final bool isTeam;
 
   HomeBannerEvent({
     required this.type,
@@ -3480,5 +3562,6 @@ class HomeBannerEvent {
     required this.icon,
     required this.onTap,
     required this.priority,
+    this.isTeam = false,
   });
 }

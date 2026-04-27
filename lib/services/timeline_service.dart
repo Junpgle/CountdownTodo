@@ -48,12 +48,19 @@ class TimelineService {
 
         if (endTime != null && endTime >= startOfDayMs && endTime < endOfDayMs) {
           final isCompleted = status == 'completed';
+          final isInterrupted = status == 'interrupted';
+          final actualSecs = row['actual_duration'] as int? ?? 0;
+          final plannedSecs = row['planned_duration'] as int? ?? 0;
+          
+          // 如果是由于任务未完成而中断（实际时长接近或超过计划时长，或者是正向计时）
+          final isTaskUnfinished = isInterrupted && (plannedSecs == 0 || actualSecs >= plannedSecs * 0.9);
+
           events.add(TimelineEvent(
             id: 'pomo_end_${row['uuid']}',
             timestamp: DateTime.fromMillisecondsSinceEpoch(endTime),
             type: TimelineEventType.pomodoroEnd,
-            title: isCompleted ? '完成专注' : '专注结束',
-            subtitle: '$title (${(row['actual_duration'] as int? ?? 0) ~/ 60}分钟)',
+            title: (isCompleted || isTaskUnfinished) ? '完成专注' : '专注结束',
+            subtitle: '$title (${actualSecs ~/ 60}分钟)${isInterrupted ? ' • 任务未完成' : ''}',
           ));
         }
       }

@@ -3609,6 +3609,8 @@ class StorageService {
     final batch = db.batch();
 
     resolvedData['has_conflict'] = 0;
+    resolvedData.remove('conflict_data');
+    resolvedData.remove('serverVersionData');
     final now = DateTime.now().millisecondsSinceEpoch;
     final resolvedUpdatedAt = touchUpdatedAt
         ? now
