@@ -789,18 +789,23 @@ class UpdateService {
     required String releaseNotes,
     required String downloadUrl,
   }) async {
-    if (_isDialogShowing) return;
-
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
     String localVersion = packageInfo.version;
 
-    // 核心版本对比逻辑（提取出来复用）
+    // 核心版本对比逻辑
     bool hasUpdate = _compareVersions(latestVersion, localVersion);
-
     if (!hasUpdate) return;
 
+    // 🚀 即使弹窗已显示，也要更新通知栏，以显示“紧急直连”状态
+    NotificationService.showUpdateNotification(
+      versionName: latestVersion,
+      updateTitle: "🚀 紧急直连：发现新版本",
+      updateContent: releaseNotes,
+    );
+
+    if (_isDialogShowing) return;
+
     // 🚀 偷梁换柱：用 WebSocket 发来的直链数据，动态组装一个虚拟的 AppManifest
-    // 这样就能完美欺骗 showUpdateDialog，让它以为这是从 GitHub 抓下来的
     AppManifest mockManifest = AppManifest(
       versionCode: 0,
       versionName: latestVersion,
@@ -816,14 +821,6 @@ class UpdateService {
     );
 
     if (context.mounted) {
-      // 🚀 推送系统通知
-      NotificationService.showUpdateNotification(
-        versionName: latestVersion,
-        updateTitle: "🚀 紧急直连：发现新版本",
-        updateContent: releaseNotes,
-      );
-
-      // 完美复用你原有的精美更新弹窗和底层下载框架！
       showUpdateDialog(context, mockManifest, localVersion,
           hasUpdate: true, hasNotice: false);
     }
