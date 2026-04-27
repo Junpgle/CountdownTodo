@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../services/pomodoro_service.dart';
@@ -186,35 +187,50 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     padding: EdgeInsets.all(30),
                     child: CircularProgressIndicator()))
           else if (_records.isEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: widget.isLight
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest
-                        .withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
+            RepaintBoundary(
+              child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
                     color: widget.isLight
-                        ? Colors.white24
-                        : Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
+                    border: Border.all(
+                        color: widget.isLight
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.timer_outlined,
+                          size: 32, color: subColor.withValues(alpha: 0.5)),
+                      const SizedBox(height: 8),
+                      Text('暂无专注记录，开始你的第一个番茄钟吧！',
+                          style: TextStyle(
+                              color: subColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
               ),
-              child: Column(
-                children: [
-                  Icon(Icons.timer_outlined,
-                      size: 32, color: subColor.withValues(alpha: 0.5)),
-                  const SizedBox(height: 8),
-                  Text('暂无专注记录，开始你的第一个番茄钟吧！',
-                      style: TextStyle(
-                          color: subColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500)),
-                ],
-              ),
-            )
+            ),
+          )
           else if (!_collapsed)
             Column(
               children: [
@@ -243,100 +259,108 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     final primaryColor =
         widget.isLight ? Colors.white : Theme.of(context).colorScheme.primary;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: widget.isLight
-            ? Colors.white.withValues(alpha: 0.1)
-            : Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: widget.isLight
-            ? []
-            : [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4))
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('时段分布',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: widget.isLight
-                      ? Colors.white70
-                      : Theme.of(context).colorScheme.outline)),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 90,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(24, (index) {
-                final sec = hourlySeconds[index];
-                final factor = maxSeconds == 0 ? 0.0 : sec / maxSeconds;
-
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: AnimatedBuilder(
-                            animation: _chartAnimationController,
-                            builder: (context, child) {
-                              final animatedFactor =
-                                  factor * _chartAnimationController.value;
-                              return Align(
-                                alignment: Alignment.bottomCenter,
-                                child: FractionallySizedBox(
-                                  heightFactor: animatedFactor > 0
-                                      ? max(animatedFactor, 0.05)
-                                      : 0,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: animatedFactor > 0
-                                          ? LinearGradient(
-                                              begin: Alignment.bottomCenter,
-                                              end: Alignment.topCenter,
-                                              colors: [
-                                                  primaryColor.withValues(alpha: 0.5),
-                                                  primaryColor,
-                                                ])
-                                          : null,
-                                      color: animatedFactor > 0
-                                          ? null
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        if (index % 6 == 0)
-                          Text(
-                            '$index',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: subColor?.withValues(alpha: 0.6)),
-                          )
-                        else
-                          const SizedBox(height: 14),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: widget.isLight
+                ? Colors.white.withValues(alpha: 0.15)
+                : Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              )
+            ],
+            border: widget.isLight
+                ? Border.all(color: Colors.white.withValues(alpha: 0.2))
+                : null,
           ),
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('时段分布',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: widget.isLight
+                          ? Colors.white70
+                          : Theme.of(context).colorScheme.outline)),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 90,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: List.generate(24, (index) {
+                    final sec = hourlySeconds[index];
+                    final factor = maxSeconds == 0 ? 0.0 : sec / maxSeconds;
+
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: AnimatedBuilder(
+                                animation: _chartAnimationController,
+                                builder: (context, child) {
+                                  final animatedFactor =
+                                      factor * _chartAnimationController.value;
+                                  return Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: FractionallySizedBox(
+                                      heightFactor: animatedFactor > 0
+                                          ? max(animatedFactor, 0.05)
+                                          : 0,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: animatedFactor > 0
+                                              ? LinearGradient(
+                                                  begin: Alignment.bottomCenter,
+                                                  end: Alignment.topCenter,
+                                                  colors: [
+                                                      primaryColor.withValues(alpha: 0.5),
+                                                      primaryColor,
+                                                    ])
+                                              : null,
+                                          color: animatedFactor > 0
+                                              ? null
+                                              : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            if (index % 6 == 0)
+                              Text(
+                                '$index',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: subColor?.withValues(alpha: 0.6)),
+                              )
+                            else
+                              const SizedBox(height: 14),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -362,59 +386,67 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     List<MapEntry<String, int>> sortedTags = tagSeconds.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: widget.isLight
-            ? Colors.white.withValues(alpha: 0.1)
-            : Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: widget.isLight
-            ? []
-            : [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4))
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('专注项目',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: widget.isLight
-                      ? Colors.white70
-                      : Theme.of(context).colorScheme.outline)),
-          const SizedBox(height: 16),
-          if (sortedTags.isEmpty && untaggedSeconds == 0)
-            Text('暂无数据', style: TextStyle(color: subColor, fontSize: 13)),
-          ...sortedTags.map((entry) {
-            final tag = _tags.cast<PomodoroTag?>().firstWhere(
-                  (t) => t?.uuid == entry.key,
-                  orElse: () => null,
-                );
-            if (tag == null) return const SizedBox.shrink();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: widget.isLight
+                ? Colors.white.withValues(alpha: 0.15)
+                : Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              )
+            ],
+            border: widget.isLight
+                ? Border.all(color: Colors.white.withValues(alpha: 0.2))
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('专注项目',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: widget.isLight
+                          ? Colors.white70
+                          : Theme.of(context).colorScheme.outline)),
+              const SizedBox(height: 16),
+              if (sortedTags.isEmpty && untaggedSeconds == 0)
+                Text('暂无数据', style: TextStyle(color: subColor, fontSize: 13)),
+              ...sortedTags.map((entry) {
+                final tag = _tags.cast<PomodoroTag?>().firstWhere(
+                      (t) => t?.uuid == entry.key,
+                      orElse: () => null,
+                    );
+                if (tag == null) return const SizedBox.shrink();
 
-            return _buildTagStatRow(
-              name: tag.name,
-              colorHex: tag.color,
-              seconds: entry.value,
-              totalSeconds: _totalSeconds,
-              subColor: subColor,
-            );
-          }),
-          if (untaggedSeconds > 0)
-            _buildTagStatRow(
-              name: '未分类',
-              colorHex: '#9E9E9E',
-              seconds: untaggedSeconds,
-              totalSeconds: _totalSeconds,
-              subColor: subColor,
-            ),
-        ],
+                return _buildTagStatRow(
+                  name: tag.name,
+                  colorHex: tag.color,
+                  seconds: entry.value,
+                  totalSeconds: _totalSeconds,
+                  subColor: subColor,
+                );
+              }),
+              if (untaggedSeconds > 0)
+                _buildTagStatRow(
+                  name: '未分类',
+                  colorHex: '#9E9E9E',
+                  seconds: untaggedSeconds,
+                  totalSeconds: _totalSeconds,
+                  subColor: subColor,
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

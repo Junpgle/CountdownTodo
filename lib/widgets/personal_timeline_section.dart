@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:intl/intl.dart';
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
@@ -106,53 +107,58 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
             page: PersonalTimelineScreen(username: widget.username),
             sourceKey: _cardKey,
             sourceColor: widget.isLight
-                ? Colors.white.withValues(alpha: 0.1)
+                ? Colors.white.withValues(alpha: 0.15)
                 : Theme.of(context).colorScheme.surface,
             sourceBorderRadius: BorderRadius.circular(24),
           ).then((_) => _loadData()),
           borderRadius: BorderRadius.circular(24),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: widget.isLight
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: widget.isLight
-                  ? []
-                  : [
-                      BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4))
-                    ],
-              border: Border.all(
-                color: widget.isLight
-                    ? Colors.white12
-                    : Theme.of(context).dividerColor.withValues(alpha: 0.05),
-              ),
-            ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 400),
-              child: _isLoading
-                  ? Center(
-                      key: const ValueKey('loading'),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 3,
-                          color: widget.isLight
-                              ? Colors.white
-                              : Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: widget.isLight
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     )
-                  : Container(
-                      // 🚀 核心修复：增加 refreshTrigger 使 Key 在每次加载后唯一，
-                      // 彻底解决 AnimatedSwitcher 在快速加载时可能出现的 Duplicate Key 崩溃
-                      key: ValueKey('summary_${widget.refreshTrigger}_${_summaryContentKey()}'),
-                      child: _buildSummaryGrid(subColor, textColor),
-                    ),
+                  ],
+                  border: Border.all(
+                    color: widget.isLight
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Theme.of(context).dividerColor.withValues(alpha: 0.05),
+                  ),
+                ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 400),
+                  child: _isLoading
+                      ? Center(
+                          key: const ValueKey('loading'),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: widget.isLight
+                                  ? Colors.white
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          // 🚀 核心修复：增加 refreshTrigger 使 Key 在每次加载后唯一，
+                          // 彻底解决 AnimatedSwitcher 在快速加载时可能出现的 Duplicate Key 崩溃
+                          key: ValueKey('summary_${widget.refreshTrigger}_${_summaryContentKey()}'),
+                          child: _buildSummaryGrid(subColor, textColor),
+                        ),
+                ),
+              ),
             ),
           ),
         ),
