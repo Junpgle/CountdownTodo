@@ -955,71 +955,19 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
-  /// 首页顶部的专注 Banner (统一处理本地和远程)
-  Widget _buildFocusBanner(bool isLight) {
-    // 优先显示本地，本地没有显示远程
-    if (_localPomodoro != null) {
-      return _buildFocusCard(
-        isLight: isLight,
-        isLocal: true,
-        title: _localPomodoro!.todoTitle,
-        remaining: _localPomodoroRemaining,
-        mode: _localPomodoro!.mode,
-        label: '正在专注 (本机)',
-      );
-    }
-    if (_remotePomodoro != null) {
-      final deviceLabel = _remotePomodoro!.sourceDevice
-              ?.replaceFirst('flutter_', '')
-              .substring(0, 8) ??
-          '其他设备';
-      return _buildFocusCard(
-        isLight: isLight,
-        isLocal: false,
-        title: _remotePomodoro!.todoTitle,
-        remaining: _remotePomodoroRemaining,
-        mode: _remotePomodoro!.mode == 1
-            ? TimerMode.countUp
-            : TimerMode.countdown,
-        label: '$deviceLabel 正在专注',
-      );
-    }
-    return const SizedBox.shrink();
-  }
+  /// 首页顶部的智能通用 Banner (整合专注、课程、待办)
+  Widget _buildUniversalBanner(bool isLight) {
+    final events = _collectBannerEvents();
+    if (events.isEmpty) return const SizedBox.shrink();
 
-  Widget _buildFocusCard({
-    required bool isLight,
-    required bool isLocal,
-    required String? title,
-    required int remaining,
-    required TimerMode mode,
-    required String label,
-  }) {
-    final m = remaining ~/ 60;
-    final s = remaining % 60;
-    final isCountUp = mode == TimerMode.countUp;
-    final timeStr = isCountUp
-        ? '已专注 ${remaining ~/ 60} 分钟'
-        : (remaining > 60
-            ? '$m 分钟'
-            : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
+    // 选取优先级最高的一个显示 (后续可扩展为可滑动的 PageView)
+    final event = events.first;
 
-    final baseColor =
-        isLocal ? const Color(0xFF4F46E5) : const Color(0xFFFF6B6B);
+    final baseColor = event.baseColor;
 
     return GestureDetector(
       key: _focusBannerKey,
-      onTap: () async {
-        await PageTransitions.pushFromRect(
-          context: context,
-          page: PomodoroScreen(username: widget.username),
-          sourceKey: _focusBannerKey,
-        );
-        if (mounted) {
-          _timelineRefreshTriggerNotifier.value++;
-          _loadAllData();
-        }
-      },
+      onTap: event.onTap,
       child: Container(
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -1030,7 +978,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         ),
         child: Row(
           children: [
-            Text(isLocal ? '⚡' : '🍅', style: const TextStyle(fontSize: 18)),
+            Text(event.icon, style: const TextStyle(fontSize: 18)),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -1038,33 +986,77 @@ class _HomeDashboardState extends State<HomeDashboard>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    label,
+                    event.label,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: isLight ? Colors.white : baseColor,
+                      color: isLight ? Colors.white.withValues(alpha: 0.9) : baseColor,
                     ),
                   ),
-                  if (title != null && title.isNotEmpty)
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isLight ? Colors.white70 : null,
+                  const SizedBox(height: 1),
+                  Text(
+                    event.title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: isLight ? Colors.white : null,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (event.subtitle != null && event.subtitle!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        children: [
+                          Icon(
+                            event.type == 'course' ? Icons.location_on_outlined : Icons.sticky_note_2_outlined,
+                            size: 11,
+                            color: isLight ? Colors.white70 : Colors.grey[600],
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              event.subtitle!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isLight ? Colors.white70 : Colors.grey[600],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                 ],
               ),
             ),
-            Text(
-              timeStr,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: isLight ? Colors.white : baseColor,
-              ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  event.timeInfo,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: isLight ? Colors.white : baseColor,
+                  ),
+                ),
+                if (events.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '还有 ${events.length - 1} 个日程',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isLight ? Colors.white60 : Colors.grey,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 4),
             Icon(Icons.chevron_right,
@@ -1074,6 +1066,163 @@ class _HomeDashboardState extends State<HomeDashboard>
       ),
     );
   }
+
+  List<HomeBannerEvent> _collectBannerEvents() {
+    final List<HomeBannerEvent> events = [];
+    final now = DateTime.now();
+
+    // 1. 番茄钟 (优先级最高)
+    if (_localPomodoro != null) {
+      final rem = _localPomodoroRemaining;
+      final m = rem ~/ 60;
+      final s = rem % 60;
+      final isCountUp = _localPomodoro!.mode == TimerMode.countUp;
+      final timeStr = isCountUp
+          ? '已专注 ${rem ~/ 60}m'
+          : (rem > 60 ? '$m 分钟' : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
+
+      events.add(HomeBannerEvent(
+        type: 'pomodoro',
+        title: _localPomodoro!.todoTitle ?? '无标题专注',
+        label: '⚡ 正在专注 (本机)',
+        timeInfo: timeStr,
+        baseColor: const Color(0xFF4F46E5),
+        icon: '🍅',
+        priority: 0,
+        onTap: () async {
+          await PageTransitions.pushFromRect(
+            context: context,
+            page: PomodoroScreen(username: widget.username),
+            sourceKey: _focusBannerKey,
+          );
+          if (mounted) _loadAllData();
+        },
+      ));
+    } else if (_remotePomodoro != null) {
+      final deviceLabel = _remotePomodoro!.sourceDevice
+              ?.replaceFirst('flutter_', '')
+              .substring(0, 8) ??
+          '其他设备';
+      final rem = _remotePomodoroRemaining;
+      final m = rem ~/ 60;
+      final s = rem % 60;
+      final isCountUp = _remotePomodoro!.mode == 1;
+      final timeStr = isCountUp
+          ? '已专注 ${rem ~/ 60}m'
+          : (rem > 60 ? '$m 分钟' : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
+
+      events.add(HomeBannerEvent(
+        type: 'pomodoro',
+        title: _remotePomodoro!.todoTitle ?? '其他设备专注',
+        label: '📱 $deviceLabel 正在专注',
+        timeInfo: timeStr,
+        baseColor: const Color(0xFFFF6B6B),
+        icon: '🍅',
+        priority: 1,
+        onTap: () => PageTransitions.pushFromRect(
+          context: context,
+          page: PomodoroScreen(username: widget.username),
+          sourceKey: _focusBannerKey,
+        ),
+      ));
+    }
+
+    // 2. 课程
+    final List<CourseItem> courses = (_dashboardCourseData['courses'] as List?)?.cast<CourseItem>() ?? [];
+    for (final course in courses) {
+      final startTime = _resolveCourseStartTime(course, now);
+      if (startTime == null) continue;
+      
+      final endHour = course.endTime ~/ 100;
+      final endMin = course.endTime % 100;
+      final endTime = DateTime(startTime.year, startTime.month, startTime.day, endHour, endMin);
+      
+      final diffStart = startTime.difference(now).inMinutes;
+      final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
+      
+      if (isOngoing) {
+        events.add(HomeBannerEvent(
+          type: 'course',
+          title: course.courseName,
+          subtitle: course.roomName,
+          label: '📖 正在进行的课程',
+          timeInfo: '${course.formattedStartTime} - ${course.formattedEndTime}',
+          baseColor: Colors.teal,
+          icon: '🏫',
+          priority: 2,
+          onTap: () => PageTransitions.pushFromRect(
+            context: context,
+            page: WeeklyCourseScreen(username: widget.username),
+            sourceKey: _courseButtonKey,
+          ),
+        ));
+      } else if (diffStart >= 0 && diffStart <= 20) {
+        events.add(HomeBannerEvent(
+          type: 'course',
+          title: course.courseName,
+          subtitle: course.roomName,
+          label: '🔔 即将开始的课程',
+          timeInfo: '${course.formattedStartTime}开始',
+          baseColor: Colors.cyan,
+          icon: '🏫',
+          priority: 4,
+          onTap: () => PageTransitions.pushFromRect(
+            context: context,
+            page: WeeklyCourseScreen(username: widget.username),
+            sourceKey: _courseButtonKey,
+          ),
+        ));
+      }
+    }
+
+    // 3. 待办 (临近或进行中)
+    for (final todo in _todos) {
+      if (todo.isDone || todo.isDeleted || todo.dueDate == null) continue;
+      
+      final startMs = todo.createdDate ?? todo.createdAt;
+      final startTime = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+      final endTime = todo.dueDate!.toLocal();
+      
+      // 判定全天任务
+      bool isAllDay = startTime.hour == 0 && startTime.minute == 0 &&
+                      endTime.hour == 23 && endTime.minute == 59;
+      if (isAllDay) continue;
+
+      final diffStart = startTime.difference(now).inMinutes;
+      final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
+
+      if (isOngoing) {
+        events.add(HomeBannerEvent(
+          type: 'todo',
+          title: todo.title,
+          subtitle: todo.remark,
+          label: '📌 正在进行的任务',
+          timeInfo: '进行中',
+          baseColor: Colors.amber[700]!,
+          icon: '📝',
+          priority: 3,
+          onTap: () {}, // 待办详情可跳转
+        ));
+      } else if (diffStart >= 0 && diffStart <= 30) {
+        events.add(HomeBannerEvent(
+          type: 'todo',
+          title: todo.title,
+          subtitle: todo.remark,
+          label: '⏰ 即将开始的任务',
+          timeInfo: '${startTime.hour}:${startTime.minute.toString().padLeft(2, '0')} 开始',
+          baseColor: Colors.orange,
+          icon: '📝',
+          priority: 5,
+          onTap: () {},
+        ));
+      }
+    }
+
+    // 排序: 优先级数值越小越靠前
+    events.sort((a, b) => a.priority.compareTo(b.priority));
+    return events;
+  }
+
 
   // === 业务与辅助逻辑 ===
   DateTime? _resolveCourseStartTime(CourseItem course, DateTime now) {
@@ -2660,9 +2809,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                     },
                   ),
 
-                // 🚀 统一处理本地与远程专注 Banner
+                // 🚀 统一处理本地与远程专注、课程、待办 Banner
                 if (_selectedTabIndex != 1 || isTablet)
-                  _buildFocusBanner(isLight),
+                  _buildUniversalBanner(isLight),
 
                 // 待确认待办入口卡片（从图片识别来）
                 if (_selectedTabIndex != 1 || isTablet)
@@ -3318,4 +3467,29 @@ class _HomeDashboardState extends State<HomeDashboard>
       ),
     );
   }
+}
+
+/// 🚀 首页 Banner 事件模型
+class HomeBannerEvent {
+  final String type; // 'pomodoro', 'course', 'todo'
+  final String title;
+  final String? subtitle; // 地点或备注
+  final String label; // e.g. "正在进行的课程"
+  final String timeInfo; // 时间段或倒计时
+  final Color baseColor;
+  final String icon;
+  final VoidCallback onTap;
+  final int priority;
+
+  HomeBannerEvent({
+    required this.type,
+    required this.title,
+    this.subtitle,
+    required this.label,
+    required this.timeInfo,
+    required this.baseColor,
+    required this.icon,
+    required this.onTap,
+    required this.priority,
+  });
 }

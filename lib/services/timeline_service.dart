@@ -41,17 +41,18 @@ class TimelineService {
             id: 'pomo_start_${row['uuid']}',
             timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
             type: TimelineEventType.pomodoroStart,
-            title: '开启番茄钟',
+            title: '开始专注',
             subtitle: title,
           ));
         }
 
-        if (endTime != null && endTime >= startOfDayMs && endTime < endOfDayMs && status == 'completed') {
+        if (endTime != null && endTime >= startOfDayMs && endTime < endOfDayMs) {
+          final isCompleted = status == 'completed';
           events.add(TimelineEvent(
             id: 'pomo_end_${row['uuid']}',
             timestamp: DateTime.fromMillisecondsSinceEpoch(endTime),
             type: TimelineEventType.pomodoroEnd,
-            title: '完成番茄专注',
+            title: isCompleted ? '完成专注' : '专注结束',
             subtitle: '$title (${(row['actual_duration'] as int? ?? 0) ~/ 60}分钟)',
           ));
         }
@@ -78,11 +79,11 @@ class TimelineService {
         ));
       }
 
-      // 2b. 查询今天编辑的待办（已编辑但未完成，排除今天创建的）
+      // 2b. 查询今天编辑的待办（已编辑但未完成，排除无实质修改的）
       final editedTodos = await db.query(
         'todos',
-        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at AND NOT (created_at >= ? AND created_at < ?)',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
 
       for (var row in editedTodos) {
@@ -100,11 +101,11 @@ class TimelineService {
         }
       }
 
-      // 2c. 查询今天完成的待办（排除今天创建的，避免重复）
+      // 2c. 查询今天完成的待办
       final completedTodos = await db.query(
         'todos',
-        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? AND NOT (created_at >= ? AND created_at < ?)',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
 
       for (var row in completedTodos) {
@@ -141,11 +142,11 @@ class TimelineService {
         ));
       }
 
-      // 3b. 查询今天编辑的倒计时（已编辑但未完成，排除今天创建的）
+      // 3b. 查询今天编辑的倒计时
       final editedCountdowns = await db.query(
         'countdowns',
-        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at AND NOT (created_at >= ? AND created_at < ?)',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
 
       for (var row in editedCountdowns) {
@@ -161,11 +162,11 @@ class TimelineService {
         }
       }
 
-      // 3c. 查询今天完成的倒计时（排除今天创建的，避免重复）
+      // 3c. 查询今天完成的倒计时
       final completedCountdowns = await db.query(
         'countdowns',
-        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? AND NOT (created_at >= ? AND created_at < ?)',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
 
       for (var row in completedCountdowns) {
@@ -298,15 +299,15 @@ class TimelineService {
 
       final editedTodos = await db.query(
         'todos',
-        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at AND NOT (created_at >= ? AND created_at < ?)',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
       todoEdited = editedTodos.length;
 
       final completedTodos = await db.query(
         'todos',
-        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? AND NOT (created_at >= ? AND created_at < ?)',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
       todoCompleted = completedTodos.length;
 
@@ -320,15 +321,15 @@ class TimelineService {
 
       final editedCds = await db.query(
         'countdowns',
-        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at AND NOT (created_at >= ? AND created_at < ?)',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND is_completed = 0 AND updated_at >= ? AND updated_at < ? AND updated_at > created_at',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
       countdownEdited = editedCds.length;
 
       final completedCds = await db.query(
         'countdowns',
-        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? AND NOT (created_at >= ? AND created_at < ?)',
-        whereArgs: [startOfDayMs, endOfDayMs, startOfDayMs, endOfDayMs],
+        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
       );
       countdownCompleted = completedCds.length;
 
