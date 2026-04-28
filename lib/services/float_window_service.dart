@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../main.dart' show appNavigatorKey;
+import '../utils/navigator_utils.dart';
 import '../storage_service.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';

@@ -9,7 +9,7 @@ import 'notification_service.dart';
 import '../storage_service.dart';
 import '../models.dart';
 import '../update_service.dart';
-import '../main.dart';
+import '../utils/navigator_utils.dart';
 
 // ============================================================
 // 跨端专注感知：连接阿里云 WebSocket 服务器

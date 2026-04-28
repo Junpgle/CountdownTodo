@@ -20,27 +20,33 @@ const LoadingSpinner = () => (
 );
 
 const App = () => {
+  const isAppPage = !window.location.pathname.includes('home.html');
+  
   const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp' | 'dashboard'>(() => {
+    if (!isAppPage) return 'landing';
     if (window.location.hash.includes('dashboard')) return 'dashboard';
-    if (window.location.hash.includes('app') || window.location.search.includes('app')) return 'auth';
-    return 'landing';
+    return ApiService.getToken() ? 'webapp' : 'auth';
   });
 
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    // Listen for hash changes
+    if (!isAppPage && currentView !== 'landing') {
+        window.location.href = './index.html' + window.location.hash;
+        return;
+    }
+
     const handleHashChange = () => {
       const hash = window.location.hash;
       if (hash.includes('dashboard')) {
         setCurrentView('dashboard');
       } else if (hash.includes('app')) {
         setCurrentView(ApiService.getToken() ? 'webapp' : 'auth');
-      } else if (hash === '' || hash === '#') {
-        setCurrentView('landing');
       }
     };
-    window.addEventListener('hashchange', handleHashChange);
+    if (isAppPage) {
+        window.addEventListener('hashchange', handleHashChange);
+    }
 
     const token = ApiService.getToken();
     const savedUser = localStorage.getItem('cdt_user');
@@ -48,7 +54,7 @@ const App = () => {
       try {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
-        if (window.location.hash.includes('app') || window.location.search.includes('app')) {
+        if (isAppPage && currentView === 'auth') {
           setCurrentView('webapp');
         }
       } catch (e) {
@@ -57,34 +63,32 @@ const App = () => {
     }
 
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [isAppPage, currentView]);
 
   const handleOpenWeb = () => {
-    if (user) setCurrentView('webapp');
-    else {
-      window.location.hash = 'app';
-      setCurrentView('auth');
-    }
+    window.location.href = './index.html#app';
   };
 
-  /**
-   * 修复：登出时彻底清理状态
-   */
   const handleLogout = () => {
     ApiService.clearAuthAndData();
     setUser(null);
-    window.location.hash = 'app'; // 确保刷新或返回时留在登录页
     setCurrentView('auth');
   };
 
   return (
     <Suspense fallback={<LoadingSpinner />}>
-      {currentView === 'dashboard' ? (
-        <TeamDisplayBoard user={user} onBack={() => setCurrentView('webapp')} />
-      ) : currentView === 'auth' ? (
-        <AuthScreen onBack={() => setCurrentView('landing')} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
-      ) : currentView === 'webapp' && user ? (
-        <WebApp onBack={() => setCurrentView('landing')} onOpenDashboard={() => setCurrentView('dashboard')} user={user} onLogout={handleLogout} />
+      {isAppPage ? (
+          <>
+            {currentView === 'dashboard' ? (
+                <TeamDisplayBoard user={user} onBack={() => setCurrentView('webapp')} />
+            ) : currentView === 'auth' ? (
+                <AuthScreen onBack={() => { window.location.href = './home.html'; }} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
+            ) : currentView === 'webapp' && user ? (
+                <WebApp onBack={() => { window.location.href = './home.html'; }} onOpenDashboard={() => setCurrentView('dashboard')} user={user} onLogout={handleLogout} />
+            ) : (
+                <LoadingSpinner />
+            )}
+          </>
       ) : (
         <div className="bg-white min-h-screen font-sans selection:bg-indigo-600 selection:text-white antialiased">
           <LandingPage onOpenWeb={handleOpenWeb} />
