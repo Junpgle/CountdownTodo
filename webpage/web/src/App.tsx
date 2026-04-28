@@ -7,7 +7,7 @@ import './index.css';
 const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
 const AuthScreen = lazy(() => import('./pages/AuthScreen').then(m => ({ default: m.AuthScreen })));
 const WebApp = lazy(() => import('./pages/WebApp').then(m => ({ default: m.WebApp })));
-const TeamDisplayBoard = lazy(() => import('./pages/TeamDisplayBoard'));
+import TeamDisplayBoard from './pages/TeamDisplayBoard';
 
 // 只有在加载大包时显示的极简 Loading
 const LoadingSpinner = () => (
@@ -31,8 +31,13 @@ const App = () => {
   useEffect(() => {
     // Listen for hash changes
     const handleHashChange = () => {
-      if (window.location.hash.includes('dashboard')) {
+      const hash = window.location.hash;
+      if (hash.includes('dashboard')) {
         setCurrentView('dashboard');
+      } else if (hash.includes('app')) {
+        setCurrentView(ApiService.getToken() ? 'webapp' : 'auth');
+      } else if (hash === '' || hash === '#') {
+        setCurrentView('landing');
       }
     };
     window.addEventListener('hashchange', handleHashChange);
@@ -75,11 +80,11 @@ const App = () => {
   return (
     <Suspense fallback={<LoadingSpinner />}>
       {currentView === 'dashboard' ? (
-        <TeamDisplayBoard user={user} />
+        <TeamDisplayBoard user={user} onBack={() => setCurrentView('webapp')} />
       ) : currentView === 'auth' ? (
         <AuthScreen onBack={() => setCurrentView('landing')} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
       ) : currentView === 'webapp' && user ? (
-        <WebApp onBack={() => setCurrentView('landing')} user={user} onLogout={handleLogout} />
+        <WebApp onBack={() => setCurrentView('landing')} onOpenDashboard={() => setCurrentView('dashboard')} user={user} onLogout={handleLogout} />
       ) : (
         <div className="bg-white min-h-screen font-sans selection:bg-indigo-600 selection:text-white antialiased">
           <LandingPage onOpenWeb={handleOpenWeb} />
