@@ -196,10 +196,10 @@ class WindowService extends WindowListener with TrayListener {
   // WindowListener overrides for closure
   @override
   void onWindowClose() {
-    debugPrint('[WindowService] onWindowClose called (synchronous entry point)');
-    // ⚠️ 关键：window_manager 需要我们在此方法中处理关闭逻辑
-    // 如果不调用 exit()，需要保持 setPreventClose(true) 的状态
-    unawaited(_doHandleWindowClose());
+    debugPrint('[WindowService] ⚠️ onWindowClose() called - preventing close immediately');
+    
+    // 立即处理，不等待
+    _doHandleWindowClose();
   }
 
   Future<void> _doHandleWindowClose() async {
