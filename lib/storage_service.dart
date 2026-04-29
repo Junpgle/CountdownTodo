@@ -52,6 +52,8 @@ class StorageService {
   static const String KEY_SEMESTER_START = "semester_start_date";
   static const String KEY_SEMESTER_END = "semester_end_date";
   static const String KEY_TIME_LOGS = "user_time_logs";
+  static const String KEY_IGNORED_SCHEDULE_CONFLICTS =
+      "ignored_schedule_conflicts";
   static const String KEY_SERVER_CHOICE = "app_server_choice";
   static const String KEY_SYSTEM_STARTUP_ENABLED = "system_startup_enabled";
   static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
@@ -610,33 +612,45 @@ class StorageService {
     await prefs.remove(KEY_COUNTDOWNS);
   }
 
+  static Future<void> _clearGhostConflictFlags(dynamic db) async {
+    const where =
+        "has_conflict = 1 AND (conflict_data IS NULL OR TRIM(conflict_data) = '' OR conflict_data = 'null')";
+    for (final table in const ['todos', 'todo_groups', 'countdowns']) {
+      try {
+        final count = await db.update(
+          table,
+          {'has_conflict': 0, 'conflict_data': null},
+          where: where,
+        );
+        if (count > 0) {
+          debugPrint('✅ 已清理 $table 的空快照冲突标记: $count 条');
+        }
+      } catch (e) {
+        debugPrint('⚠️ 清理 $table 空快照冲突标记失败: $e');
+      }
+    }
+  }
+
   static Future<List<CountdownItem>> getCountdowns(String username,
       {bool includeDeleted = false}) async {
     final prefs = await SharedPreferences.getInstance();
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.database;
+      await _clearGhostConflictFlags(db);
 
       // 1. 迁移检查
       final String migrationKey = "migrated_countdowns_$username";
       final bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
 
-      // 🚀 核心补丁：物理清理残留
-      final String cleanupKey = "cleanup_done_countdowns_${username}_repair";
-      if (alreadyMigrated && !(prefs.getBool(cleanupKey) ?? false)) {
-        await prefs.remove("${KEY_COUNTDOWNS}_$username");
-        await prefs.remove(KEY_COUNTDOWNS);
-        await prefs.setBool(cleanupKey, true);
-      }
-
       final List<Map<String, dynamic>> sqliteCount =
           await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
-      if (sqliteCount.first['cnt'] == 0 && !alreadyMigrated) {
+      if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
             prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
 
         // 🚀 核心修复：极致兼容方案 - 增加一次性迁移保护
-        if (legacyJsonList.isEmpty && username.isNotEmpty) {
+        if (!alreadyMigrated && legacyJsonList.isEmpty && username.isNotEmpty) {
           final String markerKey = "${KEY_COUNTDOWNS}_${username}_migrated";
           if (!(prefs.getBool(markerKey) ?? false)) {
             legacyJsonList = prefs.getStringList(KEY_COUNTDOWNS) ?? [];
@@ -658,7 +672,13 @@ class StorageService {
           await prefs.remove(KEY_COUNTDOWNS);
           debugPrint("✅ 倒数日老数据迁移完成并已物理清理。");
         }
+        if (legacyJsonList.isNotEmpty && alreadyMigrated) {
+          debugPrint("✅ 倒数日从 Prefs 修复回 SQL: ${legacyJsonList.length} 条");
+        }
         await prefs.setBool(migrationKey, true);
+      } else if (alreadyMigrated) {
+        await prefs.remove("${KEY_COUNTDOWNS}_$username");
+        await prefs.remove(KEY_COUNTDOWNS);
       }
 
       // 2. 从 SQL 读取
@@ -939,7 +959,9 @@ class StorageService {
   static Future<void> _refreshTodoScheduleConflicts(String username) async {
     try {
       final allTodos = await getTodos(username, includeDeleted: true);
-      if (_recomputeLocalTodoScheduleConflicts(allTodos)) {
+      final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
+      if (_recomputeLocalTodoScheduleConflicts(allTodos,
+          ignoredScheduleConflictKeys: ignoredKeys)) {
         await saveTodos(
           username,
           allTodos,
@@ -955,8 +977,10 @@ class StorageService {
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) async {
     final allTodos = await getTodos(username, includeDeleted: true);
+    final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
     final changed = _recomputeLocalTodoScheduleConflicts(
       allTodos,
+      ignoredScheduleConflictKeys: ignoredKeys,
       onProgress: (current, total, message) {
         final progress = total <= 0 ? 0 : ((current / total) * 100).round();
         conflictScanNotifier.value = {
@@ -1020,6 +1044,69 @@ class StorageService {
       'personal_team': personalTeam,
       'team_team': teamTeam,
     };
+  }
+
+  static Future<void> ignoreLocalScheduleConflict(
+      String username, TodoItem item) async {
+    final data = item.serverVersionData;
+    if (!_isLocalScheduleConflict(data)) return;
+
+    final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
+    final startMs = _parseMillis(data?['start_time']) ??
+        item.createdDate ??
+        item.createdAt;
+    final endMs =
+        _parseMillis(data?['end_time']) ?? item.dueDate?.millisecondsSinceEpoch;
+    if (startMs <= 0 || endMs == null || endMs <= 0) return;
+
+    final peers = data?['conflict_with'];
+    if (peers is List) {
+      for (final peer in peers) {
+        if (peer is! Map) continue;
+        final peerId = (peer['uuid'] ?? peer['id'] ?? '').toString();
+        final peerStart = _parseMillis(peer['start_time']);
+        final peerEnd = _parseMillis(peer['end_time']);
+        if (peerId.isEmpty || peerStart == null || peerEnd == null) continue;
+        ignoredKeys.add(_scheduleConflictPairKey(
+          item.id,
+          startMs,
+          endMs,
+          peerId,
+          peerStart,
+          peerEnd,
+        ));
+      }
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+      ignoredKeys.toList()..sort(),
+    );
+
+    final allTodos = await getTodos(username, includeDeleted: true);
+    final idx = allTodos.indexWhere((todo) => todo.id == item.id);
+    if (idx != -1) {
+      allTodos[idx].hasConflict = false;
+      allTodos[idx].serverVersionData = null;
+      await saveTodos(
+        username,
+        allTodos,
+        sync: false,
+        isSyncSource: true,
+        recomputeScheduleConflicts: false,
+      );
+    }
+  }
+
+  static Future<Set<String>> _getIgnoredScheduleConflictKeys(
+      String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getStringList(
+              _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+            ) ??
+            const <String>[])
+        .toSet();
   }
 
   static Future<void> _recordLocalAuditOptimized(
@@ -1379,6 +1466,7 @@ class StorageService {
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.database;
+      await _clearGhostConflictFlags(db);
 
       final migrationKey = "migration_marker_${username}_v4";
       bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
@@ -1833,6 +1921,7 @@ class StorageService {
     try {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.database;
+      await _clearGhostConflictFlags(db);
       final prefs = await SharedPreferences.getInstance();
 
       // 1. 迁移检查
@@ -1943,6 +2032,7 @@ class StorageService {
   static Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
       {bool sync = true}) async {
     final prefs = await StorageService.prefs;
+    final db = await DatabaseHelper.instance.database;
     final Map<String, TimeLogItem> dedupeMap = {};
 
     for (var item in items) {
@@ -1959,8 +2049,33 @@ class StorageService {
     List<TimeLogItem> result = dedupeMap.values.toList()
       ..sort((a, b) => b.startTime.compareTo(a.startTime));
 
-    List<String> jsonList = result.map((e) => jsonEncode(e.toJson())).toList();
-    await prefs.setStringList("${KEY_TIME_LOGS}_$username", jsonList);
+    final batch = db.batch();
+    for (final item in result) {
+      batch.insert(
+        'time_logs',
+        {
+          'uuid': item.id,
+          'title': item.title,
+          'tag_uuids': jsonEncode(item.tagUuids),
+          'start_time': item.startTime,
+          'end_time': item.endTime,
+          'remark': item.remark,
+          'is_deleted': item.isDeleted ? 1 : 0,
+          'version': item.version,
+          'updated_at': item.updatedAt,
+          'created_at': item.createdAt,
+          'device_id': item.deviceId ?? '',
+          'team_uuid': item.teamUuid ?? '',
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    if (result.isNotEmpty) {
+      await batch.commit(noResult: true);
+    }
+
+    await prefs.remove("${KEY_TIME_LOGS}_$username");
+    await prefs.remove(KEY_TIME_LOGS);
 
     if (sync) Future.microtask(() => syncData(username));
   }
@@ -1976,13 +2091,6 @@ class StorageService {
       final bool migrated = prefs.getBool(migrationKey) ?? false;
 
       if (!migrated) {
-        // 🚀 核心补丁：清理残留
-        final String cleanupKey = "cleanup_done_timelogs_${username}_repair";
-        if (!(prefs.getBool(cleanupKey) ?? false)) {
-          await prefs.remove("${KEY_TIME_LOGS}_$username");
-          await prefs.remove(KEY_TIME_LOGS);
-          await prefs.setBool(cleanupKey, true);
-        }
         List<String> legacyJsonList =
             prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
@@ -2004,6 +2112,25 @@ class StorageService {
           debugPrint("✅ 专注记录迁移完成并已物理清理。");
         }
         await prefs.setBool(migrationKey, true);
+      } else {
+        final db = await dbHelper.database;
+        final countRows =
+            await db.rawQuery('SELECT COUNT(*) as cnt FROM time_logs');
+        final hasSqlRows = (countRows.first['cnt'] as int? ?? 0) > 0;
+        final legacyJsonList =
+            prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
+        if (!hasSqlRows && legacyJsonList.isNotEmpty) {
+          final legacyItems = <TimeLogItem>[];
+          for (final e in legacyJsonList) {
+            try {
+              legacyItems.add(TimeLogItem.fromJson(jsonDecode(e)));
+            } catch (_) {}
+          }
+          if (legacyItems.isNotEmpty) {
+            await saveTimeLogs(username, legacyItems, sync: false);
+            debugPrint("✅ 专注记录从 Prefs 修复回 SQL: ${legacyItems.length} 条");
+          }
+        }
       }
 
       final db = await dbHelper.database;
@@ -2017,15 +2144,20 @@ class StorageService {
 
       return maps
           .map((m) => TimeLogItem(
-                id: m['uuid'] ?? m['id']?.toString(),
-                title: m['task_name'] ?? m['title'] ?? '',
-                startTime: m['start_time'] ?? 0,
-                endTime: m['end_time'] ?? 0,
-                remark: m['notes'] ?? m['remark'],
-                version: m['version'] ?? 1,
+                id: (m['uuid'] ?? m['id'])?.toString(),
+                title: (m['task_name'] ?? m['title'] ?? '').toString(),
+                tagUuids: _decodeStringList(m['tag_uuids']),
+                startTime: _parseNullableInt(m['start_time']) ?? 0,
+                endTime: _parseNullableInt(m['end_time']) ?? 0,
+                remark: (m['notes'] ?? m['remark'])?.toString(),
+                version: _parseNullableInt(m['version']) ?? 1,
                 updatedAt:
-                    m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+                    _parseNullableInt(m['updated_at']) ?? DateTime.now().millisecondsSinceEpoch,
+                createdAt:
+                    _parseNullableInt(m['created_at']) ?? DateTime.now().millisecondsSinceEpoch,
                 isDeleted: (m['is_deleted'] == 1),
+                deviceId: _emptyToNull(m['device_id']),
+                teamUuid: _emptyToNull(m['team_uuid']),
               ))
           .toList();
     } catch (e) {
@@ -2035,6 +2167,27 @@ class StorageService {
           prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
       return list.map((e) => TimeLogItem.fromJson(jsonDecode(e))).toList();
     }
+  }
+
+  static List<String> _decodeStringList(dynamic value) {
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded.map((e) => e.toString()).toList();
+        }
+      } catch (_) {}
+    }
+    return <String>[];
+  }
+
+  static String? _emptyToNull(dynamic value) {
+    final text = value?.toString();
+    if (text == null || text.isEmpty || text == 'null') return null;
+    return text;
   }
 
   static Future<bool> deleteTimeLogGlobally(
@@ -2362,7 +2515,7 @@ class StorageService {
       final String friendlyName = await _getDetailedDeviceName();
       final String serverKey =
           ApiService.baseUrl == ApiService.aliyunProdUrl ? "aliyun" : "cf";
-      final int lastSyncTime = forceFullSync
+      int lastSyncTime = forceFullSync
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
 
@@ -2379,6 +2532,12 @@ class StorageService {
       List<CountdownItem> allLocalCountdowns =
           await getCountdowns(username, includeDeleted: true);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
+      if (!forceFullSync &&
+          ((syncCountdowns && allLocalCountdowns.isEmpty) ||
+              (syncTimeLogs && allLocalTimeLogs.isEmpty))) {
+        debugPrint('🔄 本地倒数日/时间日志为空，自动降级为全量拉取以修复空库');
+        lastSyncTime = 0;
+      }
 
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
@@ -2742,29 +2901,27 @@ class StorageService {
               (serverVersion['uuid'] ?? serverVersion['id'] ?? '').toString();
           final bool isSameItemServerVersion = serverVersionId.isNotEmpty &&
               serverVersionId == itemId.toString();
+          if (!isSameItemServerVersion) {
+            debugPrint('⚠️ 跳过无可用云端快照的冲突标记: ${c.type} $itemId');
+            continue;
+          }
 
           if (todosIndexMap.containsKey(itemId)) {
             final todo = allLocalTodos[todosIndexMap[itemId]!];
             todo.hasConflict = true;
-            if (serverVersion.isNotEmpty && isSameItemServerVersion) {
-              todo.serverVersionData = serverVersion;
-            }
+            todo.serverVersionData = serverVersion;
             hasChanges = true;
           }
           if (countdownsIndexMap.containsKey(itemId)) {
             final countdown = allLocalCountdowns[countdownsIndexMap[itemId]!];
             countdown.hasConflict = true;
-            if (serverVersion.isNotEmpty && isSameItemServerVersion) {
-              countdown.conflictData = serverVersion;
-            }
+            countdown.conflictData = serverVersion;
             hasChanges = true;
           }
           if (groupsIndexMap.containsKey(itemId)) {
             final group = allLocalGroups[groupsIndexMap[itemId]!];
             group.hasConflict = true;
-            if (serverVersion.isNotEmpty && isSameItemServerVersion) {
-              group.conflictData = serverVersion;
-            }
+            group.conflictData = serverVersion;
             hasChanges = true;
           }
           // TimeLogs don't have hasConflict field, skip
@@ -2788,7 +2945,12 @@ class StorageService {
       }
 
       // 7. 持久化数据
-      if (_recomputeLocalTodoScheduleConflicts(allLocalTodos)) {
+      final ignoredScheduleConflictKeys =
+          await _getIgnoredScheduleConflictKeys(username);
+      if (_recomputeLocalTodoScheduleConflicts(
+        allLocalTodos,
+        ignoredScheduleConflictKeys: ignoredScheduleConflictKeys,
+      )) {
         hasChanges = true;
       }
 
@@ -2833,6 +2995,7 @@ class StorageService {
 
   static bool _recomputeLocalTodoScheduleConflicts(
     List<TodoItem> todos, {
+    Set<String> ignoredScheduleConflictKeys = const <String>{},
     void Function(int current, int total, String message)? onProgress,
   }) {
     final buckets = <String, List<_TodoInterval>>{};
@@ -2893,6 +3056,15 @@ class StorageService {
           final b = bucket[j];
           if (b.startMs >= a.endMs) break;
           if (a.startMs < b.endMs && b.startMs < a.endMs) {
+            final conflictKey = _scheduleConflictPairKey(
+              a.todo.id,
+              a.startMs,
+              a.endMs,
+              b.todo.id,
+              b.startMs,
+              b.endMs,
+            );
+            if (ignoredScheduleConflictKeys.contains(conflictKey)) continue;
             conflictMap
                 .putIfAbsent(a.todo.id, () => <Map<String, dynamic>>[])
                 .add(_conflictPeerSummary(b));
@@ -2955,6 +3127,26 @@ class StorageService {
     }
 
     return changed;
+  }
+
+  static String _scheduleConflictPairKey(
+    String aId,
+    int aStart,
+    int aEnd,
+    String bId,
+    int bStart,
+    int bEnd,
+  ) {
+    final left = '$aId@$aStart-$aEnd';
+    final right = '$bId@$bStart-$bEnd';
+    return left.compareTo(right) <= 0 ? '$left|$right' : '$right|$left';
+  }
+
+  static int? _parseMillis(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   static bool _hasVersionConflict(Map<String, dynamic>? data) {

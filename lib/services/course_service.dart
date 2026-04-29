@@ -1,11 +1,14 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:sqflite/sqflite.dart';
 
 import 'package:CountDownTodo/services/database_helper.dart';
 import '../services/api_service.dart';
+import '../services/environment_service.dart';
 import '../storage_service.dart';
 
 // 引入不同高校的解析器
@@ -216,13 +219,16 @@ class CourseService {
       final db = await DatabaseHelper.instance.database;
       final List<Map<String, dynamic>> maps = await db.query('courses', orderBy: 'date ASC, start_time ASC');
       if (maps.isNotEmpty) {
-        if (maps.length > 50) {
-          return await compute(_parseCourseItemsIsolate, maps);
-        }
         return maps.map((m) => CourseItem.fromJson(m)).toList();
       }
     } catch (e) {
       debugPrint("⚠️ Course SQL 读取异常: $e");
+    }
+
+    final recoveredSqlCourses =
+        await _recoverCoursesFromLegacySqlIfNeeded(username);
+    if (recoveredSqlCourses.isNotEmpty) {
+      return recoveredSqlCourses;
     }
 
     // 2. 🚀 核心迁移逻辑：如果 SQL 为空，从 Prefs 迁移
@@ -234,12 +240,10 @@ class CourseService {
     if ((data == null || data.isEmpty) && username.isNotEmpty) {
       final String legacyKey = _keyCourseData;
       final String markerKey = "${legacyKey}_${username}_migrated_v2";
-      if (!(prefs.getBool(markerKey) ?? false)) {
-        data = prefs.getString(legacyKey);
-        if (data != null && data.isNotEmpty) {
-          await prefs.setString(scopedKey, data);
-          await prefs.setBool(markerKey, true);
-        }
+      data = prefs.getString(legacyKey);
+      if (data != null && data.isNotEmpty) {
+        await prefs.setString(scopedKey, data);
+        await prefs.setBool(markerKey, true);
       }
     }
 
@@ -264,6 +268,59 @@ class CourseService {
       debugPrint("读取所有课表时发生崩溃: $e");
       return [];
     }
+  }
+
+  static Future<List<CourseItem>> _recoverCoursesFromLegacySqlIfNeeded(
+      String username) async {
+    if (kIsWeb || !(Platform.isWindows || Platform.isLinux)) return [];
+
+    final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';
+    final candidateNames = <String>{
+      '${envPrefix}uni_sync_$username.db',
+      'v4_uni_sync_$username.db',
+      'uni_sync_$username.db',
+      EnvironmentService.dbName,
+      'v4_uni_sync.db',
+    };
+
+    for (final dbName in candidateNames) {
+      final legacyPath = absolute(
+        join('.dart_tool', 'sqflite_common_ffi', 'databases', dbName),
+      );
+      final legacyFile = File(legacyPath);
+      if (!await legacyFile.exists()) continue;
+
+      Database? legacyDb;
+      try {
+        legacyDb = await openDatabase(legacyPath, readOnly: true);
+        final tableRows = await legacyDb.query(
+          'sqlite_master',
+          columns: ['name'],
+          where: 'type = ? AND name = ?',
+          whereArgs: ['table', 'courses'],
+          limit: 1,
+        );
+        if (tableRows.isEmpty) continue;
+
+        final maps = await legacyDb.query(
+          'courses',
+          orderBy: 'date ASC, start_time ASC',
+        );
+        if (maps.isEmpty) continue;
+
+        final courses = maps.map((m) => CourseItem.fromJson(m)).toList();
+        await saveCourses(username, courses);
+        debugPrint(
+            '✅ [Course] 已从旧 FFI 数据库恢复 ${courses.length} 条课表: $legacyPath');
+        return courses;
+      } catch (e) {
+        debugPrint('⚠️ [Course] 旧 FFI 课表恢复失败 ($legacyPath): $e');
+      } finally {
+        await legacyDb?.close();
+      }
+    }
+
+    return [];
   }
 
   // 5. 获取主页今日/明日需要显示的课程

@@ -371,6 +371,49 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return {};
   }
 
+  Future<bool> _keepLocalAndQueueSync(dynamic item,
+      {bool syncNow = true}) async {
+    final localJson = _itemToJson(item);
+    final table = _resolveTable(item);
+    final uuid = (localJson['uuid'] ?? localJson['id'] ?? '').toString();
+    if (uuid.isEmpty || table.isEmpty) return false;
+
+    final serverVersion = _findServerVersion(item);
+    final serverVer = (serverVersion?['version'] as num?)?.toInt() ?? 0;
+    final currentVer = (localJson['version'] as num?)?.toInt() ?? 1;
+    final newVersion =
+        serverVer > currentVer ? serverVer + 1 : currentVer + 1;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    localJson['version'] = newVersion;
+    localJson['updated_at'] = now;
+    localJson['has_conflict'] = 0;
+    localJson.remove('conflict_data');
+    localJson.remove('serverVersionData');
+
+    await StorageService.resolveConflictLocally(
+      uuid: uuid,
+      table: table,
+      resolvedData: localJson,
+      createOplog: true,
+    );
+
+    try {
+      await ApiService.resolveConflict(
+        uuid: uuid,
+        table: table,
+        resolution: 'keep_local',
+        bumpedVersion: newVersion,
+        data: localJson,
+      );
+    } catch (_) {}
+
+    if (syncNow) {
+      Future.microtask(() => StorageService.syncData(widget.username));
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1190,7 +1233,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("一键修复"),
-        content: Text("将强制保留这 ${items.length} 项任务的本地版本并清除冲突标记。确认继续？"),
+        content: Text("将保留这 ${items.length} 项任务，只清除本地损坏的冲突标记。确认继续？"),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -1231,64 +1274,24 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           final idx = allTodos.indexWhere((t) => t.id == id);
           if (idx != -1) {
             final item = allTodos[idx];
-            // 🚀 精准清理：根据归属权决定动作
-            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
-              // A. 团队项 -> 加入忽略表并物理删除
-              await StorageService.ignoreRemoteItem(
-                  table: 'todos', uuid: item.id, teamUuid: item.teamUuid);
-              // 🚀 核心加固：同时同步给服务端，防止其他设备同步时拉回
-              ApiService.ignoreRemoteItem(
-                  uuid: item.id, table: 'todos', teamUuid: item.teamUuid);
-              allTodos.removeAt(idx);
-            } else {
-              // B. 个人项 -> 软删除 + 版本跃迁
-              item.isDeleted = true;
-              item.hasConflict = false;
-              item.serverVersionData = null;
-              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-              item.version = item.version + 1000;
-              item.markAsChanged();
-            }
+            item.hasConflict = false;
+            item.serverVersionData = null;
             todosChanged = true;
           }
         } else if (ghost is TodoGroup) {
           final idx = allGroups.indexWhere((g) => g.id == id);
           if (idx != -1) {
             final item = allGroups[idx];
-            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
-              await StorageService.ignoreRemoteItem(
-                  table: 'todo_groups', uuid: item.id, teamUuid: item.teamUuid);
-              ApiService.ignoreRemoteItem(
-                  uuid: item.id, table: 'todo_groups', teamUuid: item.teamUuid);
-              allGroups.removeAt(idx);
-            } else {
-              item.isDeleted = true;
-              item.hasConflict = false;
-              item.conflictData = null;
-              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-              item.version = item.version + 1000;
-              item.markAsChanged();
-            }
+            item.hasConflict = false;
+            item.conflictData = null;
             groupsChanged = true;
           }
         } else if (ghost is CountdownItem) {
           final idx = allCountdowns.indexWhere((c) => c.id == id);
           if (idx != -1) {
             final item = allCountdowns[idx];
-            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
-              await StorageService.ignoreRemoteItem(
-                  table: 'countdowns', uuid: item.id, teamUuid: item.teamUuid);
-              ApiService.ignoreRemoteItem(
-                  uuid: item.id, table: 'countdowns', teamUuid: item.teamUuid);
-              allCountdowns.removeAt(idx);
-            } else {
-              item.isDeleted = true;
-              item.hasConflict = false;
-              item.conflictData = null;
-              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-              item.version = item.version + 1000;
-              item.markAsChanged();
-            }
+            item.hasConflict = false;
+            item.conflictData = null;
             countdownsChanged = true;
           }
         }
@@ -1297,12 +1300,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       // 3. 批量持久化（每种类型仅写入一次）
       final saves = <Future>[];
       if (todosChanged)
-        saves.add(StorageService.saveTodos(widget.username, allTodos));
+        saves.add(StorageService.saveTodos(widget.username, allTodos,
+            sync: false,
+            isSyncSource: true,
+            recomputeScheduleConflicts: false));
       if (groupsChanged)
-        saves.add(StorageService.saveTodoGroups(widget.username, allGroups));
+        saves.add(StorageService.saveTodoGroups(widget.username, allGroups,
+            sync: false, isSyncSource: true));
       if (countdownsChanged)
-        saves
-            .add(StorageService.saveCountdowns(widget.username, allCountdowns));
+        saves.add(StorageService.saveCountdowns(widget.username, allCountdowns,
+            sync: false, isSyncSource: true));
 
       if (saves.isNotEmpty) await Future.wait(saves);
     } catch (e) {
@@ -1937,47 +1944,22 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           // 对于有服务器版本的冲突，使用 _ConflictResolutionSheet 的逻辑
           final serverVersion = _findServerVersion(conflictItem);
           if (serverVersion != null && serverVersion.isNotEmpty) {
-            final localJson = _itemToJson(conflictItem);
-            final table = _resolveTable(conflictItem);
-            
-            final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
-            final serverVer = serverVersion['version'] as int? ?? 0;
-            final currentVer = localJson['version'] as int? ?? 1;
-            final newVersion = serverVer > currentVer ? serverVer + 1 : currentVer + 1;
-            final now = DateTime.now().millisecondsSinceEpoch;
-            
-            localJson['version'] = newVersion;
-            localJson['updated_at'] = now;
-            localJson['has_conflict'] = 0;
-            localJson.remove('conflict_data');
-            localJson.remove('serverVersionData');
-            
-            await StorageService.resolveConflictLocally(
-              uuid: uuid,
-              table: table,
-              resolvedData: localJson,
-              createOplog: true,
-            );
-            
-            try {
-              await ApiService.resolveConflict(
-                uuid: uuid,
-                table: table,
-                resolution: 'keep_local',
-                bumpedVersion: newVersion,
-                data: localJson,
-              );
-            } catch (_) {}
-            
-            successCount++;
+            if (await _keepLocalAndQueueSync(conflictItem, syncNow: false)) {
+              successCount++;
+            }
           } else {
-            // 对于没有服务器版本的冲突，使用强制保留本地
-            await _resolveGhostConflict(conflictItem, refresh: false);
-            successCount++;
+            // 用户明确选择保留本地时，也要生成 oplog，否则另一端收不到本地完成状态。
+            if (await _keepLocalAndQueueSync(conflictItem, syncNow: false)) {
+              successCount++;
+            }
           }
         } catch (e) {
           debugPrint('批量保留本地失败 $itemId: $e');
         }
+      }
+
+      if (successCount > 0) {
+        Future.microtask(() => StorageService.syncData(widget.username));
       }
       
       if (mounted) {
@@ -2266,48 +2248,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   Future<void> _resolveGhostConflict(dynamic item,
       {bool refresh = true}) async {
-    if (item is TodoItem) {
-      final all =
-          await StorageService.getTodos(widget.username, includeDeleted: true);
-      final idx = all.indexWhere((t) => t.id == item.id);
-      if (idx != -1) {
-        all[idx].hasConflict = false;
-        all[idx].serverVersionData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-        all[idx].version = (all[idx].version ?? 1) + 1000;
-        all[idx].markAsChanged();
-        await StorageService.saveTodos(widget.username, all);
-      }
-    } else if (item is TodoGroup) {
-      final all = await StorageService.getTodoGroups(widget.username,
-          includeDeleted: true);
-      final idx = all.indexWhere((g) => g.id == item.id);
-      if (idx != -1) {
-        all[idx].hasConflict = false;
-        all[idx].conflictData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-        all[idx].version = (all[idx].version ?? 1) + 1000;
-        all[idx].markAsChanged();
-        await StorageService.saveTodoGroups(widget.username, all);
-      }
-    } else if (item is CountdownItem) {
-      final all = await StorageService.getCountdowns(widget.username);
-      final idx = all.indexWhere((c) => c.id == item.id);
-      if (idx != -1) {
-        all[idx].hasConflict = false;
-        all[idx].conflictData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-        all[idx].version = (all[idx].version ?? 1) + 1000;
-        all[idx].markAsChanged();
-        await StorageService.saveCountdowns(widget.username, all);
-      }
-    }
+    await _keepLocalAndQueueSync(item, syncNow: refresh);
 
     if (refresh) {
       await _loadConflicts();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("已强制保留本地并清除冲突标记")),
+          const SnackBar(content: Text("已强制保留本地并加入同步队列")),
         );
       }
     }
@@ -2466,6 +2413,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(sheetContext),
                             child: const Text('取消'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isApplyingScheduleFix
+                                ? null
+                                : () async {
+                                    Navigator.pop(sheetContext);
+                                    await StorageService
+                                        .ignoreLocalScheduleConflict(
+                                            widget.username, item);
+                                    await _loadConflicts();
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('已保留现有时间安排，不再提示这组冲突'),
+                                      ),
+                                    );
+                                  },
+                            child: const Text('保留现状'),
                           ),
                         ),
                         const SizedBox(width: 12),

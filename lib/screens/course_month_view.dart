@@ -139,6 +139,28 @@ class CourseMonthView extends StatelessWidget {
           }
         }
       }
+
+      if (activeDataViews.contains('timeLogs')) {
+        for (var l in (logMap[dStr] ?? [])) {
+          weekBars.add({
+            'timeLog': l,
+            'start': i,
+            'end': i,
+            'title': _timeLogTitle(l),
+          });
+        }
+      }
+
+      if (activeDataViews.contains('pomodoros')) {
+        for (var p in (pomMap[dStr] ?? [])) {
+          weekBars.add({
+            'pomodoro': p,
+            'start': i,
+            'end': i,
+            'title': _pomodoroTitle(p),
+          });
+        }
+      }
     }
 
     // 2. 收集跨周/跨天待办 (区间判定)
@@ -166,24 +188,12 @@ class CourseMonthView extends StatelessWidget {
       }
     }
 
-    // 2. 排序 (核心优化：未完成优先，其次课程，最后按长度)
+    // 3. 排序 (未完成待办优先，然后课程、时间日志、番茄钟、已完成待办)
     weekBars.sort((a, b) {
-      final todoA = a['todo'] as TodoItem?;
-      final todoB = b['todo'] as TodoItem?;
-      final bool isDoneA = todoA?.isDone ?? false;
-      final bool isDoneB = todoB?.isDone ?? false;
-      final bool isCourseA = a['course'] != null;
-      final bool isCourseB = b['course'] != null;
+      final priorityA = _barPriority(a);
+      final priorityB = _barPriority(b);
+      if (priorityA != priorityB) return priorityA.compareTo(priorityB);
 
-      // 1. 未完成的待办排最前
-      if (!isDoneA && isDoneB) return -1;
-      if (isDoneA && !isDoneB) return 1;
-
-      // 2. 课程排在未完成待办之后，但已完成待办之前
-      if (isCourseA && !isCourseB) return isDoneB ? -1 : 1;
-      if (!isCourseA && isCourseB) return isDoneA ? 1 : -1;
-
-      // 3. 长度排序 (保持长条在上方)
       int lenA = (a['end'] as int) - (a['start'] as int);
       int lenB = (b['end'] as int) - (b['start'] as int);
       if (lenA != lenB) return lenB.compareTo(lenA);
@@ -262,19 +272,13 @@ class CourseMonthView extends StatelessWidget {
                             children: rowGroup.map((bar) {
                               final todo = bar['todo'] as TodoItem?;
                               final course = bar['course'] as CourseItem?;
+                              final timeLog = bar['timeLog'] as TimeLogItem?;
+                              final pomodoro = bar['pomodoro'] as PomodoroRecord?;
                               final int start = bar['start'];
                               final int end = bar['end'];
 
-                              Color barColor;
-                              if (course != null) {
-                                barColor = Colors.blue.withValues(alpha: 0.85);
-                              } else {
-                                final isTeam = todo?.teamUuid != null;
-                                final isDone = todo?.isDone ?? false;
-                                barColor = isDone 
-                                  ? (isDark ? Colors.white24 : Colors.black12)
-                                  : (isTeam ? Colors.green.withValues(alpha: 0.7) : Colors.orange.withValues(alpha: 0.7));
-                              }
+                              final Color barColor = _barColor(bar, isDark);
+                              final Color textColor = _barTextColor(bar, isDark);
 
                               return Positioned(
                                 left: start * cellWidth + 2,
@@ -287,6 +291,8 @@ class CourseMonthView extends StatelessWidget {
                                       onDayTapped(weekDays[start]);
                                     } else if (todo != null) {
                                       onGanttTodoTap?.call(todo);
+                                    } else if (timeLog != null || pomodoro != null) {
+                                      onDayTapped(weekDays[start]);
                                     }
                                   },
                                   child: Container(
@@ -301,7 +307,7 @@ class CourseMonthView extends StatelessWidget {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        color: (course != null || (todo != null && !todo.isDone)) ? Colors.white : (isDark ? Colors.white38 : Colors.black38),
+                                        color: textColor,
                                         fontSize: (barHeight * 0.6).clamp(8.0, 11.0),
                                         fontWeight: FontWeight.w500,
                                         decoration: (todo?.isDone ?? false) ? TextDecoration.lineThrough : null,
@@ -336,6 +342,81 @@ class CourseMonthView extends StatelessWidget {
       if (!placed) rows.add([bar]);
     }
     return rows;
+  }
+
+  int _barPriority(Map<String, dynamic> bar) {
+    final todo = bar['todo'] as TodoItem?;
+    if (todo != null) return todo.isDone ? 4 : 0;
+    if (bar['course'] != null) return 1;
+    if (bar['timeLog'] != null) return 2;
+    if (bar['pomodoro'] != null) return 3;
+    return 5;
+  }
+
+  Color _barColor(Map<String, dynamic> bar, bool isDark) {
+    final todo = bar['todo'] as TodoItem?;
+    final log = bar['timeLog'] as TimeLogItem?;
+    final pomodoro = bar['pomodoro'] as PomodoroRecord?;
+
+    if (bar['course'] != null) {
+      return Colors.blue.withValues(alpha: 0.85);
+    }
+    if (todo != null) {
+      final isTeam = todo.teamUuid != null;
+      return todo.isDone
+          ? (isDark ? Colors.white24 : Colors.black12)
+          : (isTeam
+              ? Colors.green.withValues(alpha: 0.7)
+              : Colors.orange.withValues(alpha: 0.7));
+    }
+    if (log != null) {
+      final tagColor = _firstTagColor(log.tagUuids);
+      return (tagColor ?? const Color(0xFF3B82F6)).withValues(alpha: 0.72);
+    }
+    if (pomodoro != null) {
+      final tagColor = _firstTagColor(pomodoro.tagUuids);
+      return (tagColor ?? Colors.redAccent).withValues(alpha: 0.68);
+    }
+    return isDark ? Colors.white24 : Colors.black12;
+  }
+
+  Color _barTextColor(Map<String, dynamic> bar, bool isDark) {
+    final todo = bar['todo'] as TodoItem?;
+    if (todo != null && todo.isDone) {
+      return isDark ? Colors.white38 : Colors.black38;
+    }
+    return Colors.white;
+  }
+
+  String _timeLogTitle(TimeLogItem log) {
+    if (log.title.isNotEmpty) return log.title;
+    final tag = _firstTag(log.tagUuids);
+    return tag?.name ?? '时间日志';
+  }
+
+  String _pomodoroTitle(PomodoroRecord record) {
+    final tag = _firstTag(record.tagUuids);
+    return tag?.name ?? '番茄钟';
+  }
+
+  PomodoroTag? _firstTag(List<String> tagUuids) {
+    if (tagUuids.isEmpty) return null;
+    for (final tag in pomodoroTags) {
+      if (tagUuids.contains(tag.uuid)) return tag;
+    }
+    return null;
+  }
+
+  Color? _firstTagColor(List<String> tagUuids) {
+    final tag = _firstTag(tagUuids);
+    if (tag == null) return null;
+    return _hexToColor(tag.color);
+  }
+
+  Color _hexToColor(String hex) {
+    var value = hex.replaceAll('#', '').trim();
+    if (value.length == 6) value = 'FF$value';
+    return Color(int.tryParse(value, radix: 16) ?? 0xFF3B82F6);
   }
 
   Widget _buildDetailedDayBackground(BuildContext context, DateTime day, Color? heatColor, bool isDark, double height, List<CourseItem> courses, List<TodoItem> todos, List<TimeLogItem> logs, List<PomodoroRecord> poms) {
@@ -376,7 +457,12 @@ class CourseMonthView extends StatelessWidget {
                     DateTime e = DateTime.fromMillisecondsSinceEpoch(l.endTime).toLocal();
                     return _buildVerticalBar(s.hour * 100 + s.minute, e.hour * 100 + e.minute, Colors.blueAccent.withValues(alpha: 0.4), height);
                   }),
-                  ...poms.map((p) => _buildTimeDot(DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal().hour * 100, Colors.redAccent, height)),
+                  ...poms.map((p) {
+                    final DateTime s = DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal();
+                    final int endMs = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
+                    final DateTime e = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
+                    return _buildVerticalBar(s.hour * 100 + s.minute, e.hour * 100 + e.minute, Colors.redAccent.withValues(alpha: 0.4), height);
+                  }),
                 ],
               ),
             ),
