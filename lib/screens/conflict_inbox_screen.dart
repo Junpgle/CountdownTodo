@@ -79,6 +79,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     final List<dynamic> items = [];
     items.addAll(todos.where((t) {
+      if (t.isDeleted) return false;
       if (!t.hasConflict) return false;
       if (_isAllDayTask(t.toJson())) return false;
 
@@ -95,8 +96,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
       return true;
     }));
-    items.addAll(groups.where((g) => g.hasConflict));
-    items.addAll(countdowns.where((c) => c.hasConflict));
+    items.addAll(groups.where((g) => !g.isDeleted && g.hasConflict));
+    items.addAll(countdowns.where((c) => !c.isDeleted && c.hasConflict));
 
     items.sort((a, b) {
       int timeA = (a is TodoItem)
@@ -3044,24 +3045,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         );
     if (!mounted || target == null) return;
 
-    await Navigator.push(
+    final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TodoEditScreen(
           todo: target,
           todos: allTodos,
-          onTodosChanged: (updatedTodos) {
-            StorageService.saveTodos(widget.username, updatedTodos);
+          onTodosChanged: (updatedTodos) async {
+            await StorageService.saveTodos(widget.username, updatedTodos);
           },
           todoGroups: allGroups,
-          onGroupsChanged: (updatedGroups) {
-            StorageService.saveTodoGroups(widget.username, updatedGroups);
+          onGroupsChanged: (updatedGroups) async {
+            await StorageService.saveTodoGroups(widget.username, updatedGroups);
           },
           username: widget.username,
         ),
       ),
     );
     if (!mounted) return;
+    if (changed == true) {
+      await StorageService.syncData(widget.username);
+    }
     await _loadConflicts();
   }
 
