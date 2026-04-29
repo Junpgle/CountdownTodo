@@ -1021,6 +1021,7 @@ class StorageService {
     int teamTeam = 0;
 
     for (final todo in allTodos) {
+      if (todo.isDeleted) continue;
       if (!todo.hasConflict) continue;
       final data = todo.serverVersionData;
       if (!_isLocalScheduleConflict(data)) continue;
@@ -3084,10 +3085,18 @@ class StorageService {
 
     var changed = false;
     for (final todo in todos) {
-      if (todo.isDeleted) continue;
-
       final existing = todo.serverVersionData;
       final isLocalScheduleConflict = _isLocalScheduleConflict(existing);
+
+      if (todo.isDeleted) {
+        if (isLocalScheduleConflict || todo.hasConflict) {
+          todo.hasConflict = false;
+          todo.serverVersionData = null;
+          changed = true;
+        }
+        continue;
+      }
+
       final peers = conflictMap[todo.id];
 
       if (peers != null && peers.isNotEmpty) {
