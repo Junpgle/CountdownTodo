@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ApiService } from '../services/api';
 import { SyncEngine } from '../services/sync';
 import { readDayCache, writeDayCache } from './webapp-utils';
-import { Search, ZoomIn, ZoomOut, Minus, Plus, X, Clock, Calendar, User as UserIcon, CheckCircle2, BookOpen, AlertCircle, RefreshCcw, Tag, Layers, ArrowRight, ArrowLeft } from 'lucide-react';
+import { ZoomIn, ZoomOut, X, Clock, Calendar, User as UserIcon, CheckCircle2, RefreshCcw, Tag, Layers, ArrowLeft } from 'lucide-react';
 
 interface User {
   id: number;
@@ -18,14 +18,7 @@ interface Team {
   member_count: number;
 }
 
-interface TeamMember {
-  user_id: number;
-  username: string;
-  email: string;
-  role: number;
-  avatar_url?: string;
-  joined_at?: number;
-}
+
 
 interface Todo {
   uuid: string;
@@ -34,15 +27,15 @@ interface Todo {
   created_date: number | null;
   created_at: number;
   is_completed: number | boolean;
-  collab_type: number;
-  creator_name?: string;
+  collab_type?: number;
+  creator_name?: string | null;
   team_uuid?: string | null;
   team_name?: string | null;
   user_id?: number;
-  description?: string;
-  remark?: string;
+  description?: string | null;
+  remark?: string | null;
   recurrence?: number;
-  reminder_minutes?: number;
+  reminder_minutes?: number | null;
   is_all_day?: boolean | number;
   category_id?: string | null;
   is_deleted?: boolean | number;
@@ -414,9 +407,8 @@ const GanttChart: React.FC<{ todos: Todo[], dayWidth: number, onTaskClick: (task
 
 const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user, onBack }) => {
   const [time, setTime] = useState(new Date());
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [selectedTeam] = useState<Team | null>(null);
   const [teamTodos, setTeamTodos] = useState<Todo[]>([]);
-  const [personalTodos, setPersonalTodos] = useState<Todo[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [semesterStart, setSemesterStart] = useState<number | undefined>();
   const [teamCountdowns, setTeamCountdowns] = useState<Countdown[]>([]);
@@ -438,7 +430,6 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
       setAllUniqueTodos(uniqueTodos);
       
       setTeamTodos(uniqueTodos.filter(t => t.team_uuid === selectedTeam?.uuid));
-      setPersonalTodos(uniqueTodos.filter(t => !t.team_uuid || t.team_uuid === ''));
 
       // 2. 加载并去重 Countdowns (过滤已过期)
       const now = Date.now();
@@ -542,12 +533,18 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
   }, [user, selectedTeam, fetchTeamData]);
 
   if (!user) return null;
-  const allTodos = [...teamTodos, ...personalTodos];
   
   // 汇总展示：如果选了团队则展示团队的，否则展示全量（包含所有团队）
   const displayTodos = selectedTeam ? teamTodos : allUniqueTodos;
   
-  const incompleteDisplayTodos = displayTodos.filter(t => !t.is_completed && t.due_date).sort((a,b) => (a.due_date || 0) - (b.due_date || 0));
+  const incompleteDisplayTodos = displayTodos
+    .filter(t => !t.is_completed)
+    .sort((a, b) => {
+      if (a.due_date && b.due_date) return a.due_date - b.due_date;
+      if (a.due_date) return -1;
+      if (b.due_date) return 1;
+      return (a.created_date || a.created_at) - (b.created_date || b.created_at);
+    });
   const completedDisplayTodos = displayTodos.filter(t => t.is_completed).slice(0, 20);
   const completionRate = displayTodos.length > 0 ? Math.round((displayTodos.filter(t => t.is_completed).length / displayTodos.length) * 100) : 0;
 

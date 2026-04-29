@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Mail, Lock, User as UserIcon, ShieldCheck, MessageSquare, Loader2, KeyRound, Globe, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, User as UserIcon, ShieldCheck, MessageSquare, Loader2, KeyRound, Globe } from 'lucide-react';
 import { ApiService } from '../services/api';
 
 export interface User {
@@ -407,7 +407,7 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
                   maxLength={6}
                   placeholder="请输入验证码"
                   value={verificationCode}
-                  onChange={setVerificationCode}
+                  onChange={e => setVerificationCode(e.target.value)}
                   className="w-full bg-slate-50 border-2 border-slate-100 pl-12 pr-4 py-4 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none text-center text-2xl font-mono tracking-[0.5em] transition-all"
                 />
               </div>

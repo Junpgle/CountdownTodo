@@ -38,10 +38,16 @@ const App = () => {
 
     const handleHashChange = () => {
       const hash = window.location.hash;
+      const token = ApiService.getToken();
       if (hash.includes('dashboard')) {
+        if (!token) {
+          setCurrentView('auth');
+          window.location.hash = 'app';
+          return;
+        }
         setCurrentView('dashboard');
       } else if (hash.includes('app')) {
-        setCurrentView(ApiService.getToken() ? 'webapp' : 'auth');
+        setCurrentView(token ? 'webapp' : 'auth');
       }
     };
     if (isAppPage) {
@@ -79,7 +85,7 @@ const App = () => {
     <Suspense fallback={<LoadingSpinner />}>
       {isAppPage ? (
           <>
-            {currentView === 'dashboard' ? (
+            {currentView === 'dashboard' && user ? (
                 <TeamDisplayBoard user={user} onBack={() => setCurrentView('webapp')} />
             ) : currentView === 'auth' ? (
                 <AuthScreen onBack={() => { window.location.href = './home.html'; }} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
