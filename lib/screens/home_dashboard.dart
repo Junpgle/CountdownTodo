@@ -1961,10 +1961,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       final start = DateTime.now();
       final result = await task.timeout(const Duration(seconds: 5));
       final duration = DateTime.now().difference(start).inMilliseconds;
-      //debugPrint("⚡ [DashboardLoader] $name 加载成功 ($duration ms)");
+      debugPrint("⚡ [DashboardLoader] $name 加载成功 ($duration ms)");
       return result;
     } catch (e) {
-      //debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
+      debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
       return null;
     }
   }

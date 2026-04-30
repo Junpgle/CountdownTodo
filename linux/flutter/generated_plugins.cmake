@@ -6,7 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   desktop_multi_window
   fullscreen_window
   open_file_linux
-  screen_retriever
+  screen_retriever_linux
   tray_manager
   url_launcher_linux
   webview_win_floating

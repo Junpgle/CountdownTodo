@@ -197,12 +197,20 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     }
   }
 
-  void _addLog(TimeLogItem log) {
+  Future<void> _addLog(TimeLogItem log) async {
     setState(() {
       _allLogs.removeWhere((l) => l.id == log.id);
       _allLogs.add(log);
     });
-    StorageService.saveTimeLogs(widget.username, _allLogs, sync: true);
+    try {
+      await StorageService.saveTimeLogs(widget.username, _allLogs, sync: true);
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存时间日志失败: $e')),
+      );
+    }
   }
 
   void _deleteLog(String id) async {
@@ -1658,26 +1666,28 @@ class _GridCanvas extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
-          child: Container(
-            decoration: BoxDecoration(
-              color: fillColor,
-              border: Border(
-                left: BorderSide(color: barColor, width: 2.5),
-                top: isFirst
-                    ? BorderSide(color: barColor.withValues(alpha: 0.45), width: 1.0)
-                    : BorderSide.none,
-                bottom: isLast
-                    ? BorderSide(color: barColor.withValues(alpha: 0.45), width: 1.0)
-                    : BorderSide.none,
-                right: isLast && colEnd < kColsPerH
-                    ? BorderSide(color: barColor.withValues(alpha: 0.25), width: 1.0)
-                    : BorderSide.none,
-              ),
-              borderRadius: BorderRadius.only(
+          child: ClipRRect(
+            borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(isFirst ? 3 : 0),
                 bottomLeft: Radius.circular(isLast ? 3 : 0),
                 topRight: Radius.circular(isFirst && isLast ? 3 : 0),
                 bottomRight: Radius.circular(isFirst && isLast ? 3 : 0),
+              ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: fillColor,
+                border: Border(
+                  left: BorderSide(color: barColor, width: 2.5),
+                  top: isFirst
+                      ? BorderSide(color: barColor.withValues(alpha: 0.45), width: 1.0)
+                      : BorderSide.none,
+                  bottom: isLast
+                      ? BorderSide(color: barColor.withValues(alpha: 0.45), width: 1.0)
+                      : BorderSide.none,
+                  right: isLast && colEnd < kColsPerH
+                      ? BorderSide(color: barColor.withValues(alpha: 0.25), width: 1.0)
+                      : BorderSide.none,
+                ),
               ),
             ),
           ),

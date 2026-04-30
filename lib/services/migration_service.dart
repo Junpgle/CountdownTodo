@@ -70,12 +70,14 @@ class MigrationService {
       onProgress("📥 拉取旧待办事项...");
       final todosRaw = await ApiService.fetchTodos(oldUserId);
       final todos = todosRaw.map((e) => TodoItem.fromJson(e)).toList();
-      await StorageService.saveTodos(oldUserId.toString(), todos);
+      await StorageService.saveTodos(oldUserId.toString(), todos,
+          sync: false, isSyncSource: true);
 
       onProgress("📥 拉取旧倒计时...");
       final countdownsRaw = await ApiService.fetchCountdowns(oldUserId);
       final countdowns = countdownsRaw.map((e) => CountdownItem.fromJson(e)).toList();
-      await StorageService.saveCountdowns(oldUserId.toString(), countdowns);
+      await StorageService.saveCountdowns(oldUserId.toString(), countdowns,
+          sync: false, isSyncSource: true);
 
       onProgress("📥 拉取时间记录...");
       final timeLogsRaw = await ApiService.fetchTimeLogs(oldUserId);
@@ -176,7 +178,8 @@ class MigrationService {
       // 4. 全量上传数据到新服务器
       // ==========================================
       onProgress("📤 上传待办事项、倒计时与时间记录...");
-      await StorageService.syncData(newUserId.toString(), forceFullSync: true);
+      await StorageService.syncData(newUserId.toString(),
+          forceFullSync: true, uploadAllLocal: true);
 
       if (courses.isNotEmpty) {
         onProgress("📤 上传课表...");

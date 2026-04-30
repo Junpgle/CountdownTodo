@@ -3164,9 +3164,9 @@ class _IndependentStatusDialogState extends State<_IndependentStatusDialog> {
 class TodoEditScreen extends StatefulWidget {
   final TodoItem todo;
   final List<TodoItem> todos;
-  final Function(List<TodoItem>) onTodosChanged;
+  final FutureOr<void> Function(List<TodoItem>) onTodosChanged;
   final List<TodoGroup> todoGroups;
-  final Function(List<TodoGroup>) onGroupsChanged;
+  final FutureOr<void> Function(List<TodoGroup>) onGroupsChanged;
   final String username;
   const TodoEditScreen(
       {required this.todo,
@@ -3257,7 +3257,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (_titleCtrl.text.isEmpty) return;
     final todo = widget.todo;
     todo.title = _titleCtrl.text;
@@ -3282,13 +3282,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         final team = _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull;
         if (team != null) groups[idx].teamName = team.name;
         groups[idx].markAsChanged();
-        StorageService.saveTodoGroups(widget.username, groups);
-        widget.onGroupsChanged(groups);
+        await StorageService.saveTodoGroups(widget.username, groups);
+        await widget.onGroupsChanged(groups);
       }
     }
 
-    widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-    if (mounted) Navigator.pop(context);
+    await widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+    if (mounted) Navigator.pop(context, true);
   }
 
   @override
@@ -3329,9 +3329,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               );
               if (confirm == true) {
                 widget.todo.isDeleted = true;
+                widget.todo.hasConflict = false;
+                widget.todo.serverVersionData = null;
                 widget.todo.markAsChanged();
-                widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-                if (mounted) Navigator.pop(context);
+                await widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+                if (mounted) Navigator.pop(context, true);
               }
             },
             icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),

@@ -1,6 +1,8 @@
 ﻿import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'environment_service.dart';
@@ -87,11 +89,10 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     // 🚀 桌面端 SQL 引擎初始化已由 main.dart 统一处理
 
-    final dbPath = await getDatabasesPath();
     // 🚀 根据环境动态选择前缀（隔离测试数据）
     final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';
     final targetName = envPrefix + filePath;
-    final path = join(dbPath, targetName);
+    final path = await _resolveDatabasePath(targetName);
 
     return await openDatabase(
         path,
@@ -515,6 +516,49 @@ class DatabaseHelper {
       limit: 50,
     );
     return logs;
+  }
+
+  Future<String> _resolveDatabasePath(String targetName) async {
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+      final supportDir = await getApplicationSupportDirectory();
+      final dbDir = Directory(join(supportDir.path, 'databases'));
+      if (!await dbDir.exists()) {
+        await dbDir.create(recursive: true);
+      }
+
+      final targetPath = join(dbDir.path, targetName);
+      await _migrateLegacyFfiDatabaseIfNeeded(targetName, targetPath);
+      debugPrint('📁 Database path: $targetPath');
+      return targetPath;
+    }
+
+    final dbPath = await getDatabasesPath();
+    return join(dbPath, targetName);
+  }
+
+  Future<void> _migrateLegacyFfiDatabaseIfNeeded(
+      String targetName, String targetPath) async {
+    try {
+      final targetFile = File(targetPath);
+      if (await targetFile.exists()) return;
+
+      final legacyPath = absolute(
+        join('.dart_tool', 'sqflite_common_ffi', 'databases', targetName),
+      );
+      final legacyFile = File(legacyPath);
+      if (!await legacyFile.exists()) return;
+
+      await legacyFile.copy(targetPath);
+      for (final suffix in const ['-wal', '-shm']) {
+        final sidecar = File('$legacyPath$suffix');
+        if (await sidecar.exists()) {
+          await sidecar.copy('$targetPath$suffix');
+        }
+      }
+      debugPrint('✅ Database: 已从旧 FFI 路径迁移到 AppData: $targetPath');
+    } catch (e) {
+      debugPrint('⚠️ Database: 旧 FFI 数据库迁移失败: $e');
+    }
   }
 
   /// 执行本地回滚 (离线模式)

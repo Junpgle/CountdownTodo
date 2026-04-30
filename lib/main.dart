@@ -36,7 +36,8 @@ import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 import 'windows_island/island_ui.dart';
 
-final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+import 'utils/navigator_utils.dart';
+
 
 typedef CloseDialogCallback = Future<bool> Function();
 CloseDialogCallback? _onShowCloseDialog;
@@ -120,7 +121,9 @@ Future<void> main(List<String> args) async {
   HttpOverrides.global = MyHttpOverrides();
 
   // 初始化 WindowService（监听窗口关闭事件）
+  debugPrint('[Main] === main() 开始初始化 WindowService ===');
   await WindowService.init();
+  debugPrint('[Main] === WindowService 初始化完成 ===');
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load
   unawaited(StorageService.prefs);
@@ -179,13 +182,17 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[Main] ========== initState START ==========');
     _windowReadyForSplashTransition =
         kIsWeb || !(Platform.isWindows || Platform.isLinux || Platform.isMacOS);
-    registerCloseDialogCallback(_showCloseConfirmDialog);
+    debugPrint('[Main] Registering close dialog callback');
+    WindowService.onShowCloseConfirm = _showCloseConfirmDialog;
+    debugPrint('[Main] ✓ Callback registered');
     // 立即开始初始化，不等待首屏动画
     _initializeApp();
     // 处理开屏序列逻辑
     _startSplashSequence();
+    debugPrint('[Main] ========== initState END ==========');
   }
 
   Future<void> _startSplashSequence() async {
@@ -203,15 +210,27 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<bool> _showCloseConfirmDialog() async {
-    if (!mounted) return true;
+    debugPrint('[Main] _showCloseConfirmDialog called, mounted=$mounted');
+    
+    if (!mounted) {
+      debugPrint('[Main] Widget not mounted, falling back to native dialog');
+      return true;
+    }
 
     final context = appNavigatorKey.currentContext;
     if (context == null) {
-      debugPrint('[Main] appNavigatorKey.currentContext is null');
+      debugPrint('[Main] appNavigatorKey.currentContext is null, falling back to native dialog');
+      return true;
+    }
+
+    // 确保 Navigator 可用
+    if (!context.mounted) {
+      debugPrint('[Main] Context not mounted, falling back to native dialog');
       return true;
     }
 
     try {
+      debugPrint('[Main] Attempting to show Flutter dialog...');
       final result = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -220,21 +239,34 @@ class _MyAppState extends State<MyApp> {
           content: const Text('选择操作：'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
+              onPressed: () {
+                debugPrint('[Main] User chose: minimize');
+                Navigator.of(dialogContext).pop(false);
+              },
               child: const Text('最小化到托盘'),
             ),
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
+              onPressed: () {
+                debugPrint('[Main] User chose: exit');
+                Navigator.of(dialogContext).pop(true);
+              },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('退出程序'),
             ),
           ],
         ),
+      ).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          debugPrint('[Main] Dialog timeout, defaulting to false (minimize)');
+          return false;
+        },
       );
+      debugPrint('[Main] Dialog result: $result');
       return result ?? false;
     } catch (e) {
-      debugPrint('[Main] Dialog error: $e');
-      return true;
+      debugPrint('[Main] Dialog error (will use native fallback): $e');
+      rethrow; // 抛出异常让 WindowService 使用原生对话框
     }
   }
 
@@ -557,7 +589,7 @@ class _MyAppState extends State<MyApp> {
 
     if (!kIsWeb &&
         (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-      await windowManager.ensureInitialized();
+      // WindowManager 已在 WindowService.init() 中初始化过
       WindowOptions windowOptions = const WindowOptions(
         size: Size(1280, 720),
         center: true,

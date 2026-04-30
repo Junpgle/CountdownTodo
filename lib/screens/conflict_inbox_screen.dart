@@ -31,8 +31,20 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   bool _isApplyingScheduleFix = false;
   _ConflictFilter _selectedFilter = _ConflictFilter.all;
   dynamic _selectedItem; // 🚀 新增：当前选中的冲突项，用于桌面端双栏展示
+  
+  // 🚀 批量操作相关
+  bool _isBatchMode = false;
+  final Set<String> _selectedConflictIds = {};
+  bool _isBatchApplying = false;
 
   bool get _isWide => MediaQuery.of(context).size.width > 900;
+  
+  String _getConflictId(dynamic item) {
+    if (item is TodoItem) return 'todo_${item.id}';
+    if (item is TodoGroup) return 'group_${item.id}';
+    if (item is CountdownItem) return 'countdown_${item.id}';
+    return '';
+  }
 
   @override
   void initState() {
@@ -67,6 +79,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     final List<dynamic> items = [];
     items.addAll(todos.where((t) {
+      if (t.isDeleted) return false;
       if (!t.hasConflict) return false;
       if (_isAllDayTask(t.toJson())) return false;
 
@@ -83,8 +96,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
       return true;
     }));
-    items.addAll(groups.where((g) => g.hasConflict));
-    items.addAll(countdowns.where((c) => c.hasConflict));
+    items.addAll(groups.where((g) => !g.isDeleted && g.hasConflict));
+    items.addAll(countdowns.where((c) => !c.isDeleted && c.hasConflict));
 
     items.sort((a, b) {
       int timeA = (a is TodoItem)
@@ -359,6 +372,49 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return {};
   }
 
+  Future<bool> _keepLocalAndQueueSync(dynamic item,
+      {bool syncNow = true}) async {
+    final localJson = _itemToJson(item);
+    final table = _resolveTable(item);
+    final uuid = (localJson['uuid'] ?? localJson['id'] ?? '').toString();
+    if (uuid.isEmpty || table.isEmpty) return false;
+
+    final serverVersion = _findServerVersion(item);
+    final serverVer = (serverVersion?['version'] as num?)?.toInt() ?? 0;
+    final currentVer = (localJson['version'] as num?)?.toInt() ?? 1;
+    final newVersion =
+        serverVer > currentVer ? serverVer + 1 : currentVer + 1;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    localJson['version'] = newVersion;
+    localJson['updated_at'] = now;
+    localJson['has_conflict'] = 0;
+    localJson.remove('conflict_data');
+    localJson.remove('serverVersionData');
+
+    await StorageService.resolveConflictLocally(
+      uuid: uuid,
+      table: table,
+      resolvedData: localJson,
+      createOplog: true,
+    );
+
+    try {
+      await ApiService.resolveConflict(
+        uuid: uuid,
+        table: table,
+        resolution: 'keep_local',
+        bumpedVersion: newVersion,
+        data: localJson,
+      );
+    } catch (_) {}
+
+    if (syncNow) {
+      Future.microtask(() => StorageService.syncData(widget.username));
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -409,61 +465,105 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_rounded),
-            color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
-            tooltip: '返回',
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '冲突对齐中心',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.blueGrey.shade900,
-                  ),
-                ),
-                Text(
-                  'Uni-Sync 4.0 智能数据对齐引擎',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white54 : Colors.blueGrey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+          if (_isBatchMode) ...[
+            IconButton(
+              onPressed: () => setState(() {
+                _isBatchMode = false;
+                _selectedConflictIds.clear();
+              }),
+              icon: const Icon(Icons.close_rounded),
+              color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+              tooltip: '取消批量模式',
             ),
-          ),
-          const SizedBox(
-              width:
-                  16), // Replacement for Spacer to keep some gap if titles are short
-          _buildAppBarAction(
-            icon: _isScanning ? null : Icons.radar_rounded,
-            loading: _isScanning,
-            onTap: _isScanning ? null : _scanAllTodoConflicts,
-            tooltip: '扫描全部冲突',
-          ),
-          const SizedBox(width: 12),
-          _buildAppBarAction(
-            icon: Icons.refresh_rounded,
-            onTap: _loadConflicts,
-            tooltip: '刷新列表',
-          ),
-          const SizedBox(width: 12),
-          _buildAppBarAction(
-            icon: Icons.help_outline_rounded,
-            onTap: _showConflictHelp,
-            tooltip: '查看帮助',
-          ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '已选择 ${_selectedConflictIds.length} 项',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.blueGrey.shade900,
+                ),
+              ),
+            ),
+          ] else ...[
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back_rounded),
+              color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+              tooltip: '返回',
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '冲突对齐中心',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.blueGrey.shade900,
+                    ),
+                  ),
+                  Text(
+                    'Uni-Sync 4.0 智能数据对齐引擎',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white54 : Colors.blueGrey.shade500,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(width: 16),
+          if (!_isBatchMode) ...[
+            _buildAppBarAction(
+              icon: _isScanning ? null : Icons.radar_rounded,
+              loading: _isScanning,
+              onTap: _isScanning ? null : _scanAllTodoConflicts,
+              tooltip: '扫描全部冲突',
+            ),
+            const SizedBox(width: 12),
+            _buildAppBarAction(
+              icon: Icons.refresh_rounded,
+              onTap: _loadConflicts,
+              tooltip: '刷新列表',
+            ),
+            const SizedBox(width: 12),
+            _buildAppBarAction(
+              icon: Icons.help_outline_rounded,
+              onTap: _showConflictHelp,
+              tooltip: '查看帮助',
+            ),
+            const SizedBox(width: 12),
+            _buildAppBarAction(
+              icon: Icons.checklist_rounded,
+              onTap: _conflictItems.isNotEmpty ? () => setState(() => _isBatchMode = true) : null,
+              tooltip: '批量管理',
+            ),
+          ] else ...[
+            _buildAppBarAction(
+              icon: Icons.select_all_rounded,
+              onTap: _selectedConflictIds.length == _visibleConflictItems.length
+                  ? () => setState(() => _selectedConflictIds.clear())
+                  : () => setState(() {
+                        _selectedConflictIds.clear();
+                        for (final item in _visibleConflictItems) {
+                          _selectedConflictIds.add(_getConflictId(item));
+                        }
+                      }),
+              tooltip: _selectedConflictIds.length == _visibleConflictItems.length ? '取消全选' : '全选',
+            ),
+          ]
         ],
       ),
     );
@@ -499,29 +599,43 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Widget _buildWideLayout(bool isDark) {
-    return Row(
+    return Column(
       children: [
-        // 左栏：列表
-        SizedBox(
-          width: 380,
-          child: _buildConflictList(isDark),
-        ),
-        // 分割线
-        VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: isDark ? Colors.white10 : Colors.black12,
-        ),
-        // 右栏：详情
         Expanded(
-          child: _buildDetailPane(isDark),
+          child: Row(
+            children: [
+              // 左栏：列表
+              SizedBox(
+                width: 380,
+                child: _buildConflictList(isDark),
+              ),
+              // 分割线
+              VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: isDark ? Colors.white10 : Colors.black12,
+              ),
+              // 右栏：详情
+              Expanded(
+                child: _buildDetailPane(isDark),
+              ),
+            ],
+          ),
         ),
+        if (_isBatchMode && _selectedConflictIds.isNotEmpty)
+          _buildBatchActionBarWide(isDark),
       ],
     );
   }
 
   Widget _buildMobileLayout(bool isDark) {
-    return _buildConflictList(isDark);
+    return Column(
+      children: [
+        Expanded(child: _buildConflictList(isDark)),
+        if (_isBatchMode && _selectedConflictIds.isNotEmpty)
+          _buildBatchActionBar(isDark),
+      ],
+    );
   }
 
   Widget _buildConflictList(bool isDark) {
@@ -712,12 +826,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     final conflictColor = _conflictColor(item);
     final isTodo = item is TodoItem;
+    final itemId = _getConflictId(item);
+    final isBatchSelected = _selectedConflictIds.contains(itemId);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        color: isSelected
+        color: isSelected || isBatchSelected
             ? (isDark
                 ? Colors.blue.withValues(alpha: 0.15)
                 : Colors.blue.withValues(alpha: 0.1))
@@ -726,64 +842,99 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 : Colors.white.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isSelected
+          color: isSelected || isBatchSelected
               ? Colors.blue
               : (isDark
                   ? Colors.white.withValues(alpha: 0.05)
                   : Colors.black.withValues(alpha: 0.05)),
-          width: isSelected ? 1.5 : 1,
+          width: isSelected || isBatchSelected ? 1.5 : 1,
         ),
       ),
       child: InkWell(
         onTap: () {
-          if (_isWide) {
+          if (_isBatchMode) {
+            setState(() {
+              if (isBatchSelected) {
+                _selectedConflictIds.remove(itemId);
+              } else {
+                _selectedConflictIds.add(itemId);
+              }
+            });
+          } else if (_isWide) {
             setState(() => _selectedItem = item);
           } else {
             _resolveConflict(item);
           }
         },
+        onLongPress: _isBatchMode ? null : () {
+          setState(() {
+            _isBatchMode = true;
+            _selectedConflictIds.add(itemId);
+          });
+        },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: conflictColor,
-                      shape: BoxShape.circle,
+              if (_isBatchMode) ...[
+                Checkbox(
+                  value: isBatchSelected,
+                  onChanged: (value) {
+                    setState(() {
+                      if (value == true) {
+                        _selectedConflictIds.add(itemId);
+                      } else {
+                        _selectedConflictIds.remove(itemId);
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: conflictColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight:
+                                  isSelected || isBatchSelected ? FontWeight.bold : FontWeight.w500,
+                              color: isDark ? Colors.white : Colors.blueGrey.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isDark ? Colors.white : Colors.blueGrey.shade800,
-                      ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        _buildMiniBadge(_conflictLabel(item),
+                            conflictColor.withValues(alpha: 0.1), conflictColor),
+                        _buildMiniBadge(_relationLabel(item),
+                            Colors.blue.withValues(alpha: 0.1), Colors.blue),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  _buildMiniBadge(_conflictLabel(item),
-                      conflictColor.withValues(alpha: 0.1), conflictColor),
-                  _buildMiniBadge(_relationLabel(item),
-                      Colors.blue.withValues(alpha: 0.1), Colors.blue),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -806,6 +957,152 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           fontWeight: FontWeight.bold,
           color: textColor,
         ),
+      ),
+    );
+  }
+
+  Widget _buildBatchActionBar(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.black26 : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1),
+          ),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                  label: const Text('推荐方案'),
+                  onPressed: _isBatchApplying ? null : _batchApplyRecommended,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.phone_android_rounded, size: 18),
+                  label: const Text('保留本地'),
+                  onPressed: _isBatchApplying ? null : _batchKeepLocal,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.cloud_done_rounded, size: 18),
+                  label: const Text('使用服务器'),
+                  onPressed: _isBatchApplying ? null : _batchAcceptServer,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_isBatchApplying) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBatchActionBarWide(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.black26 : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1),
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Text(
+                '已选择 ${_selectedConflictIds.length} 项冲突',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+              const Spacer(),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                label: const Text('推荐方案'),
+                onPressed: _isBatchApplying ? null : _batchApplyRecommended,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  side: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.phone_android_rounded, size: 18),
+                label: const Text('保留本地'),
+                onPressed: _isBatchApplying ? null : _batchKeepLocal,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                icon: const Icon(Icons.cloud_done_rounded, size: 18),
+                label: const Text('使用服务器'),
+                onPressed: _isBatchApplying ? null : _batchAcceptServer,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_isBatchApplying) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
+        ],
       ),
     );
   }
@@ -937,7 +1234,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("一键修复"),
-        content: Text("将强制保留这 ${items.length} 项任务的本地版本并清除冲突标记。确认继续？"),
+        content: Text("将保留这 ${items.length} 项任务，只清除本地损坏的冲突标记。确认继续？"),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -978,64 +1275,24 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           final idx = allTodos.indexWhere((t) => t.id == id);
           if (idx != -1) {
             final item = allTodos[idx];
-            // 🚀 精准清理：根据归属权决定动作
-            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
-              // A. 团队项 -> 加入忽略表并物理删除
-              await StorageService.ignoreRemoteItem(
-                  table: 'todos', uuid: item.id, teamUuid: item.teamUuid);
-              // 🚀 核心加固：同时同步给服务端，防止其他设备同步时拉回
-              ApiService.ignoreRemoteItem(
-                  uuid: item.id, table: 'todos', teamUuid: item.teamUuid);
-              allTodos.removeAt(idx);
-            } else {
-              // B. 个人项 -> 软删除 + 版本跃迁
-              item.isDeleted = true;
-              item.hasConflict = false;
-              item.serverVersionData = null;
-              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-              item.version = item.version + 1000;
-              item.markAsChanged();
-            }
+            item.hasConflict = false;
+            item.serverVersionData = null;
             todosChanged = true;
           }
         } else if (ghost is TodoGroup) {
           final idx = allGroups.indexWhere((g) => g.id == id);
           if (idx != -1) {
             final item = allGroups[idx];
-            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
-              await StorageService.ignoreRemoteItem(
-                  table: 'todo_groups', uuid: item.id, teamUuid: item.teamUuid);
-              ApiService.ignoreRemoteItem(
-                  uuid: item.id, table: 'todo_groups', teamUuid: item.teamUuid);
-              allGroups.removeAt(idx);
-            } else {
-              item.isDeleted = true;
-              item.hasConflict = false;
-              item.conflictData = null;
-              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-              item.version = item.version + 1000;
-              item.markAsChanged();
-            }
+            item.hasConflict = false;
+            item.conflictData = null;
             groupsChanged = true;
           }
         } else if (ghost is CountdownItem) {
           final idx = allCountdowns.indexWhere((c) => c.id == id);
           if (idx != -1) {
             final item = allCountdowns[idx];
-            if (item.teamUuid != null && item.teamUuid!.isNotEmpty) {
-              await StorageService.ignoreRemoteItem(
-                  table: 'countdowns', uuid: item.id, teamUuid: item.teamUuid);
-              ApiService.ignoreRemoteItem(
-                  uuid: item.id, table: 'countdowns', teamUuid: item.teamUuid);
-              allCountdowns.removeAt(idx);
-            } else {
-              item.isDeleted = true;
-              item.hasConflict = false;
-              item.conflictData = null;
-              item.updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-              item.version = item.version + 1000;
-              item.markAsChanged();
-            }
+            item.hasConflict = false;
+            item.conflictData = null;
             countdownsChanged = true;
           }
         }
@@ -1044,12 +1301,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       // 3. 批量持久化（每种类型仅写入一次）
       final saves = <Future>[];
       if (todosChanged)
-        saves.add(StorageService.saveTodos(widget.username, allTodos));
+        saves.add(StorageService.saveTodos(widget.username, allTodos,
+            sync: false,
+            isSyncSource: true,
+            recomputeScheduleConflicts: false));
       if (groupsChanged)
-        saves.add(StorageService.saveTodoGroups(widget.username, allGroups));
+        saves.add(StorageService.saveTodoGroups(widget.username, allGroups,
+            sync: false, isSyncSource: true));
       if (countdownsChanged)
-        saves
-            .add(StorageService.saveCountdowns(widget.username, allCountdowns));
+        saves.add(StorageService.saveCountdowns(widget.username, allCountdowns,
+            sync: false, isSyncSource: true));
 
       if (saves.isNotEmpty) await Future.wait(saves);
     } catch (e) {
@@ -1664,50 +1925,337 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     );
   }
 
+  Future<void> _batchKeepLocal() async {
+    if (_selectedConflictIds.isEmpty) return;
+    setState(() => _isBatchApplying = true);
+    
+    try {
+      int successCount = 0;
+      final ids = _selectedConflictIds.toList();
+      
+      for (final itemId in ids) {
+        try {
+          // 根据 ID 格式查找对应的冲突项
+          final conflictItem = _visibleConflictItems.firstWhere(
+            (item) => _getConflictId(item) == itemId,
+            orElse: () => null,
+          );
+          if (conflictItem == null) continue;
+          
+          // 对于有服务器版本的冲突，使用 _ConflictResolutionSheet 的逻辑
+          final serverVersion = _findServerVersion(conflictItem);
+          if (serverVersion != null && serverVersion.isNotEmpty) {
+            if (await _keepLocalAndQueueSync(conflictItem, syncNow: false)) {
+              successCount++;
+            }
+          } else {
+            // 用户明确选择保留本地时，也要生成 oplog，否则另一端收不到本地完成状态。
+            if (await _keepLocalAndQueueSync(conflictItem, syncNow: false)) {
+              successCount++;
+            }
+          }
+        } catch (e) {
+          debugPrint('批量保留本地失败 $itemId: $e');
+        }
+      }
+
+      if (successCount > 0) {
+        Future.microtask(() => StorageService.syncData(widget.username));
+      }
+      
+      if (mounted) {
+        _selectedConflictIds.clear();
+        _isBatchMode = false;
+        await _loadConflicts();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已保留本地版本，成功处理 $successCount 项冲突'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBatchApplying = false);
+    }
+  }
+
+  Future<void> _batchAcceptServer() async {
+    if (_selectedConflictIds.isEmpty) return;
+    setState(() => _isBatchApplying = true);
+    
+    try {
+      int successCount = 0;
+      final ids = _selectedConflictIds.toList();
+      
+      for (final itemId in ids) {
+        try {
+          final conflictItem = _visibleConflictItems.firstWhere(
+            (item) => _getConflictId(item) == itemId,
+            orElse: () => null,
+          );
+          if (conflictItem == null) continue;
+          
+          final serverVersion = _findServerVersion(conflictItem);
+          if (serverVersion == null || serverVersion.isEmpty) continue;
+          
+          final localJson = _itemToJson(conflictItem);
+          final table = _resolveTable(conflictItem);
+          final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
+          
+          serverVersion['has_conflict'] = 0;
+          
+          await StorageService.resolveConflictLocally(
+            uuid: uuid,
+            table: table,
+            resolvedData: serverVersion,
+            createOplog: false,
+            touchUpdatedAt: false,
+          );
+          
+          try {
+            await ApiService.resolveConflict(
+              uuid: uuid,
+              table: table,
+              resolution: 'accept_server',
+            );
+          } catch (_) {}
+          
+          successCount++;
+        } catch (e) {
+          debugPrint('批量采用服务器版本失败 $itemId: $e');
+        }
+      }
+      
+      if (mounted) {
+        _selectedConflictIds.clear();
+        _isBatchMode = false;
+        await _loadConflicts();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已采用服务器版本，成功处理 $successCount 项冲突'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBatchApplying = false);
+    }
+  }
+
+  Future<void> _batchApplyRecommended() async {
+    if (_selectedConflictIds.isEmpty) return;
+    
+    _showBatchResolutionDialog();
+  }
+
+  void _showBatchResolutionDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('批量推荐方案',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              '该操作将对选中的 ${_selectedConflictIds.length} 项冲突应用推荐的解决方案。',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 18, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '推荐方案将根据时间冲突自动调整任务时间，或选择最合适的版本。',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await _batchApplyRecommendedExecute();
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                    ),
+                    child: const Text('应用推荐方案'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _batchApplyRecommendedExecute() async {
+    setState(() => _isBatchApplying = true);
+    
+    try {
+      int successCount = 0;
+      int schedulerCount = 0;
+      final ids = _selectedConflictIds.toList();
+      
+      for (final itemId in ids) {
+        try {
+          final conflictItem = _visibleConflictItems.firstWhere(
+            (item) => _getConflictId(item) == itemId,
+            orElse: () => null,
+          );
+          if (conflictItem == null) continue;
+          
+          // 对于时间冲突，使用推荐时间调整
+          if (_isLocalScheduleConflict(conflictItem) && conflictItem is TodoItem) {
+            final peers = _conflictPeers(conflictItem);
+            final recommendedWindow = _suggestPreferredWindow(conflictItem, peers);
+            if (recommendedWindow != null) {
+              final allTodos =
+                  await StorageService.getTodos(widget.username, includeDeleted: true);
+              final idx = allTodos.indexWhere((t) => t.id == conflictItem.id);
+              if (idx != -1) {
+                allTodos[idx].createdDate = recommendedWindow.start.millisecondsSinceEpoch;
+                allTodos[idx].dueDate = recommendedWindow.end;
+                allTodos[idx].markAsChanged();
+                await StorageService.saveTodos(widget.username, allTodos);
+                schedulerCount++;
+              }
+            }
+          } else {
+            // 对于版本冲突，保留本地版本
+            final serverVersion = _findServerVersion(conflictItem);
+            if (serverVersion != null && serverVersion.isNotEmpty) {
+              final localJson = _itemToJson(conflictItem);
+              final table = _resolveTable(conflictItem);
+              
+              final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
+              final serverVer = serverVersion['version'] as int? ?? 0;
+              final currentVer = localJson['version'] as int? ?? 1;
+              final newVersion = serverVer > currentVer ? serverVer + 1 : currentVer + 1;
+              final now = DateTime.now().millisecondsSinceEpoch;
+              
+              localJson['version'] = newVersion;
+              localJson['updated_at'] = now;
+              localJson['has_conflict'] = 0;
+              localJson.remove('conflict_data');
+              localJson.remove('serverVersionData');
+              
+              await StorageService.resolveConflictLocally(
+                uuid: uuid,
+                table: table,
+                resolvedData: localJson,
+                createOplog: true,
+              );
+              
+              try {
+                await ApiService.resolveConflict(
+                  uuid: uuid,
+                  table: table,
+                  resolution: 'keep_local',
+                  bumpedVersion: newVersion,
+                  data: localJson,
+                );
+              } catch (_) {}
+              
+              successCount++;
+            }
+          }
+        } catch (e) {
+          debugPrint('批量推荐方案失败 $itemId: $e');
+        }
+      }
+      
+      if (mounted) {
+        _selectedConflictIds.clear();
+        _isBatchMode = false;
+        await _loadConflicts();
+        final message = schedulerCount > 0 && successCount > 0
+            ? '已应用推荐方案，调整时间 $schedulerCount 项，版本冲突 $successCount 项'
+            : schedulerCount > 0
+                ? '已应用推荐方案，调整时间 $schedulerCount 项'
+                : '已应用推荐方案，成功处理 $successCount 项冲突';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBatchApplying = false);
+    }
+  }
+
   Future<void> _resolveGhostConflict(dynamic item,
       {bool refresh = true}) async {
-    if (item is TodoItem) {
-      final all =
-          await StorageService.getTodos(widget.username, includeDeleted: true);
-      final idx = all.indexWhere((t) => t.id == item.id);
-      if (idx != -1) {
-        all[idx].hasConflict = false;
-        all[idx].serverVersionData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-        all[idx].version = (all[idx].version ?? 1) + 1000;
-        all[idx].markAsChanged();
-        await StorageService.saveTodos(widget.username, all);
-      }
-    } else if (item is TodoGroup) {
-      final all = await StorageService.getTodoGroups(widget.username,
-          includeDeleted: true);
-      final idx = all.indexWhere((g) => g.id == item.id);
-      if (idx != -1) {
-        all[idx].hasConflict = false;
-        all[idx].conflictData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-        all[idx].version = (all[idx].version ?? 1) + 1000;
-        all[idx].markAsChanged();
-        await StorageService.saveTodoGroups(widget.username, all);
-      }
-    } else if (item is CountdownItem) {
-      final all = await StorageService.getCountdowns(widget.username);
-      final idx = all.indexWhere((c) => c.id == item.id);
-      if (idx != -1) {
-        all[idx].hasConflict = false;
-        all[idx].conflictData = null;
-        all[idx].updatedAt = DateTime.now().millisecondsSinceEpoch + 60000;
-        all[idx].version = (all[idx].version ?? 1) + 1000;
-        all[idx].markAsChanged();
-        await StorageService.saveCountdowns(widget.username, all);
-      }
-    }
+    await _keepLocalAndQueueSync(item, syncNow: refresh);
 
     if (refresh) {
       await _loadConflicts();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("已强制保留本地并清除冲突标记")),
+          const SnackBar(content: Text("已强制保留本地并加入同步队列")),
         );
       }
     }
@@ -1866,6 +2414,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(sheetContext),
                             child: const Text('取消'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isApplyingScheduleFix
+                                ? null
+                                : () async {
+                                    Navigator.pop(sheetContext);
+                                    await StorageService
+                                        .ignoreLocalScheduleConflict(
+                                            widget.username, item);
+                                    await _loadConflicts();
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('已保留现有时间安排，不再提示这组冲突'),
+                                      ),
+                                    );
+                                  },
+                            child: const Text('保留现状'),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -2476,24 +3045,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         );
     if (!mounted || target == null) return;
 
-    await Navigator.push(
+    final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TodoEditScreen(
           todo: target,
           todos: allTodos,
-          onTodosChanged: (updatedTodos) {
-            StorageService.saveTodos(widget.username, updatedTodos);
+          onTodosChanged: (updatedTodos) async {
+            await StorageService.saveTodos(widget.username, updatedTodos);
           },
           todoGroups: allGroups,
-          onGroupsChanged: (updatedGroups) {
-            StorageService.saveTodoGroups(widget.username, updatedGroups);
+          onGroupsChanged: (updatedGroups) async {
+            await StorageService.saveTodoGroups(widget.username, updatedGroups);
           },
           username: widget.username,
         ),
       ),
     );
     if (!mounted) return;
+    if (changed == true) {
+      await StorageService.syncData(widget.username);
+    }
     await _loadConflicts();
   }
 

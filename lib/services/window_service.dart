@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' show unawaited, TimeoutException, Timer;
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
@@ -10,9 +10,9 @@ import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
-import '../main.dart';
+import '../utils/navigator_utils.dart';
 
-class WindowService with WindowListener, TrayListener {
+class WindowService extends WindowListener with TrayListener {
   static const _keyX = 'main_window_x';
   static const _keyY = 'main_window_y';
   static const _keyW = 'main_window_w';
@@ -27,8 +27,13 @@ class WindowService with WindowListener, TrayListener {
   static Future<void> init() async {
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
     try {
+      debugPrint('[WindowService] Initializing...');
       await windowManager.ensureInitialized();
+      debugPrint('[WindowService] windowManager.ensureInitialized() done');
+      
       await windowManager.setPreventClose(true);
+      debugPrint('[WindowService] windowManager.setPreventClose(true) done');
+      
       final prefs = await SharedPreferences.getInstance();
       final int? x = prefs.getInt(_keyX);
       final int? y = prefs.getInt(_keyY);
@@ -43,11 +48,13 @@ class WindowService with WindowListener, TrayListener {
 
       // Register listener for move/resize to persist bounds with debounce
       windowManager.addListener(_instance);
+      debugPrint('[WindowService] windowManager.addListener(_instance) done');
 
       if (Platform.isWindows) {
         await _initTray();
         await _initLaunchAtStartup();
       }
+      debugPrint('[WindowService] Initialization complete!');
     } catch (e) {
       debugPrint('[WindowService] init error: $e');
     }
@@ -183,43 +190,85 @@ class WindowService with WindowListener, TrayListener {
     }
   }
 
+  bool _isHandlingClose = false;
+  static Future<bool> Function()? onShowCloseConfirm;
+
   // WindowListener overrides for closure
   @override
-  void onWindowClose() async {
-    debugPrint('[WindowService] onWindowClose called');
+  void onWindowClose() {
+    debugPrint('[WindowService] ⚠️ onWindowClose() called - preventing close immediately');
+    
+    // 立即处理，不等待
+    _doHandleWindowClose();
+  }
+
+  Future<void> _doHandleWindowClose() async {
+    debugPrint('[WindowService] _doHandleWindowClose triggered (isHandlingClose: $_isHandlingClose)');
+    
+    if (_isHandlingClose) {
+      debugPrint('[WindowService] Already handling close, ignoring');
+      return;
+    }
+    _isHandlingClose = true;
 
     try {
-      // 优先使用 main.dart 中定义的 Flutter 确认对话框
-      // 这能保证 UI 风格一致且受 Theme 控制
-      final bool shouldExit = await showCloseDialog();
-      debugPrint('[WindowService] showCloseDialog result: $shouldExit');
+      bool shouldExit = true;
+      String? failureReason;
+      
+      try {
+        if (onShowCloseConfirm != null) {
+          debugPrint('[WindowService] Calling Flutter close confirm callback...');
+          shouldExit = await onShowCloseConfirm!().timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              debugPrint('[WindowService] Flutter callback timed out, using native dialog');
+              failureReason = 'Flutter callback timeout';
+              throw TimeoutException('Close dialog timeout');
+            },
+          );
+          debugPrint('[WindowService] Flutter callback succeeded: shouldExit=$shouldExit');
+        } else {
+          debugPrint('[WindowService] No close dialog handler registered, showing native dialog');
+          failureReason = 'No callback registered';
+          throw Exception('No callback registered');
+        }
+      } catch (e) {
+        debugPrint('[WindowService] Flutter dialog failed ($failureReason): $e, showing native dialog');
+        final result = _showNativeMessageBox();
+        shouldExit = (result == 6); // IDYES = 6
+        debugPrint('[WindowService] Native dialog result: $result, shouldExit=$shouldExit');
+      }
+
+      debugPrint('[WindowService] Final decision: shouldExit=$shouldExit');
 
       if (shouldExit) {
-        debugPrint('[WindowService] User confirmed exit, terminating process');
-        // 先尝试隐藏窗口，给予即时反馈
+        debugPrint('[WindowService] User chose exit - terminating application');
         try {
           await windowManager.hide();
         } catch (_) {}
-        // 强制终止进程，避免因其他插件或后台任务清理导致的死锁卡死
+        // 强制退出程序
         TerminateProcess(GetCurrentProcess(), 0);
       } else {
-        debugPrint('[WindowService] User chose to hide to tray');
-        await windowManager.hide();
+        debugPrint('[WindowService] User chose minimize - hiding window');
+        try {
+          await windowManager.hide();
+        } catch (e) {
+          debugPrint('[WindowService] Error hiding window: $e');
+        }
+        // ⚠️ 关键修复：通过 setPreventClose(true) 来真正阻止窗口关闭
+        // 这会让 window_manager 知道我们处理了关闭事件
+        try {
+          await windowManager.setPreventClose(true);
+          debugPrint('[WindowService] Successfully prevented window close');
+        } catch (e) {
+          debugPrint('[WindowService] Error preventing close: $e');
+        }
       }
     } catch (e) {
-      debugPrint('[WindowService] onWindowClose Flutter dialog error: $e');
-      // 如果 Flutter 对话框逻辑失败（例如 Navigator 尚未就绪），退而求其次使用原生 Win32 弹窗
-      final result = _showNativeMessageBox();
-      debugPrint('[WindowService] Native MessageBox result: $result');
-
-      if (result == 6) {
-        // IDYES = 6
-        debugPrint('[WindowService] User chose to exit (native)');
-        TerminateProcess(GetCurrentProcess(), 0);
-      } else {
-        debugPrint('[WindowService] User chose to hide (native)');
-        await windowManager.hide();
-      }
+      debugPrint('[WindowService] Critical error in close logic: $e');
+      TerminateProcess(GetCurrentProcess(), 0);
+    } finally {
+      _isHandlingClose = false;
     }
   }
 
@@ -229,12 +278,12 @@ class WindowService with WindowListener, TrayListener {
     const mbTopmost = 0x00040000;
     const mbIconquestion = 0x00000020;
 
-    final hwnd = GetForegroundWindow();
+    // 使用 0 作为父窗口句柄，确保对话框在任何情况下都能作为独立顶层窗口弹出
     final title = '关闭确认'.toNativeUtf16();
     final message = '选择操作：\n\n是 - 退出程序\n否 - 最小化到托盘'.toNativeUtf16();
 
     final result = MessageBox(
-      hwnd,
+      0,
       message,
       title,
       mbYesno | mbDefbutton2 | mbTopmost | mbIconquestion,
