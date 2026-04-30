@@ -238,23 +238,16 @@ class _CourseCalendarAdjustmentScreenState
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            IconButton(
-              tooltip: '添加放假',
-              icon: const Icon(Icons.free_cancellation_outlined),
-              onPressed: _addHoliday,
-            ),
-            IconButton(
-              tooltip: '添加调休',
-              icon: const Icon(Icons.swap_horiz_rounded),
-              onPressed: _addTransfer,
-            ),
-            const SizedBox(width: 4),
-            const Icon(Icons.campaign_outlined, size: 18),
-            Switch(
-              value: _adjustment.officialHolidayPromptEnabled,
-              onChanged: (value) => _save(_adjustment.copyWith(
-                officialHolidayPromptEnabled: value,
-              )),
+            Row(
+              children: [
+                const Icon(Icons.campaign_outlined, size: 18),
+                Switch(
+                  value: _adjustment.officialHolidayPromptEnabled,
+                  onChanged: (value) => _save(_adjustment.copyWith(
+                    officialHolidayPromptEnabled: value,
+                  )),
+                ),
+              ],
             ),
           ],
         ),
@@ -310,16 +303,18 @@ class _CourseCalendarAdjustmentScreenState
         _PanelHeader(
           icon: Icons.free_cancellation_outlined,
           title: '放假日期',
-          action: TextButton.icon(
-            onPressed: _addHoliday,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('放假'),
-          ),
         ),
         const SizedBox(height: 8),
         if (holidays.isEmpty)
-          const _EmptyLine('未设置放假日期')
-        else
+          _EmptyLine(
+            '未设置放假日期',
+            action: TextButton.icon(
+              onPressed: _addHoliday,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加'),
+            ),
+          )
+        else ...[
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -342,6 +337,16 @@ class _CourseCalendarAdjustmentScreenState
               );
             }).toList(),
           ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _addHoliday,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加更多'),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -353,28 +358,40 @@ class _CourseCalendarAdjustmentScreenState
         _PanelHeader(
           title: '调休补课',
           icon: Icons.swap_horiz_rounded,
-          action: TextButton.icon(
-            onPressed: _addTransfer,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('调休'),
-          ),
         ),
         const SizedBox(height: 4),
         if (_adjustment.transfers.isEmpty)
-          const _EmptyLine('未设置调休')
-        else
+          _EmptyLine(
+            '未设置调休',
+            action: TextButton.icon(
+              onPressed: _addTransfer,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加'),
+            ),
+          )
+        else ...[
           ..._adjustment.transfers.asMap().entries.map((entry) {
             final index = entry.key;
             final transfer = entry.value;
-            return _TransferRow(
+            return _TransferRowCompact(
               transfer: transfer,
-              onTap: () => _editTransfer(index),
+              onEdit: () => _editTransfer(index),
               onDelete: () {
                 final next = [..._adjustment.transfers]..removeAt(index);
                 _save(_adjustment.copyWith(transfers: next));
               },
             );
           }),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _addTransfer,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加更多'),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -383,13 +400,6 @@ class _CourseCalendarAdjustmentScreenState
     final parsed = _tryParseDate(date);
     if (parsed == null) return date;
     return '${parsed.month}月${parsed.day}日';
-  }
-
-  String _formatDateRange(List<String> dates) {
-    if (dates.isEmpty) return '';
-    final sorted = [...dates]..sort();
-    if (sorted.length == 1) return _formatDateShort(sorted.first);
-    return '${_formatDateShort(sorted.first)}-${_formatDateShort(sorted.last)}';
   }
 }
 
@@ -570,14 +580,10 @@ class _SuggestionGroup extends StatelessWidget {
 class _PanelHeader extends StatelessWidget {
   final IconData icon;
   final String title;
-  final String? subtitle;
-  final Widget? action;
 
   const _PanelHeader({
     required this.icon,
     required this.title,
-    this.subtitle,
-    this.action,
   });
 
   @override
@@ -586,23 +592,7 @@ class _PanelHeader extends StatelessWidget {
       children: [
         Icon(icon, size: 20),
         const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-              if (subtitle != null)
-                Text(
-                  subtitle!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.outline,
-                    fontSize: 12,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        if (action != null) action!,
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
       ],
     );
   }
@@ -611,14 +601,12 @@ class _PanelHeader extends StatelessWidget {
 class _TransferRow extends StatelessWidget {
   final CourseDayTransfer transfer;
   final VoidCallback? onTap;
-  final VoidCallback? onDelete;
   final bool dense;
   final bool added;
 
   const _TransferRow({
     required this.transfer,
     this.onTap,
-    this.onDelete,
     this.dense = false,
     this.added = false,
   });
@@ -634,13 +622,6 @@ class _TransferRow extends StatelessWidget {
           : '${transfer.label}：${_short(transfer.fromDate)} 的课'),
       subtitle: Text('调到 ${_short(transfer.toDate)}'),
       onTap: onTap,
-      trailing: onDelete == null
-          ? null
-          : IconButton(
-              tooltip: '删除',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: onDelete,
-            ),
     );
   }
 
@@ -656,17 +637,81 @@ class _TransferRow extends StatelessWidget {
 
 class _EmptyLine extends StatelessWidget {
   final String text;
+  final Widget? action;
 
-  const _EmptyLine(this.text);
+  const _EmptyLine(this.text, {this.action});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(
-        text,
-        style: TextStyle(color: Theme.of(context).colorScheme.outline),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: Theme.of(context).colorScheme.outline),
+            ),
+          ),
+          if (action != null) action!,
+        ],
       ),
     );
+  }
+}
+
+class _TransferRowCompact extends StatelessWidget {
+  final CourseDayTransfer transfer;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _TransferRowCompact({
+    required this.transfer,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        leading: const Icon(Icons.swap_horiz, size: 20),
+        title: Text(
+          transfer.label.isEmpty
+              ? '${_short(transfer.fromDate)} 的课'
+              : '${transfer.label}：${_short(transfer.fromDate)} 的课',
+          style: const TextStyle(fontSize: 14),
+        ),
+        subtitle: Text(
+          '调到 ${_short(transfer.toDate)}',
+          style: const TextStyle(fontSize: 12),
+        ),
+        onTap: onEdit,
+        trailing: IconButton(
+          icon: const Icon(Icons.close, size: 18),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          onPressed: onDelete,
+        ),
+      ),
+    );
+  }
+
+  String _short(String date) {
+    try {
+      final parsed = DateFormat('yyyy-MM-dd').parseStrict(date);
+      return '${parsed.month}月${parsed.day}日';
+    } catch (_) {
+      return date;
+    }
   }
 }

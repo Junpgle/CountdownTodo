@@ -230,18 +230,19 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                       icon: Icons.timer,
                       onAdd: _addCountdown,
                       isLight: widget.isLight)),
-              IconButton(
-                icon: Icon(Icons.dashboard_rounded,
-                    color: useDarkUI ? Colors.white70 : Colors.grey),
-                tooltip: '看板',
-                onPressed: () async {
-                  await Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                          AppBoardScreen(username: widget.username)));
-                  widget.onDataChanged();
-                },
-              ),
+              if (MediaQuery.of(context).size.width >= 600)
+                IconButton(
+                  icon: Icon(Icons.dashboard_rounded,
+                      color: useDarkUI ? Colors.white70 : Colors.grey),
+                  tooltip: '看板',
+                  onPressed: () async {
+                    await Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                            AppBoardScreen(username: widget.username)));
+                    widget.onDataChanged();
+                  },
+                ),
               IconButton(
                 icon: Icon(Icons.history,
                     color: useDarkUI ? Colors.white70 : Colors.grey),

@@ -131,9 +131,14 @@ class DatabaseHelper {
         path,
         version: 24, // V24: 强制触发 courses 老库字段自愈
         onConfigure: (db) async {
-          await db.execute('PRAGMA busy_timeout = 5000');
+          // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
+          // Only configure WAL for desktop platforms
           if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
-            await db.execute('PRAGMA journal_mode = WAL');
+            try {
+              await db.execute('PRAGMA journal_mode = WAL');
+            } catch (e) {
+              debugPrint("⚠️ Database: PRAGMA journal_mode failed: $e");
+            }
           }
         },
         onCreate: _createDB,

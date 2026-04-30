@@ -97,11 +97,22 @@ class _AppBoardScreenState extends State<AppBoardScreen> with TickerProviderStat
       final semesterStart = await StorageService.getSemesterStart();
 
       if (mounted) {
+        // De-duplicate courses to prevent multi-week loading issues
+        final seenCourses = <String>{};
+        final uniqueCourses = <CourseItem>[];
+        for (var c in courses) {
+          final key = '${c.courseName}-${c.startTime}-${c.weekday}-${c.weekIndex}';
+          if (!seenCourses.contains(key)) {
+            seenCourses.add(key);
+            uniqueCourses.add(c);
+          }
+        }
+
         setState(() {
           _todos = todos.where((t) => !t.isDeleted).toList();
           _countdowns = countdowns.where((c) => !c.isDeleted && c.targetDate.isAfter(_now)).toList();
           _countdowns.sort((a, b) => a.targetDate.compareTo(b.targetDate));
-          _courses = courses;
+          _courses = uniqueCourses;
           _semesterStart = semesterStart;
           _isLoading = false;
         });
@@ -288,70 +299,78 @@ class _AppBoardScreenState extends State<AppBoardScreen> with TickerProviderStat
   Widget _buildDesktopLayout() {
     return Padding(
       padding: const EdgeInsets.all(24.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            flex: 3,
-            child: GlassCard(
-              title: '今日执行流',
-              child: TodayHourlyTimeline(
-                todos: _todos,
-                courses: _courses,
-                semesterStart: _semesterStart,
-                currentWeek: _calculateCurrentWeek(),
-                onTaskClick: (task) => setState(() => _detailTask = task),
-              ),
-            ),
-          ),
-          const SizedBox(width: 24),
-          Expanded(
-            flex: 6,
-            child: GlassCard(
-              title: '战略路线图',
-              headerExtra: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.zoom_out, color: Colors.white30, size: 18),
-                    onPressed: () => setState(() => _dayWidth = math.max(30, _dayWidth - 10)),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableHeight = constraints.maxHeight;
+          final availableWidth = constraints.maxWidth;
+          
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 3,
+                child: GlassCard(
+                  title: '今日执行流',
+                  child: TodayHourlyTimeline(
+                    todos: _todos,
+                    courses: _courses,
+                    semesterStart: _semesterStart,
+                    currentWeek: _calculateCurrentWeek(),
+                    itemHeight: availableHeight / 26, // Fit 24 hours + some padding
+                    onTaskClick: (task) => setState(() => _detailTask = task),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.zoom_in, color: Colors.white30, size: 18),
-                    onPressed: () => setState(() => _dayWidth = math.min(150, _dayWidth + 10)),
+                ),
+              ),
+              const SizedBox(width: 24),
+              Expanded(
+                flex: 6,
+                child: GlassCard(
+                  title: '战略路线图',
+                  headerExtra: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.zoom_out, color: Colors.white30, size: 18),
+                        onPressed: () => setState(() => _dayWidth = math.max(10, _dayWidth - 5)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.zoom_in, color: Colors.white30, size: 18),
+                        onPressed: () => setState(() => _dayWidth = math.min(150, _dayWidth + 5)),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: GanttChart(
-                todos: _todos.where((t) => t.dueDate != null).toList(),
-                dayWidth: _dayWidth,
-                onTaskClick: (task) => setState(() => _detailTask = task),
-              ),
-            ),
-          ),
-          const SizedBox(width: 24),
-          Expanded(
-            flex: 3,
-            child: GlassCard(
-              title: '作战指挥中心',
-              headerExtra: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text('完成率', style: TextStyle(color: Colors.white30, fontSize: 8, fontWeight: FontWeight.w900)),
-                  Text(
-                    '${_calculateCompletionRate()}%',
-                    style: const TextStyle(color: emeraldAccent, fontSize: 12, fontWeight: FontWeight.w900),
+                  child: GanttChart(
+                    todos: _todos.where((t) => t.dueDate != null).toList(),
+                    dayWidth: _dayWidth == 60.0 ? (availableWidth * 0.5 / 37) : _dayWidth, // Default fit
+                    onTaskClick: (task) => setState(() => _detailTask = task),
                   ),
-                ],
+                ),
               ),
-              child: MissionControl(
-                todos: _todos,
-                activeTab: _missionTab,
-                onTabChanged: (tab) => setState(() => _missionTab = tab),
-                onTaskClick: (task) => setState(() => _detailTask = task),
+              const SizedBox(width: 24),
+              Expanded(
+                flex: 3,
+                child: GlassCard(
+                  title: '作战指挥中心',
+                  headerExtra: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text('完成率', style: TextStyle(color: Colors.white30, fontSize: 8, fontWeight: FontWeight.w900)),
+                      Text(
+                        '${_calculateCompletionRate()}%',
+                        style: const TextStyle(color: emeraldAccent, fontSize: 12, fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                  child: MissionControl(
+                    todos: _todos,
+                    activeTab: _missionTab,
+                    onTabChanged: (tab) => setState(() => _missionTab = tab),
+                    onTaskClick: (task) => setState(() => _detailTask = task),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        }
       ),
     );
   }
@@ -359,36 +378,42 @@ class _AppBoardScreenState extends State<AppBoardScreen> with TickerProviderStat
   Widget _buildMobileLayout() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: switch (_mobileTab) {
-        'stream' => GlassCard(
-            title: '今日执行流',
-            child: TodayHourlyTimeline(
-              todos: _todos,
-              courses: _courses,
-              semesterStart: _semesterStart,
-              currentWeek: _calculateCurrentWeek(),
-              onTaskClick: (task) => setState(() => _detailTask = task),
-            ),
-          ),
-        'roadmap' => GlassCard(
-            title: '战略路线图',
-            child: GanttChart(
-              todos: _todos.where((t) => t.dueDate != null).toList(),
-              dayWidth: _dayWidth,
-              onTaskClick: (task) => setState(() => _detailTask = task),
-            ),
-          ),
-        'mission' => GlassCard(
-            title: '作战指挥中心',
-            child: MissionControl(
-              todos: _todos,
-              activeTab: _missionTab,
-              onTabChanged: (tab) => setState(() => _missionTab = tab),
-              onTaskClick: (task) => setState(() => _detailTask = task),
-            ),
-          ),
-        _ => const SizedBox.shrink(),
-      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableHeight = constraints.maxHeight;
+          return switch (_mobileTab) {
+            'stream' => GlassCard(
+                title: '今日执行流',
+                child: TodayHourlyTimeline(
+                  todos: _todos,
+                  courses: _courses,
+                  semesterStart: _semesterStart,
+                  currentWeek: _calculateCurrentWeek(),
+                  itemHeight: availableHeight / 26,
+                  onTaskClick: (task) => setState(() => _detailTask = task),
+                ),
+              ),
+            'roadmap' => GlassCard(
+                title: '战略路线图',
+                child: GanttChart(
+                  todos: _todos.where((t) => t.dueDate != null).toList(),
+                  dayWidth: _dayWidth,
+                  onTaskClick: (task) => setState(() => _detailTask = task),
+                ),
+              ),
+            'mission' => GlassCard(
+                title: '作战指挥中心',
+                child: MissionControl(
+                  todos: _todos,
+                  activeTab: _missionTab,
+                  onTabChanged: (tab) => setState(() => _missionTab = tab),
+                  onTaskClick: (task) => setState(() => _detailTask = task),
+                ),
+              ),
+            _ => const SizedBox.shrink(),
+          };
+        }
+      ),
     );
   }
 
@@ -589,6 +614,7 @@ class TodayHourlyTimeline extends StatelessWidget {
   final List<CourseItem> courses;
   final DateTime? semesterStart;
   final int currentWeek;
+  final double? itemHeight;
   final Function(TodoItem) onTaskClick;
 
   const TodayHourlyTimeline({
@@ -597,6 +623,7 @@ class TodayHourlyTimeline extends StatelessWidget {
     required this.courses,
     this.semesterStart,
     required this.currentWeek,
+    this.itemHeight,
     required this.onTaskClick,
   });
 
@@ -618,6 +645,7 @@ class TodayHourlyTimeline extends StatelessWidget {
     }).toList();
 
     return ListView.builder(
+      physics: itemHeight != null ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       itemCount: 24,
       itemBuilder: (context, hour) {
@@ -626,7 +654,7 @@ class TodayHourlyTimeline extends StatelessWidget {
         final hTasks = todayTasks.where((t) => t.dueDate!.hour == hour).toList();
 
         return Container(
-          height: 60,
+          height: itemHeight ?? 60,
           decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.02))),
             color: isCurrent ? Colors.blue.withValues(alpha: 0.05) : null,
@@ -634,72 +662,74 @@ class TodayHourlyTimeline extends StatelessWidget {
           child: Row(
             children: [
               SizedBox(
-                width: 40,
+                width: 30,
                 child: Text(
                   hour.toString().padLeft(2, '0'),
                   style: TextStyle(
                     color: isCurrent ? Colors.blueAccent : Colors.white.withValues(alpha: 0.1),
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: FontWeight.w900,
                     fontFeatures: [const FontFeature.tabularFigures()],
                   ),
                   textAlign: TextAlign.right,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    ...hCourses.map((c) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.indigo.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: Colors.indigo.withValues(alpha: 0.1)),
-                          ),
-                          child: Text(
-                            c.courseName,
-                            style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold),
-                          ),
-                        )),
-                    ...hTasks.map((t) => GestureDetector(
-                          onTap: () => onTaskClick(t),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      ...hCourses.map((c) => Container(
+                            margin: const EdgeInsets.only(right: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                             decoration: BoxDecoration(
-                              color: (t.isDone ? emerald : Colors.blue).withValues(alpha: 0.2),
+                              color: Colors.indigo.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: (t.isDone ? emerald : Colors.blue).withValues(alpha: 0.1)),
+                              border: Border.all(color: Colors.indigo.withValues(alpha: 0.1)),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 4,
-                                  height: 4,
-                                  decoration: BoxDecoration(
-                                    color: t.isDone ? emeraldAccent : Colors.blueAccent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  t.title,
-                                  style: TextStyle(
-                                    color: t.isDone ? Colors.white30 : Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    decoration: t.isDone ? TextDecoration.lineThrough : null,
-                                  ),
-                                ),
-                              ],
+                            child: Text(
+                              c.courseName,
+                              style: const TextStyle(color: Colors.white70, fontSize: 8, fontWeight: FontWeight.bold),
                             ),
-                          ),
-                        )),
-                  ],
+                          )),
+                      ...hTasks.map((t) => GestureDetector(
+                            onTap: () => onTaskClick(t),
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: (t.isDone ? emerald : Colors.blue).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: (t.isDone ? emerald : Colors.blue).withValues(alpha: 0.1)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 3,
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      color: t.isDone ? emeraldAccent : Colors.blueAccent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    t.title,
+                                    style: TextStyle(
+                                      color: t.isDone ? Colors.white30 : Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                      decoration: t.isDone ? TextDecoration.lineThrough : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -710,7 +740,7 @@ class TodayHourlyTimeline extends StatelessWidget {
   }
 }
 
-class GanttChart extends StatelessWidget {
+class GanttChart extends StatefulWidget {
   final List<TodoItem> todos;
   final double dayWidth;
   final Function(TodoItem) onTaskClick;
@@ -723,133 +753,248 @@ class GanttChart extends StatelessWidget {
   });
 
   @override
+  State<GanttChart> createState() => _GanttChartState();
+}
+
+class _GanttChartState extends State<GanttChart> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToToday();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToToday() {
+    if (_scrollController.hasClients) {
+      final now = DateTime.now();
+      final minDate = now.subtract(const Duration(days: 7));
+      final todayOffset = now.difference(minDate).inHours / 24 * widget.dayWidth;
+      final viewportWidth = _scrollController.position.viewportDimension;
+      _scrollController.jumpTo(math.max(0, todayOffset - (viewportWidth / 2)));
+    }
+  }
+
+  List<List<TodoItem>> _packTasks(List<TodoItem> tasks, DateTime minDate, DateTime maxDate) {
+    if (tasks.isEmpty) return [];
+
+    // Split into active and completed
+    final activeTasks = tasks.where((t) => !t.isDone).toList();
+    final completedTasks = tasks.where((t) => t.isDone).toList();
+
+    List<List<TodoItem>> packGroup(List<TodoItem> group) {
+      if (group.isEmpty) return [];
+      
+      // Sort by start date
+      final sorted = List<TodoItem>.from(group)
+        ..sort((a, b) {
+          final startA = a.createdAt != 0 ? DateTime.fromMillisecondsSinceEpoch(a.createdAt) : a.dueDate!.subtract(const Duration(days: 3));
+          final startB = b.createdAt != 0 ? DateTime.fromMillisecondsSinceEpoch(b.createdAt) : b.dueDate!.subtract(const Duration(days: 3));
+          return startA.compareTo(startB);
+        });
+
+      final List<List<TodoItem>> rows = [];
+      for (final task in sorted) {
+        final start = task.createdAt != 0 ? DateTime.fromMillisecondsSinceEpoch(task.createdAt) : task.dueDate!.subtract(const Duration(days: 3));
+        final end = task.dueDate!;
+        if (end.isBefore(minDate) || start.isAfter(maxDate)) continue;
+
+        bool placed = false;
+        for (final row in rows) {
+          bool overlaps = false;
+          for (final existingTask in row) {
+            final eStart = existingTask.createdAt != 0 ? DateTime.fromMillisecondsSinceEpoch(existingTask.createdAt) : existingTask.dueDate!.subtract(const Duration(days: 3));
+            final eEnd = existingTask.dueDate!;
+            if (end.isAfter(eStart.subtract(const Duration(hours: 2))) && start.isBefore(eEnd.add(const Duration(hours: 2)))) {
+              overlaps = true;
+              break;
+            }
+          }
+          if (!overlaps) {
+            row.add(task);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) rows.add([task]);
+      }
+      return rows;
+    }
+
+    // Pack active tasks (top) then completed tasks (bottom)
+    return [...packGroup(activeTasks), ...packGroup(completedTasks)];
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (todos.isEmpty) {
+    if (widget.todos.isEmpty) {
       return const Center(child: Text('暂无带日期的任务', style: TextStyle(color: Colors.white24)));
     }
 
     final now = DateTime.now();
-    final minDate = now.subtract(const Duration(days: 7));
-    final maxDate = now.add(const Duration(days: 30));
-    final totalDays = maxDate.difference(minDate).inDays;
+    
+    // Calculate dynamic range based on tasks
+    DateTime minDate = now.subtract(const Duration(days: 7));
+    DateTime maxDate = now.add(const Duration(days: 30));
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SizedBox(
-        width: totalDays * dayWidth,
-        child: Stack(
-          children: [
-            // Grid Lines & Header
-            Column(
+    for (var t in widget.todos) {
+      final start = t.createdAt != 0 ? DateTime.fromMillisecondsSinceEpoch(t.createdAt) : t.dueDate!.subtract(const Duration(days: 3));
+      final end = t.dueDate!;
+      if (start.isBefore(minDate)) minDate = start;
+      if (end.isAfter(maxDate)) maxDate = end;
+    }
+
+    // Add buffers
+    minDate = DateTime(minDate.year, minDate.month, minDate.day).subtract(const Duration(days: 7));
+    maxDate = DateTime(maxDate.year, maxDate.month, maxDate.day).add(const Duration(days: 7));
+    
+    final totalDays = maxDate.difference(minDate).inDays;
+    final packedRows = _packTasks(widget.todos, minDate, maxDate);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final effectiveDayWidth = widget.dayWidth <= 0 || widget.dayWidth == 60.0 
+            ? availableWidth / totalDays 
+            : widget.dayWidth;
+        
+        final totalWidth = totalDays * effectiveDayWidth;
+
+        return SingleChildScrollView(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          physics: totalWidth <= availableWidth + 1 ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
+          child: SizedBox(
+            width: totalWidth,
+            child: Stack(
               children: [
-                Row(
-                  children: List.generate(totalDays, (index) {
-                    final date = minDate.add(Duration(days: index));
-                    final isToday = date.day == now.day && date.month == now.month && date.year == now.year;
-                    return Container(
-                      width: dayWidth,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            DateFormat('E').format(date).toUpperCase(),
-                            style: TextStyle(color: isToday ? Colors.blue : Colors.white12, fontSize: 8, fontWeight: FontWeight.w900),
+                // Grid Lines & Header
+                Column(
+                  children: [
+                    Row(
+                      children: List.generate(totalDays, (index) {
+                        final date = minDate.add(Duration(days: index));
+                        final isToday = date.day == now.day && date.month == now.month && date.year == now.year;
+                        return Container(
+                          width: effectiveDayWidth,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
                           ),
-                          Text(
-                            date.day.toString(),
-                            style: TextStyle(color: isToday ? Colors.white : Colors.white30, fontSize: 10, fontWeight: FontWeight.bold),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                DateFormat('E').format(date).toUpperCase(),
+                                style: TextStyle(
+                                  color: isToday ? Colors.blue : Colors.white12, 
+                                  fontSize: math.max(6.0, effectiveDayWidth / 5), 
+                                  fontWeight: FontWeight.w900
+                                ),
+                              ),
+                              Text(
+                                date.day.toString(),
+                                style: TextStyle(
+                                  color: isToday ? Colors.white : Colors.white30, 
+                                  fontSize: math.max(8.0, effectiveDayWidth / 4), 
+                                  fontWeight: FontWeight.bold
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        );
+                      }),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: List.generate(totalDays, (index) {
+                          return Container(
+                            width: effectiveDayWidth,
+                            decoration: BoxDecoration(
+                              border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.02))),
+                            ),
+                          );
+                        }),
                       ),
-                    );
-                  }),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: Row(
-                    children: List.generate(totalDays, (index) {
+                // Today Line
+                Positioned(
+                  left: now.difference(minDate).inHours / 24 * effectiveDayWidth,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 1,
+                    color: Colors.blue.withValues(alpha: 0.5),
+                  ),
+                ),
+                // Task Rows
+                Padding(
+                  padding: const EdgeInsets.only(top: 50),
+                  child: ListView.builder(
+                    itemCount: packedRows.length,
+                    itemBuilder: (context, rowIndex) {
+                      final rowTasks = packedRows[rowIndex];
                       return Container(
-                        width: dayWidth,
-                        decoration: BoxDecoration(
-                          border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.02))),
+                        height: 28,
+                        margin: const EdgeInsets.symmetric(vertical: 2),
+                        child: Stack(
+                          children: rowTasks.map((task) {
+                            final start = task.createdAt != 0 ? DateTime.fromMillisecondsSinceEpoch(task.createdAt) : task.dueDate!.subtract(const Duration(days: 3));
+                            final end = task.dueDate!;
+                            
+                            final left = math.max(0.0, start.difference(minDate).inHours / 24 * effectiveDayWidth);
+                            final width = math.max(effectiveDayWidth * 0.5, end.difference(start).inHours / 24 * effectiveDayWidth);
+
+                            return Positioned(
+                              left: left,
+                              width: width,
+                              top: 0,
+                              bottom: 0,
+                              child: GestureDetector(
+                                onTap: () => widget.onTaskClick(task),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  decoration: BoxDecoration(
+                                    color: (task.teamUuid != null ? Colors.blue : emerald).withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: (task.teamUuid != null ? Colors.blue : emerald).withValues(alpha: 0.3)),
+                                  ),
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    task.title,
+                                    style: TextStyle(
+                                      color: task.isDone ? Colors.white24 : Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w900,
+                                      decoration: task.isDone ? TextDecoration.lineThrough : null,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
                       );
-                    }),
+                    },
                   ),
                 ),
               ],
             ),
-            // Today Line
-            Positioned(
-              left: now.difference(minDate).inHours / 24 * dayWidth,
-              top: 0,
-              bottom: 0,
-              child: Container(
-                width: 1,
-                color: Colors.blue.withValues(alpha: 0.5),
-              ),
-            ),
-            // Task Bars
-            Padding(
-              padding: const EdgeInsets.only(top: 50),
-              child: ListView.builder(
-                itemCount: todos.length,
-                itemBuilder: (context, index) {
-                  final task = todos[index];
-                  final start = task.createdAt != 0 ? DateTime.fromMillisecondsSinceEpoch(task.createdAt) : task.dueDate!.subtract(const Duration(days: 3));
-                  final end = task.dueDate!;
-                  
-                  if (end.isBefore(minDate) || start.isAfter(maxDate)) return const SizedBox.shrink();
-
-                  final left = math.max(0.0, start.difference(minDate).inHours / 24 * dayWidth);
-                  final width = math.max(dayWidth * 0.5, end.difference(start).inHours / 24 * dayWidth);
-
-                  return Container(
-                    height: 30,
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          left: left,
-                          width: width,
-                          top: 0,
-                          bottom: 0,
-                          child: GestureDetector(
-                            onTap: () => onTaskClick(task),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              decoration: BoxDecoration(
-                                color: (task.teamUuid != null ? Colors.blue : emerald).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: (task.teamUuid != null ? Colors.blue : emerald).withValues(alpha: 0.3)),
-                              ),
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                task.title,
-                                style: TextStyle(
-                                  color: task.isDone ? Colors.white24 : Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w900,
-                                  decoration: task.isDone ? TextDecoration.lineThrough : null,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      }
     );
   }
 }
