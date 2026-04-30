@@ -2105,45 +2105,37 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (_hasCheckedHolidayPreset || !mounted) return;
     _hasCheckedHolidayPreset = true;
 
-    final preset = await CourseCalendarAdjustmentService.pendingOfficialPreset();
-    if (preset == null || !mounted) return;
+    final window =
+        await CourseCalendarAdjustmentService.pendingOfficialHolidayWindow();
+    if (window == null || !mounted) return;
 
-    final apply = await showDialog<bool>(
+    final openSettings = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('${preset.year} 法定节假日课表调整'),
-        content: const Text('检测到官方放假调休安排。可以自动加入放假日期和补课映射，课程视图、通知、桌面小组件和时间轴会同步按调整后的课表运行。'),
+        title: Text('${window.name}课表调整提醒'),
+        content: const Text(
+            '临近法定节假日。不同学校放假和补课安排可能不同，请手动选择放假日期，并确认哪一天的课调到哪一天。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('今年不再提醒'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx, null);
-              Navigator.push(
-                context,
-                PageTransitions.slideHorizontal(
-                  const CourseCalendarAdjustmentScreen(),
-                ),
-              );
-            },
-            child: const Text('手动选择'),
+            child: const Text('稍后'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('自动套用'),
+            child: const Text('去选择'),
           ),
         ],
       ),
     );
 
-    if (apply == true) {
-      await CourseCalendarAdjustmentService.applyOfficialPreset(preset);
-      if (!mounted) return;
-      await _loadAllData(deferred: true);
-    } else if (apply == false) {
-      await CourseCalendarAdjustmentService.dismissOfficialPreset(preset);
+    if (openSettings == true && mounted) {
+      await Navigator.push(
+        context,
+        PageTransitions.slideHorizontal(
+          const CourseCalendarAdjustmentScreen(),
+        ),
+      );
+      if (mounted) await _loadAllData(deferred: true);
     }
   }
 

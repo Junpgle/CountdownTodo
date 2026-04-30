@@ -863,6 +863,7 @@ class StorageService {
       }
 
       if (!isSyncSource && hasChanged) {
+        final syncPayload = _stripClientOnlyConflictForSync(item.toJson());
         // 记录审计日志 (传入已有的 oldData 避免再次查询)
         unawaited(_recordLocalAuditOptimized(
             'todos', item.id, item.toJson(), item.teamUuid, oldData));
@@ -871,7 +872,7 @@ class StorageService {
           'op_type': 'UPSERT',
           'target_table': 'todos',
           'target_uuid': item.id,
-          'data_json': jsonEncode(item.toJson()),
+          'data_json': jsonEncode(syncPayload),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'is_synced': 0,
           'sync_error': '',
@@ -1086,10 +1087,37 @@ class StorageService {
     );
 
     final allTodos = await getTodos(username, includeDeleted: true);
-    final idx = allTodos.indexWhere((todo) => todo.id == item.id);
-    if (idx != -1) {
-      allTodos[idx].hasConflict = false;
-      allTodos[idx].serverVersionData = null;
+    var changed = false;
+    for (final todo in allTodos) {
+      final conflictData = todo.serverVersionData;
+      if (!_isLocalScheduleConflict(conflictData)) continue;
+
+      if (todo.id == item.id) {
+        todo.hasConflict = false;
+        todo.serverVersionData = null;
+        changed = true;
+        continue;
+      }
+
+      final peers = conflictData?['conflict_with'];
+      if (peers is! List) continue;
+      final containsIgnoredItem = peers.any((peer) {
+        if (peer is! Map) return false;
+        final peerId = (peer['uuid'] ?? peer['id'] ?? '').toString();
+        return peerId == item.id;
+      });
+      if (containsIgnoredItem) {
+        todo.hasConflict = false;
+        todo.serverVersionData = null;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      _recomputeLocalTodoScheduleConflicts(
+        allTodos,
+        ignoredScheduleConflictKeys: ignoredKeys,
+      );
       await saveTodos(
         username,
         allTodos,
@@ -1332,7 +1360,7 @@ class StorageService {
       'op_type': 'UPSERT',
       'target_table': 'todos',
       'target_uuid': item.id,
-      'data_json': jsonEncode(item.toJson()),
+      'data_json': jsonEncode(_stripClientOnlyConflictForSync(item.toJson())),
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'is_synced': 0,
       'sync_error': '',
@@ -2559,7 +2587,7 @@ class StorageService {
         if (table == 'todos') {
           data.remove('image_path');
           data.remove('imagePath');
-          dedupTodos[uuid] = data;
+          dedupTodos[uuid] = _stripClientOnlyConflictForSync(data);
         } else if (table == 'todo_groups') {
           dedupGroups[uuid] = data;
         } else if (table == 'countdowns') {
@@ -2760,13 +2788,15 @@ class StorageService {
         for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
       };
       for (var raw in serverTodos) {
-        TodoItem sItem = TodoItem.fromJson(raw);
+        final serverRaw =
+            raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
+        final sanitizedServerRaw =
+            _stripClientOnlyConflictForSync(serverRaw);
+        TodoItem sItem = TodoItem.fromJson(sanitizedServerRaw);
         if (ignoredUuids.contains(sItem.id)) {
           debugPrint('🚫 [合并跳过] UUID: ${sItem.id} 已在本地忽略列表中');
           continue;
         }
-        final serverRaw =
-            raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
         final serverDeviceId = serverRaw['device_id']?.toString();
         final bool isUpdatedByOtherDevice = serverDeviceId != null &&
             serverDeviceId.isNotEmpty &&
@@ -3172,6 +3202,33 @@ class StorageService {
     if (data == null || data.isEmpty) return false;
     return data['conflict_type'] == 'local_schedule_conflict' ||
         data['source'] == 'local_detector';
+  }
+
+  static Map<String, dynamic> _stripClientOnlyConflictForSync(
+      Map<String, dynamic> data) {
+    final result = Map<String, dynamic>.from(data);
+    final rawConflictData =
+        result['conflict_data'] ?? result['serverVersionData'];
+    Map<String, dynamic>? conflictData;
+    if (rawConflictData is String && rawConflictData.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawConflictData);
+        if (decoded is Map) {
+          conflictData = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {
+        conflictData = null;
+      }
+    } else if (rawConflictData is Map) {
+      conflictData = Map<String, dynamic>.from(rawConflictData);
+    }
+
+    if (_isLocalScheduleConflict(conflictData)) {
+      result['has_conflict'] = 0;
+      result.remove('conflict_data');
+      result.remove('serverVersionData');
+    }
+    return result;
   }
 
   static Map<String, dynamic> _conflictPeerSummary(_TodoInterval interval) {

@@ -1228,7 +1228,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (todo.teamUuid != null)
+                            if (todo.teamUuid != null && height >= 32)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 2.0),
                                 child: Container(

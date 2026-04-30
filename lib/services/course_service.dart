@@ -238,6 +238,24 @@ class CourseService {
       }
     } catch (e) {
       debugPrint("⚠️ Course SQL 读取异常: $e");
+      if (_isDatabaseLocked(e)) {
+        try {
+          await Future.delayed(const Duration(milliseconds: 300));
+          final db = await DatabaseHelper.instance.database;
+          final maps = await db.query(
+            'courses',
+            where: 'IFNULL(is_deleted, 0) = 0',
+            orderBy: 'date ASC, start_time ASC',
+          );
+          if (maps.isNotEmpty) {
+            return applyAdjustmentsIfNeeded(
+                maps.map((m) => CourseItem.fromJson(m)).toList());
+          }
+        } catch (retryError) {
+          debugPrint("⚠️ Course SQL locked 重试失败: $retryError");
+        }
+        return [];
+      }
     }
 
     // 2. 🚀 核心迁移逻辑：如果 SQL 为空，从 Prefs 迁移
@@ -288,6 +306,11 @@ class CourseService {
     }
 
     return [];
+  }
+
+  static bool _isDatabaseLocked(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('database is locked') || text.contains('sqlite_error: 5');
   }
 
   static List<CourseItem> _parseLegacyCoursePrefsValue(Object? raw) {

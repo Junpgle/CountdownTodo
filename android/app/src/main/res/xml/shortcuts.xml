@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="settings"
+        android:enabled="true"
+        android:icon="@drawable/ic_settings"
+        android:shortcutShortLabel="@string/shortcut_settings_short"
+        android:shortcutLongLabel="@string/shortcut_settings_long"
+        android:shortcutDisabledMessage="@string/shortcut_settings_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_SETTINGS"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="schedule"
+        android:enabled="true"
+        android:icon="@drawable/ic_schedule"
+        android:shortcutShortLabel="@string/shortcut_schedule_short"
+        android:shortcutLongLabel="@string/shortcut_schedule_long"
+        android:shortcutDisabledMessage="@string/shortcut_schedule_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_SCHEDULE"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="band"
+        android:enabled="true"
+        android:icon="@drawable/ic_band"
+        android:shortcutShortLabel="@string/shortcut_band_short"
+        android:shortcutLongLabel="@string/shortcut_band_long"
+        android:shortcutDisabledMessage="@string/shortcut_band_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_BAND"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>
