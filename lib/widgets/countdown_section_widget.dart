@@ -5,6 +5,7 @@ import 'package:CountDownTodo/models.dart';
 import 'package:CountDownTodo/storage_service.dart';
 import 'package:CountDownTodo/services/api_service.dart'; 
 import 'package:CountDownTodo/screens/historical_countdowns_screen.dart';
+import 'package:CountDownTodo/screens/app_board_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../widgets/home_sections.dart';
 import '../utils/page_transitions.dart';
@@ -229,6 +230,18 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                       icon: Icons.timer,
                       onAdd: _addCountdown,
                       isLight: widget.isLight)),
+              IconButton(
+                icon: Icon(Icons.dashboard_rounded,
+                    color: useDarkUI ? Colors.white70 : Colors.grey),
+                tooltip: '看板',
+                onPressed: () async {
+                  await Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                          AppBoardScreen(username: widget.username)));
+                  widget.onDataChanged();
+                },
+              ),
               IconButton(
                 icon: Icon(Icons.history,
                     color: useDarkUI ? Colors.white70 : Colors.grey),

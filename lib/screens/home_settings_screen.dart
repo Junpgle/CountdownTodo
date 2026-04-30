@@ -39,6 +39,7 @@ import 'settings/notification_settings_page.dart';
 import 'about_screen.dart';
 import 'animation_settings_page.dart';
 import 'band_sync_screen.dart';
+import 'course_calendar_adjustment_screen.dart';
 import 'settings/lan_sync_screen.dart';
 
 // 引入拆分的弹窗组件
@@ -100,6 +101,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'course_sync': GlobalKey(),
     'course_upload': GlobalKey(),
     'course_adapt': GlobalKey(),
+    'course_calendar_adjustment': GlobalKey(),
     'semester_progress': GlobalKey(),
     'semester_start': GlobalKey(),
     'semester_end': GlobalKey(),
@@ -1303,6 +1305,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 onSmartImport: _courseImportHandler.smartImportCourse,
                 onWebViewImport: _courseImportHandler.importFromWebView,
                 onFetchFromCloud: _fetchCoursesFromCloud,
+                onCalendarAdjustment: () async {
+                  await Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      const CourseCalendarAdjustmentScreen(),
+                    ),
+                  );
+                  _rescheduleReminders();
+                },
                 noCourseBehavior: _noCourseBehavior,
                 onNoCourseBehaviorChanged: (val) {
                   if (val != null) {
@@ -1727,6 +1738,15 @@ class _SettingsPageState extends State<SettingsPage> {
                           ? null
                           : _courseImportHandler.importFromWebView,
                       onFetchFromCloud: _fetchCoursesFromCloud,
+                      onCalendarAdjustment: () async {
+                        await Navigator.push(
+                          context,
+                          PageTransitions.slideHorizontal(
+                            const CourseCalendarAdjustmentScreen(),
+                          ),
+                        );
+                        _rescheduleReminders();
+                      },
                       noCourseBehavior: _noCourseBehavior,
                       onNoCourseBehaviorChanged: (val) {
                         if (val != null) {

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
-  ArrowLeft, Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
+  Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
   User as UserIcon, Calendar, AlertCircle, Users as UsersIcon, RotateCcw, Bell,
-  MessageSquare, Shield, Megaphone, History as HistoryIcon
+  MessageSquare, Shield, Megaphone, History as HistoryIcon, Info
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiRequestError, ApiService } from '../services/api';
@@ -1305,6 +1305,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
             {isSyncing ? '正在拉取云端全量数据...' : '强制拉取全量数据 (修复不一致)'}
           </button>
 
+          <button onClick={onBack} className="w-full flex justify-center items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold py-5 rounded-2xl transition active:scale-[0.98]">
+            <Info className="w-5 h-5" /> 查看产品详细介绍
+          </button>
+
           <button onClick={onLogout} className="w-full flex justify-center items-center gap-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold py-5 rounded-2xl transition active:scale-[0.98]">
             <LogOut className="w-5 h-5" /> 退出当前账号
           </button>
@@ -1318,10 +1322,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
         <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200 z-40 shrink-0">
           <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
             <div className="flex items-center gap-3 sm:gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition text-slate-500" title="返回官网">
-                <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-              <div className="flex items-center gap-2 pr-2 sm:pr-4 sm:border-r border-slate-200">
+              <div className="flex items-center gap-2 pr-2 sm:pr-4">
                 <div className="bg-indigo-600 p-1.5 rounded-lg">
                   <CheckCircle2 className="text-white w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
@@ -1405,6 +1406,14 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                 <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">{isSyncing ? '同步中...' : '云端同步'}</span>
                 <span className="sm:hidden">{isSyncing ? '同步中' : '同步'}</span>
+              </button>
+
+              <button
+                  onClick={onBack}
+                  className="p-2 text-slate-400 hover:text-indigo-600 transition"
+                  title="查看产品介绍"
+              >
+                <Info className="w-5 h-5" />
               </button>
 
               <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>

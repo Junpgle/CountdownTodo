@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'package:CountDownTodo/services/database_helper.dart';
 import '../services/api_service.dart';
+import '../services/course_calendar_adjustment_service.dart';
 import '../services/environment_service.dart';
 import '../storage_service.dart';
 
@@ -213,7 +214,16 @@ class CourseService {
   // ================= 提取与业务逻辑 =================
 
   // 4. 获取所有解析后的课程对象
-  static Future<List<CourseItem>> getAllCourses(String username) async {
+  static Future<List<CourseItem>> getAllCourses(
+    String username, {
+    bool applyCalendarAdjustments = true,
+  }) async {
+    Future<List<CourseItem>> applyAdjustmentsIfNeeded(
+        List<CourseItem> courses) async {
+      if (!applyCalendarAdjustments) return courses;
+      return CourseCalendarAdjustmentService.applyToCourses(courses);
+    }
+
     // 1. 优先从 SQL 读取
     try {
       final db = await DatabaseHelper.instance.database;
@@ -223,7 +233,8 @@ class CourseService {
         orderBy: 'date ASC, start_time ASC',
       );
       if (maps.isNotEmpty) {
-        return maps.map((m) => CourseItem.fromJson(m)).toList();
+        return applyAdjustmentsIfNeeded(
+            maps.map((m) => CourseItem.fromJson(m)).toList());
       }
     } catch (e) {
       debugPrint("⚠️ Course SQL 读取异常: $e");
@@ -233,13 +244,13 @@ class CourseService {
     final prefs = await SharedPreferences.getInstance();
     final legacyPrefsCourses = await _recoverCoursesFromPrefs(username, prefs);
     if (legacyPrefsCourses.isNotEmpty) {
-      return legacyPrefsCourses;
+      return applyAdjustmentsIfNeeded(legacyPrefsCourses);
     }
 
     final recoveredSqlCourses =
         await _recoverCoursesFromLegacySqlIfNeeded(username);
     if (recoveredSqlCourses.isNotEmpty) {
-      return recoveredSqlCourses;
+      return applyAdjustmentsIfNeeded(recoveredSqlCourses);
     }
 
     return [];
@@ -519,7 +530,8 @@ class CourseService {
 
   // 8. 上传本地课表到云端
   static Future<Map<String, dynamic>> syncCoursesToCloud(String username, int userId) async {
-    final courses = await getAllCourses(username);
+    final courses =
+        await getAllCourses(username, applyCalendarAdjustments: false);
 
     // 转换为后端需要的结构
     final courseMaps = courses.map((c) => {

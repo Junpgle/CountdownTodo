@@ -26,6 +26,7 @@ import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
 import '../services/course_service.dart';
+import '../services/course_calendar_adjustment_service.dart';
 import '../services/external_share_handler.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_sync_service.dart';
@@ -40,6 +41,7 @@ import 'feature_guide_screen.dart';
 import 'todo_confirm_screen.dart';
 import 'add_todo_screen.dart';
 import 'course_screens.dart';
+import 'course_calendar_adjustment_screen.dart';
 import 'band_sync_screen.dart';
 import 'conflict_inbox_screen.dart';
 import 'team_management_screen.dart';
@@ -58,6 +60,7 @@ import 'pomodoro_screen.dart';
 // 🚀 引入
 import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
+import 'app_board_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -141,6 +144,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   final _syncService = PomodoroSyncService();
   String _deviceId = '';
   bool _hasShownUpdate = false;
+  bool _hasCheckedHolidayPreset = false;
   TeamAnnouncement? _activeAnnouncement; // 🚀 新增：当前置顶公告
 
   // ── 本地专注状态 ──
@@ -258,6 +262,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (mounted) {
           StorageService.syncAppMappings();
           _initIslandOnStartup();
+          _checkOfficialHolidayPreset();
         }
       });
 
@@ -2093,6 +2098,52 @@ class _HomeDashboardState extends State<HomeDashboard>
           unawaited(_loadAllData());
         }
       }
+    }
+  }
+
+  Future<void> _checkOfficialHolidayPreset() async {
+    if (_hasCheckedHolidayPreset || !mounted) return;
+    _hasCheckedHolidayPreset = true;
+
+    final preset = await CourseCalendarAdjustmentService.pendingOfficialPreset();
+    if (preset == null || !mounted) return;
+
+    final apply = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${preset.year} 法定节假日课表调整'),
+        content: const Text('检测到官方放假调休安排。可以自动加入放假日期和补课映射，课程视图、通知、桌面小组件和时间轴会同步按调整后的课表运行。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('今年不再提醒'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx, null);
+              Navigator.push(
+                context,
+                PageTransitions.slideHorizontal(
+                  const CourseCalendarAdjustmentScreen(),
+                ),
+              );
+            },
+            child: const Text('手动选择'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('自动套用'),
+          ),
+        ],
+      ),
+    );
+
+    if (apply == true) {
+      await CourseCalendarAdjustmentService.applyOfficialPreset(preset);
+      if (!mounted) return;
+      await _loadAllData(deferred: true);
+    } else if (apply == false) {
+      await CourseCalendarAdjustmentService.dismissOfficialPreset(preset);
     }
   }
 

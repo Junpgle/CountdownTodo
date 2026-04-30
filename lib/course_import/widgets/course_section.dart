@@ -10,6 +10,7 @@ class CourseSection extends StatelessWidget {
   final VoidCallback onSmartImport;
   final VoidCallback? onWebViewImport;
   final VoidCallback onFetchFromCloud;
+  final VoidCallback onCalendarAdjustment;
   final String noCourseBehavior;
   final ValueChanged<String?> onNoCourseBehaviorChanged;
 
@@ -21,6 +22,7 @@ class CourseSection extends StatelessWidget {
     required this.onSmartImport,
     this.onWebViewImport,
     required this.onFetchFromCloud,
+    required this.onCalendarAdjustment,
     required this.noCourseBehavior,
     required this.onNoCourseBehaviorChanged,
   });
@@ -84,6 +86,19 @@ class CourseSection extends StatelessWidget {
                     ],
                     onChanged: onNoCourseBehaviorChanged,
                   ),
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildTile(
+                context: context,
+                targetId: 'course_calendar_adjustment',
+                child: ListTile(
+                  leading: const Icon(Icons.event_repeat_outlined,
+                      color: Colors.deepPurple),
+                  title: const Text('放假与调休'),
+                  subtitle: const Text('设置停课日期，以及补哪一天的课'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onCalendarAdjustment,
                 ),
               ),
               const Divider(height: 1, indent: 56),
