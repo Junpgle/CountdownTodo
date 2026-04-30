@@ -1,41 +1,114 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
-import '../services/api_service.dart';
+import '../services/course_service.dart';
+
+// Custom Colors to match Tailwind Emerald
+const Color emerald = Color(0xFF10B981);
+const Color emeraldAccent = Color(0xFF34D399);
 
 class AppBoardScreen extends StatefulWidget {
   final String username;
-  const AppBoardScreen({super.key, required this.username});
+  final VoidCallback? onBack;
+
+  const AppBoardScreen({super.key, required this.username, this.onBack});
 
   @override
   State<AppBoardScreen> createState() => _AppBoardScreenState();
 }
 
-class _AppBoardScreenState extends State<AppBoardScreen> {
+class _AppBoardScreenState extends State<AppBoardScreen> with TickerProviderStateMixin {
   List<TodoItem> _todos = [];
-  List<TodoItem> _filteredTodos = [];
-  String? _selectedTeamUuid;
-  String? _selectedTeamName;
+  List<CountdownItem> _countdowns = [];
+  List<CourseItem> _courses = [];
+  DateTime? _semesterStart;
   bool _isLoading = true;
-  String _viewMode = 'list'; // list, timeline, kanban
+  String _mobileTab = 'stream'; // stream, roadmap, mission
+  String _missionTab = 'active'; // active, completed
+  double _dayWidth = 60.0;
+  TodoItem? _detailTask;
+  DateTime _now = DateTime.now();
+  late Timer _timer;
+  final ScrollController _cdScrollController = ScrollController();
+  final ScrollController _marqueeController = ScrollController();
+  Timer? _marqueeTimer;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _now = DateTime.now();
+        });
+      }
+    });
+    _startMarquee();
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    _marqueeTimer?.cancel();
+    _cdScrollController.dispose();
+    _marqueeController.dispose();
+    super.dispose();
+  }
+
+  void _startMarquee() {
+    _marqueeTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
+      if (_marqueeController.hasClients) {
+        double maxScroll = _marqueeController.position.maxScrollExtent;
+        double currentScroll = _marqueeController.offset;
+        if (currentScroll >= maxScroll - 1) {
+          _marqueeController.jumpTo(0);
+        } else {
+          _marqueeController.animateTo(
+            currentScroll + 10,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.linear,
+          );
+        }
+      }
+    });
+  }
+
+  int _calculateCurrentWeek() {
+    if (_semesterStart == null) return 1;
+    final start = DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day);
+    // Adjust to previous Monday
+    final startMonday = start.subtract(Duration(days: start.weekday - 1));
+    final today = DateTime(_now.year, _now.month, _now.day);
+    final diffDays = today.difference(startMonday).inDays;
+    if (diffDays < 0) return 1;
+    return (diffDays ~/ 7) + 1;
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final todos = await StorageService.getTodos(widget.username, limit: 200);
+      final todos = await StorageService.getTodos(widget.username, limit: 500);
+      final countdowns = await StorageService.getCountdowns(widget.username);
+      final courses = await CourseService.getAllCourses(widget.username);
+      final semesterStart = await StorageService.getSemesterStart();
 
       if (mounted) {
         setState(() {
           _todos = todos.where((t) => !t.isDeleted).toList();
-          _filterTodos();
+          _countdowns = countdowns.where((c) => !c.isDeleted && c.targetDate.isAfter(_now)).toList();
+          _countdowns.sort((a, b) => a.targetDate.compareTo(b.targetDate));
+          _courses = courses;
+          _semesterStart = semesterStart;
           _isLoading = false;
+        });
+
+        // Auto-scroll Gantt to Today after a short delay to allow layout
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToToday();
         });
       }
     } catch (e) {
@@ -44,353 +117,1003 @@ class _AppBoardScreenState extends State<AppBoardScreen> {
     }
   }
 
-  void _filterTodos() {
-    if (_selectedTeamUuid == null) {
-      _filteredTodos = _todos;
-    } else {
-      _filteredTodos = _todos.where((t) => t.teamUuid == _selectedTeamUuid).toList();
-    }
-  }
-
-  Future<void> _selectTeam() async {
-    try {
-      final teams = await ApiService.fetchTeams();
-      final teamList = teams.map((t) => Team.fromJson(t)).toList();
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('选择查看的团队'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: const Text('全部任务'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() {
-                      _selectedTeamUuid = null;
-                      _selectedTeamName = '全部';
-                      _filterTodos();
-                    });
-                  },
-                ),
-                ...teamList.map((team) => ListTile(
-                  title: Text(team.name),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() {
-                      _selectedTeamUuid = team.uuid;
-                      _selectedTeamName = team.name;
-                      _filterTodos();
-                    });
-                  },
-                )),
-              ],
-            ),
-          ),
-        ),
-      );
-    } catch (e) {
-      debugPrint('Error fetching teams: $e');
-    }
+  void _scrollToToday() {
+    // This is a placeholder since the scroll controllers for the sub-widgets 
+    // are not directly accessible here. In a real scenario, we might use a 
+    // shared ScrollController or a global key.
   }
 
   @override
   Widget build(BuildContext context) {
-    final isTablet = MediaQuery.of(context).size.width >= 768;
+    final isDesktop = MediaQuery.of(context).size.width >= 1024;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('看板'),
-        centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Center(
-              child: TextButton.icon(
-                onPressed: _selectTeam,
-                icon: const Icon(Icons.group, size: 16),
-                label: Text(_selectedTeamName ?? '全部'),
+      backgroundColor: const Color(0xFF020617),
+      body: Stack(
+        children: [
+          const AnimatedBackground(),
+          Column(
+            children: [
+              _buildHeader(isDesktop),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator(color: Colors.blue))
+                    : isDesktop
+                        ? _buildDesktopLayout()
+                        : _buildMobileLayout(),
               ),
+              if (isDesktop) _buildFooter(),
+              if (!isDesktop) _buildMobileNav(),
+            ],
+          ),
+          if (_detailTask != null)
+            TaskDetailModal(
+              task: _detailTask!,
+              onClose: () => setState(() => _detailTask = null),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(bool isDesktop) {
+    return Container(
+      height: isDesktop ? 100 : 70,
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 16),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: Colors.black.withValues(alpha: 0.2),
+      ),
+      child: Row(
+        children: [
+          // Back Button
+          IconButton(
+            onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back, color: Colors.white70),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.05),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
             ),
           ),
-          if (isTablet)
-            Padding(
-              padding: const EdgeInsets.only(right: 16.0),
-              child: Center(
-                child: SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'list', label: Text('列表')),
-                    ButtonSegment(value: 'timeline', label: Text('时间线')),
-                    ButtonSegment(value: 'kanban', label: Text('看板')),
-                  ],
-                  selected: {_viewMode},
-                  onSelectionChanged: (value) {
-                    setState(() => _viewMode = value.first);
-                  },
+          const SizedBox(width: 16),
+          // Title
+          if (isDesktop)
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Colors.white, Colors.white38],
+              ).createShader(bounds),
+              child: const Text(
+                '看板',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1.5,
                 ),
+              ),
+            ),
+          if (!isDesktop)
+            Expanded(
+              child: Center(
+                child: ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [Colors.white, Colors.white38],
+                  ).createShader(bounds),
+                  child: const Text(
+                    '看板',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (isDesktop)
+            Expanded(
+              child: Center(
+                child: SizedBox(
+                  height: 60,
+                  child: ListView.separated(
+                    controller: _cdScrollController,
+                    scrollDirection: Axis.horizontal,
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: _countdowns.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 16),
+                    itemBuilder: (context, index) {
+                      final cd = _countdowns[index];
+                      final diff = cd.targetDate.difference(_now).inDays;
+                      final isUrgent = diff < 3;
+                      return Container(
+                        width: 140,
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: (isUrgent ? Colors.red : Colors.blue).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: (isUrgent ? Colors.red : Colors.blue).withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              cd.title,
+                              style: TextStyle(
+                                color: isUrgent ? Colors.redAccent : Colors.blueAccent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '${math.max(0, diff)} 天',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          if (isDesktop)
+            Text(
+              DateFormat('HH:mm').format(_now),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.8),
+                fontSize: 48,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -2,
+                fontFeatures: [const FontFeature.tabularFigures()],
               ),
             ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _filteredTodos.isEmpty
-              ? Center(
-                  child: Text(
-                    '暂无任务',
-                    style: Theme.of(context).textTheme.bodyMedium,
+    );
+  }
+
+  Widget _buildDesktopLayout() {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 3,
+            child: GlassCard(
+              title: '今日执行流',
+              child: TodayHourlyTimeline(
+                todos: _todos,
+                courses: _courses,
+                semesterStart: _semesterStart,
+                currentWeek: _calculateCurrentWeek(),
+                onTaskClick: (task) => setState(() => _detailTask = task),
+              ),
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            flex: 6,
+            child: GlassCard(
+              title: '战略路线图',
+              headerExtra: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.zoom_out, color: Colors.white30, size: 18),
+                    onPressed: () => setState(() => _dayWidth = math.max(30, _dayWidth - 10)),
                   ),
-                )
-              : isTablet
-                  ? _buildTabletView()
-                  : _buildMobileView(),
-    );
-  }
-
-  Widget _buildMobileView() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'list', label: Text('列表')),
-              ButtonSegment(value: 'timeline', label: Text('时间线')),
-              ButtonSegment(value: 'kanban', label: Text('看板')),
-            ],
-            selected: {_viewMode},
-            onSelectionChanged: (value) {
-              setState(() => _viewMode = value.first);
-            },
-          ),
-        ),
-        Expanded(
-          child: switch (_viewMode) {
-            'list' => _buildListView(),
-            'timeline' => _buildTimelineView(),
-            'kanban' => _buildKanbanView(),
-            _ => _buildListView(),
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTabletView() {
-    return Row(
-      children: [
-        Expanded(
-          flex: 3,
-          child: _buildListView(),
-        ),
-        Expanded(
-          flex: 4,
-          child: _buildTimelineView(),
-        ),
-        Expanded(
-          flex: 3,
-          child: _buildKanbanView(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildListView() {
-    final sortedTodos = _filteredTodos.toList()
-      ..sort((a, b) => (a.dueDate ?? DateTime(2099)).compareTo(b.dueDate ?? DateTime(2099)));
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(12.0),
-      itemCount: sortedTodos.length,
-      itemBuilder: (context, index) {
-        final todo = sortedTodos[index];
-        return Card(
-          child: ListTile(
-            leading: Checkbox(
-              value: todo.isDone,
-              onChanged: (_) {},
-            ),
-            title: Text(
-              todo.title,
-              style: TextStyle(
-                decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                  IconButton(
+                    icon: const Icon(Icons.zoom_in, color: Colors.white30, size: 18),
+                    onPressed: () => setState(() => _dayWidth = math.min(150, _dayWidth + 10)),
+                  ),
+                ],
+              ),
+              child: GanttChart(
+                todos: _todos.where((t) => t.dueDate != null).toList(),
+                dayWidth: _dayWidth,
+                onTaskClick: (task) => setState(() => _detailTask = task),
               ),
             ),
-            subtitle: todo.dueDate != null
-                ? Text(DateFormat('yyyy-MM-dd HH:mm').format(todo.dueDate!))
-                : null,
-            trailing: todo.isDone
-                ? const Icon(Icons.check_circle, color: Colors.green)
-                : const Icon(Icons.circle_outlined),
           ),
-        );
+          const SizedBox(width: 24),
+          Expanded(
+            flex: 3,
+            child: GlassCard(
+              title: '作战指挥中心',
+              headerExtra: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text('完成率', style: TextStyle(color: Colors.white30, fontSize: 8, fontWeight: FontWeight.w900)),
+                  Text(
+                    '${_calculateCompletionRate()}%',
+                    style: const TextStyle(color: emeraldAccent, fontSize: 12, fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
+              child: MissionControl(
+                todos: _todos,
+                activeTab: _missionTab,
+                onTabChanged: (tab) => setState(() => _missionTab = tab),
+                onTaskClick: (task) => setState(() => _detailTask = task),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileLayout() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: switch (_mobileTab) {
+        'stream' => GlassCard(
+            title: '今日执行流',
+            child: TodayHourlyTimeline(
+              todos: _todos,
+              courses: _courses,
+              semesterStart: _semesterStart,
+              currentWeek: _calculateCurrentWeek(),
+              onTaskClick: (task) => setState(() => _detailTask = task),
+            ),
+          ),
+        'roadmap' => GlassCard(
+            title: '战略路线图',
+            child: GanttChart(
+              todos: _todos.where((t) => t.dueDate != null).toList(),
+              dayWidth: _dayWidth,
+              onTaskClick: (task) => setState(() => _detailTask = task),
+            ),
+          ),
+        'mission' => GlassCard(
+            title: '作战指挥中心',
+            child: MissionControl(
+              todos: _todos,
+              activeTab: _missionTab,
+              onTabChanged: (tab) => setState(() => _missionTab = tab),
+              onTaskClick: (task) => setState(() => _detailTask = task),
+            ),
+          ),
+        _ => const SizedBox.shrink(),
       },
     );
   }
 
-  Widget _buildTimelineView() {
-    final sortedTodos = _filteredTodos
-        .where((t) => t.dueDate != null)
-        .toList()
-      ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
-
-    if (sortedTodos.isEmpty) {
-      return Center(
-        child: Text(
-          '无日期任务',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(12.0),
-      itemCount: sortedTodos.length,
-      itemBuilder: (context, index) {
-        final todo = sortedTodos[index];
-        final isToday = _isToday(todo.dueDate!);
-
-        return Card(
-          color: isToday ? Colors.blue.withValues(alpha: 0.1) : null,
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    if (isToday)
-                      const Chip(
-                        label: Text('今天', style: TextStyle(fontSize: 11)),
-                        backgroundColor: Colors.blue,
-                      ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        todo.title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w500,
-                          decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
-                    const SizedBox(width: 4),
-                    Text(
-                      DateFormat('M月d日 HH:mm').format(todo.dueDate!),
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                    if (todo.isDone) ...[
-                      const SizedBox(width: 8),
-                      Icon(Icons.check, size: 14, color: Colors.green[600]),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+  Widget _buildMobileNav() {
+    return Container(
+      height: 64,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+      ),
+      child: Row(
+        children: [
+          _buildNavButton('stream', Icons.access_time, '今日'),
+          _buildNavButton('roadmap', Icons.layers, '路线图'),
+          _buildNavButton('mission', Icons.check_circle_outline, '任务'),
+        ],
+      ),
     );
   }
 
-  Widget _buildKanbanView() {
-    final activeTodos = _filteredTodos.where((t) => !t.isDone).toList();
-    final completedTodos = _filteredTodos.where((t) => t.isDone).toList();
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '进行中 (${activeTodos.length})',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
-              Text(
-                '已完成 (${completedTodos.length})',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Row(
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  itemCount: activeTodos.length,
-                  itemBuilder: (context, index) {
-                    return _buildKanbanCard(activeTodos[index], false);
-                  },
-                ),
-              ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  itemCount: completedTodos.length,
-                  itemBuilder: (context, index) {
-                    return _buildKanbanCard(completedTodos[index], true);
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildKanbanCard(TodoItem todo, bool isCompleted) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6.0),
-      color: isCompleted
-          ? Colors.grey.withValues(alpha: 0.3)
-          : Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
+  Widget _buildNavButton(String tab, IconData icon, String label) {
+    bool isSelected = _mobileTab == tab;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _mobileTab = tab),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Icon(icon, color: isSelected ? Colors.blue : Colors.white24, size: 20),
             Text(
-              todo.title,
+              label,
               style: TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 12,
-                decoration: isCompleted ? TextDecoration.lineThrough : null,
+                color: isSelected ? Colors.blue : Colors.white24,
+                fontSize: 8,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-            if (todo.dueDate != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                DateFormat('MM-dd HH:mm').format(todo.dueDate!),
-                style: const TextStyle(fontSize: 10, color: Colors.grey),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  bool _isToday(DateTime date) {
+  Widget _buildFooter() {
+    return Container(
+      height: 40,
+      width: double.infinity,
+      color: Colors.blue.withValues(alpha: 0.05),
+      child: Center(
+        child: SingleChildScrollView(
+          controller: _marqueeController,
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              const SizedBox(width: 1000), // Start from outside
+              Text(
+                '【公告】 实时执行流同步中... 祝您今日工作愉快！',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 1000), // Gap
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  int _calculateCompletionRate() {
+    if (_todos.isEmpty) return 0;
+    int completed = _todos.where((t) => t.isDone).length;
+    return (completed * 100 ~/ _todos.length);
+  }
+}
+
+// --- Sub-Widgets ---
+
+class GlassCard extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final Widget? headerExtra;
+  final String? className;
+
+  const GlassCard({
+    super.key,
+    required this.title,
+    required this.child,
+    this.headerExtra,
+    this.className,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(40),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                if (headerExtra != null) headerExtra!,
+              ],
+            ),
+          ),
+          Expanded(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class AnimatedBackground extends StatefulWidget {
+  const AnimatedBackground({super.key});
+
+  @override
+  State<AnimatedBackground> createState() => _AnimatedBackgroundState();
+}
+
+class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            Positioned(
+              top: -100 + (50 * _controller.value),
+              left: -100 + (30 * _controller.value),
+              child: Container(
+                width: 400,
+                height: 400,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.blue.withValues(alpha: 0.05 + (0.05 * _controller.value)),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: -50 - (40 * _controller.value),
+              right: -50 - (20 * _controller.value),
+              child: Container(
+                width: 350,
+                height: 350,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.indigo.withValues(alpha: 0.05 + (0.03 * _controller.value)),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class TodayHourlyTimeline extends StatelessWidget {
+  final List<TodoItem> todos;
+  final List<CourseItem> courses;
+  final DateTime? semesterStart;
+  final int currentWeek;
+  final Function(TodoItem) onTaskClick;
+
+  const TodayHourlyTimeline({
+    super.key,
+    required this.todos,
+    required this.courses,
+    this.semesterStart,
+    required this.currentWeek,
+    required this.onTaskClick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final now = DateTime.now();
-    return date.year == now.year && date.month == now.month && date.day == now.day;
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+
+    // Filter today's items
+    final todayCourses = courses.where((c) {
+      // Check weekday and weekIndex (if available)
+      return c.weekday == now.weekday && (c.weekIndex == 0 || c.weekIndex == currentWeek);
+    }).toList();
+
+    final todayTasks = todos.where((t) {
+      if (t.dueDate == null) return false;
+      return t.dueDate!.isAfter(todayStart) && t.dueDate!.isBefore(todayEnd);
+    }).toList();
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: 24,
+      itemBuilder: (context, hour) {
+        final isCurrent = now.hour == hour;
+        final hCourses = todayCourses.where((c) => c.startTime ~/ 100 == hour).toList();
+        final hTasks = todayTasks.where((t) => t.dueDate!.hour == hour).toList();
+
+        return Container(
+          height: 60,
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.02))),
+            color: isCurrent ? Colors.blue.withValues(alpha: 0.05) : null,
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 40,
+                child: Text(
+                  hour.toString().padLeft(2, '0'),
+                  style: TextStyle(
+                    color: isCurrent ? Colors.blueAccent : Colors.white.withValues(alpha: 0.1),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    fontFeatures: [const FontFeature.tabularFigures()],
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    ...hCourses.map((c) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.indigo.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.indigo.withValues(alpha: 0.1)),
+                          ),
+                          child: Text(
+                            c.courseName,
+                            style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold),
+                          ),
+                        )),
+                    ...hTasks.map((t) => GestureDetector(
+                          onTap: () => onTaskClick(t),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (t.isDone ? emerald : Colors.blue).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: (t.isDone ? emerald : Colors.blue).withValues(alpha: 0.1)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 4,
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: t.isDone ? emeraldAccent : Colors.blueAccent,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  t.title,
+                                  style: TextStyle(
+                                    color: t.isDone ? Colors.white30 : Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    decoration: t.isDone ? TextDecoration.lineThrough : null,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class GanttChart extends StatelessWidget {
+  final List<TodoItem> todos;
+  final double dayWidth;
+  final Function(TodoItem) onTaskClick;
+
+  const GanttChart({
+    super.key,
+    required this.todos,
+    required this.dayWidth,
+    required this.onTaskClick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (todos.isEmpty) {
+      return const Center(child: Text('暂无带日期的任务', style: TextStyle(color: Colors.white24)));
+    }
+
+    final now = DateTime.now();
+    final minDate = now.subtract(const Duration(days: 7));
+    final maxDate = now.add(const Duration(days: 30));
+    final totalDays = maxDate.difference(minDate).inDays;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: totalDays * dayWidth,
+        child: Stack(
+          children: [
+            // Grid Lines & Header
+            Column(
+              children: [
+                Row(
+                  children: List.generate(totalDays, (index) {
+                    final date = minDate.add(Duration(days: index));
+                    final isToday = date.day == now.day && date.month == now.month && date.year == now.year;
+                    return Container(
+                      width: dayWidth,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            DateFormat('E').format(date).toUpperCase(),
+                            style: TextStyle(color: isToday ? Colors.blue : Colors.white12, fontSize: 8, fontWeight: FontWeight.w900),
+                          ),
+                          Text(
+                            date.day.toString(),
+                            style: TextStyle(color: isToday ? Colors.white : Colors.white30, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ),
+                Expanded(
+                  child: Row(
+                    children: List.generate(totalDays, (index) {
+                      return Container(
+                        width: dayWidth,
+                        decoration: BoxDecoration(
+                          border: Border(right: BorderSide(color: Colors.white.withValues(alpha: 0.02))),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+            // Today Line
+            Positioned(
+              left: now.difference(minDate).inHours / 24 * dayWidth,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                width: 1,
+                color: Colors.blue.withValues(alpha: 0.5),
+              ),
+            ),
+            // Task Bars
+            Padding(
+              padding: const EdgeInsets.only(top: 50),
+              child: ListView.builder(
+                itemCount: todos.length,
+                itemBuilder: (context, index) {
+                  final task = todos[index];
+                  final start = task.createdAt != 0 ? DateTime.fromMillisecondsSinceEpoch(task.createdAt) : task.dueDate!.subtract(const Duration(days: 3));
+                  final end = task.dueDate!;
+                  
+                  if (end.isBefore(minDate) || start.isAfter(maxDate)) return const SizedBox.shrink();
+
+                  final left = math.max(0.0, start.difference(minDate).inHours / 24 * dayWidth);
+                  final width = math.max(dayWidth * 0.5, end.difference(start).inHours / 24 * dayWidth);
+
+                  return Container(
+                    height: 30,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          left: left,
+                          width: width,
+                          top: 0,
+                          bottom: 0,
+                          child: GestureDetector(
+                            onTap: () => onTaskClick(task),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: (task.teamUuid != null ? Colors.blue : emerald).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: (task.teamUuid != null ? Colors.blue : emerald).withValues(alpha: 0.3)),
+                              ),
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                task.title,
+                                style: TextStyle(
+                                  color: task.isDone ? Colors.white24 : Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  decoration: task.isDone ? TextDecoration.lineThrough : null,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class MissionControl extends StatelessWidget {
+  final List<TodoItem> todos;
+  final String activeTab;
+  final Function(String) onTabChanged;
+  final Function(TodoItem) onTaskClick;
+
+  const MissionControl({
+    super.key,
+    required this.todos,
+    required this.activeTab,
+    required this.onTabChanged,
+    required this.onTaskClick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeTasks = todos.where((t) => !t.isDone).toList();
+    final completedTasks = todos.where((t) => t.isDone).toList();
+    final displayTasks = activeTab == 'active' ? activeTasks : completedTasks;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                _buildTab('active', '活跃任务', Colors.blue),
+                _buildTab('completed', '历史记录', emerald),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: displayTasks.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final task = displayTasks[index];
+              final isOverdue = task.dueDate != null && task.dueDate!.isBefore(DateTime.now()) && !task.isDone;
+              
+              return InkWell(
+                onTap: () => onTaskClick(task),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isOverdue ? Colors.red.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.02),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: isOverdue ? Colors.red.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: activeTab == 'active' ? Colors.blueAccent : emeraldAccent,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              task.title,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.9),
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                decoration: task.isDone ? TextDecoration.lineThrough : null,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '${task.creatorName ?? "用户"} · ${task.dueDate != null ? DateFormat('HH:mm').format(task.dueDate!) : "无时间"}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                fontSize: 8,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTab(String tab, String label, Color activeColor) {
+    bool isSelected = activeTab == tab;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onTabChanged(tab),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? activeColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected ? [BoxShadow(color: activeColor.withValues(alpha: 0.3), blurRadius: 8)] : null,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white24,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class TaskDetailModal extends StatelessWidget {
+  final TodoItem task;
+  final VoidCallback onClose;
+
+  const TaskDetailModal({super.key, required this.task, required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onClose,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.8),
+        child: Center(
+          child: GestureDetector(
+            onTap: () {}, // Prevent closing when clicking modal
+            child: Container(
+              width: math.min(600, MediaQuery.of(context).size.width * 0.9),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 6,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(colors: [Colors.blue, Colors.indigo]),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: (task.teamUuid != null ? Colors.blue : emerald).withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: (task.teamUuid != null ? Colors.blue : emerald).withValues(alpha: 0.3)),
+                                ),
+                                child: Text(
+                                  task.teamName ?? '个人空间',
+                                  style: TextStyle(
+                                    color: task.teamUuid != null ? Colors.blueAccent : emeraldAccent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close, color: Colors.white24),
+                                onPressed: onClose,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            task.title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              height: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          _buildInfoRow(Icons.access_time, '开始时间', DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(task.createdAt))),
+                          _buildInfoRow(Icons.calendar_today, '截止时间', task.dueDate != null ? DateFormat('yyyy-MM-dd HH:mm').format(task.dueDate!) : '无截止日期'),
+                          _buildInfoRow(Icons.person_outline, '创建者', task.creatorName ?? '我'),
+                          const SizedBox(height: 24),
+                          const Text('备注与详情', style: TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.03),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                            ),
+                            child: Text(
+                              task.remark ?? '暂无详细备注说明。',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14, height: 1.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white24, size: 16),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900)),
+              Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
