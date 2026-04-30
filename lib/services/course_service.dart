@@ -217,12 +217,23 @@ class CourseService {
     // 1. 优先从 SQL 读取
     try {
       final db = await DatabaseHelper.instance.database;
-      final List<Map<String, dynamic>> maps = await db.query('courses', orderBy: 'date ASC, start_time ASC');
+      final List<Map<String, dynamic>> maps = await db.query(
+        'courses',
+        where: 'IFNULL(is_deleted, 0) = 0',
+        orderBy: 'date ASC, start_time ASC',
+      );
       if (maps.isNotEmpty) {
         return maps.map((m) => CourseItem.fromJson(m)).toList();
       }
     } catch (e) {
       debugPrint("⚠️ Course SQL 读取异常: $e");
+    }
+
+    // 2. 🚀 核心迁移逻辑：如果 SQL 为空，从 Prefs 迁移
+    final prefs = await SharedPreferences.getInstance();
+    final legacyPrefsCourses = await _recoverCoursesFromPrefs(username, prefs);
+    if (legacyPrefsCourses.isNotEmpty) {
+      return legacyPrefsCourses;
     }
 
     final recoveredSqlCourses =
@@ -231,43 +242,71 @@ class CourseService {
       return recoveredSqlCourses;
     }
 
-    // 2. 🚀 核心迁移逻辑：如果 SQL 为空，从 Prefs 迁移
-    final prefs = await SharedPreferences.getInstance();
-    final scopedKey = "${_keyCourseData}_$username";
-    String? data = prefs.getString(scopedKey);
+    return [];
+  }
 
-    // 向上兼容旧全局 Key
-    if ((data == null || data.isEmpty) && username.isNotEmpty) {
-      final String legacyKey = _keyCourseData;
-      final String markerKey = "${legacyKey}_${username}_migrated_v2";
-      data = prefs.getString(legacyKey);
-      if (data != null && data.isNotEmpty) {
-        await prefs.setString(scopedKey, data);
-        await prefs.setBool(markerKey, true);
+  static Future<List<CourseItem>> _recoverCoursesFromPrefs(
+      String username, SharedPreferences prefs) async {
+    final scopedKey = "${_keyCourseData}_$username";
+    final keys = <String>[
+      scopedKey,
+      _keyCourseData,
+      ...prefs.getKeys().where((key) =>
+          key.startsWith('${_keyCourseData}_') &&
+          key != scopedKey &&
+          !key.endsWith('_migrated_v2')),
+    ];
+
+    for (final key in keys.toSet()) {
+      if (!prefs.containsKey(key)) continue;
+
+      try {
+        final raw = prefs.get(key);
+        final courses = _parseLegacyCoursePrefsValue(raw);
+        if (courses.isEmpty) continue;
+
+        debugPrint(
+            "🚀 [Course] 正在从 SharedPreferences($key) 迁移 ${courses.length} 条数据至 SQL...");
+        await saveCourses(username, courses);
+        await prefs.remove(key);
+        await prefs.setBool("${_keyCourseData}_${username}_migrated_v2", true);
+        return courses;
+      } catch (e) {
+        debugPrint("⚠️ [Course] 迁移 SharedPreferences($key) 失败: $e");
       }
     }
 
-    if (data == null || data.isEmpty) return [];
+    return [];
+  }
 
-    try {
-      final decoded = jsonDecode(data);
-      List<CourseItem> courses = [];
+  static List<CourseItem> _parseLegacyCoursePrefsValue(Object? raw) {
+    if (raw is String && raw.trim().isNotEmpty) {
+      final decoded = jsonDecode(raw);
       if (decoded is List) {
-        courses = decoded.map<CourseItem>((item) => CourseItem.fromJson(Map<String, dynamic>.from(item))).toList();
-      } else {
-        courses = HfutScheduleParser.parse(data);
+        return decoded
+            .map<CourseItem>((item) =>
+                CourseItem.fromJson(Map<String, dynamic>.from(item)))
+            .toList();
       }
+      return HfutScheduleParser.parse(raw);
+    }
 
-      // 执行增量同步到 SQL
-      if (courses.isNotEmpty) {
-        debugPrint("🚀 [Course] 正在从 Prefs 迁移 ${courses.length} 条数据至 SQL...");
-        await saveCourses(username, courses);
+    if (raw is List<String> && raw.isNotEmpty) {
+      final courses = <CourseItem>[];
+      for (final item in raw) {
+        if (item.trim().isEmpty) continue;
+        final decoded = jsonDecode(item);
+        if (decoded is List) {
+          courses.addAll(decoded.map<CourseItem>((entry) =>
+              CourseItem.fromJson(Map<String, dynamic>.from(entry))));
+        } else if (decoded is Map) {
+          courses.add(CourseItem.fromJson(Map<String, dynamic>.from(decoded)));
+        }
       }
       return courses;
-    } catch (e) {
-      debugPrint("读取所有课表时发生崩溃: $e");
-      return [];
     }
+
+    return [];
   }
 
   static Future<List<CourseItem>> _recoverCoursesFromLegacySqlIfNeeded(
@@ -283,10 +322,36 @@ class CourseService {
       'v4_uni_sync.db',
     };
 
-    for (final dbName in candidateNames) {
-      final legacyPath = absolute(
-        join('.dart_tool', 'sqflite_common_ffi', 'databases', dbName),
-      );
+    final candidatePaths = <String>{
+      for (final dbName in candidateNames)
+        absolute(join('.dart_tool', 'sqflite_common_ffi', 'databases', dbName)),
+      for (final dbName in candidateNames)
+        absolute(join(
+          'build',
+          'windows',
+          'x64',
+          'runner',
+          'Debug',
+          '.dart_tool',
+          'sqflite_common_ffi',
+          'databases',
+          dbName,
+        )),
+      for (final dbName in candidateNames)
+        absolute(join(
+          'build',
+          'windows',
+          'x64',
+          'runner',
+          'Release',
+          '.dart_tool',
+          'sqflite_common_ffi',
+          'databases',
+          dbName,
+        )),
+    };
+
+    for (final legacyPath in candidatePaths) {
       final legacyFile = File(legacyPath);
       if (!await legacyFile.exists()) continue;
 
@@ -304,6 +369,7 @@ class CourseService {
 
         final maps = await legacyDb.query(
           'courses',
+          where: 'IFNULL(is_deleted, 0) = 0',
           orderBy: 'date ASC, start_time ASC',
         );
         if (maps.isEmpty) continue;
