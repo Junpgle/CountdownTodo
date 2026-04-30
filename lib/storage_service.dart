@@ -1423,6 +1423,58 @@ class StorageService {
     triggerRefresh();
   }
 
+  static bool _isHistoricalTodo(TodoItem todo, DateTime today) {
+    if (!todo.isDone || todo.isDeleted) return false;
+
+    if (todo.dueDate != null) {
+      final due = todo.dueDate!;
+      final dueDay = DateTime(due.year, due.month, due.day);
+      return dueDay.isBefore(today);
+    }
+
+    final created = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+    final createdDay = DateTime(created.year, created.month, created.day);
+    return createdDay.isBefore(today);
+  }
+
+  static Future<int> clearHistoricalTodos(String username) async {
+    final todayNow = DateTime.now();
+    final today = DateTime(todayNow.year, todayNow.month, todayNow.day);
+    final allTodos = await getTodos(username, includeDeleted: true);
+    final historicalIds = allTodos
+        .where((todo) => _isHistoricalTodo(todo, today))
+        .map((todo) => todo.id)
+        .toList();
+
+    if (historicalIds.isEmpty) return 0;
+
+    final db = await DatabaseHelper.instance.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final batch = db.batch();
+    for (final uuid in historicalIds) {
+      batch.delete('todo_completions',
+          where: 'todo_uuid = ?', whereArgs: [uuid]);
+      batch.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
+      batch.insert('op_logs', {
+        'op_type': 'DELETE',
+        'target_table': 'todos',
+        'target_uuid': uuid,
+        'timestamp': now,
+        'is_synced': 0,
+        'sync_error': '',
+      });
+    }
+    await batch.commit(noResult: true);
+
+    await _clearTodoPrefsMirror(username);
+    triggerRefresh();
+    Future.microtask(() => syncData(username));
+    return historicalIds.length;
+  }
+
   /// 🚀 Uni-Sync 4.0: 物理删除单条倒计时 (彻底删除)
   static Future<void> permanentlyDeleteCountdown(
       String username, String uuid) async {

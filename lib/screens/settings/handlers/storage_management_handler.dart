@@ -3,9 +3,11 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+import '../../../storage_service.dart';
 
 class StorageManagementHandler {
   final BuildContext context;
+  final String Function() getUsername;
   final Function(String) onUpdateCacheSize;
   final Function(String) showLoading;
   final VoidCallback closeLoading;
@@ -13,6 +15,7 @@ class StorageManagementHandler {
 
   StorageManagementHandler({
     required this.context,
+    required this.getUsername,
     required this.onUpdateCacheSize,
     required this.showLoading,
     required this.closeLoading,
@@ -124,6 +127,50 @@ class StorageManagementHandler {
       closeLoading();
       showMessage('✅ 深度清理完成，设备空间已大幅释放！');
       await calculateCacheSize();
+    }
+  }
+
+  Future<void> clearTodoHistory() async {
+    final username = getUsername();
+    if (username.isEmpty || username == '未登录' || username == '加载中...') {
+      showMessage('请先登录后再清除待办历史记录');
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('清除待办历史记录'),
+            content: const Text(
+              '将彻底删除今天以前已完成的待办记录，不会删除未完成待办、今天完成的待办、回收站内容或孤儿待办。删除后会同步到其他设备，无法恢复。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                style:
+                    FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('清除'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirm) return;
+
+    showLoading('正在清除待办历史记录...');
+    try {
+      final count = await StorageService.clearHistoricalTodos(username);
+      closeLoading();
+      showMessage(
+        count == 0 ? '没有可清除的待办历史记录' : '已清除 $count 条待办历史记录',
+      );
+    } catch (e) {
+      closeLoading();
+      showMessage('清除失败: $e');
     }
   }
 

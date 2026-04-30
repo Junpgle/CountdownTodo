@@ -7,6 +7,7 @@ class SystemSection extends StatelessWidget {
   final VoidCallback onOpenFeatureGuide;
   final String cacheSizeStr;
   final VoidCallback onClearCache;
+  final VoidCallback onClearTodoHistory;
   final VoidCallback onShowStorageAnalysis;
   final bool isCheckingUpdate;
   final VoidCallback onCheckUpdates;
@@ -18,6 +19,7 @@ class SystemSection extends StatelessWidget {
     required this.onOpenFeatureGuide,
     required this.cacheSizeStr,
     required this.onClearCache,
+    required this.onClearTodoHistory,
     required this.onShowStorageAnalysis,
     required this.isCheckingUpdate,
     required this.onCheckUpdates,
@@ -111,6 +113,19 @@ class SystemSection extends StatelessWidget {
                   ),
                 ),
               ],
+              const Divider(height: 1, indent: 56),
+              _buildTile(
+                context: context,
+                targetId: 'todo_history',
+                child: ListTile(
+                  leading: const Icon(Icons.history_toggle_off_rounded,
+                      color: Colors.deepOrange),
+                  title: const Text('清除待办历史记录'),
+                  subtitle: const Text('删除今天以前已完成的待办记录'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onClearTodoHistory,
+                ),
+              ),
               const Divider(height: 1, indent: 56),
               _buildTile(
                 context: context,

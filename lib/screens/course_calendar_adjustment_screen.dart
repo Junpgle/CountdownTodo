@@ -4,7 +4,12 @@ import 'package:intl/intl.dart';
 import '../services/course_calendar_adjustment_service.dart';
 
 class CourseCalendarAdjustmentScreen extends StatefulWidget {
-  const CourseCalendarAdjustmentScreen({super.key});
+  final String? initialOfficialHolidayKey;
+
+  const CourseCalendarAdjustmentScreen({
+    super.key,
+    this.initialOfficialHolidayKey,
+  });
 
   @override
   State<CourseCalendarAdjustmentScreen> createState() =>
@@ -33,9 +38,19 @@ class _CourseCalendarAdjustmentScreenState
   }
 
   Future<void> _save(CourseCalendarAdjustment adjustment) async {
-    await CourseCalendarAdjustmentService.save(adjustment);
+    final officialHolidayKey = widget.initialOfficialHolidayKey;
+    final nextAdjustment =
+        officialHolidayKey == null || officialHolidayKey.isEmpty
+            ? adjustment
+            : adjustment.copyWith(
+                handledOfficialHolidayKeys: {
+                  ...adjustment.handledOfficialHolidayKeys,
+                  officialHolidayKey,
+                },
+              );
+    await CourseCalendarAdjustmentService.save(nextAdjustment);
     if (!mounted) return;
-    setState(() => _adjustment = adjustment);
+    setState(() => _adjustment = nextAdjustment);
   }
 
   Future<DateTime?> _pickDate({DateTime? initial}) {
@@ -546,149 +561,6 @@ class _SuggestionGroup extends StatelessWidget {
             const SizedBox(height: 10),
             child,
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/*
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed: () => Navigator.pop(context, _AddAction.manual),
-                  icon: const Icon(Icons.edit_calendar_outlined),
-                  label: Text(manualLabel),
-                ),
-              ],
-            ),
-            if (children.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ...children,
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-*/
-
-class _HolidaySuggestionGroup extends StatelessWidget {
-  final OfficialHolidayWindow window;
-  final CourseCalendarAdjustment adjustment;
-  final String Function(String date) formatDateShort;
-  final ValueChanged<String> onAdd;
-
-  const _HolidaySuggestionGroup({
-    required this.window,
-    required this.adjustment,
-    required this.formatDateShort,
-    required this.onAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _SuggestionGroup(
-      title: window.name,
-      subtitle: '${window.year} · ${window.holidayDates.length} 天',
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: window.holidayDates.map((date) {
-          final added = adjustment.holidayDates.contains(date);
-          return ActionChip(
-            avatar: Icon(added ? Icons.check : Icons.add, size: 18),
-            label: Text(formatDateShort(date)),
-            onPressed: added ? null : () => onAdd(date),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _TransferSuggestionGroup extends StatelessWidget {
-  final OfficialHolidayWindow window;
-  final CourseCalendarAdjustment adjustment;
-  final ValueChanged<CourseDayTransfer> onAdd;
-
-  const _TransferSuggestionGroup({
-    required this.window,
-    required this.adjustment,
-    required this.onAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _SuggestionGroup(
-      title: window.name,
-      subtitle: '${window.year} · ${window.transfers.length} 条调休',
-      child: Column(
-        children: window.transfers.map((transfer) {
-          final added = adjustment.transfers.any((item) =>
-              item.fromDate == transfer.fromDate &&
-              item.toDate == transfer.toDate);
-          return _TransferRow(
-            transfer: transfer,
-            dense: true,
-            added: added,
-            onTap: added ? null : () => onAdd(transfer),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _SuggestionGroup extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  const _SuggestionGroup({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.outline,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 10),
-              child,
-            ],
-          ),
         ),
       ),
     );

@@ -2132,7 +2132,9 @@ class _HomeDashboardState extends State<HomeDashboard>
       await Navigator.push(
         context,
         PageTransitions.slideHorizontal(
-          const CourseCalendarAdjustmentScreen(),
+          CourseCalendarAdjustmentScreen(
+            initialOfficialHolidayKey: window.key,
+          ),
         ),
       );
       if (mounted) await _loadAllData(deferred: true);

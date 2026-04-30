@@ -37,18 +37,21 @@ class CourseCalendarAdjustment {
   final Map<String, String> holidayLabels;
   final List<CourseDayTransfer> transfers;
   final bool officialHolidayPromptEnabled;
+  final Set<String> handledOfficialHolidayKeys;
 
   const CourseCalendarAdjustment({
     required this.holidayDates,
     this.holidayLabels = const {},
     required this.transfers,
     this.officialHolidayPromptEnabled = true,
+    this.handledOfficialHolidayKeys = const {},
   });
 
   factory CourseCalendarAdjustment.empty() => const CourseCalendarAdjustment(
         holidayDates: <String>{},
         holidayLabels: <String, String>{},
         transfers: [],
+        handledOfficialHolidayKeys: <String>{},
       );
 
   Map<String, dynamic> toJson() => {
@@ -56,6 +59,8 @@ class CourseCalendarAdjustment {
         'holiday_labels': holidayLabels,
         'transfers': transfers.map((t) => t.toJson()).toList(),
         'official_holiday_prompt_enabled': officialHolidayPromptEnabled,
+        'handled_official_holiday_keys': handledOfficialHolidayKeys.toList()
+          ..sort(),
       };
 
   factory CourseCalendarAdjustment.fromJson(Map<String, dynamic> json) {
@@ -70,12 +75,18 @@ class CourseCalendarAdjustment {
         .map((e) => CourseDayTransfer.fromJson(Map<String, dynamic>.from(e)))
         .where((e) => e.fromDate.isNotEmpty && e.toDate.isNotEmpty)
         .toList();
+    final handledOfficialHolidayKeys =
+        (json['handled_official_holiday_keys'] as List? ?? const [])
+            .map((e) => e.toString())
+            .where((e) => e.isNotEmpty)
+            .toSet();
     return CourseCalendarAdjustment(
       holidayDates: holidays,
       holidayLabels: labels,
       transfers: transfers,
       officialHolidayPromptEnabled:
           json['official_holiday_prompt_enabled'] != false,
+      handledOfficialHolidayKeys: handledOfficialHolidayKeys,
     );
   }
 
@@ -84,6 +95,7 @@ class CourseCalendarAdjustment {
     Map<String, String>? holidayLabels,
     List<CourseDayTransfer>? transfers,
     bool? officialHolidayPromptEnabled,
+    Set<String>? handledOfficialHolidayKeys,
   }) =>
       CourseCalendarAdjustment(
         holidayDates: holidayDates ?? this.holidayDates,
@@ -91,6 +103,8 @@ class CourseCalendarAdjustment {
         transfers: transfers ?? this.transfers,
         officialHolidayPromptEnabled:
             officialHolidayPromptEnabled ?? this.officialHolidayPromptEnabled,
+        handledOfficialHolidayKeys:
+            handledOfficialHolidayKeys ?? this.handledOfficialHolidayKeys,
       );
 }
 
@@ -250,12 +264,28 @@ class CourseCalendarAdjustmentService {
     StorageService.triggerRefresh();
   }
 
+  static Future<void> markOfficialHolidayHandled(String key) async {
+    if (key.isEmpty) return;
+    final adjustment = await load();
+    if (adjustment.handledOfficialHolidayKeys.contains(key)) return;
+    await save(adjustment.copyWith(
+      handledOfficialHolidayKeys: {
+        ...adjustment.handledOfficialHolidayKeys,
+        key,
+      },
+    ));
+  }
+
   static Future<OfficialHolidayWindow?> pendingOfficialHolidayWindow() async {
     final adjustment = await load();
     if (!adjustment.officialHolidayPromptEnabled) return null;
 
     final now = DateTime.now();
     for (final window in officialWindows) {
+      if (adjustment.handledOfficialHolidayKeys.contains(window.key) ||
+          _isWindowConfigured(adjustment, window)) {
+        continue;
+      }
       final dates = window.holidayDates
           .map((date) => _df.parseStrict(date))
           .toList()
@@ -265,6 +295,21 @@ class CourseCalendarAdjustmentService {
       if (!now.isBefore(first) && !now.isAfter(last)) return window;
     }
     return null;
+  }
+
+  static bool _isWindowConfigured(
+    CourseCalendarAdjustment adjustment,
+    OfficialHolidayWindow window,
+  ) {
+    final windowHolidays = window.holidayDates.toSet();
+    if (adjustment.holidayDates.any(windowHolidays.contains)) return true;
+
+    final windowTransferKeys =
+        window.transfers.map((t) => '${t.fromDate}>${t.toDate}').toSet();
+    if (windowTransferKeys.isEmpty) return false;
+    return adjustment.transfers
+        .map((t) => '${t.fromDate}>${t.toDate}')
+        .any(windowTransferKeys.contains);
   }
 
   static Future<List<CourseItem>> applyToCourses(
