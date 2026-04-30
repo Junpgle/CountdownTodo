@@ -1,0 +1,354 @@
+<template>
+  <div class="page">
+
+    <!-- 顶部导航栏 (固定不动) -->
+    <div class="header">
+      <text class="back-btn" onclick="goBack">‹</text>
+      <text class="title" static>设置</text>
+      <div class="placeholder"></div>
+    </div>
+
+    <!-- 设置内容区 (支持上下滑动) -->
+    <list class="content">
+
+      <!-- 存储信息 -->
+      <list-item type="info" class="module-card">
+        <div class="module-icon-wrap settings-bg">
+          <text class="module-icon" static>MEM</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title" static>存储空间</text>
+          <text class="module-desc">已用 {{cacheSize}} · {{dataCount}} 项</text>
+        </div>
+      </list-item>
+
+      <!-- 清理待办 -->
+      <list-item type="action" class="module-card" onclick="clearTodoCache">
+        <div class="module-icon-wrap todo-bg">
+          <text class="module-icon" static>TODO</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title" static>清除待办</text>
+          <text class="module-desc" static>删除所有待办数据</text>
+        </div>
+        <text class="arrow" static>›</text>
+      </list-item>
+
+      <!-- 清理倒数日 -->
+      <list-item type="action" class="module-card" onclick="clearCountdownCache">
+        <div class="module-icon-wrap countdown-bg">
+          <text class="module-icon" static>DAY</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title" static>清除倒数日</text>
+          <text class="module-desc" static>删除所有倒数日数据</text>
+        </div>
+        <text class="arrow" static>›</text>
+      </list-item>
+
+      <!-- 清理课程表 -->
+      <list-item type="action" class="module-card" onclick="clearCourseCache">
+        <div class="module-icon-wrap course-bg">
+          <text class="module-icon" static>CLS</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title" static>清除课程</text>
+          <text class="module-desc" static>删除所有课程数据</text>
+        </div>
+        <text class="arrow" static>›</text>
+      </list-item>
+
+      <!-- 危险操作：清除全部 -->
+      <list-item type="danger" class="module-card" onclick="clearAllCache">
+        <div class="module-icon-wrap danger-bg">
+          <text class="module-icon" static>WARN</text>
+        </div>
+        <div class="module-info">
+          <text class="module-title danger-text" static>清除所有数据</text>
+          <text class="module-desc danger-text" static>此操作不可恢复</text>
+        </div>
+        <text class="arrow danger-text" static>›</text>
+      </list-item>
+
+      <!-- 版本信息 -->
+      <list-item type="version" class="version-info">
+        <text class="version-text">CDT {{version}}</text>
+      </list-item>
+
+    </list>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import storage from '@system.storage'
+
+export default {
+  data: {
+    cacheSize: '0 KB',
+    dataCount: '0',
+    version: '1.0.0'
+  },
+
+  onInit() {
+    this.loadCacheInfo()
+  },
+
+  onShow() {
+    this.loadCacheInfo()
+  },
+
+  onDestroy() {
+    global.runGC()
+  },
+
+  loadCacheInfo() {
+    let totalItems = 0
+    let totalSize = 0
+    let checked = 0
+    const total = 3
+
+    const checkDone = () => {
+      checked++
+      if (checked >= total) {
+        this.updateCacheDisplay(totalSize, totalItems)
+      }
+    }
+
+    storage.get({
+      key: 'sync_todo',
+      success: (data) => {
+        if (data) {
+          totalSize += data.length
+          try {
+            const parsed = JSON.parse(data)
+            if (Array.isArray(parsed)) totalItems += parsed.length
+          } catch (e) {}
+        }
+        checkDone()
+      },
+      fail: () => { checkDone() }
+    })
+
+    storage.get({
+      key: 'sync_countdown',
+      success: (data) => {
+        if (data) {
+          totalSize += data.length
+          try {
+            const parsed = JSON.parse(data)
+            if (Array.isArray(parsed)) totalItems += parsed.length
+          } catch (e) {}
+        }
+        checkDone()
+      },
+      fail: () => { checkDone() }
+    })
+
+    storage.get({
+      key: 'sync_course',
+      success: (data) => {
+        if (data) {
+          totalSize += data.length
+          try {
+            const parsed = JSON.parse(data)
+            if (Array.isArray(parsed)) totalItems += parsed.length
+          } catch (e) {}
+        }
+        checkDone()
+      },
+      fail: () => { checkDone() }
+    })
+  },
+
+  updateCacheDisplay(size, count) {
+    if (size < 1024) {
+      this.cacheSize = size + ' B'
+    } else if (size < 1024 * 1024) {
+      this.cacheSize = (size / 1024).toFixed(1) + ' KB'
+    } else {
+      this.cacheSize = (size / (1024 * 1024)).toFixed(2) + ' MB'
+    }
+    this.dataCount = count.toString()
+  },
+
+  goBack() {
+    router.back()
+  },
+
+  clearTodoCache() {
+    storage.delete({
+      key: 'sync_todo',
+      success: () => {
+        prompt.showToast({ message: '待办已清除' })
+        this.loadCacheInfo()
+      },
+      fail: () => {
+        prompt.showToast({ message: '清除失败' })
+      }
+    })
+  },
+
+  clearCountdownCache() {
+    storage.delete({
+      key: 'sync_countdown',
+      success: () => {
+        prompt.showToast({ message: '倒数日已清除' })
+        this.loadCacheInfo()
+      },
+      fail: () => {
+        prompt.showToast({ message: '清除失败' })
+      }
+    })
+  },
+
+  clearCourseCache() {
+    storage.delete({
+      key: 'sync_course',
+      success: () => {
+        prompt.showToast({ message: '课程已清除' })
+        this.loadCacheInfo()
+      },
+      fail: () => {
+        prompt.showToast({ message: '清除失败' })
+      }
+    })
+  },
+
+  clearAllCache() {
+    const keys = ['sync_todo', 'sync_countdown', 'sync_course']
+    const deleteNext = (index) => {
+      if (index >= keys.length) {
+        prompt.showToast({ message: '所有数据已清除' })
+        this.loadCacheInfo()
+        return
+      }
+      storage.delete({
+        key: keys[index],
+        success: () => { deleteNext(index + 1) },
+        fail: () => { deleteNext(index + 1) }
+      })
+    }
+    deleteNext(0)
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  background-color: #000000;
+  padding: 0 24px;
+}
+
+.header {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  height: 100px;
+  margin-top: 24px;
+  margin-bottom: 32px;
+  flex-shrink: 0;
+}
+
+.back-btn {
+  width: 72px;
+  height: 72px;
+  font-size: 44px;
+  color: #ffffff;
+  text-align: center;
+  line-height: 72px;
+  background-color: #262626;
+  border-radius: 36px;
+}
+
+.title {
+  font-size: 40px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.placeholder {
+  width: 72px;
+}
+
+.content {
+  flex: 1;
+  flex-direction: column;
+}
+
+.module-card {
+  flex-direction: row;
+  align-items: center;
+  background-color: #262626;
+  border-radius: 999px;
+  height: 120px;
+  flex-shrink: 0;
+  margin-bottom: 28px;
+}
+
+.module-icon-wrap {
+  width: 130px;
+  height: 100%;
+  border-radius: 999px;
+  justify-content: center;
+  align-items: center;
+}
+
+.module-icon {
+  font-size: 35px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.todo-bg { background-color: #4a90d9; }
+.countdown-bg { background-color: #e67e22; }
+.course-bg { background-color: #27ae60; }
+.settings-bg { background-color: #555555; }
+.danger-bg { background-color: #3a1111; }
+
+.module-info {
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  margin-left: 24px;
+}
+
+.module-title {
+  font-size: 35px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.module-desc {
+  font-size: 30px;
+  color: #888888;
+}
+
+.arrow {
+  font-size: 40px;
+  color: #888888;
+  margin-right: 36px;
+}
+
+.danger-text {
+  color: #ff4d4f;
+}
+
+.version-info {
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  margin-bottom: 48px;
+  flex-shrink: 0;
+}
+
+.version-text {
+  font-size: 24px;
+  color: #777777;
+}
+</style>
