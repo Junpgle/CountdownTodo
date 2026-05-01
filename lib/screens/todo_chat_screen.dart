@@ -1342,11 +1342,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   List<String> _getDefaultSuggestions() {
     return [
+      '帮我规划今天的待办',
+      '明天有什么课？',
+      '我今天专注了多久？',
+      '帮我整理一下待办分类',
       '哪些待办最紧急？',
-      '分析我今天的待办，为我制定一份详细的执行计划',
-      '帮我整理一下本地待办的分类',
-      '如何高效完成这些任务？',
-      '帮我规划今天的时间安排，并创建待办',
     ];
   }
 
