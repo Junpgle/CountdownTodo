@@ -6,6 +6,7 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 
 class StorageManagementHandler {
   final BuildContext context;
+  final String Function() getUsername;
   final Function(String) onUpdateCacheSize;
   final Function(String) showLoading;
   final VoidCallback closeLoading;
@@ -13,6 +14,7 @@ class StorageManagementHandler {
 
   StorageManagementHandler({
     required this.context,
+    required this.getUsername,
     required this.onUpdateCacheSize,
     required this.showLoading,
     required this.closeLoading,

@@ -1,11 +1,15 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:sqflite/sqflite.dart';
 
 import 'package:CountDownTodo/services/database_helper.dart';
 import '../services/api_service.dart';
+import '../services/course_calendar_adjustment_service.dart';
+import '../services/environment_service.dart';
 import '../storage_service.dart';
 
 // 引入不同高校的解析器
@@ -210,60 +214,213 @@ class CourseService {
   // ================= 提取与业务逻辑 =================
 
   // 4. 获取所有解析后的课程对象
-  static Future<List<CourseItem>> getAllCourses(String username) async {
+  static Future<List<CourseItem>> getAllCourses(
+    String username, {
+    bool applyCalendarAdjustments = true,
+  }) async {
+    Future<List<CourseItem>> applyAdjustmentsIfNeeded(
+        List<CourseItem> courses) async {
+      if (!applyCalendarAdjustments) return courses;
+      return CourseCalendarAdjustmentService.applyToCourses(courses);
+    }
+
     // 1. 优先从 SQL 读取
     try {
       final db = await DatabaseHelper.instance.database;
-      final List<Map<String, dynamic>> maps = await db.query('courses', orderBy: 'date ASC, start_time ASC');
+      final List<Map<String, dynamic>> maps = await db.query(
+        'courses',
+        where: 'IFNULL(is_deleted, 0) = 0',
+        orderBy: 'date ASC, start_time ASC',
+      );
       if (maps.isNotEmpty) {
-        if (maps.length > 50) {
-          return await compute(_parseCourseItemsIsolate, maps);
-        }
-        return maps.map((m) => CourseItem.fromJson(m)).toList();
+        return applyAdjustmentsIfNeeded(
+            maps.map((m) => CourseItem.fromJson(m)).toList());
       }
     } catch (e) {
       debugPrint("⚠️ Course SQL 读取异常: $e");
+      if (_isDatabaseLocked(e)) {
+        try {
+          await Future.delayed(const Duration(milliseconds: 300));
+          final db = await DatabaseHelper.instance.database;
+          final maps = await db.query(
+            'courses',
+            where: 'IFNULL(is_deleted, 0) = 0',
+            orderBy: 'date ASC, start_time ASC',
+          );
+          if (maps.isNotEmpty) {
+            return applyAdjustmentsIfNeeded(
+                maps.map((m) => CourseItem.fromJson(m)).toList());
+          }
+        } catch (retryError) {
+          debugPrint("⚠️ Course SQL locked 重试失败: $retryError");
+        }
+        return [];
+      }
     }
 
     // 2. 🚀 核心迁移逻辑：如果 SQL 为空，从 Prefs 迁移
     final prefs = await SharedPreferences.getInstance();
-    final scopedKey = "${_keyCourseData}_$username";
-    String? data = prefs.getString(scopedKey);
+    final legacyPrefsCourses = await _recoverCoursesFromPrefs(username, prefs);
+    if (legacyPrefsCourses.isNotEmpty) {
+      return applyAdjustmentsIfNeeded(legacyPrefsCourses);
+    }
 
-    // 向上兼容旧全局 Key
-    if ((data == null || data.isEmpty) && username.isNotEmpty) {
-      final String legacyKey = _keyCourseData;
-      final String markerKey = "${legacyKey}_${username}_migrated_v2";
-      if (!(prefs.getBool(markerKey) ?? false)) {
-        data = prefs.getString(legacyKey);
-        if (data != null && data.isNotEmpty) {
-          await prefs.setString(scopedKey, data);
-          await prefs.setBool(markerKey, true);
+    final recoveredSqlCourses =
+        await _recoverCoursesFromLegacySqlIfNeeded(username);
+    if (recoveredSqlCourses.isNotEmpty) {
+      return applyAdjustmentsIfNeeded(recoveredSqlCourses);
+    }
+
+    return [];
+  }
+
+  static Future<List<CourseItem>> _recoverCoursesFromPrefs(
+      String username, SharedPreferences prefs) async {
+    final scopedKey = "${_keyCourseData}_$username";
+    final keys = <String>[
+      scopedKey,
+      _keyCourseData,
+      ...prefs.getKeys().where((key) =>
+          key.startsWith('${_keyCourseData}_') &&
+          key != scopedKey &&
+          !key.endsWith('_migrated_v2')),
+    ];
+
+    for (final key in keys.toSet()) {
+      if (!prefs.containsKey(key)) continue;
+
+      try {
+        final raw = prefs.get(key);
+        final courses = _parseLegacyCoursePrefsValue(raw);
+        if (courses.isEmpty) continue;
+
+        debugPrint(
+            "🚀 [Course] 正在从 SharedPreferences($key) 迁移 ${courses.length} 条数据至 SQL...");
+        await saveCourses(username, courses);
+        await prefs.remove(key);
+        await prefs.setBool("${_keyCourseData}_${username}_migrated_v2", true);
+        return courses;
+      } catch (e) {
+        debugPrint("⚠️ [Course] 迁移 SharedPreferences($key) 失败: $e");
+      }
+    }
+
+    return [];
+  }
+
+  static bool _isDatabaseLocked(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('database is locked') || text.contains('sqlite_error: 5');
+  }
+
+  static List<CourseItem> _parseLegacyCoursePrefsValue(Object? raw) {
+    if (raw is String && raw.trim().isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded
+            .map<CourseItem>((item) =>
+                CourseItem.fromJson(Map<String, dynamic>.from(item)))
+            .toList();
+      }
+      return HfutScheduleParser.parse(raw);
+    }
+
+    if (raw is List<String> && raw.isNotEmpty) {
+      final courses = <CourseItem>[];
+      for (final item in raw) {
+        if (item.trim().isEmpty) continue;
+        final decoded = jsonDecode(item);
+        if (decoded is List) {
+          courses.addAll(decoded.map<CourseItem>((entry) =>
+              CourseItem.fromJson(Map<String, dynamic>.from(entry))));
+        } else if (decoded is Map) {
+          courses.add(CourseItem.fromJson(Map<String, dynamic>.from(decoded)));
         }
       }
-    }
-
-    if (data == null || data.isEmpty) return [];
-
-    try {
-      final decoded = jsonDecode(data);
-      List<CourseItem> courses = [];
-      if (decoded is List) {
-        courses = decoded.map<CourseItem>((item) => CourseItem.fromJson(Map<String, dynamic>.from(item))).toList();
-      } else {
-        courses = HfutScheduleParser.parse(data);
-      }
-
-      // 执行增量同步到 SQL
-      if (courses.isNotEmpty) {
-        debugPrint("🚀 [Course] 正在从 Prefs 迁移 ${courses.length} 条数据至 SQL...");
-        await saveCourses(username, courses);
-      }
       return courses;
-    } catch (e) {
-      debugPrint("读取所有课表时发生崩溃: $e");
-      return [];
     }
+
+    return [];
+  }
+
+  static Future<List<CourseItem>> _recoverCoursesFromLegacySqlIfNeeded(
+      String username) async {
+    if (kIsWeb || !(Platform.isWindows || Platform.isLinux)) return [];
+
+    final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';
+    final candidateNames = <String>{
+      '${envPrefix}uni_sync_$username.db',
+      'v4_uni_sync_$username.db',
+      'uni_sync_$username.db',
+      EnvironmentService.dbName,
+      'v4_uni_sync.db',
+    };
+
+    final candidatePaths = <String>{
+      for (final dbName in candidateNames)
+        absolute(join('.dart_tool', 'sqflite_common_ffi', 'databases', dbName)),
+      for (final dbName in candidateNames)
+        absolute(join(
+          'build',
+          'windows',
+          'x64',
+          'runner',
+          'Debug',
+          '.dart_tool',
+          'sqflite_common_ffi',
+          'databases',
+          dbName,
+        )),
+      for (final dbName in candidateNames)
+        absolute(join(
+          'build',
+          'windows',
+          'x64',
+          'runner',
+          'Release',
+          '.dart_tool',
+          'sqflite_common_ffi',
+          'databases',
+          dbName,
+        )),
+    };
+
+    for (final legacyPath in candidatePaths) {
+      final legacyFile = File(legacyPath);
+      if (!await legacyFile.exists()) continue;
+
+      Database? legacyDb;
+      try {
+        legacyDb = await openDatabase(legacyPath, readOnly: true);
+        final tableRows = await legacyDb.query(
+          'sqlite_master',
+          columns: ['name'],
+          where: 'type = ? AND name = ?',
+          whereArgs: ['table', 'courses'],
+          limit: 1,
+        );
+        if (tableRows.isEmpty) continue;
+
+        final maps = await legacyDb.query(
+          'courses',
+          where: 'IFNULL(is_deleted, 0) = 0',
+          orderBy: 'date ASC, start_time ASC',
+        );
+        if (maps.isEmpty) continue;
+
+        final courses = maps.map((m) => CourseItem.fromJson(m)).toList();
+        await saveCourses(username, courses);
+        debugPrint(
+            '✅ [Course] 已从旧 FFI 数据库恢复 ${courses.length} 条课表: $legacyPath');
+        return courses;
+      } catch (e) {
+        debugPrint('⚠️ [Course] 旧 FFI 课表恢复失败 ($legacyPath): $e');
+      } finally {
+        await legacyDb?.close();
+      }
+    }
+
+    return [];
   }
 
   // 5. 获取主页今日/明日需要显示的课程
@@ -396,7 +553,8 @@ class CourseService {
 
   // 8. 上传本地课表到云端
   static Future<Map<String, dynamic>> syncCoursesToCloud(String username, int userId) async {
-    final courses = await getAllCourses(username);
+    final courses =
+        await getAllCourses(username, applyCalendarAdjustments: false);
 
     // 转换为后端需要的结构
     final courseMaps = courses.map((c) => {

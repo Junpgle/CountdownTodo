@@ -1,6 +1,8 @@
 ﻿import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'environment_service.dart';
@@ -10,6 +12,8 @@ import '../models.dart';
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+  static Future<Database>? _openingDatabase;
+  static String? _activeUsername;
   static const int _todoTextChunkSize = 8192;
   static const List<String> _todoBaseColumns = [
     'uuid',
@@ -42,23 +46,52 @@ class DatabaseHelper {
 
     if (_database != null) {
       // 🚀 核心校验：如果当前打开的数据库与当前登录用户不符，则强制关闭并重新打开
-      if (!_database!.path.contains('uni_sync_$username')) {
+      if (_activeUsername != username ||
+          !_database!.path.contains('uni_sync_$username')) {
         debugPrint("🔄 Database: 检测到用户切换 ($username)，正在强制重定向数据库文件...");
         await closeDatabase();
       } else {
         return _database!;
       }
     }
-    _database = await _initDB('uni_sync_$username.db');
+
+    if (_openingDatabase != null) {
+      final opening = await _openingDatabase!;
+      if (_activeUsername == username &&
+          opening.path.contains('uni_sync_$username')) {
+        _database = opening;
+        return opening;
+      }
+      await closeDatabase();
+    }
+
+    _activeUsername = username;
+    final opening = _initDB('uni_sync_$username.db');
+    _openingDatabase = opening;
+    try {
+      _database = await opening;
+    } finally {
+      if (identical(_openingDatabase, opening)) {
+        _openingDatabase = null;
+      }
+    }
     return _database!;
   }
 
   /// 🚀 Uni-Sync: 强制关闭并重置数据库连接（用于登出或切换用户）
   Future<void> closeDatabase() async {
+    final opening = _openingDatabase;
+    _openingDatabase = null;
+    if (opening != null) {
+      try {
+        await opening;
+      } catch (_) {}
+    }
     if (_database != null) {
       await _database!.close();
       _database = null;
     }
+    _activeUsername = null;
   }
 
   static Future<void> ensureCourseTableSchema(Database db) async {
@@ -87,15 +120,27 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     // 🚀 桌面端 SQL 引擎初始化已由 main.dart 统一处理
 
-    final dbPath = await getDatabasesPath();
     // 🚀 根据环境动态选择前缀（隔离测试数据）
     final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';
     final targetName = envPrefix + filePath;
-    final path = join(dbPath, targetName);
+    final path = await _resolveDatabasePath(targetName);
 
-    return await openDatabase(
+    for (int attempt = 0; attempt < 5; attempt++) {
+      try {
+        return await openDatabase(
         path,
         version: 24, // V24: 强制触发 courses 老库字段自愈
+        onConfigure: (db) async {
+          // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
+          // Only configure WAL for desktop platforms
+          if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+            try {
+              await db.execute('PRAGMA journal_mode = WAL');
+            } catch (e) {
+              debugPrint("⚠️ Database: PRAGMA journal_mode failed: $e");
+            }
+          }
+        },
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 24) {
@@ -472,7 +517,21 @@ class DatabaseHelper {
         onOpen: (db) async {
           await ensureCourseTableSchema(db);
         },
-    );
+        );
+      } catch (e) {
+        if (!_isDatabaseLockedError(e) || attempt == 4) rethrow;
+        debugPrint(
+            '⏳ Database: 打开数据库遇到锁，${200 * (attempt + 1)}ms 后重试: $e');
+        await Future.delayed(Duration(milliseconds: 200 * (attempt + 1)));
+      }
+    }
+
+    throw StateError('Database open retry exhausted: $path');
+  }
+
+  static bool _isDatabaseLockedError(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('database is locked') || text.contains('sqlite_error: 5');
   }
 
   // ==========================================
@@ -515,6 +574,49 @@ class DatabaseHelper {
       limit: 50,
     );
     return logs;
+  }
+
+  Future<String> _resolveDatabasePath(String targetName) async {
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+      final supportDir = await getApplicationSupportDirectory();
+      final dbDir = Directory(join(supportDir.path, 'databases'));
+      if (!await dbDir.exists()) {
+        await dbDir.create(recursive: true);
+      }
+
+      final targetPath = join(dbDir.path, targetName);
+      await _migrateLegacyFfiDatabaseIfNeeded(targetName, targetPath);
+      debugPrint('📁 Database path: $targetPath');
+      return targetPath;
+    }
+
+    final dbPath = await getDatabasesPath();
+    return join(dbPath, targetName);
+  }
+
+  Future<void> _migrateLegacyFfiDatabaseIfNeeded(
+      String targetName, String targetPath) async {
+    try {
+      final targetFile = File(targetPath);
+      if (await targetFile.exists()) return;
+
+      final legacyPath = absolute(
+        join('.dart_tool', 'sqflite_common_ffi', 'databases', targetName),
+      );
+      final legacyFile = File(legacyPath);
+      if (!await legacyFile.exists()) return;
+
+      await legacyFile.copy(targetPath);
+      for (final suffix in const ['-wal', '-shm']) {
+        final sidecar = File('$legacyPath$suffix');
+        if (await sidecar.exists()) {
+          await sidecar.copy('$targetPath$suffix');
+        }
+      }
+      debugPrint('✅ Database: 已从旧 FFI 路径迁移到 AppData: $targetPath');
+    } catch (e) {
+      debugPrint('⚠️ Database: 旧 FFI 数据库迁移失败: $e');
+    }
   }
 
   /// 执行本地回滚 (离线模式)

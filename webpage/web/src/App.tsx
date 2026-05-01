@@ -7,6 +7,7 @@ import './index.css';
 const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
 const AuthScreen = lazy(() => import('./pages/AuthScreen').then(m => ({ default: m.AuthScreen })));
 const WebApp = lazy(() => import('./pages/WebApp').then(m => ({ default: m.WebApp })));
+import TeamDisplayBoard from './pages/TeamDisplayBoard';
 
 // 只有在加载大包时显示的极简 Loading
 const LoadingSpinner = () => (
@@ -19,53 +20,81 @@ const LoadingSpinner = () => (
 );
 
 const App = () => {
-  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp'>(() => {
-    if (window.location.hash.includes('app') || window.location.search.includes('app')) return 'auth';
-    return 'landing';
+  const isAppPage = !window.location.pathname.includes('home.html');
+  
+  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp' | 'dashboard'>(() => {
+    if (!isAppPage) return 'landing';
+    if (window.location.hash.includes('dashboard')) return 'dashboard';
+    return ApiService.getToken() ? 'webapp' : 'auth';
   });
 
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
+    if (!isAppPage && currentView !== 'landing') {
+        window.location.href = './index.html' + window.location.hash;
+        return;
+    }
+
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      const token = ApiService.getToken();
+      if (hash.includes('dashboard')) {
+        if (!token) {
+          setCurrentView('auth');
+          window.location.hash = 'app';
+          return;
+        }
+        setCurrentView('dashboard');
+      } else if (hash.includes('app')) {
+        setCurrentView(token ? 'webapp' : 'auth');
+      }
+    };
+    if (isAppPage) {
+        window.addEventListener('hashchange', handleHashChange);
+    }
+
     const token = ApiService.getToken();
     const savedUser = localStorage.getItem('cdt_user');
     if (token && savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
-        if (window.location.hash.includes('app') || window.location.search.includes('app')) {
+        if (isAppPage && currentView === 'auth') {
           setCurrentView('webapp');
         }
       } catch (e) {
         ApiService.clearAuthAndData();
       }
     }
-  }, []);
+
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [isAppPage, currentView]);
 
   const handleOpenWeb = () => {
-    if (user) setCurrentView('webapp');
-    else {
-      window.location.hash = 'app';
-      setCurrentView('auth');
-    }
+    window.location.href = './index.html#app';
   };
 
-  /**
-   * 修复：登出时彻底清理状态
-   */
   const handleLogout = () => {
     ApiService.clearAuthAndData();
     setUser(null);
-    window.location.hash = 'app'; // 确保刷新或返回时留在登录页
     setCurrentView('auth');
   };
 
   return (
     <Suspense fallback={<LoadingSpinner />}>
-      {currentView === 'auth' ? (
-        <AuthScreen onBack={() => setCurrentView('landing')} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
-      ) : currentView === 'webapp' && user ? (
-        <WebApp onBack={() => setCurrentView('landing')} user={user} onLogout={handleLogout} />
+      {isAppPage ? (
+          <>
+            {currentView === 'dashboard' && user ? (
+                <TeamDisplayBoard user={user} onBack={() => setCurrentView('webapp')} />
+            ) : currentView === 'auth' ? (
+                <AuthScreen onBack={() => { window.location.href = './home.html'; }} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
+            ) : currentView === 'webapp' && user ? (
+                <WebApp onBack={() => { window.location.href = './home.html'; }} onOpenDashboard={() => setCurrentView('dashboard')} user={user} onLogout={handleLogout} />
+            ) : (
+                <LoadingSpinner />
+            )}
+          </>
       ) : (
         <div className="bg-white min-h-screen font-sans selection:bg-indigo-600 selection:text-white antialiased">
           <LandingPage onOpenWeb={handleOpenWeb} />

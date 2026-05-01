@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
+import '../services/ai_todo_chat_launcher.dart';
+import '../services/ai_todo_action_executor.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
@@ -42,7 +44,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   List<PomodoroTag> _pomodoroTags = [];
   Map<int, List<TimeLogItem>> _timeLogsPerDay = {};
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
-  final Set<String> _activeDataViews = {'courses', 'todos', 'timeLogs', 'pomodoros'};
+  final Set<String> _activeDataViews = {
+    'courses',
+    'todos',
+    'timeLogs',
+    'pomodoros'
+  };
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
@@ -89,8 +96,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   // 时间轴参数配置
-  final double timeColumnWidth = 45.0; 
-  final int startHour = 6; 
+  final double timeColumnWidth = 45.0;
+  final int startHour = 6;
   final int endHour = 24;
 
   @override
@@ -175,10 +182,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         ..sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
       final firstCourse = sortedCourses.first;
       if (firstCourse.date.isNotEmpty) {
-        DateTime firstCourseDate = DateFormat('yyyy-MM-dd').parse(firstCourse.date);
+        DateTime firstCourseDate =
+            DateFormat('yyyy-MM-dd').parse(firstCourse.date);
         _semesterMonday = firstCourseDate
             .subtract(Duration(days: firstCourse.weekday - 1))
-            .subtract(Duration(days: (firstCourse.weekIndex > 0 ? firstCourse.weekIndex : 0) * 7));
+            .subtract(Duration(
+                days: (firstCourse.weekIndex > 0 ? firstCourse.weekIndex : 0) *
+                    7));
       }
     }
 
@@ -193,7 +203,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _currentWeek = (daysOffset ~/ 7) + 1;
 
     // 6. 获取当前周课程
-    _weekCourses = _allCourses.where((c) => c.weekIndex == _currentWeek).toList();
+    _weekCourses =
+        _allCourses.where((c) => c.weekIndex == _currentWeek).toList();
 
     // 7. 月视图数据按需构建，避免首次进入课程页就做全量逐日展开
     _monthDataPrepared = false;
@@ -235,19 +246,28 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       if (c.date.isNotEmpty) {
         _monthCourseMap.putIfAbsent(c.date, () => []).add(c);
       } else if (_semesterMonday != null && c.weekIndex > 0) {
-        final date = _semesterMonday!.add(Duration(days: (c.weekIndex - 1) * 7 + (c.weekday - 1)));
+        final date = _semesterMonday!
+            .add(Duration(days: (c.weekIndex - 1) * 7 + (c.weekday - 1)));
         _monthCourseMap.putIfAbsent(df.format(date), () => []).add(c);
       }
     }
 
     // 2. 待办分组 (优化：减少 DateFormat 调用)
     for (var t in _allTodos) {
-      DateTime tStart = DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt).toLocal();
+      DateTime tStart =
+          DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt)
+              .toLocal();
       DateTime tEnd = t.dueDate ?? tStart.add(const Duration(hours: 1));
-      
-      bool isAllDay = t.dueDate != null && tStart.hour == 0 && tStart.minute == 0 && t.dueDate!.hour == 23 && t.dueDate!.minute == 59;
-      bool isAcross = !(tStart.year == tEnd.year && tStart.month == tEnd.month && tStart.day == tEnd.day);
-      
+
+      bool isAllDay = t.dueDate != null &&
+          tStart.hour == 0 &&
+          tStart.minute == 0 &&
+          t.dueDate!.hour == 23 &&
+          t.dueDate!.minute == 59;
+      bool isAcross = !(tStart.year == tEnd.year &&
+          tStart.month == tEnd.month &&
+          tStart.day == tEnd.day);
+
       _forEachExpandedDay(
         start: tStart,
         end: tEnd,
@@ -265,7 +285,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     // 3. 日志与番茄钟
     for (var l in _allTimeLogs) {
-      DateTime lStart = DateTime.fromMillisecondsSinceEpoch(l.startTime).toLocal();
+      DateTime lStart =
+          DateTime.fromMillisecondsSinceEpoch(l.startTime).toLocal();
       DateTime lEnd = DateTime.fromMillisecondsSinceEpoch(l.endTime).toLocal();
       _forEachExpandedDay(
         start: lStart,
@@ -279,7 +300,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     for (var p in _allPomodoroRecords) {
       if (p.startTime <= 0) continue;
-      DateTime pStart = DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal();
+      DateTime pStart =
+          DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal();
       int pEndMs = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
       DateTime pEnd = DateTime.fromMillisecondsSinceEpoch(pEndMs).toLocal();
       _forEachExpandedDay(
@@ -304,11 +326,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     final spanDays = dayEnd.difference(dayStart).inDays;
 
     if (spanDays < 0) {
-      debugPrint('[CourseScreen] Skip invalid span for $debugLabel: start=$start end=$end');
+      debugPrint(
+          '[CourseScreen] Skip invalid span for $debugLabel: start=$start end=$end');
       return;
     }
     if (spanDays > _maxExpandedSpanDays) {
-      debugPrint('[CourseScreen] Skip oversized span for $debugLabel: ${spanDays + 1} days');
+      debugPrint(
+          '[CourseScreen] Skip oversized span for $debugLabel: ${spanDays + 1} days');
       return;
     }
 
@@ -413,7 +437,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
   }
 
-
   void _changeWeek(int delta) {
     _isNextSlide = delta > 0;
     _jumpToWeek(_currentWeek + delta);
@@ -430,7 +453,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _weekCourses = _allCourses.where((c) => c.weekIndex == newWeek).toList();
     _updateWeekTodos();
     _updateWeekTimeLogsAndPomodoros();
-    
+
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -477,18 +500,19 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   String _getBiWeekLabel() {
-    if (_semesterMonday == null) return "第$_currentWeek-${_currentWeek+1}周";
-    
-    DateTime w1Monday = _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+    if (_semesterMonday == null) return "第$_currentWeek-${_currentWeek + 1}周";
+
+    DateTime w1Monday =
+        _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
     DateTime w2Monday = w1Monday.add(const Duration(days: 7));
-    
+
     String m1 = DateFormat('M月').format(w1Monday);
     String m2 = DateFormat('M月').format(w2Monday);
-    
+
     // 计算每月第几周 (简易： (day-1)/7 + 1)
     int wk1 = ((w1Monday.day - 1) / 7).floor() + 1;
     int wk2 = ((w2Monday.day - 1) / 7).floor() + 1;
-    
+
     if (m1 == m2) {
       return "$m1 第$wk1-$wk2周";
     } else {
@@ -585,27 +609,28 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   Widget _buildMonthDaySidebar(DateTime day) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final String dateStr = DateFormat('yyyy年M月d日').format(day);
-    final String weekdayStr = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][day.weekday - 1];
-    
+    final String weekdayStr =
+        ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][day.weekday - 1];
+
     final dStr = DateFormat('yyyy-MM-dd').format(day);
     final List<dynamic> items = [];
-    
+
     // 根据筛选条件收集数据
     if (_activeDataViews.contains('courses')) {
       items.addAll(_monthCourseMap[dStr] ?? []);
     }
-    
+
     if (_activeDataViews.contains('todos')) {
       items.addAll(_monthTodoMap[dStr] ?? []);
       if (!_activeDataViews.contains('hideCrossDay')) {
         items.addAll(_monthCrossDayTodoMap[dStr] ?? []);
       }
     }
-    
+
     if (_activeDataViews.contains('timeLogs')) {
       items.addAll(_monthLogMap[dStr] ?? []);
     }
-    
+
     if (_activeDataViews.contains('pomodoros')) {
       items.addAll(_monthPomMap[dStr] ?? []);
     }
@@ -614,7 +639,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       int getStartTime(dynamic item) {
         if (item is CourseItem) {
           // 课程：转换为当天的分钟数进行比较
-          return item.startTime; 
+          return item.startTime;
         }
         if (item is TodoItem) {
           // 待办：如果是全天/跨天，取创建时间或 0 点；如果是日内，取 dueDate 的时间
@@ -622,21 +647,25 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           return item.dueDate!.hour * 100 + item.dueDate!.minute;
         }
         if (item is TimeLogItem) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal();
+          final dt =
+              DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true)
+                  .toLocal();
           return dt.hour * 100 + dt.minute;
         }
         if (item is PomodoroRecord) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal();
+          final dt =
+              DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true)
+                  .toLocal();
           return dt.hour * 100 + dt.minute;
         }
         return 9999;
       }
-      
+
       final int timeA = getStartTime(a);
       final int timeB = getStartTime(b);
-      
+
       if (timeA != timeB) return timeA.compareTo(timeB);
-      
+
       // 如果时间相同，再按类型排优先级
       int getPriority(dynamic item) {
         if (item is CourseItem) return 0;
@@ -645,6 +674,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         if (item is PomodoroRecord) return 3;
         return 4;
       }
+
       return getPriority(a).compareTo(getPriority(b));
     });
 
@@ -700,18 +730,22 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.event_available,
-                            size: 64, color: isDark ? Colors.white10 : Colors.black12),
+                            size: 64,
+                            color: isDark ? Colors.white10 : Colors.black12),
                         const SizedBox(height: 16),
                         Text('该日无安排',
                             style: TextStyle(
-                                color: isDark ? Colors.white24 : Colors.black26)),
+                                color:
+                                    isDark ? Colors.white24 : Colors.black26)),
                       ],
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                     itemCount: items.length,
-                    itemBuilder: (context, index) => _buildDetailSidebarItem(context, items[index]),
+                    itemBuilder: (context, index) =>
+                        _buildDetailSidebarItem(context, items[index]),
                   ),
           ),
         ],
@@ -725,19 +759,27 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+          decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: Icon(Icons.class_, color: color, size: 20),
         ),
-        title: Text(item.courseName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        subtitle: Text('${item.formattedStartTime}-${item.formattedEndTime} @ ${item.roomName}', style: const TextStyle(fontSize: 12)),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailScreen(course: item))),
+        title: Text(item.courseName,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Text(
+            '${item.formattedStartTime}-${item.formattedEndTime} @ ${item.roomName}',
+            style: const TextStyle(fontSize: 12)),
+        onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => CourseDetailScreen(course: item))),
       );
     } else if (item is TodoItem) {
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: (item.isDone ? Colors.green : Colors.amber).withValues(alpha: 0.1),
+            color: (item.isDone ? Colors.green : Colors.amber)
+                .withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(item.isDone ? Icons.check_circle : Icons.task_alt,
@@ -746,11 +788,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         title: Row(
           children: [
             Expanded(
-              child: Text(item.title, style: TextStyle(
-                fontSize: 15,
-                decoration: item.isDone ? TextDecoration.lineThrough : null,
-                color: item.isDone ? Colors.grey : null,
-              )),
+              child: Text(item.title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    decoration: item.isDone ? TextDecoration.lineThrough : null,
+                    color: item.isDone ? Colors.grey : null,
+                  )),
             ),
             if (item.teamUuid != null)
               Container(
@@ -766,33 +809,41 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           ],
         ),
         subtitle: Text(
-          (item.teamUuid != null ? '${item.teamName ?? '团队'} · ' : '') + 
-          (item.dueDate != null ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}' : '无截止时间'), 
-          style: const TextStyle(fontSize: 12)
-        ),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: item))),
+            (item.teamUuid != null ? '${item.teamName ?? '团队'} · ' : '') +
+                (item.dueDate != null
+                    ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}'
+                    : '无截止时间'),
+            style: const TextStyle(fontSize: 12)),
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: item))),
       );
     } else if (item is TimeLogItem) {
       const color = Colors.blue;
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+          decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: const Icon(Icons.edit_calendar, color: color, size: 20),
         ),
-        title: Text(item.title.isNotEmpty ? item.title : '时间日志', style: const TextStyle(fontSize: 15)),
-        subtitle: Text('${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}', style: const TextStyle(fontSize: 12)),
+        title: Text(item.title.isNotEmpty ? item.title : '时间日志',
+            style: const TextStyle(fontSize: 15)),
+        subtitle: Text(
+            '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
+            style: const TextStyle(fontSize: 12)),
       );
     } else if (item is PomodoroRecord) {
       const color = Colors.redAccent;
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+          decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: const Icon(Icons.timer, color: color, size: 20),
         ),
         title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
-        subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟', style: const TextStyle(fontSize: 12)),
+        subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟',
+            style: const TextStyle(fontSize: 12)),
       );
     }
     return const SizedBox.shrink();
@@ -912,17 +963,25 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                               ? TextDecoration.lineThrough
                                               : null)),
                                   subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       if (todo.teamUuid != null)
                                         Padding(
-                                          padding: const EdgeInsets.only(bottom: 2),
+                                          padding:
+                                              const EdgeInsets.only(bottom: 2),
                                           child: Row(
                                             children: [
-                                              const Icon(Icons.group, size: 12, color: Colors.blue),
+                                              const Icon(Icons.group,
+                                                  size: 12, color: Colors.blue),
                                               const SizedBox(width: 4),
-                                              Text("${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}", 
-                                                style: const TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.bold)),
+                                              Text(
+                                                  "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}",
+                                                  style: const TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.blue,
+                                                      fontWeight:
+                                                          FontWeight.bold)),
                                             ],
                                           ),
                                         ),
@@ -963,7 +1022,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           List<TodoItem> dayTodos = _allDayTodosPerDay[weekday] ?? [];
 
           if (dayTodos.isEmpty) {
-            return const Expanded(child: SizedBox(height: 22)); 
+            return const Expanded(child: SizedBox(height: 22));
           }
 
           String text = dayTodos.length == 1
@@ -987,30 +1046,31 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                       : Colors.amber.shade500.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (dayTodos.any((t) => t.teamUuid != null))
-                        const Padding(
-                          padding: EdgeInsets.only(right: 2),
-                          child: Icon(Icons.group, size: 10, color: Colors.white),
-                        ),
-                      Flexible(
-                        child: Text(
-                          text,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white,
-                            decoration: allDone ? TextDecoration.lineThrough : null,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                        ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (dayTodos.any((t) => t.teamUuid != null))
+                      const Padding(
+                        padding: EdgeInsets.only(right: 2),
+                        child: Icon(Icons.group, size: 10, color: Colors.white),
                       ),
-                    ],
-                  ),
+                    Flexible(
+                      child: Text(
+                        text,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          decoration:
+                              allDone ? TextDecoration.lineThrough : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -1228,23 +1288,29 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (todo.teamUuid != null)
+                            if (todo.teamUuid != null && height >= 32)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 2.0),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 2, vertical: 0.5),
                                   decoration: BoxDecoration(
                                     color: Colors.white.withValues(alpha: 0.3),
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.group, size: 8, color: Colors.white),
+                                      const Icon(Icons.group,
+                                          size: 8, color: Colors.white),
                                       const SizedBox(width: 1),
-                                      Expanded( // 🚀 强制填满剩余空间并截断
+                                      Expanded(
+                                        // 🚀 强制填满剩余空间并截断
                                         child: Text(
                                           todo.teamName ?? '团队',
-                                          style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold),
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 7,
+                                              fontWeight: FontWeight.bold),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -1726,7 +1792,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               builder: (context, child) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: _pulseAnimation.value),
+                    color: Colors.redAccent
+                        .withValues(alpha: _pulseAnimation.value),
                     shape: BoxShape.circle,
                   ),
                 );
@@ -1747,34 +1814,37 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][now.weekday - 1];
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    List<TodoItem> todayAllDay = !_activeDataViews.contains('todos') ? [] : _allTodos.where((todo) {
-      DateTime start = DateTime.fromMillisecondsSinceEpoch(
-              todo.createdDate ?? todo.createdAt,
-              isUtc: true)
-          .toLocal();
-      DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
+    List<TodoItem> todayAllDay = !_activeDataViews.contains('todos')
+        ? []
+        : _allTodos.where((todo) {
+            DateTime start = DateTime.fromMillisecondsSinceEpoch(
+                    todo.createdDate ?? todo.createdAt,
+                    isUtc: true)
+                .toLocal();
+            DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
-      bool isAllDayFlag = todo.dueDate != null &&
-          start.hour == 0 &&
-          start.minute == 0 &&
-          todo.dueDate!.hour == 23 &&
-          todo.dueDate!.minute == 59;
-      bool isCrossDay = !(start.year == end.year &&
-          start.month == end.month &&
-          start.day == end.day);
-      bool treatAsAllDay = isAllDayFlag || isCrossDay;
+            bool isAllDayFlag = todo.dueDate != null &&
+                start.hour == 0 &&
+                start.minute == 0 &&
+                todo.dueDate!.hour == 23 &&
+                todo.dueDate!.minute == 59;
+            bool isCrossDay = !(start.year == end.year &&
+                start.month == end.month &&
+                start.day == end.day);
+            bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
-      if (!treatAsAllDay) return false;
+            if (!treatAsAllDay) return false;
 
-      // 如果开启了隐藏跨天，且该任务是跨天任务，则过滤掉
-      if (_activeDataViews.contains('hideCrossDay') && isCrossDay) return false;
+            // 如果开启了隐藏跨天，且该任务是跨天任务，则过滤掉
+            if (_activeDataViews.contains('hideCrossDay') && isCrossDay)
+              return false;
 
-      DateTime todayStart = DateTime(now.year, now.month, now.day);
-      DateTime todayEnd =
-          todayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+            DateTime todayStart = DateTime(now.year, now.month, now.day);
+            DateTime todayEnd = todayStart
+                .add(const Duration(hours: 23, minutes: 59, seconds: 59));
 
-      return start.isBefore(todayEnd) && end.isAfter(todayStart);
-    }).toList();
+            return start.isBefore(todayEnd) && end.isAfter(todayStart);
+          }).toList();
 
     // 排序：未完成优先
     todayAllDay.sort((a, b) {
@@ -1887,17 +1957,24 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       if (todo.teamUuid != null)
                                         Padding(
-                                          padding: const EdgeInsets.only(bottom: 2),
+                                          padding:
+                                              const EdgeInsets.only(bottom: 2),
                                           child: Row(
                                             children: [
-                                              const Icon(Icons.group, size: 10, color: Colors.blue),
+                                              const Icon(Icons.group,
+                                                  size: 10, color: Colors.blue),
                                               const SizedBox(width: 4),
-                                              Text(todo.teamName ?? '团队', 
-                                                style: const TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold)),
+                                              Text(todo.teamName ?? '团队',
+                                                  style: const TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.blue,
+                                                      fontWeight:
+                                                          FontWeight.bold)),
                                             ],
                                           ),
                                         ),
@@ -1973,9 +2050,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             GestureDetector(
               onTap: _viewMode == 0 ? _showWeekJumpDialog : null,
               child: Text(
-                _viewMode == 2 ? DateFormat('yyyy年M月').format(_selectedMonth) : 
-                (_viewMode == 1 ? _getBiWeekLabel() : _getWeekLabel()),
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                _viewMode == 2
+                    ? DateFormat('yyyy年M月').format(_selectedMonth)
+                    : (_viewMode == 1 ? _getBiWeekLabel() : _getWeekLabel()),
+                style:
+                    const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(width: 4),
@@ -2000,11 +2079,19 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         actions: [
           IconButton(
             visualDensity: const VisualDensity(horizontal: -2),
+            icon: const Icon(Icons.smart_toy_outlined, size: 20),
+            tooltip: 'AI日程助手',
+            onPressed: _openAiAssistant,
+          ),
+          IconButton(
+            visualDensity: const VisualDensity(horizontal: -2),
             icon: Icon(
-              _viewMode == 2 ? Icons.view_week : 
-              (_viewMode == 1 ? Icons.calendar_month : Icons.calendar_view_week),
-              size: 20
-            ),
+                _viewMode == 2
+                    ? Icons.view_week
+                    : (_viewMode == 1
+                        ? Icons.calendar_month
+                        : Icons.calendar_view_week),
+                size: 20),
             tooltip: '切换试图模式',
             onPressed: () => _toggleViewMode((_viewMode + 1) % 3),
           ),
@@ -2016,7 +2103,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => TimeLogScreen(username: widget.username),
+                  builder: (context) =>
+                      TimeLogScreen(username: widget.username),
                 ),
               );
               if (result == true) {
@@ -2033,7 +2121,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   _activeDataViews.clear();
                   _updateWeekTodos();
                 } else if (value == 'selectAll') {
-                  _activeDataViews.addAll({'courses', 'todos', 'timeLogs', 'pomodoros'});
+                  _activeDataViews
+                      .addAll({'courses', 'todos', 'timeLogs', 'pomodoros'});
                   _updateWeekTodos();
                 } else {
                   if (_activeDataViews.contains(value)) {
@@ -2125,9 +2214,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   value: 'selectAll',
                   child: Row(
                     children: [
-                      Icon(Icons.select_all, size: 16, color: Theme.of(context).colorScheme.primary),
+                      Icon(Icons.select_all,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 8),
-                      Text('一键全选', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                      Text('一键全选',
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary)),
                     ],
                   ),
                 ),
@@ -2135,9 +2228,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   value: 'clearAll',
                   child: Row(
                     children: [
-                      const Icon(Icons.clear_all, size: 16, color: Colors.redAccent),
+                      const Icon(Icons.clear_all,
+                          size: 16, color: Colors.redAccent),
                       const SizedBox(width: 8),
-                      const Text('一键清除', style: TextStyle(color: Colors.redAccent)),
+                      const Text('一键清除',
+                          style: TextStyle(color: Colors.redAccent)),
                     ],
                   ),
                 ),
@@ -2158,22 +2253,24 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                     Expanded(
                       child: GestureDetector(
                         onScaleUpdate: (details) {
-                           final now = DateTime.now();
-                           if (_lastModeSwitch != null && now.difference(_lastModeSwitch!).inMilliseconds < 800) return;
-                           
-                           if (details.scale < 0.7) {
-                             if (_viewMode < 2) {
-                               _toggleViewMode(_viewMode + 1);
-                               _lastModeSwitch = now;
-                               HapticFeedback.lightImpact();
-                             }
-                           } else if (details.scale > 1.5) {
-                             if (_viewMode > 0) {
-                               _toggleViewMode(_viewMode - 1);
-                               _lastModeSwitch = now;
-                               HapticFeedback.lightImpact();
-                             }
-                           }
+                          final now = DateTime.now();
+                          if (_lastModeSwitch != null &&
+                              now.difference(_lastModeSwitch!).inMilliseconds <
+                                  800) return;
+
+                          if (details.scale < 0.7) {
+                            if (_viewMode < 2) {
+                              _toggleViewMode(_viewMode + 1);
+                              _lastModeSwitch = now;
+                              HapticFeedback.lightImpact();
+                            }
+                          } else if (details.scale > 1.5) {
+                            if (_viewMode > 0) {
+                              _toggleViewMode(_viewMode - 1);
+                              _lastModeSwitch = now;
+                              HapticFeedback.lightImpact();
+                            }
+                          }
                         },
                         onHorizontalDragUpdate: (details) {
                           // 让视图跟手移动
@@ -2184,9 +2281,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                         onHorizontalDragEnd: (details) {
                           final screenWidth = MediaQuery.of(context).size.width;
                           final threshold = screenWidth * 0.2; // 20% 宽度触发切换
-                          
-                          if (_dragOffset.abs() > threshold || details.primaryVelocity!.abs() > 300) {
-                            if (_dragOffset > 0 || (details.primaryVelocity ?? 0) > 300) {
+
+                          if (_dragOffset.abs() > threshold ||
+                              details.primaryVelocity!.abs() > 300) {
+                            if (_dragOffset > 0 ||
+                                (details.primaryVelocity ?? 0) > 300) {
                               // 向右滑动 -> 上一个
                               if (_viewMode == 2) {
                                 _changeMonth(-1);
@@ -2203,7 +2302,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             }
                             HapticFeedback.lightImpact();
                           }
-                          
+
                           // 重置位移（AnimatedSwitcher 会处理新旧视图的平滑切换）
                           setState(() {
                             _dragOffset = 0;
@@ -2217,7 +2316,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               Divider(
                                   height: 1,
                                   thickness: 0.5,
-                                  color: isDark ? Colors.white10 : Colors.black12),
+                                  color:
+                                      isDark ? Colors.white10 : Colors.black12),
                             ],
                             Expanded(
                               child: TweenAnimationBuilder<double>(
@@ -2231,73 +2331,91 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                   return ClipRect(
                                     child: Stack(
                                       children: [
-                                      // --- 🚀 二周/月视图 & 甘特图 ---
-                                      IgnorePointer(
-                                        ignoring: _viewMode == 0,
-                                        child: AnimatedOpacity(
-                                          duration: const Duration(milliseconds: 400),
-                                          opacity: _viewMode > 0 ? 1.0 : 0.0,
-                                          child: Transform.scale(
-                                            scale: _viewMode > 0 ? 1.0 : 0.8,
-                                            child: CourseMonthView(
-                                              key: ValueKey('MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode'),
-                                              selectedMonth: _selectedMonth,
-                                              courseMap: _monthCourseMap,
-                                              todoMap: _monthTodoMap,
-                                              crossDayTodoMap: _monthCrossDayTodoMap,
-                                              logMap: _monthLogMap,
-                                              pomMap: _monthPomMap,
-                                              pomodoroTags: _pomodoroTags,
-                                              activeDataViews: _activeDataViews,
-                                              allTodos: _allTodos,
-                                              viewMode: _viewMode,
-                                              currentWeekMonday: _getMondayOfCurrentWeek(), // 🚀 动态透传起点
-                                              onMonthChanged: (m) => setState(() => _selectedMonth = m),
-                                              onDayTapped: (d) {
-                                                setState(() => _selectedMonthDay = d);
-                                                if (constraints.maxWidth <= 900) {
-                                                  _showDayDetailSheet(d);
-                                                }
-                                              },
-                                              onGanttTodoTap: (todo) {
-                                                if (todo.dueDate != null) {
-                                                  setState(() => _selectedMonthDay = todo.dueDate);
-                                                  if (constraints.maxWidth <= 900) {
-                                                    _showDayDetailSheet(todo.dueDate!);
+                                        // --- 🚀 二周/月视图 & 甘特图 ---
+                                        IgnorePointer(
+                                          ignoring: _viewMode == 0,
+                                          child: AnimatedOpacity(
+                                            duration: const Duration(
+                                                milliseconds: 400),
+                                            opacity: _viewMode > 0 ? 1.0 : 0.0,
+                                            child: Transform.scale(
+                                              scale: _viewMode > 0 ? 1.0 : 0.8,
+                                              child: CourseMonthView(
+                                                key: ValueKey(
+                                                    'MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode'),
+                                                selectedMonth: _selectedMonth,
+                                                courseMap: _monthCourseMap,
+                                                todoMap: _monthTodoMap,
+                                                crossDayTodoMap:
+                                                    _monthCrossDayTodoMap,
+                                                logMap: _monthLogMap,
+                                                pomMap: _monthPomMap,
+                                                pomodoroTags: _pomodoroTags,
+                                                activeDataViews:
+                                                    _activeDataViews,
+                                                allTodos: _allTodos,
+                                                viewMode: _viewMode,
+                                                currentWeekMonday:
+                                                    _getMondayOfCurrentWeek(), // 🚀 动态透传起点
+                                                onMonthChanged: (m) => setState(
+                                                    () => _selectedMonth = m),
+                                                onDayTapped: (d) {
+                                                  setState(() =>
+                                                      _selectedMonthDay = d);
+                                                  if (constraints.maxWidth <=
+                                                      900) {
+                                                    _showDayDetailSheet(d);
                                                   }
-                                                }
-                                              },
+                                                },
+                                                onGanttTodoTap: (todo) {
+                                                  if (todo.dueDate != null) {
+                                                    setState(() =>
+                                                        _selectedMonthDay =
+                                                            todo.dueDate);
+                                                    if (constraints.maxWidth <=
+                                                        900) {
+                                                      _showDayDetailSheet(
+                                                          todo.dueDate!);
+                                                    }
+                                                  }
+                                                },
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                      // --- 周视图 (使用 child 避免重复 build) ---
-                                      IgnorePointer(
-                                        ignoring: t > 0.5,
-                                        child: Opacity(
-                                          opacity: (1.0 - t).clamp(0.0, 1.0),
-                                          child: Transform.scale(
-                                            scale: 1.0 + (t * 0.2),
-                                            child: child,
+                                        // --- 周视图 (使用 child 避免重复 build) ---
+                                        IgnorePointer(
+                                          ignoring: t > 0.5,
+                                          child: Opacity(
+                                            opacity: (1.0 - t).clamp(0.0, 1.0),
+                                            child: Transform.scale(
+                                              scale: 1.0 + (t * 0.2),
+                                              child: child,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                                      ],
+                                    ),
+                                  );
+                                },
                                 // 提取为 child, 确保在 TweenAnimationBuilder 动画时周视图不会触发 build
                                 child: AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 400),
                                   transitionBuilder: (child, animation) {
                                     return Transform.translate(
-                                      offset: Offset(_dragOffset * (1.0 - animation.value), 0),
+                                      offset: Offset(
+                                          _dragOffset * (1.0 - animation.value),
+                                          0),
                                       child: SlideTransition(
                                         position: Tween<Offset>(
-                                          begin: Offset(_isNextSlide ? 1.0 : -1.0, 0.0),
+                                          begin: Offset(
+                                              _isNextSlide ? 1.0 : -1.0, 0.0),
                                           end: Offset.zero,
-                                        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-                                        child: FadeTransition(opacity: animation, child: child),
+                                        ).animate(CurvedAnimation(
+                                            parent: animation,
+                                            curve: Curves.easeOutCubic)),
+                                        child: FadeTransition(
+                                            opacity: animation, child: child),
                                       ),
                                     );
                                   },
@@ -2305,12 +2423,19 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                     key: ValueKey('WeekView_$_currentWeek'),
                                     child: LayoutBuilder(
                                       builder: (context, innerConstraints) {
-                                        double cellWidth = (innerConstraints.maxWidth - timeColumnWidth) / 7;
+                                        double cellWidth =
+                                            (innerConstraints.maxWidth -
+                                                    timeColumnWidth) /
+                                                7;
                                         // 🚀 恢复自适应：将全天时间轴按比例缩放到当前屏幕可用高度，无需滑动
-                                        double totalMinutes = (endHour - startHour) * 60;
-                                        double minuteHeight = innerConstraints.maxHeight / totalMinutes;
-                                        
-                                        return _buildGrid(cellWidth, minuteHeight);
+                                        double totalMinutes =
+                                            (endHour - startHour) * 60;
+                                        double minuteHeight =
+                                            innerConstraints.maxHeight /
+                                                totalMinutes;
+
+                                        return _buildGrid(
+                                            cellWidth, minuteHeight);
                                       },
                                     ),
                                   ),
@@ -2332,8 +2457,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             ),
                           ),
                         ),
-                        child: _selectedMonthDay != null 
-                            ? _buildMonthDaySidebar(_selectedMonthDay!) 
+                        child: _selectedMonthDay != null
+                            ? _buildMonthDaySidebar(_selectedMonthDay!)
                             : _buildTodaySidebar(),
                       ),
                   ],
@@ -2343,9 +2468,37 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     );
   }
 
+  Future<void> _openAiAssistant() async {
+    try {
+      final groups = await StorageService.getTodoGroups(widget.username);
+      if (!mounted) return;
+      await AiTodoChatLauncher.open(
+        context,
+        username: widget.username,
+        todos: _allTodos,
+        todoGroups: groups.where((g) => !g.isDeleted).toList(),
+        courses: _allCourses,
+        timeLogs: _allTimeLogs,
+        onTodosBatchAction: (inserted, updated) async {
+          final allTodos = await StorageService.getTodos(widget.username);
+          final merged = AiTodoActionExecutor.mergeTodoUpdates(allTodos, inserted, updated);
+          await StorageService.saveTodos(widget.username, merged);
+          await _loadData();
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开AI助手失败: $e')),
+        );
+      }
+    }
+  }
+
   Widget _buildSkeleton() {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    Color baseColor = isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    Color baseColor =
+        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
 
     return FadeTransition(
       opacity: _pulseAnimation,
@@ -2412,7 +2565,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     );
   }
 
-  Widget _buildSkeletonBox(double cellWidth, double top, double height, int dayIndex, Color color) {
+  Widget _buildSkeletonBox(
+      double cellWidth, double top, double height, int dayIndex, Color color) {
     return Positioned(
       left: dayIndex * cellWidth + 4,
       top: top,
@@ -2429,7 +2583,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   String _safeStr(String? s) {
     if (s == null) return '';
-    return s.replaceAll(RegExp(r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'), '');
+    return s.replaceAll(
+        RegExp(
+            r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'),
+        '');
   }
 
   void _showDayDetailSheet(DateTime day) {
@@ -2453,24 +2610,28 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   void _showTodoDetails(TodoItem todo) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     DateTime startTime = DateTime.fromMillisecondsSinceEpoch(
-      todo.createdDate ?? todo.createdAt,
-      isUtc: true
-    ).toLocal();
-    
+            todo.createdDate ?? todo.createdAt,
+            isUtc: true)
+        .toLocal();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+        constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85),
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, -5))
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 20,
+                offset: const Offset(0, -5))
           ],
         ),
         child: SingleChildScrollView(
@@ -2492,95 +2653,102 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               Row(
                 children: [
                   Container(
-                    width: 4,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: todo.isDone ? Colors.green : Colors.amber,
-                      borderRadius: BorderRadius.circular(2)
-                    )
-                  ),
+                      width: 4,
+                      height: 24,
+                      decoration: BoxDecoration(
+                          color: todo.isDone ? Colors.green : Colors.amber,
+                          borderRadius: BorderRadius.circular(2))),
                   const SizedBox(width: 12),
-                  const Text("任务详情", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text("任务详情",
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.open_in_new_rounded, size: 20),
                     onPressed: () {
                       Navigator.pop(context);
-                      Navigator.push(context, PageTransitions.slideHorizontal(TodoDetailScreen(todo: todo)));
+                      Navigator.push(
+                          context,
+                          PageTransitions.slideHorizontal(
+                              TodoDetailScreen(todo: todo)));
                     },
                     tooltip: '详情页',
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    onPressed: () => Navigator.pop(context)
-                  ),
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => Navigator.pop(context)),
                 ],
               ),
               const SizedBox(height: 24),
-              Text(
-                _safeStr(todo.title),
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                  color: todo.isDone ? Colors.grey : null,
-                )
-              ),
+              Text(_safeStr(todo.title),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                    color: todo.isDone ? Colors.grey : null,
+                  )),
               const SizedBox(height: 16),
-              
               if (todo.remark != null && todo.remark!.isNotEmpty)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
-                    color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03),
+                    color: (isDark ? Colors.white : Colors.black)
+                        .withValues(alpha: 0.03),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05)),
+                    border: Border.all(
+                        color: (isDark ? Colors.white : Colors.black)
+                            .withValues(alpha: 0.05)),
                   ),
-                  child: Text(
-                    _safeStr(todo.remark!),
-                    style: TextStyle(fontSize: 15, color: isDark ? Colors.white70 : Colors.black87, height: 1.5)
-                  ),
+                  child: Text(_safeStr(todo.remark!),
+                      style: TextStyle(
+                          fontSize: 15,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                          height: 1.5)),
                 ),
-              
               Wrap(
                 spacing: 16,
                 runSpacing: 20,
                 children: [
                   _buildDetailItem(
-                    Icons.flag_rounded, 
-                    "任务状态", 
-                    todo.isDone ? "已完成" : "进行中",
-                    color: todo.isDone ? Colors.green : Colors.amber
-                  ),
+                      Icons.flag_rounded, "任务状态", todo.isDone ? "已完成" : "进行中",
+                      color: todo.isDone ? Colors.green : Colors.amber),
                   _buildDetailItem(
-                    Icons.calendar_today_rounded, 
-                    "截止日期", 
-                    todo.dueDate != null ? TimezoneUtils.getRelativeTime(todo.dueDate!.millisecondsSinceEpoch) : "未设置",
-                    color: (todo.dueDate != null && !todo.isDone && todo.dueDate!.isBefore(DateTime.now())) ? Colors.red : null
-                  ),
-                  _buildDetailItem(
-                    Icons.schedule_rounded, 
-                    "开始时间", 
-                    DateFormat('MM-dd HH:mm').format(startTime)
-                  ),
+                      Icons.calendar_today_rounded,
+                      "截止日期",
+                      todo.dueDate != null
+                          ? TimezoneUtils.getRelativeTime(
+                              todo.dueDate!.millisecondsSinceEpoch)
+                          : "未设置",
+                      color: (todo.dueDate != null &&
+                              !todo.isDone &&
+                              todo.dueDate!.isBefore(DateTime.now()))
+                          ? Colors.red
+                          : null),
+                  _buildDetailItem(Icons.schedule_rounded, "开始时间",
+                      DateFormat('MM-dd HH:mm').format(startTime)),
                   if (todo.recurrence != RecurrenceType.none)
-                    _buildDetailItem(Icons.repeat_rounded, "重复模式", _getRecurrenceLabel(todo.recurrence)),
-                  
-                  _buildDetailItem(Icons.group_rounded, "所属团队", todo.teamName ?? "个人任务", color: todo.teamUuid != null ? Colors.blue : null),
-                  
+                    _buildDetailItem(Icons.repeat_rounded, "重复模式",
+                        _getRecurrenceLabel(todo.recurrence)),
+                  _buildDetailItem(
+                      Icons.group_rounded, "所属团队", todo.teamName ?? "个人任务",
+                      color: todo.teamUuid != null ? Colors.blue : null),
                   if (todo.creatorName != null)
-                    _buildDetailItem(Icons.person_outline_rounded, "创建人", todo.creatorName!),
-                  
+                    _buildDetailItem(
+                        Icons.person_outline_rounded, "创建人", todo.creatorName!),
                   if (todo.reminderMinutes != null && todo.reminderMinutes! > 0)
-                    _buildDetailItem(Icons.notifications_active_rounded, "提醒设置", "提前 ${todo.reminderMinutes} 分钟"),
+                    _buildDetailItem(Icons.notifications_active_rounded, "提醒设置",
+                        "提前 ${todo.reminderMinutes} 分钟"),
                 ],
               ),
-              
               if (todo.imagePath != null && todo.imagePath!.isNotEmpty) ...[
                 const SizedBox(height: 24),
-                const Text("附件图片", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+                const Text("附件图片",
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey)),
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
@@ -2592,7 +2760,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   ),
                 ),
               ],
-              
               const SizedBox(height: 32),
             ],
           ),
@@ -2603,17 +2770,25 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   String _getRecurrenceLabel(RecurrenceType type) {
     switch (type) {
-      case RecurrenceType.daily: return "每天";
-      case RecurrenceType.weekly: return "每周";
-      case RecurrenceType.monthly: return "每月";
-      case RecurrenceType.yearly: return "每年";
-      case RecurrenceType.weekdays: return "工作日";
-      case RecurrenceType.customDays: return "自定义天数";
-      default: return "不重复";
+      case RecurrenceType.daily:
+        return "每天";
+      case RecurrenceType.weekly:
+        return "每周";
+      case RecurrenceType.monthly:
+        return "每月";
+      case RecurrenceType.yearly:
+        return "每年";
+      case RecurrenceType.weekdays:
+        return "工作日";
+      case RecurrenceType.customDays:
+        return "自定义天数";
+      default:
+        return "不重复";
     }
   }
 
-  Widget _buildDetailItem(IconData icon, String label, String value, {Color? color}) {
+  Widget _buildDetailItem(IconData icon, String label, String value,
+      {Color? color}) {
     return SizedBox(
       width: 140,
       child: Column(
@@ -2623,14 +2798,15 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             children: [
               Icon(icon, size: 14, color: Colors.grey),
               const SizedBox(width: 6),
-              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text(label,
+                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
             ],
           ),
           const SizedBox(height: 6),
           Text(
             value,
             style: TextStyle(
-              fontSize: 14, 
+              fontSize: 14,
               fontWeight: FontWeight.w600,
               color: color,
             ),
@@ -2644,7 +2820,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   Widget _buildPanoramaContent() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       color: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF2F4F7),
       child: CustomScrollView(
@@ -2656,35 +2832,44 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(28),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 10))],
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10))
+                ],
               ),
               child: Column(
                 children: [
-                   TeamHeatmapWidget(todos: _allTodos, viewDays: 35),
-                   const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider(indent: 16, endIndent: 16)),
-                   TeamGanttWidget(
-                     todos: _allTodos, 
-                     viewDays: 30,
-                     onTodoTap: _showTodoDetails,
-                   ),
+                  TeamHeatmapWidget(todos: _allTodos, viewDays: 35),
+                  const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Divider(indent: 16, endIndent: 16)),
+                  TeamGanttWidget(
+                    todos: _allTodos,
+                    viewDays: 30,
+                    onTodoTap: _showTodoDetails,
+                  ),
                 ],
               ),
             ),
           ),
-          
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  _buildPanoStatStat("全量待办", "${_allTodos.length}", Colors.blue),
+                  _buildPanoStatStat(
+                      "全量待办", "${_allTodos.length}", Colors.blue),
                   const SizedBox(width: 12),
-                  _buildPanoStatStat("团队协作", "${_allTodos.where((t)=>t.teamUuid != null).length}", Colors.purple),
+                  _buildPanoStatStat(
+                      "团队协作",
+                      "${_allTodos.where((t) => t.teamUuid != null).length}",
+                      Colors.purple),
                 ],
               ),
             ),
           ),
-          
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
@@ -2702,9 +2887,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11, color: color, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
-            Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 24, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
       ),
@@ -2748,7 +2937,9 @@ class CourseDetailScreen extends StatelessWidget {
                 '类型/备注',
                 course.lessonType == 'EXPERIMENT'
                     ? '实验课'
-                    : (course.lessonType == 'THEORY' ? '理论课' : course.lessonType!)),
+                    : (course.lessonType == 'THEORY'
+                        ? '理论课'
+                        : course.lessonType!)),
           ],
         ],
       ),
@@ -2783,14 +2974,22 @@ class TodoDetailScreen extends StatelessWidget {
 
   String _getRecurrenceText() {
     switch (todo.recurrence) {
-      case RecurrenceType.none: return '不重复';
-      case RecurrenceType.daily: return '每天';
-      case RecurrenceType.weekly: return '每周';
-      case RecurrenceType.monthly: return '每月';
-      case RecurrenceType.yearly: return '每年';
-      case RecurrenceType.weekdays: return '工作日';
-      case RecurrenceType.customDays: return '每 ${todo.customIntervalDays} 天';
-      default: return '未知';
+      case RecurrenceType.none:
+        return '不重复';
+      case RecurrenceType.daily:
+        return '每天';
+      case RecurrenceType.weekly:
+        return '每周';
+      case RecurrenceType.monthly:
+        return '每月';
+      case RecurrenceType.yearly:
+        return '每年';
+      case RecurrenceType.weekdays:
+        return '工作日';
+      case RecurrenceType.customDays:
+        return '每 ${todo.customIntervalDays} 天';
+      default:
+        return '未知';
     }
   }
 
@@ -2798,21 +2997,21 @@ class TodoDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     DateTime startTime = DateTime.fromMillisecondsSinceEpoch(
-      todo.createdDate ?? todo.createdAt,
-      isUtc: true
-    ).toLocal();
-    
+            todo.createdDate ?? todo.createdAt,
+            isUtc: true)
+        .toLocal();
+
     DateTime? endTime = todo.dueDate;
-    
-    String startTimeStr = todo.isAllDay 
+
+    String startTimeStr = todo.isAllDay
         ? DateFormat('yyyy-MM-dd (全天)').format(startTime)
         : DateFormat('yyyy-MM-dd HH:mm').format(startTime);
-    
-    String endTimeStr = endTime == null 
-        ? '无截止时间' 
-        : (todo.isAllDay 
+
+    String endTimeStr = endTime == null
+        ? '无截止时间'
+        : (todo.isAllDay
             ? DateFormat('yyyy-MM-dd (全天)').format(endTime)
             : DateFormat('yyyy-MM-dd HH:mm').format(endTime));
 
@@ -2829,7 +3028,8 @@ class TodoDetailScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA),
+      backgroundColor:
+          isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA),
       appBar: AppBar(
         title: const Text('任务详情'),
         backgroundColor: Colors.transparent,
@@ -2858,7 +3058,9 @@ class TodoDetailScreen extends StatelessWidget {
               child: Column(
                 children: [
                   Icon(
-                    todo.isDone ? Icons.check_circle_rounded : Icons.pending_rounded,
+                    todo.isDone
+                        ? Icons.check_circle_rounded
+                        : Icons.pending_rounded,
                     size: 64,
                     color: todo.isDone ? Colors.green : Colors.amber,
                   ),
@@ -2869,7 +3071,8 @@ class TodoDetailScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                      decoration:
+                          todo.isDone ? TextDecoration.lineThrough : null,
                       color: todo.isDone ? Colors.grey : null,
                     ),
                   ),
@@ -2882,10 +3085,12 @@ class TodoDetailScreen extends StatelessWidget {
                           child: LinearProgressIndicator(
                             value: progress,
                             minHeight: 8,
-                            backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                            backgroundColor:
+                                colorScheme.primary.withValues(alpha: 0.1),
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              todo.isDone ? Colors.green : colorScheme.primary
-                            ),
+                                todo.isDone
+                                    ? Colors.green
+                                    : colorScheme.primary),
                           ),
                         ),
                       ),
@@ -2895,7 +3100,8 @@ class TodoDetailScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: todo.isDone ? Colors.green : colorScheme.primary,
+                          color:
+                              todo.isDone ? Colors.green : colorScheme.primary,
                         ),
                       ),
                     ],
@@ -2904,24 +3110,34 @@ class TodoDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            
+
             _buildSection(context, "基本信息", [
-              _buildModernRow(Icons.flag_rounded, "当前状态", todo.isDone ? "已完成" : "进行中", 
-                valueColor: todo.isDone ? Colors.green : Colors.amber),
+              _buildModernRow(
+                  Icons.flag_rounded, "当前状态", todo.isDone ? "已完成" : "进行中",
+                  valueColor: todo.isDone ? Colors.green : Colors.amber),
               _buildModernRow(Icons.schedule_rounded, "开始时间", startTimeStr),
-              _buildModernRow(Icons.event_busy_rounded, "截止时间", endTimeStr, 
-                valueColor: (endTime != null && !todo.isDone && endTime.isBefore(DateTime.now())) ? Colors.red : null),
+              _buildModernRow(Icons.event_busy_rounded, "截止时间", endTimeStr,
+                  valueColor: (endTime != null &&
+                          !todo.isDone &&
+                          endTime.isBefore(DateTime.now()))
+                      ? Colors.red
+                      : null),
               if (todo.recurrence != RecurrenceType.none)
-                _buildModernRow(Icons.repeat_rounded, "重复周期", _getRecurrenceText()),
+                _buildModernRow(
+                    Icons.repeat_rounded, "重复周期", _getRecurrenceText()),
               if (todo.reminderMinutes != null && todo.reminderMinutes! > 0)
-                _buildModernRow(Icons.notifications_active_rounded, "提醒设置", "提前 ${todo.reminderMinutes} 分钟"),
+                _buildModernRow(Icons.notifications_active_rounded, "提醒设置",
+                    "提前 ${todo.reminderMinutes} 分钟"),
             ]),
-            
+
             if (todo.teamUuid != null)
               _buildSection(context, "协作信息", [
-                _buildModernRow(Icons.group_rounded, "所属团队", todo.teamName ?? "未知团队"),
-                _buildModernRow(Icons.person_rounded, "创建者", todo.creatorName ?? "未知用户"),
-                _buildModernRow(Icons.handshake_rounded, "协作模式", todo.collabType == 1 ? "每个人独立完成" : "所有人共同协作"),
+                _buildModernRow(
+                    Icons.group_rounded, "所属团队", todo.teamName ?? "未知团队"),
+                _buildModernRow(
+                    Icons.person_rounded, "创建者", todo.creatorName ?? "未知用户"),
+                _buildModernRow(Icons.handshake_rounded, "协作模式",
+                    todo.collabType == 1 ? "每个人独立完成" : "所有人共同协作"),
               ]),
 
             if (todo.remark != null && todo.remark!.isNotEmpty)
@@ -2956,28 +3172,39 @@ class TodoDetailScreen extends StatelessWidget {
 
             if (todo.imagePath != null && todo.imagePath!.isNotEmpty)
               _buildSection(context, "附件图片", [
-                 Padding(
-                   padding: const EdgeInsets.symmetric(vertical: 8),
-                   child: ClipRRect(
-                     borderRadius: BorderRadius.circular(12),
-                     child: Image.file(
-                       File(todo.imagePath!),
-                       errorBuilder: (ctx, err, stack) => const Text("无法加载本地图片", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                     ),
-                   ),
-                 ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(todo.imagePath!),
+                      errorBuilder: (ctx, err, stack) => const Text("无法加载本地图片",
+                          style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    ),
+                  ),
+                ),
               ]),
 
             _buildSection(context, "系统信息", [
-              _buildModernRow(Icons.update_rounded, "最近更新", 
-                DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())),
-              _buildModernRow(Icons.fingerprint_rounded, "任务 ID", todo.id.length > 8 ? "${todo.id.substring(0, 8)}..." : todo.id, 
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: todo.id));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ID 已复制到剪贴板")));
-                }),
+              _buildModernRow(
+                  Icons.update_rounded,
+                  "最近更新",
+                  DateFormat('yyyy-MM-dd HH:mm:ss').format(
+                      DateTime.fromMillisecondsSinceEpoch(todo.updatedAt,
+                              isUtc: true)
+                          .toLocal())),
+              _buildModernRow(
+                  Icons.fingerprint_rounded,
+                  "任务 ID",
+                  todo.id.length > 8
+                      ? "${todo.id.substring(0, 8)}..."
+                      : todo.id, onTap: () {
+                Clipboard.setData(ClipboardData(text: todo.id));
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text("ID 已复制到剪贴板")));
+              }),
             ]),
-            
+
             const SizedBox(height: 40),
           ],
         ),
@@ -2985,7 +3212,8 @@ class TodoDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSection(BuildContext context, String title, List<Widget> children) {
+  Widget _buildSection(
+      BuildContext context, String title, List<Widget> children) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -2998,7 +3226,12 @@ class TodoDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                  letterSpacing: 1.2)),
           const SizedBox(height: 12),
           ...children,
         ],
@@ -3006,7 +3239,8 @@ class TodoDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildModernRow(IconData icon, String label, String value, {Color? valueColor, VoidCallback? onTap}) {
+  Widget _buildModernRow(IconData icon, String label, String value,
+      {Color? valueColor, VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -3015,9 +3249,14 @@ class TodoDetailScreen extends StatelessWidget {
           children: [
             Icon(icon, size: 18, color: Colors.grey),
             const SizedBox(width: 12),
-            Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+            Text(label,
+                style: const TextStyle(fontSize: 14, color: Colors.grey)),
             const Spacer(),
-            Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: valueColor)),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: valueColor)),
           ],
         ),
       ),

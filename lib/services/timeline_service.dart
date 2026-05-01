@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'database_helper.dart';
+import 'course_service.dart';
 import '../models.dart';
 
 class TimelineService {
@@ -205,32 +206,30 @@ class TimelineService {
         ));
       }
 
-      // 5. 课程 (开始 & 结束) - 仅查询指定日期的课程
+      // 5. 课程 (开始 & 结束) - 使用 CourseService 以应用放假/调休规则
       final dayStr = DateFormat('yyyy-MM-dd').format(day);
-      final courses = await db.query(
-        'courses',
-        where: 'date = ?',
-        whereArgs: [dayStr],
-      );
+      final courses = (await CourseService.getAllCourses(username))
+          .where((course) => course.date == dayStr)
+          .toList();
 
       final seenCourses = <String>{};
-      for (var row in courses) {
-        final courseName = row['course_name'] as String? ?? '未知课程';
-        final startTimeInt = row['start_time'] as int;
+      for (var course in courses) {
+        final courseName = course.courseName;
+        final startTimeInt = course.startTime;
         
         // 去重：同一天同一个名称和开始时间只显示一次
         final dedupKey = '${courseName}_$startTimeInt';
         if (seenCourses.contains(dedupKey)) continue;
         seenCourses.add(dedupKey);
 
-        final roomName = row['room_name'] as String? ?? '';
-        final endTimeInt = row['end_time'] as int;
+        final roomName = course.roomName;
+        final endTimeInt = course.endTime;
         
         final startTime = DateTime(day.year, day.month, day.day, startTimeInt ~/ 100, startTimeInt % 100);
         final endTime = DateTime(day.year, day.month, day.day, endTimeInt ~/ 100, endTimeInt % 100);
 
         events.add(TimelineEvent(
-          id: 'course_start_${row['uuid']}_$dayStr',
+          id: 'course_start_${course.uuid}_$dayStr',
           timestamp: startTime,
           type: TimelineEventType.courseStart,
           title: '上课时间',
@@ -238,7 +237,7 @@ class TimelineService {
         ));
 
         events.add(TimelineEvent(
-          id: 'course_end_${row['uuid']}_$dayStr',
+          id: 'course_end_${course.uuid}_$dayStr',
           timestamp: endTime,
           type: TimelineEventType.courseEnd,
           title: '下课时间',
@@ -340,14 +339,13 @@ class TimelineService {
       );
       countdownCompleted = completedCds.length;
 
-      // 4. 课程 (已上的)
-      final courses = await db.query(
-        'courses',
-        where: 'date = ? AND end_time < ?',
-        whereArgs: [dayStr, currentHHMM],
-      );
+      // 4. 课程 (已上的) - 使用调整后的课表
+      final courses = (await CourseService.getAllCourses(username))
+          .where((course) =>
+              course.date == dayStr && course.endTime < currentHHMM)
+          .toList();
       // 使用 Set 去重
-      attendedCourses = courses.map((e) => e['course_name'] as String).toSet().toList();
+      attendedCourses = courses.map((e) => e.courseName).toSet().toList();
 
       // 5. 番茄钟 (完成次数)
       final poms = await db.query(

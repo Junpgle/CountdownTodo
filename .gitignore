@@ -45,3 +45,41 @@ app.*.map.json
 /android/app/release
 /webpage/node_modules/
 /webpage/
+
+# Local AI/editor/tooling
+.agents/
+.claude/
+.wrangler/
+.tmp/
+scratch/
+.vscode/
+
+# Secrets / signing keys
+*.env
+.env
+*.pem
+*.p12
+*.jks
+*.keystore
+android/app/keystore.*
+CountDownTodo-band/sign/
+
+# Local logs / temporary analysis
+*.log
+build_log*.txt
+analysis.txt
+analysis_output.txt
+test.txt
+search.md
+todo.md
+
+# Office / design draft files
+*.pptx
+*.psd
+
+# Do not commit release server workspace
+/aliyun_release/
+
+# Also ignore file/symlink variants
+.tmp
+/aliyun_release

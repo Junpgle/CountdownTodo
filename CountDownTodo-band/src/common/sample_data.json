@@ -1,0 +1,97 @@
+{
+  "countdown": [
+    {
+      "id": "cd_001",
+      "title": "期末考试",
+      "targetDate": "2026-06-15",
+      "remainingDays": 73,
+      "updatedAt": 1743638400000
+    },
+    {
+      "id": "cd_002",
+      "title": "五一假期",
+      "targetDate": "2026-05-01",
+      "remainingDays": 28,
+      "updatedAt": 1743638400000
+    },
+    {
+      "id": "cd_003",
+      "title": "生日",
+      "targetDate": "2026-08-20",
+      "remainingDays": 139,
+      "updatedAt": 1743638400000
+    }
+  ],
+  "todo": [
+    {
+      "id": "todo_001",
+      "title": "完成数学作业",
+      "description": "第5章习题1-10",
+      "status": "undone",
+      "updatedAt": 1743638400000
+    },
+    {
+      "id": "todo_002",
+      "title": "背英语单词",
+      "description": "Unit 8-10",
+      "status": "undone",
+      "updatedAt": 1743638400000
+    },
+    {
+      "id": "todo_003",
+      "title": "买生活用品",
+      "description": "牙膏、纸巾、洗发水",
+      "status": "done",
+      "updatedAt": 1743638400000
+    },
+    {
+      "id": "todo_004",
+      "title": "复习物理",
+      "description": "电磁学章节",
+      "status": "undone",
+      "updatedAt": 1743638400000
+    }
+  ],
+  "course": [
+    {
+      "id": "course_001",
+      "name": "高等数学",
+      "startTime": "08:00",
+      "endTime": "09:40",
+      "location": "教A-301",
+      "teacher": "张教授",
+      "weekday": 1,
+      "updatedAt": 1743638400000
+    },
+    {
+      "id": "course_002",
+      "name": "大学英语",
+      "startTime": "10:00",
+      "endTime": "11:40",
+      "location": "教B-205",
+      "teacher": "李老师",
+      "weekday": 1,
+      "updatedAt": 1743638400000
+    },
+    {
+      "id": "course_003",
+      "name": "大学物理",
+      "startTime": "14:00",
+      "endTime": "15:40",
+      "location": "理C-102",
+      "teacher": "王教授",
+      "weekday": 2,
+      "updatedAt": 1743638400000
+    },
+    {
+      "id": "course_004",
+      "name": "线性代数",
+      "startTime": "08:00",
+      "endTime": "09:40",
+      "location": "教A-401",
+      "teacher": "刘老师",
+      "weekday": 3,
+      "updatedAt": 1743638400000
+    }
+  ]
+}
