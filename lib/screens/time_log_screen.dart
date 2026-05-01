@@ -314,20 +314,28 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         StorageService.getTodos(widget.username),
         StorageService.getTodoGroups(widget.username),
         CourseService.getAllCourses(widget.username),
+        StorageService.getCountdowns(widget.username),
       ]);
       if (!mounted) return;
       await AiTodoChatLauncher.open(
         context,
         username: widget.username,
-        todos: (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList(),
+        todos:
+            (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList(),
         todoGroups:
             (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList(),
-        courses:
-            (results[2] as List<CourseItem>).where((c) => !c.isDeleted).toList(),
+        courses: (results[2] as List<CourseItem>)
+            .where((c) => !c.isDeleted)
+            .toList(),
+        countdowns: (results[3] as List<CountdownItem>)
+            .where((c) => !c.isDeleted)
+            .toList(),
+        pomodoroTags: _tags,
         timeLogs: _allLogs,
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(allTodos, inserted, updated);
+          final merged = AiTodoActionExecutor.mergeTodoUpdates(
+              allTodos, inserted, updated);
           await StorageService.saveTodos(widget.username, merged);
         },
       );

@@ -71,7 +71,11 @@ class AiActionParser {
     // and contain known action types, to avoid accidentally removing user text.
     const actionTypes = 'create_todo|update_todo|complete_todo|delete_todo|'
         'reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
-        'categorize_todo|plan_todos|split_todo|merge_todos';
+        'categorize_todo|plan_todos|split_todo|merge_todos|'
+        'create_time_log|update_time_log|delete_time_log|'
+        'start_pomodoro|stop_pomodoro|'
+        'create_countdown|update_countdown|complete_countdown|delete_countdown|'
+        'create_pomodoro_tag|update_pomodoro_tag|delete_pomodoro_tag';
     final looseActionBlock = RegExp(
       '\\[\\s*\\{\\s*"action"\\s*:\\s*"(?:$actionTypes)"[\\s\\S]*?\\}\\s*\\]',
     );
@@ -139,6 +143,65 @@ class AiActionParser {
         return _processSplitTodo(data, existingTodoTitles);
       case 'merge_todos':
         return _processMergeTodos(data, existingTodoTitles);
+      case 'create_time_log':
+        return _listFrom(data['logs']).map((log) {
+          return AiTodoAction.fromJson({
+            ...log,
+            'action': data['action'],
+          });
+        }).toList();
+      case 'update_time_log':
+      case 'delete_time_log':
+        return _listFrom(data['updates']).map((update) {
+          return AiTodoAction.fromJson({
+            ...update,
+            'todoId': update['todoId'] ?? update['logId'] ?? update['id'],
+            'action': data['action'],
+          });
+        }).toList();
+      case 'start_pomodoro':
+      case 'stop_pomodoro':
+        return [
+          AiTodoAction.fromJson({
+            ...data,
+            'todoId': data['todoId'],
+          }),
+        ];
+      case 'create_countdown':
+        return _listFrom(data['countdowns']).map((countdown) {
+          return AiTodoAction.fromJson({
+            ...countdown,
+            'action': data['action'],
+          });
+        }).toList();
+      case 'update_countdown':
+      case 'complete_countdown':
+      case 'delete_countdown':
+        return _listFrom(data['updates']).map((update) {
+          return AiTodoAction.fromJson({
+            ...update,
+            'todoId': update['todoId'] ?? update['countdownId'] ?? update['id'],
+            'action': data['action'],
+          });
+        }).toList();
+      case 'create_pomodoro_tag':
+        return _listFrom(data['tags']).map((tag) {
+          return AiTodoAction.fromJson({
+            ...tag,
+            'title': tag['title'] ?? tag['name'],
+            'action': data['action'],
+          });
+        }).toList();
+      case 'update_pomodoro_tag':
+      case 'delete_pomodoro_tag':
+        return _listFrom(data['updates']).map((update) {
+          return AiTodoAction.fromJson({
+            ...update,
+            'todoId': update['todoId'] ?? update['tagId'] ?? update['id'],
+            'title': update['title'] ?? update['name'],
+            'action': data['action'],
+          });
+        }).toList();
       default:
         return [];
     }

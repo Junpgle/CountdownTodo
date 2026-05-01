@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../screens/todo_chat_screen.dart';
+import 'pomodoro_service.dart';
 
 class AiTodoChatLauncher {
   static Future<void> open(
@@ -13,6 +14,8 @@ class AiTodoChatLauncher {
     List<TimeLogItem> timeLogs = const [],
     List<ConflictInfo> conflicts = const [],
     List<Team> teams = const [],
+    List<CountdownItem> countdowns = const [],
+    List<PomodoroTag> pomodoroTags = const [],
     void Function(List<TodoItem> inserted, List<TodoItem> updated)?
         onTodosBatchAction,
   }) {
@@ -27,6 +30,8 @@ class AiTodoChatLauncher {
           timeLogs: timeLogs,
           conflicts: conflicts,
           teams: teams,
+          countdowns: countdowns,
+          pomodoroTags: pomodoroTags,
           onTodosBatchAction: onTodosBatchAction,
         ),
       ),

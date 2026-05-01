@@ -2,6 +2,7 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import 'chat_storage_service.dart';
+import 'pomodoro_service.dart';
 
 class AiTodoContextBuilder {
   static String buildSystemPrompt({
@@ -9,6 +10,8 @@ class AiTodoContextBuilder {
     required bool promptEnabled,
     required List<Map<String, dynamic>> todos,
     required List<TodoGroup> todoGroups,
+    List<CountdownItem> countdowns = const [],
+    List<PomodoroTag> pomodoroTags = const [],
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -26,9 +29,15 @@ class AiTodoContextBuilder {
 【用户当前分类/文件夹】
 ${_formatGroups(todoGroups)}
 
+【用户当前倒计时】
+${_formatCountdowns(countdowns)}
+
+【用户当前番茄标签】
+${_formatPomodoroTags(pomodoroTags)}
+
 【待办管理功能 - 重要规则】
-当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办时，必须在回复末尾附加JSON操作块。
-操作已有待办必须使用待办ID，不确定时先追问。
+当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办，或新增/修改/删除专注记录，或开始/停止番茄钟，或新增/修改/完成/删除倒计时，或新增/改名/改色/删除番茄标签时，必须在回复末尾附加JSON操作块。
+操作已有待办必须使用待办ID；操作已有专注记录必须使用专注记录ID；操作已有倒计时必须使用倒计时ID；操作已有番茄标签必须使用标签ID。不确定时先追问。
 JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
 
 - create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
@@ -41,6 +50,18 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
 - categorize_todo: {"action":"categorize_todo","updates":[{"todoId":"ID","groupId":"新分类ID"}]}
 - split_todo: {"action":"split_todo","sourceTodoId":"原ID","deleteSource":false,"todos":[...]}
 - merge_todos: {"action":"merge_todos","sourceTodoIds":["ID1","ID2"],"deleteSources":false,"todo":{...}}
+- create_time_log: {"action":"create_time_log","logs":[{"title":"专注内容","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","tagUuids":[]}]}
+- update_time_log: {"action":"update_time_log","updates":[{"logId":"ID","title":"新标题","startTime":"...","dueDate":"...","durationMinutes":60,"remark":"备注","tagUuids":[]}]}
+- delete_time_log: {"action":"delete_time_log","updates":[{"logId":"ID"}]}
+- start_pomodoro: {"action":"start_pomodoro","title":"专注内容","todoId":"可选待办ID","durationMinutes":25,"tagUuids":[]}
+- stop_pomodoro: {"action":"stop_pomodoro","status":"completed"}
+- create_countdown: {"action":"create_countdown","countdowns":[{"title":"事件","dueDate":"YYYY-MM-DD HH:mm"}]}
+- update_countdown: {"action":"update_countdown","updates":[{"countdownId":"ID","title":"新标题","dueDate":"YYYY-MM-DD HH:mm"}]}
+- complete_countdown: {"action":"complete_countdown","updates":[{"countdownId":"ID"}]}
+- delete_countdown: {"action":"delete_countdown","updates":[{"countdownId":"ID"}]}
+- create_pomodoro_tag: {"action":"create_pomodoro_tag","tags":[{"name":"标签名","color":"#607D8B"}]}
+- update_pomodoro_tag: {"action":"update_pomodoro_tag","updates":[{"tagId":"ID","name":"新名称","color":"#3B82F6"}]}
+- delete_pomodoro_tag: {"action":"delete_pomodoro_tag","updates":[{"tagId":"ID"}]}
 
 可组合多种操作：[ACTION_START][{操作1},{操作2}][ACTION_END]
 
@@ -48,9 +69,9 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
 每次回复末尾附3-4个简短建议（≤15字），格式：[SUGGEST_START]["建议1","建议2","建议3"][SUGGEST_END]
 
 【核心规则】
-1. 意图判定：创建(提醒我/记一下)、规划(制定计划)、拆分(大任务拆小)、合并(多个合一)、修改(改标题/备注/时间)、完成(标记已做)、删除(移除)、改期(推迟/提前)、整理(分类/移动到文件夹)
+1. 意图判定：创建(提醒我/记一下)、规划(制定计划)、拆分(大任务拆小)、合并(多个合一)、修改(改标题/备注/时间)、完成(标记已做)、删除(移除)、改期(推迟/提前)、整理(分类/移动到文件夹)、记录专注、修改专注记录、删除专注记录、开始/停止番茄钟、管理倒计时、管理番茄标签
 2. 文件夹归类：只在语义明显关联时分配groupId，不确定时留空，严禁乱分类
-3. 危险操作(删除/完成/合并删源/拆分删源)只在用户明确要求时输出
+3. 危险操作(删除/完成/合并删源/拆分删源/停止番茄钟/删除专注记录/完成或删除倒计时/删除番茄标签)只在用户明确要求时输出
 4. 禁止对已有分类任务重复categorize_todo
 5. [ACTION_START]/[ACTION_END]标记和[SUGGEST_START]/[SUGGEST_END]标记必须完整''';
   }
@@ -179,6 +200,24 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     return todoGroups.map((g) => '- 名称: ${g.name} | ID: ${g.id}').join('\n');
   }
 
+  static String _formatCountdowns(List<CountdownItem> countdowns) {
+    final active = countdowns.where((c) => !c.isDeleted).take(40).toList();
+    if (active.isEmpty) return '暂无倒计时';
+    return active.map((c) {
+      final target = DateFormat('yyyy-MM-dd HH:mm').format(c.targetDate);
+      final status = c.isCompleted ? '已达成' : '进行中';
+      return '- [ID: ${c.id}] 标题: ${c.title} | 目标: $target | 状态: $status';
+    }).join('\n');
+  }
+
+  static String _formatPomodoroTags(List<PomodoroTag> tags) {
+    final active = tags.where((t) => !t.isDeleted).take(40).toList();
+    if (active.isEmpty) return '暂无番茄标签';
+    return active
+        .map((t) => '- [ID: ${t.uuid}] 名称: ${t.name} | 颜色: ${t.color}')
+        .join('\n');
+  }
+
   static String _formatCourses(List<CourseItem> courses) {
     if (courses.isEmpty) return '课程表: 暂无';
     final lines = courses
@@ -196,7 +235,7 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
       final start = DateFormat('MM-dd HH:mm')
           .format(DateTime.fromMillisecondsSinceEpoch(t.startTime));
       final minutes = ((t.endTime - t.startTime) / 60000).round();
-      return '- $start ${t.title} | $minutes分钟';
+      return '- [ID: ${t.id}] $start ${t.title} | $minutes分钟';
     }).join('\n');
     return '专注记录:\n$lines';
   }

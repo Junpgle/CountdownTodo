@@ -10,6 +10,8 @@ import '../services/ai_todo_context_builder.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/pomodoro_control_service.dart';
+import '../services/pomodoro_service.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 
@@ -21,6 +23,8 @@ class TodoChatScreen extends StatefulWidget {
   final List<TimeLogItem> timeLogs;
   final List<ConflictInfo> conflicts;
   final List<Team> teams;
+  final List<CountdownItem> countdowns;
+  final List<PomodoroTag> pomodoroTags;
   final Function(TodoItem)? onTodoInserted;
   final Function(List<TodoItem>)? onTodosBatchInserted;
   final Function(List<TodoItem>)? onTodosUpdated;
@@ -36,6 +40,8 @@ class TodoChatScreen extends StatefulWidget {
     this.timeLogs = const [],
     this.conflicts = const [],
     this.teams = const [],
+    this.countdowns = const [],
+    this.pomodoroTags = const [],
     this.onTodoInserted,
     this.onTodosBatchInserted,
     this.onTodosUpdated,
@@ -241,6 +247,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       promptEnabled: _promptEnabled,
       todos: widget.todos,
       todoGroups: widget.todoGroups,
+      countdowns: widget.countdowns,
+      pomodoroTags: widget.pomodoroTags,
     );
   }
 
@@ -278,8 +286,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
       final recentCount = _maxContextMessages - 2;
       final startIndex = _messages.length - recentCount;
-      final recentMessages =
-          _messages.sublist(startIndex > 0 ? startIndex : 0);
+      final recentMessages = _messages.sublist(startIndex > 0 ? startIndex : 0);
       for (final msg in recentMessages) {
         if (msg.content == firstUserMsg.content) continue;
         apiMessages.add({
@@ -719,7 +726,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
-  PreferredSizeWidget _buildResponsiveAppBar(bool isDark, ColorScheme colorScheme) {
+  PreferredSizeWidget _buildResponsiveAppBar(
+      bool isDark, ColorScheme colorScheme) {
     return AppBar(
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
@@ -866,9 +874,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _getDefaultSuggestions()
-                .map(_buildQuickQuestion)
-                .toList(),
+            children:
+                _getDefaultSuggestions().map(_buildQuickQuestion).toList(),
           ),
         ],
       ),
@@ -973,7 +980,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
-  Widget _buildHistorySidebarContent(BuildContext context, {required bool isWideMode}) {
+  Widget _buildHistorySidebarContent(BuildContext context,
+      {required bool isWideMode}) {
     return Column(
       children: [
         Padding(
@@ -1015,7 +1023,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     return ListTile(
                       dense: isWideMode,
                       leading: Icon(
-                        isActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                        isActive
+                            ? Icons.chat_bubble
+                            : Icons.chat_bubble_outline,
                         size: 20,
                         color: isActive
                             ? Theme.of(context).colorScheme.primary
@@ -1048,7 +1058,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                         tooltip: '删除对话',
                       ),
                       selected: isActive,
-                      selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                      selectedTileColor: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer
+                          .withValues(alpha: 0.3),
                       onTap: () {
                         if (!isWideMode) Navigator.pop(context);
                         _switchSession(session.id);
@@ -1442,6 +1455,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     if (allAdded) return const SizedBox.shrink();
     final hasExistingMutations =
         msg.todoActions?.any((t) => t.mutatesExistingTodo) == true;
+    final hasPomodoroActions =
+        msg.todoActions?.any((t) => t.isPomodoroAction) == true;
+    final hasTimeLogActions =
+        msg.todoActions?.any((t) => t.isTimeLogAction) == true;
+    final hasCountdownActions =
+        msg.todoActions?.any((t) => t.isCountdownAction) == true;
+    final hasTagActions =
+        msg.todoActions?.any((t) => t.isPomodoroTagAction) == true;
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -1472,7 +1493,17 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    hasExistingMutations ? '建议整理待办' : '建议添加待办',
+                    hasPomodoroActions
+                        ? '建议操作番茄钟'
+                        : hasTimeLogActions
+                            ? '建议整理专注记录'
+                            : hasCountdownActions
+                                ? '建议整理倒计时'
+                                : hasTagActions
+                                    ? '建议整理番茄标签'
+                                    : hasExistingMutations
+                                        ? '建议整理待办'
+                                        : '建议添加待办',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -1555,6 +1586,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                                 ),
                             ],
                           ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          tooltip: '编辑执行内容',
+                          onPressed: () => _editAction(todo),
+                          visualDensity: VisualDensity.compact,
                         ),
                       ],
                     ),
@@ -1657,68 +1694,70 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                           ],
                         ),
                       ),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 28, top: 6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.folder_outlined,
-                              size: 13,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String?>(
-                                  value: widget.todoGroups.any(
-                                    (g) => g.id == currentGroupId,
-                                  )
-                                      ? currentGroupId
-                                      : null,
-                                  isDense: true,
-                                  icon: const Icon(Icons.arrow_drop_down,
-                                      size: 16),
-                                  hint: const Text('选择分类',
-                                      style: TextStyle(fontSize: 11)),
-                                  items: [
-                                    const DropdownMenuItem<String?>(
-                                      value: null,
-                                      child: Text('默认分类',
-                                          style: TextStyle(fontSize: 11)),
-                                    ),
-                                    ...widget.todoGroups.map(
-                                      (g) => DropdownMenuItem<String?>(
-                                        value: g.id,
-                                        child: Text(
-                                          g.name,
-                                          style: const TextStyle(fontSize: 11),
+                    if (todo.isTodoAction)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 28, top: 6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.folder_outlined,
+                                size: 13,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String?>(
+                                    value: widget.todoGroups.any(
+                                      (g) => g.id == currentGroupId,
+                                    )
+                                        ? currentGroupId
+                                        : null,
+                                    isDense: true,
+                                    icon: const Icon(Icons.arrow_drop_down,
+                                        size: 16),
+                                    hint: const Text('选择分类',
+                                        style: TextStyle(fontSize: 11)),
+                                    items: [
+                                      const DropdownMenuItem<String?>(
+                                        value: null,
+                                        child: Text('默认分类',
+                                            style: TextStyle(fontSize: 11)),
+                                      ),
+                                      ...widget.todoGroups.map(
+                                        (g) => DropdownMenuItem<String?>(
+                                          value: g.id,
+                                          child: Text(
+                                            g.name,
+                                            style:
+                                                const TextStyle(fontSize: 11),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                  onChanged: (val) {
-                                    setState(() {
-                                      todo.groupId = val;
-                                    });
-                                    _saveHistorySilently();
-                                  },
+                                    ],
+                                    onChanged: (val) {
+                                      setState(() {
+                                        todo.groupId = val;
+                                      });
+                                      _saveHistorySilently();
+                                    },
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               );
@@ -1804,6 +1843,54 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         color = Colors.indigo;
         label = '合并';
         break;
+      case AiTodoActionType.createTimeLog:
+        color = Colors.cyan;
+        label = '记录';
+        break;
+      case AiTodoActionType.updateTimeLog:
+        color = Colors.orange;
+        label = '改记录';
+        break;
+      case AiTodoActionType.deleteTimeLog:
+        color = Colors.red;
+        label = '删记录';
+        break;
+      case AiTodoActionType.startPomodoro:
+        color = Colors.redAccent;
+        label = '开始';
+        break;
+      case AiTodoActionType.stopPomodoro:
+        color = Colors.grey;
+        label = '停止';
+        break;
+      case AiTodoActionType.createCountdown:
+        color = Colors.deepOrange;
+        label = '倒计时';
+        break;
+      case AiTodoActionType.updateCountdown:
+        color = Colors.orange;
+        label = '改倒计时';
+        break;
+      case AiTodoActionType.completeCountdown:
+        color = Colors.green;
+        label = '达成';
+        break;
+      case AiTodoActionType.deleteCountdown:
+        color = Colors.red;
+        label = '删倒计时';
+        break;
+      case AiTodoActionType.createPomodoroTag:
+        color = Colors.cyan;
+        label = '标签';
+        break;
+      case AiTodoActionType.updatePomodoroTag:
+        color = Colors.orange;
+        label = '改标签';
+        break;
+      case AiTodoActionType.deletePomodoroTag:
+        color = Colors.red;
+        label = '删标签';
+        break;
       case AiTodoActionType.unknown:
         color = Colors.grey;
         label = '操作';
@@ -1827,6 +1914,211 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _editAction(AiTodoAction action) async {
+    final titleCtrl = TextEditingController(text: action.title ?? '');
+    final remarkCtrl = TextEditingController(text: action.remark ?? '');
+    final startCtrl = TextEditingController(text: action.startTime ?? '');
+    final dueCtrl = TextEditingController(text: action.dueDate ?? '');
+    final idCtrl = TextEditingController(text: action.todoId ?? '');
+    final durationCtrl =
+        TextEditingController(text: action.durationMinutes?.toString() ?? '');
+    final reminderCtrl =
+        TextEditingController(text: action.reminderMinutes?.toString() ?? '');
+    final colorCtrl = TextEditingController(text: action.color ?? '');
+    final statusCtrl = TextEditingController(text: action.status ?? '');
+    final tagCtrl = TextEditingController(text: action.tagUuids.join(','));
+    var recurrence = action.recurrence;
+    var isAllDay = action.isAllDay;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              _buildActionBadge(action),
+              const SizedBox(width: 8),
+              const Text('编辑执行内容'),
+            ],
+          ),
+          content: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.86,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (action.mutatesExistingTodo ||
+                      action.isTimeLogAction ||
+                      action.isCountdownAction ||
+                      action.isPomodoroTagAction)
+                    _editField(idCtrl, _idFieldLabel(action)),
+                  if (_usesTitle(action))
+                    _editField(titleCtrl, _titleLabel(action)),
+                  if (_usesRemark(action)) _editField(remarkCtrl, '备注'),
+                  if (_usesStartTime(action))
+                    _editField(startCtrl, _startTimeLabel(action),
+                        hint: 'YYYY-MM-DD HH:mm'),
+                  if (_usesDueTime(action))
+                    _editField(dueCtrl, _dueTimeLabel(action),
+                        hint: 'YYYY-MM-DD HH:mm'),
+                  if (_usesDuration(action))
+                    _editField(durationCtrl, '时长（分钟）',
+                        keyboardType: TextInputType.number),
+                  if (_usesReminder(action))
+                    _editField(reminderCtrl, '提前提醒（分钟）',
+                        keyboardType: TextInputType.number),
+                  if (_usesColor(action))
+                    _editField(colorCtrl, '颜色', hint: '#3B82F6'),
+                  if (_usesStatus(action))
+                    _editField(statusCtrl, '状态',
+                        hint: 'completed 或 interrupted'),
+                  if (_usesTags(action)) _editField(tagCtrl, '番茄标签ID（逗号分隔）'),
+                  if (action.isTodoAction) ...[
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('全天'),
+                      value: isAllDay,
+                      onChanged: (value) =>
+                          setDialogState(() => isAllDay = value),
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue: recurrence,
+                      decoration: const InputDecoration(labelText: '循环'),
+                      items: const [
+                        DropdownMenuItem(value: 'none', child: Text('不循环')),
+                        DropdownMenuItem(value: 'daily', child: Text('每天')),
+                        DropdownMenuItem(value: 'weekly', child: Text('每周')),
+                        DropdownMenuItem(value: 'monthly', child: Text('每月')),
+                        DropdownMenuItem(value: 'yearly', child: Text('每年')),
+                        DropdownMenuItem(value: 'weekdays', child: Text('工作日')),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => recurrence = value ?? 'none'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                setState(() {
+                  action.todoId = _nullIfBlank(idCtrl.text);
+                  action.title = _nullIfBlank(titleCtrl.text);
+                  action.remark = _nullIfBlank(remarkCtrl.text);
+                  action.startTime = _nullIfBlank(startCtrl.text);
+                  action.dueDate = _nullIfBlank(dueCtrl.text);
+                  action.durationMinutes = int.tryParse(durationCtrl.text);
+                  action.reminderMinutes = int.tryParse(reminderCtrl.text);
+                  action.color = _nullIfBlank(colorCtrl.text);
+                  action.status = _nullIfBlank(statusCtrl.text);
+                  action.tagUuids = tagCtrl.text
+                      .split(',')
+                      .map((e) => e.trim())
+                      .where((e) => e.isNotEmpty)
+                      .toList();
+                  action.recurrence = recurrence;
+                  action.isAllDay = isAllDay;
+                });
+                _saveHistorySilently();
+                Navigator.pop(ctx);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _editField(
+    TextEditingController controller,
+    String label, {
+    String? hint,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+      ),
+    );
+  }
+
+  String? _nullIfBlank(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  bool _usesTitle(AiTodoAction action) =>
+      action.type != AiTodoActionType.completeTodo &&
+      action.type != AiTodoActionType.deleteTodo &&
+      action.type != AiTodoActionType.deleteTimeLog &&
+      action.type != AiTodoActionType.stopPomodoro &&
+      action.type != AiTodoActionType.completeCountdown &&
+      action.type != AiTodoActionType.deleteCountdown &&
+      action.type != AiTodoActionType.deletePomodoroTag;
+
+  bool _usesRemark(AiTodoAction action) =>
+      action.isTodoAction || action.isTimeLogAction;
+
+  bool _usesStartTime(AiTodoAction action) =>
+      action.isTodoAction || action.isTimeLogAction;
+
+  bool _usesDueTime(AiTodoAction action) =>
+      action.isTodoAction || action.isTimeLogAction || action.isCountdownAction;
+
+  bool _usesDuration(AiTodoAction action) =>
+      action.isTimeLogAction || action.type == AiTodoActionType.startPomodoro;
+
+  bool _usesReminder(AiTodoAction action) => action.isTodoAction;
+
+  bool _usesColor(AiTodoAction action) => action.isPomodoroTagAction;
+
+  bool _usesStatus(AiTodoAction action) =>
+      action.type == AiTodoActionType.stopPomodoro;
+
+  bool _usesTags(AiTodoAction action) =>
+      action.isTimeLogAction || action.isPomodoroAction;
+
+  String _idFieldLabel(AiTodoAction action) {
+    if (action.isTimeLogAction) return '专注记录ID';
+    if (action.isCountdownAction) return '倒计时ID';
+    if (action.isPomodoroTagAction) return '标签ID';
+    return '待办ID';
+  }
+
+  String _titleLabel(AiTodoAction action) {
+    if (action.isPomodoroTagAction) return '标签名称';
+    if (action.isCountdownAction) return '倒计时标题';
+    if (action.isTimeLogAction) return '专注记录标题';
+    return '标题';
+  }
+
+  String _startTimeLabel(AiTodoAction action) {
+    if (action.isTimeLogAction) return '开始时间';
+    return '开始时间';
+  }
+
+  String _dueTimeLabel(AiTodoAction action) {
+    if (action.isCountdownAction) return '目标时间';
+    if (action.isTimeLogAction) return '结束时间';
+    return '截止时间';
   }
 
   String _getMutationHint(AiTodoAction action) {
@@ -1853,6 +2145,30 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         return action.sourceTodoIds.isEmpty
             ? '合并为新待办'
             : '合并 [${action.sourceTodoIds.join(', ')}]';
+      case AiTodoActionType.createTimeLog:
+        return '新增专注记录';
+      case AiTodoActionType.updateTimeLog:
+        return '修改专注记录';
+      case AiTodoActionType.deleteTimeLog:
+        return '删除专注记录';
+      case AiTodoActionType.startPomodoro:
+        return '开始番茄钟';
+      case AiTodoActionType.stopPomodoro:
+        return '停止当前番茄钟';
+      case AiTodoActionType.createCountdown:
+        return '新增倒计时';
+      case AiTodoActionType.updateCountdown:
+        return '修改倒计时';
+      case AiTodoActionType.completeCountdown:
+        return '标记倒计时达成';
+      case AiTodoActionType.deleteCountdown:
+        return '删除倒计时';
+      case AiTodoActionType.createPomodoroTag:
+        return '新增番茄标签';
+      case AiTodoActionType.updatePomodoroTag:
+        return '修改番茄标签';
+      case AiTodoActionType.deletePomodoroTag:
+        return '删除番茄标签';
       case AiTodoActionType.createTodo:
       case AiTodoActionType.unknown:
         return '';
@@ -1860,7 +2176,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   Widget _buildChangeSummary(AiTodoAction action) {
-    if (!action.mutatesExistingTodo) return const SizedBox.shrink();
+    if (!action.mutatesExistingTodo || !action.isTodoAction) {
+      return const SizedBox.shrink();
+    }
     final existing = _findExistingTodo(action.todoId);
     if (existing == null) return const SizedBox.shrink();
 
@@ -1958,6 +2276,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   bool _isDangerousAction(AiTodoAction action) {
     return action.type == AiTodoActionType.deleteTodo ||
+        action.type == AiTodoActionType.deleteTimeLog ||
+        action.type == AiTodoActionType.stopPomodoro ||
+        action.type == AiTodoActionType.deleteCountdown ||
+        action.type == AiTodoActionType.completeCountdown ||
+        action.type == AiTodoActionType.deletePomodoroTag ||
         (action.type == AiTodoActionType.splitTodo &&
             action.deleteSourceTodos) ||
         (action.type == AiTodoActionType.mergeTodos &&
@@ -1972,6 +2295,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         return '拆分后会删除原待办，执行前请确认';
       case AiTodoActionType.mergeTodos:
         return '合并后会删除源待办，执行前请确认';
+      case AiTodoActionType.deleteTimeLog:
+        return '将删除已有专注记录，执行前请确认';
+      case AiTodoActionType.stopPomodoro:
+        return '将停止当前番茄钟，执行前请确认';
+      case AiTodoActionType.deleteCountdown:
+        return '将删除已有倒计时，执行前请确认';
+      case AiTodoActionType.completeCountdown:
+        return '将标记倒计时达成，执行前请确认';
+      case AiTodoActionType.deletePomodoroTag:
+        return '将删除番茄标签，执行前请确认';
       case AiTodoActionType.createTodo:
       case AiTodoActionType.updateTodo:
       case AiTodoActionType.completeTodo:
@@ -1980,6 +2313,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.categorizeTodo:
       case AiTodoActionType.planTodos:
       case AiTodoActionType.unknown:
+      case AiTodoActionType.createTimeLog:
+      case AiTodoActionType.updateTimeLog:
+      case AiTodoActionType.startPomodoro:
+      case AiTodoActionType.createCountdown:
+      case AiTodoActionType.updateCountdown:
+      case AiTodoActionType.createPomodoroTag:
+      case AiTodoActionType.updatePomodoroTag:
         return '';
     }
   }
@@ -1988,12 +2328,22 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     await ChatStorageService.saveHistory(_messages, _activeSessionId);
   }
 
-  void _addTodosForMessage(ChatMessage msg) {
+  Future<void> _addTodosForMessage(ChatMessage msg) async {
     if (msg.todoActions == null) return;
+
+    final existingCountdowns = widget.countdowns.isNotEmpty
+        ? widget.countdowns
+        : await StorageService.getCountdowns(widget.username);
+    final existingTags = widget.pomodoroTags.isNotEmpty
+        ? widget.pomodoroTags
+        : await PomodoroService.getTags();
 
     final result = AiTodoActionExecutor.execute(
       actions: msg.todoActions!,
       existingTodos: widget.todos,
+      existingTimeLogs: widget.timeLogs,
+      existingCountdowns: existingCountdowns,
+      existingPomodoroTags: existingTags,
       categoryReminderDefaults: _categoryReminderDefaults,
     );
 
@@ -2016,14 +2366,121 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         }
       }
 
+      if (result.newTimeLogs.isNotEmpty || result.updatedTimeLogs.isNotEmpty) {
+        final allLogs = await StorageService.getTimeLogs(widget.username);
+        final merged = AiTodoActionExecutor.mergeTimeLogUpdates(
+          allLogs,
+          result.newTimeLogs,
+          result.updatedTimeLogs,
+        );
+        await StorageService.saveTimeLogs(widget.username, merged, sync: true);
+      }
+
+      if (result.newCountdowns.isNotEmpty ||
+          result.updatedCountdowns.isNotEmpty) {
+        final allCountdowns =
+            await StorageService.getCountdowns(widget.username);
+        final merged = AiTodoActionExecutor.mergeCountdownUpdates(
+          allCountdowns,
+          result.newCountdowns,
+          result.updatedCountdowns,
+        );
+        await StorageService.saveCountdowns(widget.username, merged,
+            sync: true);
+      }
+
+      if (result.newPomodoroTags.isNotEmpty ||
+          result.updatedPomodoroTags.isNotEmpty) {
+        final allTags = await PomodoroService.getTags();
+        final merged = AiTodoActionExecutor.mergePomodoroTagUpdates(
+          allTags,
+          result.newPomodoroTags,
+          result.updatedPomodoroTags,
+        );
+        await PomodoroService.saveTags(merged);
+      }
+
+      for (final action in result.pomodoroActions) {
+        await _executePomodoroAction(action);
+      }
+
+      if (!mounted) return;
       setState(() {});
       _saveHistorySilently();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理: ${result.updatedTodos.length})')),
+                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
       );
+    }
+  }
+
+  Future<void> _executePomodoroAction(AiTodoAction action) async {
+    switch (action.type) {
+      case AiTodoActionType.startPomodoro:
+        final existing = await PomodoroService.loadRunState();
+        if (existing != null &&
+            existing.phase != PomodoroPhase.idle &&
+            existing.phase != PomodoroPhase.finished) {
+          return;
+        }
+        final settings = await PomodoroService.getSettings();
+        TodoItem? boundTodo;
+        if (action.todoId != null) {
+          final match = widget.todos.where((t) => t['id'] == action.todoId);
+          if (match.isNotEmpty) {
+            boundTodo = TodoItem(
+              id: action.todoId,
+              title: match.first['title']?.toString() ?? action.title ?? '专注',
+              isDone: match.first['isDone'] == true,
+              isDeleted: match.first['isDeleted'] == true,
+            );
+          }
+        }
+        boundTodo ??= action.title?.isNotEmpty == true
+            ? TodoItem(id: '', title: action.title!)
+            : null;
+        await PomodoroControlService.startFocus(
+          settings: settings,
+          boundTodo: boundTodo,
+          tagUuids: action.tagUuids,
+          durationMinutes: action.durationMinutes,
+          ensureSyncConnection: true,
+        );
+        break;
+      case AiTodoActionType.stopPomodoro:
+        await PomodoroControlService.stopCurrentFocus(
+          username: widget.username,
+          status: action.status == 'completed'
+              ? PomodoroRecordStatus.completed
+              : PomodoroRecordStatus.interrupted,
+          markTodoComplete: action.status == 'completed',
+          ensureSyncConnection: true,
+        );
+        break;
+      case AiTodoActionType.createTodo:
+      case AiTodoActionType.updateTodo:
+      case AiTodoActionType.completeTodo:
+      case AiTodoActionType.deleteTodo:
+      case AiTodoActionType.rescheduleTodo:
+      case AiTodoActionType.bulkRescheduleTodo:
+      case AiTodoActionType.categorizeTodo:
+      case AiTodoActionType.planTodos:
+      case AiTodoActionType.splitTodo:
+      case AiTodoActionType.mergeTodos:
+      case AiTodoActionType.createTimeLog:
+      case AiTodoActionType.updateTimeLog:
+      case AiTodoActionType.deleteTimeLog:
+      case AiTodoActionType.createCountdown:
+      case AiTodoActionType.updateCountdown:
+      case AiTodoActionType.completeCountdown:
+      case AiTodoActionType.deleteCountdown:
+      case AiTodoActionType.createPomodoroTag:
+      case AiTodoActionType.updatePomodoroTag:
+      case AiTodoActionType.deletePomodoroTag:
+      case AiTodoActionType.unknown:
+        break;
     }
   }
 
