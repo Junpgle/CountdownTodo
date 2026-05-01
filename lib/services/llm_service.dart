@@ -236,6 +236,7 @@ class CustomVisionModel {
 class LLMService {
   static const String _configKey = 'llm_config';
   static const String _zhipuApiKeyKey = 'zhipu_api_key';
+  static const String _providerApiKeyPrefix = 'provider_api_key_';
   static const String _customTextModelsKey = 'custom_text_models';
   static const String _customVisionModelsKey = 'custom_vision_models';
 
@@ -262,13 +263,37 @@ class LLMService {
   }
 
   static Future<String> getZhipuApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_zhipuApiKeyKey) ?? '';
+    return getProviderApiKey('zhipu');
   }
 
   static Future<void> saveZhipuApiKey(String apiKey) async {
+    await saveProviderApiKey('zhipu', apiKey);
+  }
+
+  static Future<String> getProviderApiKey(String provider) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_zhipuApiKeyKey, apiKey);
+    // 优先读取新的 provider key
+    final providerKey = prefs.getString('$_providerApiKeyPrefix$provider');
+    if (providerKey != null && providerKey.isNotEmpty) return providerKey;
+    // 向后兼容：zhipu 从旧 key 迁移
+    if (provider == 'zhipu') {
+      final legacy = prefs.getString(_zhipuApiKeyKey);
+      if (legacy != null && legacy.isNotEmpty) {
+        // 自动迁移到新 key
+        await prefs.setString('$_providerApiKeyPrefix$provider', legacy);
+        return legacy;
+      }
+    }
+    return '';
+  }
+
+  static Future<void> saveProviderApiKey(String provider, String apiKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_providerApiKeyPrefix$provider', apiKey);
+    // 保持 zhipu 旧 key 同步（向后兼容）
+    if (provider == 'zhipu') {
+      await prefs.setString(_zhipuApiKeyKey, apiKey);
+    }
   }
 
   static Future<List<CustomTextModel>> getCustomTextModels() async {
