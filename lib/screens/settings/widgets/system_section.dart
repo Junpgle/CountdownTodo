@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 class SystemSection extends StatelessWidget {
   final String? highlightTarget;
   final Map<String, GlobalKey>? itemKeys; // 🚀 新增
+  final VoidCallback? onOpenCalendarSync;
   final VoidCallback onOpenFeatureGuide;
   final String cacheSizeStr;
   final VoidCallback onClearCache;
@@ -15,6 +16,7 @@ class SystemSection extends StatelessWidget {
     super.key,
     this.highlightTarget,
     this.itemKeys,
+    this.onOpenCalendarSync,
     required this.onOpenFeatureGuide,
     required this.cacheSizeStr,
     required this.onClearCache,
@@ -76,6 +78,21 @@ class SystemSection extends StatelessWidget {
                   onTap: onOpenFeatureGuide,
                 ),
               ),
+              if (onOpenCalendarSync != null) ...[
+                const Divider(height: 1, indent: 56),
+                _buildTile(
+                  context: context,
+                  targetId: 'calendar_sync',
+                  child: ListTile(
+                    leading: const Icon(Icons.event_available_outlined,
+                        color: Colors.deepPurple),
+                    title: const Text('写入手机系统日历'),
+                    subtitle: const Text('选择待办、课程、倒数日写入或清除'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: onOpenCalendarSync,
+                  ),
+                ),
+              ],
               if (!Platform.isWindows) ...[
                 const Divider(height: 1, indent: 56),
                 _buildTile(

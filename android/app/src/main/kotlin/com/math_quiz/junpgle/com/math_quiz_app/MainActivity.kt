@@ -1,24 +1,30 @@
 package com.math_quiz.junpgle.com.math_quiz_app
 
+import android.Manifest
 import android.app.*
 import android.app.usage.UsageStatsManager
 import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.drawable.Icon
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
+import android.provider.CalendarContract
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import es.antonborri.home_widget.HomeWidgetPlugin
 import io.flutter.embedding.android.FlutterActivity
@@ -43,6 +49,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
+    private val CALENDAR_PERMISSION_REQUEST = 2407
+    private val CALENDAR_APP_MARKER = "CountDownTodo"
+    private val CALENDAR_EXT_NAME = "countdowntodo_source"
+    private val CALENDAR_EXT_VALUE = "CountDownTodo"
     private val NOTIFICATION_CHANNEL_ID = "live_updates_official_v2"
     // 🍅 番茄钟专属低功耗频道：IMPORTANCE_LOW 不唤醒屏幕、不振动
     private val POMODORO_CHANNEL_ID = "pomodoro_timer_low"
@@ -102,6 +112,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingTodoConfirm = false
     // 保存待处理的图片查看路径（在methodChannel初始化前）
     private var pendingAnalysisImagePath: String? = null
+    private val pendingCalendarPermissionResults = mutableListOf<MethodChannel.Result>()
     // 手环通信插件，全局可访问
     private var bandPlugin: BandCommunicationPlugin? = null
 
@@ -330,6 +341,233 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 Log.w(TAG, "Shizuku permission denied by user!")
             }
         }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CALENDAR_PERMISSION_REQUEST) {
+            val granted = grantResults.isNotEmpty() &&
+                grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            val pendingResults = pendingCalendarPermissionResults.toList()
+            pendingCalendarPermissionResults.clear()
+            pendingResults.forEach { it.success(granted) }
+        }
+    }
+
+    private fun requestCalendarPermission(result: MethodChannel.Result) {
+        if (hasCalendarPermission()) {
+            result.success(true)
+            return
+        }
+
+        val shouldStartRequest = pendingCalendarPermissionResults.isEmpty()
+        pendingCalendarPermissionResults.add(result)
+        if (!shouldStartRequest) return
+
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(
+                Manifest.permission.READ_CALENDAR,
+                Manifest.permission.WRITE_CALENDAR
+            ),
+            CALENDAR_PERMISSION_REQUEST
+        )
+    }
+
+    private fun hasCalendarPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_CALENDAR
+        ) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.WRITE_CALENDAR
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun getWritableCalendars(): List<Map<String, Any?>> {
+        val calendars = mutableListOf<Map<String, Any?>>()
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.ACCOUNT_NAME,
+            CalendarContract.Calendars.IS_PRIMARY,
+            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
+            CalendarContract.Calendars.VISIBLE,
+            CalendarContract.Calendars.SYNC_EVENTS
+        )
+
+        contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            projection,
+            null,
+            null,
+            "${CalendarContract.Calendars.IS_PRIMARY} DESC, ${CalendarContract.Calendars._ID} ASC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val accessLevel = cursor.getInt(4)
+                calendars.add(
+                    mapOf(
+                        "id" to cursor.getLong(0),
+                        "name" to (cursor.getString(1) ?: "日历"),
+                        "account" to (cursor.getString(2) ?: ""),
+                        "primary" to (cursor.getInt(3) == 1),
+                        "accessLevel" to accessLevel,
+                        "visible" to (cursor.getInt(5) == 1),
+                        "syncEvents" to (cursor.getInt(6) == 1),
+                        "writable" to (accessLevel >= 500)
+                    )
+                )
+            }
+        }
+
+        calendars.sortWith(
+            compareByDescending<Map<String, Any?>> { (it["writable"] as? Boolean) == true }
+                .thenByDescending { (it["primary"] as? Boolean) == true }
+                .thenByDescending { (it["visible"] as? Boolean) == true }
+                .thenBy { (it["id"] as? Number)?.toLong() ?: Long.MAX_VALUE }
+        )
+        return calendars
+    }
+
+    private fun findDefaultWritableCalendarId(): Long? {
+        return (getWritableCalendars().firstOrNull()?.get("id") as? Number)?.toLong()
+    }
+
+    private fun clearCalendarEvents(calendarId: Long?): Int {
+        var cleared = 0
+        val eventIds = linkedSetOf<Long>()
+        val extSelection =
+            "${CalendarContract.ExtendedProperties.NAME} = ? AND ${CalendarContract.ExtendedProperties.VALUE} = ?"
+        val extArgs = arrayOf(CALENDAR_EXT_NAME, CALENDAR_EXT_VALUE)
+
+        contentResolver.query(
+            CalendarContract.ExtendedProperties.CONTENT_URI,
+            arrayOf(CalendarContract.ExtendedProperties.EVENT_ID),
+            extSelection,
+            extArgs,
+            null
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                eventIds.add(cursor.getLong(0))
+            }
+        }
+
+        for (eventId in eventIds) {
+            val selection: String
+            val args: Array<String>
+            if (calendarId != null) {
+                selection =
+                    "${CalendarContract.Events._ID} = ? AND ${CalendarContract.Events.CALENDAR_ID} = ?"
+                args = arrayOf(eventId.toString(), calendarId.toString())
+            } else {
+                selection = "${CalendarContract.Events._ID} = ?"
+                args = arrayOf(eventId.toString())
+            }
+            cleared += contentResolver.delete(
+                CalendarContract.Events.CONTENT_URI,
+                selection,
+                args
+            )
+        }
+
+        val fallbackSelection: String
+        val fallbackArgs: Array<String>
+        if (calendarId != null) {
+            fallbackSelection =
+                "${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events.DESCRIPTION} LIKE ?"
+            fallbackArgs = arrayOf(calendarId.toString(), "%[$CALENDAR_APP_MARKER:%")
+        } else {
+            fallbackSelection = "${CalendarContract.Events.DESCRIPTION} LIKE ?"
+            fallbackArgs = arrayOf("%[$CALENDAR_APP_MARKER:%")
+        }
+        cleared += contentResolver.delete(
+            CalendarContract.Events.CONTENT_URI,
+            fallbackSelection,
+            fallbackArgs
+        )
+
+        return cleared
+    }
+
+    private fun syncCalendarEvents(
+        calendarId: Long,
+        events: List<*>?,
+        clearFirst: Boolean
+    ): Map<String, Int> {
+        var cleared = 0
+        var inserted = 0
+        var failed = 0
+
+        if (clearFirst) {
+            cleared = clearCalendarEvents(calendarId)
+        }
+
+        val timezone = TimeZone.getDefault().id
+        for (raw in events.orEmpty()) {
+            val event = raw as? Map<*, *>
+            if (event == null) {
+                failed++
+                continue
+            }
+
+            try {
+                val title = event["title"]?.toString()?.takeIf { it.isNotBlank() } ?: "未命名"
+                val sourceType = event["sourceType"]?.toString() ?: "unknown"
+                val sourceId = event["sourceId"]?.toString() ?: UUID.randomUUID().toString()
+                val startMs = (event["startMs"] as? Number)?.toLong()
+                    ?: throw IllegalArgumentException("startMs is required")
+                val endMs = ((event["endMs"] as? Number)?.toLong() ?: (startMs + 30 * 60 * 1000))
+                    .coerceAtLeast(startMs + 60 * 1000)
+                val allDay = event["allDay"] as? Boolean ?: false
+                val location = event["location"]?.toString()?.takeIf { it.isNotBlank() }
+                val userDescription =
+                    event["description"]?.toString()?.takeIf { it.isNotBlank() }
+                val marker = "[$CALENDAR_APP_MARKER:$sourceType:$sourceId]"
+                val description =
+                    if (userDescription == null) marker else "$userDescription\n\n$marker"
+
+                val values = ContentValues().apply {
+                    put(CalendarContract.Events.CALENDAR_ID, calendarId)
+                    put(CalendarContract.Events.TITLE, title)
+                    put(CalendarContract.Events.DTSTART, startMs)
+                    put(CalendarContract.Events.DTEND, endMs)
+                    put(CalendarContract.Events.EVENT_TIMEZONE, if (allDay) "UTC" else timezone)
+                    put(CalendarContract.Events.ALL_DAY, if (allDay) 1 else 0)
+                    put(CalendarContract.Events.DESCRIPTION, description)
+                    location?.let { put(CalendarContract.Events.EVENT_LOCATION, it) }
+                }
+
+                val uri: Uri? = contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
+                val eventId = uri?.lastPathSegment?.toLongOrNull()
+                if (eventId == null) {
+                    failed++
+                    continue
+                }
+
+                val extValues = ContentValues().apply {
+                    put(CalendarContract.ExtendedProperties.EVENT_ID, eventId)
+                    put(CalendarContract.ExtendedProperties.NAME, CALENDAR_EXT_NAME)
+                    put(CalendarContract.ExtendedProperties.VALUE, CALENDAR_EXT_VALUE)
+                }
+                runCatching {
+                    contentResolver.insert(
+                        CalendarContract.ExtendedProperties.CONTENT_URI,
+                        extValues
+                    )
+                }
+                inserted++
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to insert calendar event", e)
+                failed++
+            }
+        }
+
+        return mapOf("inserted" to inserted, "cleared" to cleared, "failed" to failed)
     }
 
     // 🚀 新增：一键将小部件固定到桌面的方法 (Android 8.0+)
@@ -643,6 +881,50 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         }
                     } else {
                         result.success(true)
+                    }
+                }
+
+                "checkCalendarPermission" -> {
+                    result.success(hasCalendarPermission())
+                }
+
+                "requestCalendarPermission" -> {
+                    requestCalendarPermission(result)
+                }
+
+                "getWritableCalendars" -> {
+                    if (!hasCalendarPermission()) {
+                        result.error("NO_PERMISSION", "Calendar permission is not granted", null)
+                    } else {
+                        result.success(getWritableCalendars())
+                    }
+                }
+
+                "clearCalendarEvents" -> {
+                    if (!hasCalendarPermission()) {
+                        result.error("NO_PERMISSION", "Calendar permission is not granted", null)
+                    } else {
+                        val args = call.arguments as? Map<String, Any>
+                        val calendarId = (args?.get("calendarId") as? Number)?.toLong()
+                        result.success(clearCalendarEvents(calendarId))
+                    }
+                }
+
+                "syncCalendarEvents" -> {
+                    if (!hasCalendarPermission()) {
+                        result.error("NO_PERMISSION", "Calendar permission is not granted", null)
+                    } else {
+                        val args = call.arguments as? Map<String, Any>
+                        val events = args?.get("events") as? List<*>
+                        val clearFirst = args?.get("clearFirst") as? Boolean ?: true
+                        val requestedCalendarId = (args?.get("calendarId") as? Number)?.toLong()
+                        val calendarId = requestedCalendarId ?: findDefaultWritableCalendarId()
+
+                        if (calendarId == null) {
+                            result.error("NO_CALENDAR", "No writable calendar found", null)
+                        } else {
+                            result.success(syncCalendarEvents(calendarId, events, clearFirst))
+                        }
                     }
                 }
 

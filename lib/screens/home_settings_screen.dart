@@ -36,6 +36,7 @@ import 'settings/widgets/permission_section.dart';
 import 'settings/widgets/advanced_section.dart';
 import 'settings/widgets/system_section.dart';
 import 'settings/notification_settings_page.dart';
+import 'settings/calendar_sync_page.dart';
 import 'about_screen.dart';
 import 'animation_settings_page.dart';
 import 'band_sync_screen.dart';
@@ -92,6 +93,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'cache': GlobalKey(),
     'migration': GlobalKey(),
     'storage': GlobalKey(),
+    'calendar_sync': GlobalKey(),
     'update': GlobalKey(),
     'about': GlobalKey(),
     // 🚀 新增：课表与学期
@@ -249,7 +251,9 @@ class _SettingsPageState extends State<SettingsPage> {
       ].contains(target)) {
         _advancedExpanded = true;
         sectionKey = _advancedSectionKey;
-      } else if (target == 'storage' || target == 'update') {
+      } else if (target == 'storage' ||
+          target == 'calendar_sync' ||
+          target == 'update') {
         _systemExpanded = true;
         sectionKey = _systemSectionKey;
       } else if (target == 'about') {
@@ -1598,6 +1602,16 @@ class _SettingsPageState extends State<SettingsPage> {
               child: SystemSection(
                 highlightTarget: _highlightTarget,
                 itemKeys: _itemKeys, // 🚀 传递子项 Key
+                onOpenCalendarSync: Platform.isAndroid
+                    ? () {
+                        Navigator.push(
+                          context,
+                          PageTransitions.slideHorizontal(
+                            const CalendarSyncPage(),
+                          ),
+                        );
+                      }
+                    : null,
                 onOpenFeatureGuide: () {
                   Navigator.push(
                     context,
@@ -1979,6 +1993,16 @@ class _SettingsPageState extends State<SettingsPage> {
                       child: SystemSection(
                         highlightTarget: _highlightTarget,
                         itemKeys: _itemKeys, // 🚀 传递子项 Key
+                        onOpenCalendarSync: Platform.isAndroid
+                            ? () {
+                                Navigator.push(
+                                  context,
+                                  PageTransitions.slideHorizontal(
+                                    const CalendarSyncPage(),
+                                  ),
+                                );
+                              }
+                            : null,
                         onOpenFeatureGuide: () {
                           Navigator.push(
                             context,
