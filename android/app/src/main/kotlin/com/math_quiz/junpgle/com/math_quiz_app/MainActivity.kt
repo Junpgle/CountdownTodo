@@ -480,10 +480,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (calendarId != null) {
             fallbackSelection =
                 "${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events.DESCRIPTION} LIKE ?"
-            fallbackArgs = arrayOf(calendarId.toString(), "%[$CALENDAR_APP_MARKER:%")
+            fallbackArgs = arrayOf(calendarId.toString(), "%$CALENDAR_APP_MARKER%")
         } else {
             fallbackSelection = "${CalendarContract.Events.DESCRIPTION} LIKE ?"
-            fallbackArgs = arrayOf("%[$CALENDAR_APP_MARKER:%")
+            fallbackArgs = arrayOf("%$CALENDAR_APP_MARKER%")
         }
         cleared += contentResolver.delete(
             CalendarContract.Events.CONTENT_URI,
@@ -518,7 +518,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             try {
                 val title = event["title"]?.toString()?.takeIf { it.isNotBlank() } ?: "未命名"
                 val sourceType = event["sourceType"]?.toString() ?: "unknown"
-                val sourceId = event["sourceId"]?.toString() ?: UUID.randomUUID().toString()
+                val typeLabel = when (sourceType) {
+                    "todo" -> "待办"
+                    "course" -> "课程"
+                    "countdown" -> "倒数日"
+                    else -> "事项"
+                }
                 val startMs = (event["startMs"] as? Number)?.toLong()
                     ?: throw IllegalArgumentException("startMs is required")
                 val endMs = ((event["endMs"] as? Number)?.toLong() ?: (startMs + 30 * 60 * 1000))
@@ -527,9 +532,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 val location = event["location"]?.toString()?.takeIf { it.isNotBlank() }
                 val userDescription =
                     event["description"]?.toString()?.takeIf { it.isNotBlank() }
-                val marker = "[$CALENDAR_APP_MARKER:$sourceType:$sourceId]"
-                val description =
-                    if (userDescription == null) marker else "$userDescription\n\n$marker"
+                val marker = "来源：$CALENDAR_APP_MARKER · $typeLabel"
+                val description = when {
+                    userDescription.isNullOrBlank() -> marker
+                    else -> "$userDescription\n\n$marker"
+                }
 
                 val values = ContentValues().apply {
                     put(CalendarContract.Events.CALENDAR_ID, calendarId)
