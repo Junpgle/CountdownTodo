@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
+import '../services/pomodoro_service.dart';
 import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
 
@@ -618,6 +619,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         StorageService.getTodoGroups(widget.username),
         CourseService.getAllCourses(widget.username),
         StorageService.getTimeLogs(widget.username),
+        PomodoroService.getRecords(),
       ]);
       if (!mounted) return;
       await AiTodoChatLauncher.open(
@@ -632,6 +634,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             .toList(),
         timeLogs: (results[3] as List<TimeLogItem>)
             .where((l) => !l.isDeleted)
+            .toList(),
+        pomodoroRecords: (results[4] as List<PomodoroRecord>)
+            .where((r) => !r.isDeleted)
             .toList(),
         conflicts: _buildAiConflictContext(),
         onTodosBatchAction: (inserted, updated) async {

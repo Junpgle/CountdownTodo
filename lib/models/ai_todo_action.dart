@@ -18,6 +18,9 @@ enum AiTodoActionType {
   updateCountdown,
   completeCountdown,
   deleteCountdown,
+  createTodoGroup,
+  updateTodoGroup,
+  deleteTodoGroup,
   createPomodoroTag,
   updatePomodoroTag,
   deletePomodoroTag,
@@ -108,6 +111,11 @@ class AiTodoAction {
       type == AiTodoActionType.updatePomodoroTag ||
       type == AiTodoActionType.deletePomodoroTag;
 
+  bool get isTodoGroupAction =>
+      type == AiTodoActionType.createTodoGroup ||
+      type == AiTodoActionType.updateTodoGroup ||
+      type == AiTodoActionType.deleteTodoGroup;
+
   bool get mutatesExistingTodo =>
       type == AiTodoActionType.updateTodo ||
       type == AiTodoActionType.completeTodo ||
@@ -120,6 +128,8 @@ class AiTodoAction {
       type == AiTodoActionType.updateCountdown ||
       type == AiTodoActionType.completeCountdown ||
       type == AiTodoActionType.deleteCountdown ||
+      type == AiTodoActionType.updateTodoGroup ||
+      type == AiTodoActionType.deleteTodoGroup ||
       type == AiTodoActionType.updatePomodoroTag ||
       type == AiTodoActionType.deletePomodoroTag;
 
@@ -240,6 +250,21 @@ class AiTodoAction {
         return AiTodoActionType.completeCountdown;
       case 'delete_countdown':
         return AiTodoActionType.deleteCountdown;
+      case 'create_todo_group':
+      case 'create_group':
+      case 'create_category':
+      case 'create_folder':
+        return AiTodoActionType.createTodoGroup;
+      case 'update_todo_group':
+      case 'update_group':
+      case 'update_category':
+      case 'update_folder':
+        return AiTodoActionType.updateTodoGroup;
+      case 'delete_todo_group':
+      case 'delete_group':
+      case 'delete_category':
+      case 'delete_folder':
+        return AiTodoActionType.deleteTodoGroup;
       case 'create_pomodoro_tag':
         return AiTodoActionType.createPomodoroTag;
       case 'update_pomodoro_tag':

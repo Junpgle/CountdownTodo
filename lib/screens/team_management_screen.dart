@@ -14,6 +14,7 @@ import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
+import '../services/pomodoro_service.dart';
 
 class TeamManagementScreen extends StatefulWidget {
   final String username;
@@ -773,6 +774,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         StorageService.getTodoGroups(widget.username),
         CourseService.getAllCourses(widget.username),
         StorageService.getTimeLogs(widget.username),
+        PomodoroService.getRecords(),
       ]);
       if (!mounted) return;
       await AiTodoChatLauncher.open(
@@ -785,14 +787,20 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             .toList(),
         todoGroups:
             (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList(),
-        courses:
-            (results[2] as List<CourseItem>).where((c) => !c.isDeleted).toList(),
-        timeLogs:
-            (results[3] as List<TimeLogItem>).where((l) => !l.isDeleted).toList(),
+        courses: (results[2] as List<CourseItem>)
+            .where((c) => !c.isDeleted)
+            .toList(),
+        timeLogs: (results[3] as List<TimeLogItem>)
+            .where((l) => !l.isDeleted)
+            .toList(),
+        pomodoroRecords: (results[4] as List<PomodoroRecord>)
+            .where((r) => !r.isDeleted)
+            .toList(),
         teams: _teams,
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(allTodos, inserted, updated);
+          final merged = AiTodoActionExecutor.mergeTodoUpdates(
+              allTodos, inserted, updated);
           await StorageService.saveTodos(widget.username, merged);
         },
       );

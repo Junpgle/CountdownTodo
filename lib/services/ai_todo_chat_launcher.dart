@@ -15,12 +15,14 @@ class AiTodoChatLauncher {
     List<TodoGroup> todoGroups = const [],
     List<CourseItem> courses = const [],
     List<TimeLogItem> timeLogs = const [],
+    List<PomodoroRecord> pomodoroRecords = const [],
     List<ConflictInfo> conflicts = const [],
     List<Team> teams = const [],
     List<CountdownItem> countdowns = const [],
     List<PomodoroTag> pomodoroTags = const [],
     void Function(List<TodoItem> inserted, List<TodoItem> updated)?
         onTodosBatchAction,
+    void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
   }) {
     return Navigator.push(
       context,
@@ -31,11 +33,13 @@ class AiTodoChatLauncher {
           todoGroups: todoGroups,
           courses: courses,
           timeLogs: timeLogs,
+          pomodoroRecords: pomodoroRecords,
           conflicts: conflicts,
           teams: teams,
           countdowns: countdowns,
           pomodoroTags: pomodoroTags,
           onTodosBatchAction: onTodosBatchAction,
+          onTodoGroupsChanged: onTodoGroupsChanged,
         ),
       ),
     );

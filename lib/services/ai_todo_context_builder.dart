@@ -63,6 +63,9 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
 - update_countdown: {"action":"update_countdown","updates":[{"countdownId":"ID","title":"新标题","dueDate":"YYYY-MM-DD HH:mm"}]}
 - complete_countdown: {"action":"complete_countdown","updates":[{"countdownId":"ID"}]}
 - delete_countdown: {"action":"delete_countdown","updates":[{"countdownId":"ID"}]}
+- create_todo_group: {"action":"create_todo_group","groups":[{"name":"分类名"}]}
+- update_todo_group: {"action":"update_todo_group","updates":[{"groupId":"ID","name":"新分类名"}]}
+- delete_todo_group: {"action":"delete_todo_group","updates":[{"groupId":"ID"}]}
 - create_pomodoro_tag: {"action":"create_pomodoro_tag","tags":[{"name":"标签名","color":"#607D8B"}]}
 - update_pomodoro_tag: {"action":"update_pomodoro_tag","updates":[{"tagId":"ID","name":"新名称","color":"#3B82F6"}]}
 - delete_pomodoro_tag: {"action":"delete_pomodoro_tag","updates":[{"tagId":"ID"}]}
@@ -73,7 +76,7 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
 每次回复末尾附3-4个简短建议（≤15字），格式：[SUGGEST_START]["建议1","建议2","建议3"][SUGGEST_END]
 
 【核心规则】
-1. 意图判定：创建(提醒我/记一下)、规划(制定计划)、拆分(大任务拆小)、合并(多个合一)、修改(改标题/备注/时间)、完成(标记已做)、删除(移除)、改期(推迟/提前)、整理(分类/移动到文件夹)、记录专注、修改专注记录、删除专注记录、开始/停止番茄钟、管理倒计时、管理番茄标签
+1. 意图判定：创建(提醒我/记一下)、规划(制定计划)、拆分(大任务拆小)、合并(多个合一)、修改(改标题/备注/时间)、完成(标记已做)、删除(移除)、改期(推迟/提前)、整理(分类/移动到文件夹)、新增/修改/删除待办分类或文件夹、记录专注、修改专注记录、删除专注记录、开始/停止番茄钟、管理倒计时、管理番茄标签
 2. 文件夹归类：只在语义明显关联时分配groupId，不确定时留空，严禁乱分类
 3. 危险操作(删除/完成/合并删源/拆分删源/停止番茄钟/删除专注记录/完成或删除倒计时/删除番茄标签)只在用户明确要求时输出
 4. 禁止对已有分类任务重复categorize_todo
@@ -85,16 +88,27 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     required String userMessage,
     required List<CourseItem> courses,
     required List<TimeLogItem> timeLogs,
+    List<PomodoroRecord> pomodoroRecords = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
+    DateTime? now,
   }) {
+    final nowValue = now ?? DateTime.now();
     final sections = <String>[];
 
     if (_matchesAny(userMessage, _courseKeywords) && courses.isNotEmpty) {
-      sections.add(_formatCourses(courses));
+      sections.add(_formatCourses(courses, userMessage, nowValue));
     }
-    if (_matchesAny(userMessage, _timeLogKeywords) && timeLogs.isNotEmpty) {
-      sections.add(_formatTimeLogs(timeLogs));
+    if (_matchesAny(userMessage, _timeLogKeywords) &&
+        (timeLogs.isNotEmpty || pomodoroRecords.isNotEmpty)) {
+      sections.add(
+        _formatFocusRecords(
+          timeLogs,
+          pomodoroRecords,
+          userMessage,
+          nowValue,
+        ),
+      );
     }
     if (_matchesAny(userMessage, _conflictKeywords) && conflicts.isNotEmpty) {
       sections.add(_formatConflicts(conflicts));
@@ -223,26 +237,173 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
         .join('\n');
   }
 
-  static String _formatCourses(List<CourseItem> courses) {
+  static String _formatCourses(
+    List<CourseItem> courses,
+    String userMessage,
+    DateTime now,
+  ) {
     if (courses.isEmpty) return '课程表: 暂无';
-    final lines = courses
-        .where((c) => !c.isDeleted)
-        .take(20)
+    final activeCourses = courses.where((c) => !c.isDeleted).toList()
+      ..sort((a, b) {
+        final dateCompare = a.date.compareTo(b.date);
+        if (dateCompare != 0) return dateCompare;
+        return a.startTime.compareTo(b.startTime);
+      });
+    if (activeCourses.isEmpty) return '课程表: 暂无';
+
+    final allDates = activeCourses
+        .map((c) => DateTime.tryParse(c.date))
+        .whereType<DateTime>()
+        .toList();
+    final availableRange = allDates.isEmpty
+        ? null
+        : _DateRange(
+            label: '全部可用课程日期',
+            start: allDates.first,
+            end: allDates.last.add(const Duration(days: 1)),
+          );
+    final period = _resolveCoursePeriod(userMessage, now);
+    final scopedCourses = _selectCoursesForPeriod(activeCourses, period, now);
+    final lines = scopedCourses
+        .take(30)
         .map((c) =>
             '- ${c.date} ${c.formattedStartTime}-${c.formattedEndTime} ${c.courseName} | ${c.roomName} | ${c.teacherName}')
         .join('\n');
-    return '课程表:\n$lines';
+    final header = period == null
+        ? '课程表（当前时间: ${_formatDateTime(now)}，今日起最近30节）'
+        : '课程表（当前时间: ${_formatDateTime(now)}，${period.label}范围: ${_formatDate(period.start)} 至 ${_formatDate(period.end.subtract(const Duration(days: 1)))})';
+    final rangeLine = availableRange == null
+        ? ''
+        : '\n${availableRange.label}: ${_formatDate(availableRange.start)} 至 ${_formatDate(availableRange.end.subtract(const Duration(days: 1)))}';
+    return '$header$rangeLine\n${lines.isEmpty ? '暂无匹配课程' : lines}';
   }
 
-  static String _formatTimeLogs(List<TimeLogItem> timeLogs) {
-    if (timeLogs.isEmpty) return '专注记录: 暂无';
-    final lines = timeLogs.where((t) => !t.isDeleted).take(20).map((t) {
-      final start = DateFormat('yyyy-MM-dd HH:mm')
-          .format(DateTime.fromMillisecondsSinceEpoch(t.startTime));
-      final minutes = ((t.endTime - t.startTime) / 60000).round();
-      return '- [ID: ${t.id}] $start ${t.title} | $minutes分钟';
+  static List<CourseItem> _selectCoursesForPeriod(
+    List<CourseItem> courses,
+    _DateRange? period,
+    DateTime now,
+  ) {
+    if (period != null) {
+      return courses.where((c) {
+        final date = DateTime.tryParse(c.date);
+        if (date == null) return false;
+        final day = DateTime(date.year, date.month, date.day);
+        return !day.isBefore(period.start) && day.isBefore(period.end);
+      }).toList();
+    }
+
+    final today = DateTime(now.year, now.month, now.day);
+    return courses.where((c) {
+      final date = DateTime.tryParse(c.date);
+      if (date == null) return false;
+      final day = DateTime(date.year, date.month, date.day);
+      return !day.isBefore(today);
+    }).toList();
+  }
+
+  static _DateRange? _resolveCoursePeriod(String text, DateTime now) {
+    final todayStart = DateTime(now.year, now.month, now.day);
+    if (text.contains('今天') || text.contains('今日')) {
+      return _DateRange(
+        label: '今日',
+        start: todayStart,
+        end: todayStart.add(const Duration(days: 1)),
+      );
+    }
+    if (text.contains('明天') || text.contains('明日')) {
+      final start = todayStart.add(const Duration(days: 1));
+      return _DateRange(
+        label: '明日',
+        start: start,
+        end: start.add(const Duration(days: 1)),
+      );
+    }
+    if (text.contains('后天') || text.contains('后日')) {
+      final start = todayStart.add(const Duration(days: 2));
+      return _DateRange(
+        label: '后日',
+        start: start,
+        end: start.add(const Duration(days: 1)),
+      );
+    }
+    if (text.contains('下周')) {
+      final thisWeekStart =
+          todayStart.subtract(Duration(days: now.weekday - 1));
+      final start = thisWeekStart.add(const Duration(days: 7));
+      return _DateRange(
+        label: '下周',
+        start: start,
+        end: start.add(const Duration(days: 7)),
+      );
+    }
+    if (text.contains('本周') || text.contains('这周')) {
+      final start = todayStart.subtract(Duration(days: now.weekday - 1));
+      return _DateRange(
+        label: '本周',
+        start: start,
+        end: start.add(const Duration(days: 7)),
+      );
+    }
+    if (text.contains('本月') || text.contains('这个月')) {
+      return _DateRange(
+        label: '本月',
+        start: DateTime(now.year, now.month),
+        end: DateTime(now.year, now.month + 1),
+      );
+    }
+    return null;
+  }
+
+  static String _formatFocusRecords(
+    List<TimeLogItem> timeLogs,
+    List<PomodoroRecord> pomodoroRecords,
+    String userMessage,
+    DateTime now,
+  ) {
+    final activeLogs = timeLogs.where((t) => !t.isDeleted).toList();
+    final activePomodoros = pomodoroRecords.where((p) => !p.isDeleted).toList();
+    if (activeLogs.isEmpty && activePomodoros.isEmpty) return '专注记录: 暂无';
+    final period = _resolveTimeLogPeriod(userMessage, now);
+    final records = <_FocusRecord>[
+      ...activeLogs.map(_FocusRecord.fromTimeLog),
+      ...activePomodoros.map(_FocusRecord.fromPomodoro),
+    ]..sort((a, b) => b.startMs.compareTo(a.startMs));
+    final scopedRecords = period == null
+        ? records.take(30).toList()
+        : records.where((r) => _focusOverlapsPeriod(r, period)).toList();
+
+    if (period != null) {
+      final totalMinutes = scopedRecords
+          .map((r) => _focusOverlapMinutes(r, period))
+          .fold<int>(0, (sum, minutes) => sum + minutes);
+      final timeLogMinutes = scopedRecords
+          .where((r) => r.source == '补录')
+          .map((r) => _focusOverlapMinutes(r, period))
+          .fold<int>(0, (sum, minutes) => sum + minutes);
+      final pomodoroMinutes = scopedRecords
+          .where((r) => r.source == '番茄钟')
+          .map((r) => _focusOverlapMinutes(r, period))
+          .fold<int>(0, (sum, minutes) => sum + minutes);
+      final lines = scopedRecords.take(30).map((r) {
+        final start = _formatEpochMillis(r.startMs);
+        final end = _formatEpochMillis(r.endMs);
+        final minutes = _focusOverlapMinutes(r, period);
+        return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | 本时段计入${_formatDuration(minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
+      }).join('\n');
+      return '''专注记录:
+${period.label}范围: ${_formatDateTime(period.start)} 至 ${_formatDateTime(period.end)}
+${period.label}合计: ${_formatDuration(totalMinutes)}
+其中补录: ${_formatDuration(timeLogMinutes)}，番茄钟: ${_formatDuration(pomodoroMinutes)}
+${period.label}记录:
+${lines.isEmpty ? '暂无' : lines}''';
+    }
+
+    final lines = scopedRecords.map((r) {
+      final start = _formatEpochMillis(r.startMs);
+      final end = _formatEpochMillis(r.endMs);
+      return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | ${_formatDuration(r.minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
     }).join('\n');
-    return '专注记录:\n$lines';
+    return '专注记录（最近30条，按开始时间倒序）:\n$lines';
   }
 
   static String _formatConflicts(List<ConflictInfo> conflicts) {
@@ -275,4 +436,144 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     final minutes = (absOffset.inMinutes % 60).toString().padLeft(2, '0');
     return 'UTC$sign$hours:$minutes ${value.timeZoneName}';
   }
+
+  static _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
+    final todayStart = DateTime(now.year, now.month, now.day);
+    if (text.contains('今天') || text.contains('今日')) {
+      return _TimeLogPeriod(
+        label: '今日',
+        start: todayStart,
+        end: todayStart.add(const Duration(days: 1)),
+      );
+    }
+    if (text.contains('昨天') || text.contains('昨日')) {
+      final start = todayStart.subtract(const Duration(days: 1));
+      return _TimeLogPeriod(
+        label: '昨日',
+        start: start,
+        end: todayStart,
+      );
+    }
+    if (text.contains('本周') || text.contains('这周')) {
+      final start = todayStart.subtract(Duration(days: now.weekday - 1));
+      return _TimeLogPeriod(
+        label: '本周',
+        start: start,
+        end: start.add(const Duration(days: 7)),
+      );
+    }
+    if (text.contains('本月') || text.contains('这个月')) {
+      final start = DateTime(now.year, now.month);
+      return _TimeLogPeriod(
+        label: '本月',
+        start: start,
+        end: DateTime(now.year, now.month + 1),
+      );
+    }
+    return null;
+  }
+
+  static bool _focusOverlapsPeriod(_FocusRecord record, _TimeLogPeriod period) {
+    return record.endMs > period.start.millisecondsSinceEpoch &&
+        record.startMs < period.end.millisecondsSinceEpoch;
+  }
+
+  static int _focusOverlapMinutes(_FocusRecord record, _TimeLogPeriod period) {
+    final start = record.startMs > period.start.millisecondsSinceEpoch
+        ? record.startMs
+        : period.start.millisecondsSinceEpoch;
+    final end = record.endMs < period.end.millisecondsSinceEpoch
+        ? record.endMs
+        : period.end.millisecondsSinceEpoch;
+    if (end <= start) return 0;
+    return ((end - start) / 60000).round();
+  }
+
+  static String _formatEpochMillis(int value) {
+    return _formatDateTime(DateTime.fromMillisecondsSinceEpoch(value));
+  }
+
+  static String _formatDateTime(DateTime value) {
+    return DateFormat('yyyy-MM-dd HH:mm').format(value.toLocal());
+  }
+
+  static String _formatDate(DateTime value) {
+    return DateFormat('yyyy-MM-dd').format(value.toLocal());
+  }
+
+  static String _formatDuration(int minutes) {
+    if (minutes <= 0) return '0分钟';
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    if (hours == 0) return '$minutes分钟';
+    if (rest == 0) return '$hours小时';
+    return '$hours小时$rest分钟';
+  }
+}
+
+class _TimeLogPeriod {
+  const _TimeLogPeriod({
+    required this.label,
+    required this.start,
+    required this.end,
+  });
+
+  final String label;
+  final DateTime start;
+  final DateTime end;
+}
+
+class _FocusRecord {
+  const _FocusRecord({
+    required this.id,
+    required this.title,
+    required this.source,
+    required this.startMs,
+    required this.endMs,
+    this.status,
+  });
+
+  factory _FocusRecord.fromTimeLog(TimeLogItem log) {
+    return _FocusRecord(
+      id: log.id,
+      title: log.title,
+      source: '补录',
+      startMs: log.startTime,
+      endMs: log.endTime,
+    );
+  }
+
+  factory _FocusRecord.fromPomodoro(PomodoroRecord record) {
+    final endMs =
+        record.endTime ?? record.startTime + record.effectiveDuration * 1000;
+    return _FocusRecord(
+      id: record.uuid,
+      title: record.todoTitle?.isNotEmpty == true ? record.todoTitle! : '番茄钟',
+      source: '番茄钟',
+      startMs: record.startTime,
+      endMs: endMs,
+      status: record.isCompleted ? '已完成' : '已中断',
+    );
+  }
+
+  final String id;
+  final String title;
+  final String source;
+  final int startMs;
+  final int endMs;
+  final String? status;
+
+  int get minutes => ((endMs - startMs) / 60000).round();
+}
+
+class _DateRange {
+  const _DateRange({
+    required this.label,
+    required this.start,
+    required this.end,
+  });
+
+  final String label;
+  final DateTime start;
+  final DateTime end;
 }

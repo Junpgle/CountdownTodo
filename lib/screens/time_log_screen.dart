@@ -332,6 +332,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             .toList(),
         pomodoroTags: _tags,
         timeLogs: _allLogs,
+        pomodoroRecords: _allPomodoros,
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
           final merged = AiTodoActionExecutor.mergeTodoUpdates(

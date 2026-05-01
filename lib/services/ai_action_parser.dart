@@ -75,6 +75,10 @@ class AiActionParser {
         'create_time_log|update_time_log|delete_time_log|'
         'start_pomodoro|stop_pomodoro|'
         'create_countdown|update_countdown|complete_countdown|delete_countdown|'
+        'create_todo_group|update_todo_group|delete_todo_group|'
+        'create_group|update_group|delete_group|'
+        'create_category|update_category|delete_category|'
+        'create_folder|update_folder|delete_folder|'
         'create_pomodoro_tag|update_pomodoro_tag|delete_pomodoro_tag';
     final looseActionBlock = RegExp(
       '\\[\\s*\\{\\s*"action"\\s*:\\s*"(?:$actionTypes)"[\\s\\S]*?\\}\\s*\\]',
@@ -181,6 +185,39 @@ class AiActionParser {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ?? update['countdownId'] ?? update['id'],
+            'action': data['action'],
+          });
+        }).toList();
+      case 'create_todo_group':
+      case 'create_group':
+      case 'create_category':
+      case 'create_folder':
+        return _listFrom(
+                data['groups'] ?? data['categories'] ?? data['folders'])
+            .map((group) {
+          return AiTodoAction.fromJson({
+            ...group,
+            'title': group['title'] ?? group['name'],
+            'action': data['action'],
+          });
+        }).toList();
+      case 'update_todo_group':
+      case 'update_group':
+      case 'update_category':
+      case 'update_folder':
+      case 'delete_todo_group':
+      case 'delete_group':
+      case 'delete_category':
+      case 'delete_folder':
+        return _listFrom(data['updates']).map((update) {
+          return AiTodoAction.fromJson({
+            ...update,
+            'todoId': update['todoId'] ??
+                update['groupId'] ??
+                update['categoryId'] ??
+                update['folderId'] ??
+                update['id'],
+            'title': update['title'] ?? update['name'],
             'action': data['action'],
           });
         }).toList();

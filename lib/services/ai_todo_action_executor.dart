@@ -11,6 +11,8 @@ class AiTodoActionExecutionResult {
     this.pomodoroActions = const [],
     this.newCountdowns = const [],
     this.updatedCountdowns = const [],
+    this.newTodoGroups = const [],
+    this.updatedTodoGroups = const [],
     this.newPomodoroTags = const [],
     this.updatedPomodoroTags = const [],
   });
@@ -22,6 +24,8 @@ class AiTodoActionExecutionResult {
   final List<AiTodoAction> pomodoroActions;
   final List<CountdownItem> newCountdowns;
   final List<CountdownItem> updatedCountdowns;
+  final List<TodoGroup> newTodoGroups;
+  final List<TodoGroup> updatedTodoGroups;
   final List<PomodoroTag> newPomodoroTags;
   final List<PomodoroTag> updatedPomodoroTags;
 
@@ -33,6 +37,8 @@ class AiTodoActionExecutionResult {
       pomodoroActions.isNotEmpty ||
       newCountdowns.isNotEmpty ||
       updatedCountdowns.isNotEmpty ||
+      newTodoGroups.isNotEmpty ||
+      updatedTodoGroups.isNotEmpty ||
       newPomodoroTags.isNotEmpty ||
       updatedPomodoroTags.isNotEmpty;
 }
@@ -43,6 +49,7 @@ class AiTodoActionExecutor {
     required List<Map<String, dynamic>> existingTodos,
     List<TimeLogItem> existingTimeLogs = const [],
     List<CountdownItem> existingCountdowns = const [],
+    List<TodoGroup> existingTodoGroups = const [],
     List<PomodoroTag> existingPomodoroTags = const [],
     Map<String, int> categoryReminderDefaults = const {},
     DateTime? now,
@@ -54,6 +61,8 @@ class AiTodoActionExecutor {
     final pomodoroActions = <AiTodoAction>[];
     final newCountdowns = <CountdownItem>[];
     final updatedCountdowns = <CountdownItem>[];
+    final newTodoGroups = <TodoGroup>[];
+    final updatedTodoGroups = <TodoGroup>[];
     final newPomodoroTags = <PomodoroTag>[];
     final updatedPomodoroTags = <PomodoroTag>[];
     final selectedActions =
@@ -87,6 +96,19 @@ class AiTodoActionExecutor {
             newCountdowns.add(countdown);
           } else {
             updatedCountdowns.add(countdown);
+          }
+          action.isAdded = true;
+        }
+        continue;
+      }
+
+      if (action.isTodoGroupAction) {
+        final group = _buildTodoGroup(action, existingTodoGroups);
+        if (group != null) {
+          if (action.type == AiTodoActionType.createTodoGroup) {
+            newTodoGroups.add(group);
+          } else {
+            updatedTodoGroups.add(group);
           }
           action.isAdded = true;
         }
@@ -132,9 +154,66 @@ class AiTodoActionExecutor {
       pomodoroActions: pomodoroActions,
       newCountdowns: newCountdowns,
       updatedCountdowns: updatedCountdowns,
+      newTodoGroups: newTodoGroups,
+      updatedTodoGroups: updatedTodoGroups,
       newPomodoroTags: newPomodoroTags,
       updatedPomodoroTags: updatedPomodoroTags,
     );
+  }
+
+  static TodoGroup? _buildTodoGroup(
+    AiTodoAction action,
+    List<TodoGroup> existingGroups,
+  ) {
+    TodoGroup? existing;
+    if (action.todoId != null) {
+      for (final group in existingGroups) {
+        if (group.id == action.todoId) {
+          existing = group;
+          break;
+        }
+      }
+    }
+    if (action.type != AiTodoActionType.createTodoGroup && existing == null) {
+      return null;
+    }
+    if (action.type == AiTodoActionType.deleteTodoGroup) {
+      return TodoGroup(
+        id: existing!.id,
+        name: existing.name,
+        isExpanded: existing.isExpanded,
+        isDeleted: true,
+        version: existing.version,
+        updatedAt: existing.updatedAt,
+        createdAt: existing.createdAt,
+        teamUuid: existing.teamUuid,
+        teamName: existing.teamName,
+        creatorId: existing.creatorId,
+        creatorName: existing.creatorName,
+        hasConflict: existing.hasConflict,
+        conflictData: existing.conflictData,
+      )..markAsChanged();
+    }
+
+    final name = action.title ?? existing?.name;
+    if (name == null || name.trim().isEmpty) return null;
+    final group = TodoGroup(
+      id: existing?.id,
+      name: name.trim(),
+      isExpanded: existing?.isExpanded ?? false,
+      isDeleted: existing?.isDeleted ?? false,
+      version: existing?.version ?? 1,
+      updatedAt: existing?.updatedAt,
+      createdAt: existing?.createdAt,
+      teamUuid: existing?.teamUuid,
+      teamName: existing?.teamName,
+      creatorId: existing?.creatorId,
+      creatorName: existing?.creatorName,
+      hasConflict: existing?.hasConflict ?? false,
+      conflictData: existing?.conflictData,
+    );
+    if (existing != null) group.markAsChanged();
+    return group;
   }
 
   static CountdownItem? _buildCountdown(
@@ -536,6 +615,23 @@ class AiTodoActionExecutor {
     final result = List<PomodoroTag>.from(base)..addAll(inserted);
     for (final update in updated) {
       final idx = result.indexWhere((tag) => tag.uuid == update.uuid);
+      if (idx == -1) {
+        result.add(update);
+      } else {
+        result[idx] = update;
+      }
+    }
+    return result;
+  }
+
+  static List<TodoGroup> mergeTodoGroupUpdates(
+    List<TodoGroup> base,
+    List<TodoGroup> inserted,
+    List<TodoGroup> updated,
+  ) {
+    final result = List<TodoGroup>.from(base)..addAll(inserted);
+    for (final update in updated) {
+      final idx = result.indexWhere((group) => group.id == update.id);
       if (idx == -1) {
         result.add(update);
       } else {

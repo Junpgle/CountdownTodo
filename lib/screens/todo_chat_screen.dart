@@ -21,6 +21,7 @@ class TodoChatScreen extends StatefulWidget {
   final List<TodoGroup> todoGroups;
   final List<CourseItem> courses;
   final List<TimeLogItem> timeLogs;
+  final List<PomodoroRecord> pomodoroRecords;
   final List<ConflictInfo> conflicts;
   final List<Team> teams;
   final List<CountdownItem> countdowns;
@@ -30,6 +31,7 @@ class TodoChatScreen extends StatefulWidget {
   final Function(List<TodoItem>)? onTodosUpdated;
   final Function(List<TodoItem> inserted, List<TodoItem> updated)?
       onTodosBatchAction;
+  final Function(List<TodoGroup> groups)? onTodoGroupsChanged;
 
   const TodoChatScreen({
     super.key,
@@ -38,6 +40,7 @@ class TodoChatScreen extends StatefulWidget {
     this.todoGroups = const [],
     this.courses = const [],
     this.timeLogs = const [],
+    this.pomodoroRecords = const [],
     this.conflicts = const [],
     this.teams = const [],
     this.countdowns = const [],
@@ -46,6 +49,7 @@ class TodoChatScreen extends StatefulWidget {
     this.onTodosBatchInserted,
     this.onTodosUpdated,
     this.onTodosBatchAction,
+    this.onTodoGroupsChanged,
   });
 
   @override
@@ -318,8 +322,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       userMessage: userText,
       courses: widget.courses,
       timeLogs: widget.timeLogs,
+      pomodoroRecords: widget.pomodoroRecords,
       conflicts: widget.conflicts,
       teams: widget.teams,
+      now: DateTime.now(),
     );
     if (injection != null) {
       apiMessages[lastUserIdx] = {
@@ -379,10 +385,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           ),
         );
         if (goToSettings == true && mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const LLMConfigPage()),
-          );
+          await _openLlmConfigPage();
         }
         return;
       }
@@ -714,6 +717,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: colorScheme.surfaceContainerLowest,
       appBar: _buildResponsiveAppBar(isDark, colorScheme),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -730,8 +734,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       bool isDark, ColorScheme colorScheme) {
     return AppBar(
       elevation: 0,
-      scrolledUnderElevation: 0,
+      scrolledUnderElevation: 1,
       backgroundColor: colorScheme.surface,
+      surfaceTintColor: colorScheme.surfaceTint,
       centerTitle: true,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
@@ -742,7 +747,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         children: [
           Text(
             _getCurrentSessionTitle(),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
           Text(
@@ -752,7 +761,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               fontWeight: FontWeight.normal,
               color: _isLoading
                   ? colorScheme.primary
-                  : colorScheme.onSurface.withValues(alpha: 0.4),
+                  : colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -792,11 +801,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         if (_sidebarVisible)
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            width: 280,
+            curve: Curves.easeOutCubic,
+            width: 304,
             decoration: BoxDecoration(
+              color: colorScheme.surface,
               border: Border(
                 right: BorderSide(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.7),
                 ),
               ),
             ),
@@ -808,7 +819,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               Expanded(
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 900),
+                    constraints: const BoxConstraints(maxWidth: 920),
                     child: _buildMessageList(isDark, colorScheme),
                   ),
                 ),
@@ -849,129 +860,115 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     }
     return ListView.builder(
       controller: _scrollCtrl,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 12,
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
       itemCount: _messages.length + (_isLoading ? 1 : 0),
       itemBuilder: (context, index) {
         if (_isLoading && index == _messages.length) {
           return _buildStreamingBubble(isDark);
         }
         final msg = _messages[index];
-        return _buildMessageBubble(msg, isDark);
+        return TweenAnimationBuilder<double>(
+          key: ValueKey(msg.timestamp.millisecondsSinceEpoch + index),
+          duration: const Duration(milliseconds: 500),
+          tween: Tween(begin: 0.0, end: 1.0),
+          curve: Curves.easeOutQuart,
+          builder: (context, value, child) {
+            return Transform.translate(
+              offset: Offset(0, 30 * (1 - value)),
+              child: Opacity(
+                opacity: value,
+                child: child,
+              ),
+            );
+          },
+          child: _buildMessageBubble(msg, isDark),
+        );
       },
     );
   }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.05),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.smart_toy_rounded,
-              size: 64,
-              color: colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 32),
-          Text(
-            '你好，我是你的AI待办管家',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.5,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '我可以帮你规划日程、分析专注数据，或者快速创建复杂的任务提醒。',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 15,
-              height: 1.5,
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
-            ),
-          ),
-          const SizedBox(height: 40),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '试试这样问我：',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.primary,
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(28, 32, 28, 32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.55),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.smart_toy_rounded,
+                  size: 36,
+                  color: colorScheme.onPrimaryContainer,
+                ),
               ),
-            ),
+              const SizedBox(height: 24),
+              Text(
+                'AI待办助手',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '可以直接问课程、待办、专注记录，也可以让它帮你生成可执行的任务操作。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.55,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 10,
+                runSpacing: 10,
+                children:
+                    _getDefaultSuggestions().map(_buildQuickQuestion).toList(),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children:
-                _getDefaultSuggestions().map(_buildQuickQuestion).toList(),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildSuggestionsArea(ColorScheme colorScheme) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border(
           top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
             width: 0.5,
           ),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.auto_fix_high_rounded,
-                  size: 14, color: colorScheme.primary),
-              const SizedBox(width: 6),
-              Text(
-                '猜你想问',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.primary.withValues(alpha: 0.8),
-                ),
-              ),
-            ],
+      child: SizedBox(
+        height: 50,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemCount: _suggestions.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) => _buildQuickQuestion(
+            _suggestions[index],
+            compact: true,
           ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Row(
-              children: _suggestions.map((text) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: _buildQuickQuestion(text),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1039,23 +1036,28 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Widget _buildHistorySidebarContent(BuildContext context,
       {required bool isWideMode}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: EdgeInsets.fromLTRB(16, isWideMode ? 18 : 16, 12, 10),
           child: Row(
             children: [
-              const Text(
-                '历史对话',
+              Text(
+                '对话',
                 style: TextStyle(
                   fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
                 ),
               ),
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.delete_sweep_outlined,
-                    size: 20, color: Colors.grey),
+                icon: Icon(
+                  Icons.delete_sweep_outlined,
+                  size: 20,
+                  color: colorScheme.onSurfaceVariant,
+                ),
                 onPressed: () => _deleteAllSessions(context),
                 tooltip: '清空所有历史对话',
               ),
@@ -1067,62 +1069,90 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             ],
           ),
         ),
-        const Divider(height: 1),
+        Divider(
+          height: 1,
+          color: colorScheme.outlineVariant.withValues(alpha: 0.7),
+        ),
         Expanded(
           child: _sessions.isEmpty
-              ? const Center(child: Text('暂无历史对话'))
+              ? Center(
+                  child: Text(
+                    '暂无历史对话',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
+                )
               : ListView.builder(
                   itemCount: _sessions.length,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   itemBuilder: (context, index) {
                     final session = _sessions[index];
                     final isActive = session.id == _activeSessionId;
-                    return ListTile(
-                      dense: isWideMode,
-                      leading: Icon(
-                        isActive
-                            ? Icons.chat_bubble
-                            : Icons.chat_bubble_outline,
-                        size: 20,
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Material(
                         color: isActive
-                            ? Theme.of(context).colorScheme.primary
-                            : null,
-                      ),
-                      title: Text(
-                        session.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: isActive ? FontWeight.bold : null,
-                          color: isActive
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
+                            ? colorScheme.primaryContainer
+                                .withValues(alpha: 0.55)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        child: ListTile(
+                          dense: isWideMode,
+                          minLeadingWidth: 24,
+                          horizontalTitleGap: 10,
+                          contentPadding:
+                              const EdgeInsets.only(left: 12, right: 4),
+                          leading: Icon(
+                            isActive
+                                ? Icons.chat_bubble_rounded
+                                : Icons.chat_bubble_outline_rounded,
+                            size: 18,
+                            color: isActive
+                                ? colorScheme.primary
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                          title: Text(
+                            session.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight:
+                                  isActive ? FontWeight.w700 : FontWeight.w500,
+                              color: isActive
+                                  ? colorScheme.onPrimaryContainer
+                                  : colorScheme.onSurface,
+                            ),
+                          ),
+                          subtitle: Text(
+                            DateFormat('MM/dd HH:mm').format(
+                              session.updatedAt,
+                            ),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            color: colorScheme.onSurfaceVariant,
+                            onPressed: () {
+                              if (!isWideMode) Navigator.pop(context);
+                              _deleteSession(session.id);
+                            },
+                            tooltip: '删除对话',
+                          ),
+                          selected: isActive,
+                          selectedTileColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          onTap: () {
+                            if (!isWideMode) Navigator.pop(context);
+                            _switchSession(session.id);
+                          },
                         ),
                       ),
-                      subtitle: Text(
-                        DateFormat('MM/dd HH:mm').format(
-                          session.updatedAt,
-                        ),
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        onPressed: () {
-                          if (!isWideMode) Navigator.pop(context);
-                          _deleteSession(session.id);
-                        },
-                        tooltip: '删除对话',
-                      ),
-                      selected: isActive,
-                      selectedTileColor: Theme.of(context)
-                          .colorScheme
-                          .primaryContainer
-                          .withValues(alpha: 0.3),
-                      onTap: () {
-                        if (!isWideMode) Navigator.pop(context);
-                        _switchSession(session.id);
-                      },
                     );
                   },
                 ),
@@ -1171,40 +1201,42 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   Widget _buildModelSelector() {
-    String label = _chatModel.isNotEmpty
-        ? _chatModel
-        : '全局: ${_globalModelName.isNotEmpty ? _globalModelName : '未配置'}';
+    final inheritedModel =
+        _globalModelName.isNotEmpty ? _globalModelName : '未配置';
+    String label = _chatModel.isNotEmpty ? _chatModel : '继承: $inheritedModel';
 
     return PopupMenuButton<String>(
-      icon: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.model_training_outlined,
-            size: 20,
-            color: _chatModel.isNotEmpty
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.6),
-          ),
-          const SizedBox(width: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
+      tooltip: '模型配置',
+      icon: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 230),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.model_training_outlined,
+              size: 18,
               color: _chatModel.isNotEmpty
                   ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.6),
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-          ),
-          const Icon(Icons.arrow_drop_down, size: 20),
-        ],
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: _chatModel.isNotEmpty
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, size: 18),
+          ],
+        ),
       ),
       itemBuilder: (ctx) => [
         PopupMenuItem(
@@ -1219,7 +1251,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     : Colors.grey,
               ),
               const SizedBox(width: 8),
-              const Text('使用全局配置'),
+              Expanded(
+                child: Text(
+                  '继承全局配置: $inheritedModel',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ),
@@ -1245,6 +1282,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           ),
         const PopupMenuDivider(),
         const PopupMenuItem(
+          value: '__settings__',
+          child: Row(
+            children: [
+              Icon(Icons.settings_outlined, size: 16),
+              SizedBox(width: 8),
+              Text('打开LLM配置...'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
           value: '__custom__',
           child: Row(
             children: [
@@ -1258,6 +1305,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       onSelected: (value) {
         if (value == '__custom__') {
           _showModelConfig();
+        } else if (value == '__settings__') {
+          _openLlmConfigPage();
         } else if (value == '__global__') {
           _useGlobalModel();
         }
@@ -1267,21 +1316,39 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Future<void> _useGlobalModel() async {
     await ChatStorageService.clearChatConfig();
+    final globalConfig = await LLMService.getConfig();
     if (mounted) {
       setState(() {
         _chatModel = '';
         _chatApiKey = '';
         _chatApiUrl = '';
+        _globalModelName = globalConfig?.model ?? '';
       });
     }
   }
 
+  Future<void> _openLlmConfigPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LLMConfigPage()),
+    );
+    if (!mounted) return;
+    await _loadChatConfig();
+  }
+
   Future<void> _showModelConfig() async {
-    final modelCtrl = TextEditingController(text: _chatModel);
-    final apiKeyCtrl = TextEditingController(text: _chatApiKey);
+    final globalConfig = await LLMService.getConfig();
+    if (!mounted) return;
+    final modelCtrl = TextEditingController(
+      text: _chatModel.isNotEmpty ? _chatModel : globalConfig?.model ?? '',
+    );
+    final apiKeyCtrl = TextEditingController(
+      text: _chatApiKey.isNotEmpty ? _chatApiKey : globalConfig?.apiKey ?? '',
+    );
     final apiUrlCtrl = TextEditingController(
       text: _chatApiUrl.isEmpty
-          ? 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+          ? globalConfig?.apiUrl ??
+              'https://open.bigmodel.cn/api/paas/v4/chat/completions'
           : _chatApiUrl,
     );
     bool useCustom = _chatModel.isNotEmpty;
@@ -1300,7 +1367,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('使用独立模型配置'),
-                    subtitle: const Text('关闭后将使用全局大模型配置'),
+                    subtitle: Text(
+                      globalConfig?.isConfigured == true
+                          ? '关闭后继承全局模型: ${globalConfig!.model}'
+                          : '关闭后继承全局配置；当前全局未配置',
+                    ),
                     value: useCustom,
                     onChanged: (val) {
                       setDialogState(() => useCustom = val);
@@ -1357,11 +1428,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               TextButton(
                 onPressed: () async {
                   await ChatStorageService.clearChatConfig();
+                  final globalConfig = await LLMService.getConfig();
                   if (mounted) {
                     setState(() {
                       _chatModel = '';
                       _chatApiKey = '';
                       _chatApiUrl = '';
+                      _globalModelName = globalConfig?.model ?? '';
                     });
                   }
                   if (ctx.mounted) Navigator.pop(ctx);
@@ -1397,6 +1470,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                           _chatModel = modelCtrl.text.trim();
                           _chatApiKey = apiKeyCtrl.text.trim();
                           _chatApiUrl = apiUrlCtrl.text.trim();
+                          _globalModelName = globalConfig?.model ?? '';
                         });
                       }
                       if (ctx.mounted) Navigator.pop(ctx);
@@ -1945,6 +2019,18 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         color = Colors.red;
         label = '删倒计时';
         break;
+      case AiTodoActionType.createTodoGroup:
+        color = Colors.green;
+        label = '分类';
+        break;
+      case AiTodoActionType.updateTodoGroup:
+        color = Colors.orange;
+        label = '改分类';
+        break;
+      case AiTodoActionType.deleteTodoGroup:
+        color = Colors.red;
+        label = '删分类';
+        break;
       case AiTodoActionType.createPomodoroTag:
         color = Colors.cyan;
         label = '标签';
@@ -2018,6 +2104,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   if (action.mutatesExistingTodo ||
                       action.isTimeLogAction ||
                       action.isCountdownAction ||
+                      action.isTodoGroupAction ||
                       action.isPomodoroTagAction)
                     _editField(idCtrl, _idFieldLabel(action)),
                   if (_usesTitle(action))
@@ -2138,6 +2225,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       action.type != AiTodoActionType.stopPomodoro &&
       action.type != AiTodoActionType.completeCountdown &&
       action.type != AiTodoActionType.deleteCountdown &&
+      action.type != AiTodoActionType.deleteTodoGroup &&
       action.type != AiTodoActionType.deletePomodoroTag;
 
   bool _usesRemark(AiTodoAction action) =>
@@ -2165,11 +2253,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _idFieldLabel(AiTodoAction action) {
     if (action.isTimeLogAction) return '专注记录ID';
     if (action.isCountdownAction) return '倒计时ID';
+    if (action.isTodoGroupAction) return '分类ID';
     if (action.isPomodoroTagAction) return '标签ID';
     return '待办ID';
   }
 
   String _titleLabel(AiTodoAction action) {
+    if (action.isTodoGroupAction) return '分类名称';
     if (action.isPomodoroTagAction) return '标签名称';
     if (action.isCountdownAction) return '倒计时标题';
     if (action.isTimeLogAction) return '专注记录标题';
@@ -2229,6 +2319,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         return '标记倒计时达成';
       case AiTodoActionType.deleteCountdown:
         return '删除倒计时';
+      case AiTodoActionType.createTodoGroup:
+        return '新增待办分类';
+      case AiTodoActionType.updateTodoGroup:
+        return '修改待办分类';
+      case AiTodoActionType.deleteTodoGroup:
+        return '删除待办分类';
       case AiTodoActionType.createPomodoroTag:
         return '新增番茄标签';
       case AiTodoActionType.updatePomodoroTag:
@@ -2346,6 +2442,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         action.type == AiTodoActionType.stopPomodoro ||
         action.type == AiTodoActionType.deleteCountdown ||
         action.type == AiTodoActionType.completeCountdown ||
+        action.type == AiTodoActionType.deleteTodoGroup ||
         action.type == AiTodoActionType.deletePomodoroTag ||
         (action.type == AiTodoActionType.splitTodo &&
             action.deleteSourceTodos) ||
@@ -2369,6 +2466,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         return '将删除已有倒计时，执行前请确认';
       case AiTodoActionType.completeCountdown:
         return '将标记倒计时达成，执行前请确认';
+      case AiTodoActionType.deleteTodoGroup:
+        return '将删除待办分类，执行前请确认';
       case AiTodoActionType.deletePomodoroTag:
         return '将删除番茄标签，执行前请确认';
       case AiTodoActionType.createTodo:
@@ -2384,6 +2483,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.startPomodoro:
       case AiTodoActionType.createCountdown:
       case AiTodoActionType.updateCountdown:
+      case AiTodoActionType.createTodoGroup:
+      case AiTodoActionType.updateTodoGroup:
       case AiTodoActionType.createPomodoroTag:
       case AiTodoActionType.updatePomodoroTag:
         return '';
@@ -2409,6 +2510,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       existingTodos: widget.todos,
       existingTimeLogs: widget.timeLogs,
       existingCountdowns: existingCountdowns,
+      existingTodoGroups: widget.todoGroups,
       existingPomodoroTags: existingTags,
       categoryReminderDefaults: _categoryReminderDefaults,
     );
@@ -2455,6 +2557,22 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             sync: true);
       }
 
+      if (result.newTodoGroups.isNotEmpty ||
+          result.updatedTodoGroups.isNotEmpty) {
+        final allGroups = await StorageService.getTodoGroups(
+          widget.username,
+          includeDeleted: true,
+        );
+        final merged = AiTodoActionExecutor.mergeTodoGroupUpdates(
+          allGroups,
+          result.newTodoGroups,
+          result.updatedTodoGroups,
+        );
+        await StorageService.saveTodoGroups(widget.username, merged,
+            sync: true);
+        widget.onTodoGroupsChanged?.call(merged);
+      }
+
       if (result.newPomodoroTags.isNotEmpty ||
           result.updatedPomodoroTags.isNotEmpty) {
         final allTags = await PomodoroService.getTags();
@@ -2477,7 +2595,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
+                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
       );
     }
   }
@@ -2542,6 +2660,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.updateCountdown:
       case AiTodoActionType.completeCountdown:
       case AiTodoActionType.deleteCountdown:
+      case AiTodoActionType.createTodoGroup:
+      case AiTodoActionType.updateTodoGroup:
+      case AiTodoActionType.deleteTodoGroup:
       case AiTodoActionType.createPomodoroTag:
       case AiTodoActionType.updatePomodoroTag:
       case AiTodoActionType.deletePomodoroTag:
@@ -2550,7 +2671,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     }
   }
 
-  Widget _buildQuickQuestion(String text) {
+  Widget _buildQuickQuestion(String text, {bool compact = false}) {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: () {
@@ -2559,7 +2680,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 12 : 14,
+          vertical: compact ? 7 : 10,
+        ),
         decoration: BoxDecoration(
           color: colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
@@ -2576,9 +2700,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         ),
         child: Text(
           text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 13,
-            color: colorScheme.onSurface.withValues(alpha: 0.8),
+            fontSize: compact ? 12 : 13,
+            color: colorScheme.onSurface,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -2590,13 +2716,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final isUser = msg.role == ChatRole.user;
     final timeStr = DateFormat('HH:mm').format(msg.timestamp);
     final colorScheme = Theme.of(context).colorScheme;
+    final maxBubbleWidth = MediaQuery.of(context).size.width >= 900
+        ? 680.0
+        : MediaQuery.of(context).size.width * 0.78;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
       child: Row(
         mainAxisAlignment:
             isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end, // 对齐到底部，更符合现代聊天习惯
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isUser) ...[
             Container(
@@ -2614,123 +2743,117 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Column(
-              crossAxisAlignment:
-                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                if (!isUser && msg.reasoningContent.isNotEmpty)
-                  _buildCollapsibleReasoning(
-                    msg.reasoningContent,
-                    isDark,
-                    false,
-                  ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: isUser
-                        ? LinearGradient(
-                            colors: [
-                              colorScheme.primary,
-                              colorScheme.primary.withValues(alpha: 0.85),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    color: isUser
-                        ? null
-                        : isDark
-                            ? colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.4)
-                            : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(20),
-                      topRight: const Radius.circular(20),
-                      bottomLeft: Radius.circular(isUser ? 20 : 4),
-                      bottomRight: Radius.circular(isUser ? 4 : 20),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+              child: Column(
+                crossAxisAlignment:
+                    isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                children: [
+                  if (!isUser && msg.reasoningContent.isNotEmpty)
+                    _buildCollapsibleReasoning(
+                      msg.reasoningContent,
+                      isDark,
+                      false,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 15,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? colorScheme.primary
+                          : isDark
+                              ? colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.55)
+                              : colorScheme.surface,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isUser ? 16 : 4),
+                        bottomRight: Radius.circular(isUser ? 4 : 16),
                       ),
-                    ],
-                    border: isUser
-                        ? null
-                        : Border.all(
-                            color: colorScheme.outlineVariant
-                                .withValues(alpha: 0.5),
-                            width: 0.5,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.035),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                      border: isUser
+                          ? null
+                          : Border.all(
+                              color: colorScheme.outlineVariant
+                                  .withValues(alpha: 0.55),
+                              width: 0.5,
+                            ),
+                    ),
+                    child: isUser
+                        ? Text(
+                            msg.content,
+                            style: TextStyle(
+                              color: colorScheme.onPrimary,
+                              fontSize: 15,
+                              height: 1.42,
+                            ),
+                          )
+                        : MarkdownBody(
+                            data: msg.content,
+                            styleSheet: MarkdownStyleSheet(
+                              p: TextStyle(
+                                color: colorScheme.onSurface,
+                                fontSize: 15,
+                                height: 1.45,
+                              ),
+                              strong: TextStyle(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              listBullet: TextStyle(
+                                color: colorScheme.primary,
+                                fontSize: 15,
+                              ),
+                              code: TextStyle(
+                                color: colorScheme.secondary,
+                                backgroundColor: colorScheme.secondaryContainer
+                                    .withValues(alpha: 0.5),
+                                fontSize: 14,
+                                fontFamily: 'monospace',
+                              ),
+                              blockquote: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              blockquoteDecoration: BoxDecoration(
+                                border: Border(
+                                  left: BorderSide(
+                                    color: colorScheme.primary,
+                                    width: 4,
+                                  ),
+                                ),
+                                color: colorScheme.primaryContainer
+                                    .withValues(alpha: 0.1),
+                              ),
+                            ),
+                            selectable: true,
                           ),
                   ),
-                  child: isUser
-                      ? Text(
-                          msg.content,
-                          style: TextStyle(
-                            color: colorScheme.onPrimary,
-                            fontSize: 15,
-                            height: 1.4,
-                          ),
-                        )
-                      : MarkdownBody(
-                          data: msg.content,
-                          styleSheet: MarkdownStyleSheet(
-                            p: TextStyle(
-                              color: colorScheme.onSurface,
-                              fontSize: 15,
-                              height: 1.4,
-                            ),
-                            strong: TextStyle(
-                              color: colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            listBullet: TextStyle(
-                              color: colorScheme.primary,
-                              fontSize: 15,
-                            ),
-                            code: TextStyle(
-                              color: colorScheme.secondary,
-                              backgroundColor: colorScheme.secondaryContainer
-                                  .withValues(alpha: 0.5),
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                            ),
-                            blockquote: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                              fontStyle: FontStyle.italic,
-                            ),
-                            blockquoteDecoration: BoxDecoration(
-                              border: Border(
-                                left: BorderSide(
-                                  color: colorScheme.primary,
-                                  width: 4,
-                                ),
-                              ),
-                              color: colorScheme.primaryContainer
-                                  .withValues(alpha: 0.1),
-                            ),
-                          ),
-                          selectable: true,
-                        ),
-                ),
-                if (msg.todoActions != null && msg.todoActions!.isNotEmpty)
-                  _buildMessageTodoActions(msg, isDark),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
-                  child: Text(
-                    timeStr,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w300,
-                      color: colorScheme.onSurface.withValues(alpha: 0.35),
+                  if (msg.todoActions != null && msg.todoActions!.isNotEmpty)
+                    _buildMessageTodoActions(msg, isDark),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
+                    child: Text(
+                      timeStr,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w300,
+                        color: colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.75),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           if (isUser) ...[
@@ -2766,21 +2889,21 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   Widget _buildStreamingBubble(bool isDark) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
+          _PulseAvatar(
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+              child: Icon(
+                Icons.smart_toy_rounded,
+                size: 18,
+                color: colorScheme.primary,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -2793,65 +2916,58 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 if (_streamingContent.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+                      horizontal: 16,
+                      vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withValues(alpha: isDark ? 0.3 : 0.7),
-                      borderRadius: BorderRadius.circular(12),
+                      color: isDark
+                          ? colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.4)
+                          : Colors.white,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                        bottomLeft: Radius.circular(4),
+                        bottomRight: Radius.circular(20),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                      border: Border.all(
+                        color:
+                            colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        width: 0.5,
+                      ),
                     ),
                     child: MarkdownBody(
                       data: _streamingContent,
                       styleSheet: MarkdownStyleSheet(
                         p: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
+                          color: colorScheme.onSurface,
                           fontSize: 15,
+                          height: 1.4,
                         ),
                         strong: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
+                          color: colorScheme.primary,
                           fontWeight: FontWeight.bold,
                         ),
-                        listBullet: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 15,
-                        ),
                         code: TextStyle(
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          backgroundColor:
-                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          color: colorScheme.secondary,
+                          backgroundColor: colorScheme.secondaryContainer
+                              .withValues(alpha: 0.5),
                           fontSize: 14,
+                          fontFamily: 'monospace',
                         ),
                       ),
                       selectable: true,
                     ),
                   )
                 else if (_streamingReasoning.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withValues(alpha: isDark ? 0.3 : 0.7),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '思考中...',
-                      style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.5),
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
+                  const _ThinkingLoader(),
               ],
             ),
           ),
@@ -2861,124 +2977,116 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   Widget _buildInputArea(ColorScheme colorScheme) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
+        color: colorScheme.surface.withValues(alpha: 0.95),
+        border: Border(
+          top: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+            width: 0.5,
           ),
-        ],
+        ),
       ),
       child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildModelSelector(),
-                const Spacer(),
                 IconButton(
                   icon: Icon(
                     Icons.delete_sweep_rounded,
-                    size: 20,
-                    color: colorScheme.error.withValues(alpha: 0.7),
+                    size: 16,
+                    color: colorScheme.onSurface.withValues(alpha: 0.3),
                   ),
                   onPressed: _clearHistory,
-                  tooltip: '清空当前对话记录',
+                  visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.all(8),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
             Container(
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(28),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
                 ),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _inputCtrl,
-                      maxLines: 5,
-                      minLines: 1,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: '问问助手关于待办的事...',
-                        hintStyle: TextStyle(
-                          color: colorScheme.onSurface.withValues(alpha: 0.4),
-                          fontSize: 14,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                        isDense: true,
-                      ),
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
                   const SizedBox(width: 4),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    child: IconButton(
-                      icon: _isLoading
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: colorScheme.onPrimary,
-                              ),
-                            )
-                          : const Icon(Icons.arrow_upward_rounded),
-                      onPressed: _isLoading ? null : _sendMessage,
-                      style: IconButton.styleFrom(
-                        backgroundColor: colorScheme.primary,
-                        foregroundColor: colorScheme.onPrimary,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        padding: const EdgeInsets.all(10),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: [
-                  _buildInputOption(
+                  _buildIconButtonOption(
                     icon: Icons.psychology_rounded,
-                    label: '深度思考',
                     isSelected: _deepThinking,
+                    tooltip: '深度思考',
                     onTap: (val) async {
                       setState(() => _deepThinking = val);
                       await ChatStorageService.setDeepThinkingEnabled(val);
                     },
                   ),
-                  const SizedBox(width: 8),
-                  _buildInputOption(
+                  _buildIconButtonOption(
                     icon: Icons.auto_awesome_rounded,
-                    label: '智能上下文',
                     isSelected: _smartContext,
-                    onTap: (val) {
-                      setState(() => _smartContext = val);
-                    },
+                    tooltip: '智能上下文',
+                    onTap: (val) => setState(() => _smartContext = val),
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    height: 20,
+                    width: 1,
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _inputCtrl,
+                      maxLines: 4,
+                      minLines: 1,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: '问问助手...',
+                        hintStyle: TextStyle(
+                          color: colorScheme.onSurface.withValues(alpha: 0.3),
+                          fontSize: 14,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: _isLoading
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colorScheme.onPrimary,
+                            ),
+                          )
+                        : const Icon(Icons.arrow_upward_rounded, size: 20),
+                    onPressed: _isLoading ? null : _sendMessage,
+                    style: IconButton.styleFrom(
+                      backgroundColor: colorScheme.primary,
+                      foregroundColor: colorScheme.onPrimary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      padding: const EdgeInsets.all(8),
+                    ),
                   ),
                 ],
               ),
@@ -2989,51 +3097,33 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
-  Widget _buildInputOption({
+  Widget _buildIconButtonOption({
     required IconData icon,
-    required String label,
     required bool isSelected,
+    required String tooltip,
     required Function(bool) onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: () => onTap(!isSelected),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primaryContainer
-              : colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: () => onTap(!isSelected),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
             color: isSelected
-                ? colorScheme.primary.withValues(alpha: 0.3)
-                : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ? colorScheme.primary.withValues(alpha: 0.1)
+                : Colors.transparent,
+            shape: BoxShape.circle,
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 14,
-              color: isSelected
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+          child: Icon(
+            icon,
+            size: 18,
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+          ),
         ),
       ),
     );
@@ -3158,6 +3248,127 @@ class _CollapsibleReasoningWidgetState
                 selectable: true,
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PulseAvatar extends StatefulWidget {
+  final Widget child;
+  const _PulseAvatar({required this.child});
+  @override
+  State<_PulseAvatar> createState() => _PulseAvatarState();
+}
+
+class _PulseAvatarState extends State<_PulseAvatar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: Tween<double>(begin: 0.95, end: 1.05).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      ),
+      child: widget.child,
+    );
+  }
+}
+
+class _ThinkingLoader extends StatefulWidget {
+  const _ThinkingLoader();
+  @override
+  State<_ThinkingLoader> createState() => _ThinkingLoaderState();
+}
+
+class _ThinkingLoaderState extends State<_ThinkingLoader>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.4)
+            : Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+          bottomLeft: Radius.circular(4),
+          bottomRight: Radius.circular(20),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ...List.generate(3, (i) {
+            return AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                final offset = (i * 0.2);
+                double value = (_controller.value + offset) % 1.0;
+                return Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(
+                      alpha: 0.2 + (0.8 * (1.0 - (value - 0.5).abs() * 2)),
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                );
+              },
+            );
+          }),
+          const SizedBox(width: 10),
+          Text(
+            '正在思考',
+            style: TextStyle(
+              fontSize: 14,
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
