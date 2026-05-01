@@ -729,38 +729,59 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   PreferredSizeWidget _buildResponsiveAppBar(
       bool isDark, ColorScheme colorScheme) {
     return AppBar(
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      backgroundColor: colorScheme.surface,
+      centerTitle: true,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
         onPressed: () => Navigator.pop(context),
         tooltip: '返回',
       ),
-      title: Text(
-        _getCurrentSessionTitle(),
-        overflow: TextOverflow.ellipsis,
+      title: Column(
+        children: [
+          Text(
+            _getCurrentSessionTitle(),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            _isLoading ? '正在思考...' : 'AI 助手在线',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.normal,
+              color: _isLoading
+                  ? colorScheme.primary
+                  : colorScheme.onSurface.withValues(alpha: 0.4),
+            ),
+          ),
+        ],
       ),
       actions: [
         if (_isWide)
           IconButton(
-            icon: Icon(_sidebarVisible ? Icons.menu_open : Icons.menu),
+            icon: Icon(_sidebarVisible
+                ? Icons.keyboard_double_arrow_left_rounded
+                : Icons.keyboard_double_arrow_right_rounded),
             onPressed: () => setState(() => _sidebarVisible = !_sidebarVisible),
             tooltip: _sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
           ),
         IconButton(
-          icon: const Icon(Icons.add_comment_outlined),
+          icon: const Icon(Icons.add_comment_rounded, size: 22),
           onPressed: _newSession,
           tooltip: '新建对话',
         ),
-        if (!_isWide)
-          IconButton(
-            icon: const Icon(Icons.history_outlined),
-            onPressed: _showHistorySidebar,
-            tooltip: '历史对话',
-          ),
         IconButton(
-          icon: const Icon(Icons.tune_outlined),
+          icon: const Icon(Icons.history_rounded, size: 22),
+          onPressed: _isWide ? null : _showHistorySidebar,
+          tooltip: '历史对话',
+        ),
+        IconButton(
+          icon: const Icon(Icons.tune_rounded, size: 22),
           onPressed: _showPromptSettings,
           tooltip: '提示词设置',
         ),
+        const SizedBox(width: 4),
       ],
     );
   }
@@ -844,36 +865,61 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.smart_toy_outlined,
-            size: 64,
-            color: colorScheme.primary.withValues(alpha: 0.5),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.05),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.smart_toy_rounded,
+              size: 64,
+              color: colorScheme.primary,
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 32),
           Text(
-            '你好！我是AI待办助手',
+            '你好，我是你的AI待办管家',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
               color: colorScheme.onSurface,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            '你可以问我任何问题关于你的待办',
+            '我可以帮你规划日程、分析专注数据，或者快速创建复杂的任务提醒。',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 14,
-              color: colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 15,
+              height: 1.5,
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 40),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '试试这样问我：',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: colorScheme.primary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 10,
+            runSpacing: 10,
             children:
                 _getDefaultSuggestions().map(_buildQuickQuestion).toList(),
           ),
@@ -884,35 +930,46 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Widget _buildSuggestionsArea(ColorScheme colorScheme) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, -1),
+        border: Border(
+          top: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+            width: 0.5,
           ),
-        ],
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '💡 你可以继续问我：',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
-            ),
+          Row(
+            children: [
+              Icon(Icons.auto_fix_high_rounded,
+                  size: 14, color: colorScheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                '猜你想问',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.primary.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _suggestions.map(_buildQuickQuestion).toList(),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: _suggestions.map((text) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _buildQuickQuestion(text),
+                );
+              }).toList(),
+            ),
           ),
         ],
       ),
@@ -1464,26 +1521,33 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final hasTagActions =
         msg.todoActions?.any((t) => t.isPomodoroTagAction) == true;
 
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: 12),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Theme.of(context)
-              .colorScheme
-              .primaryContainer
-              .withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(12),
+          color: isDark
+              ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.2)
+              : colorScheme.primaryContainer.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+            color: colorScheme.primary.withValues(alpha: 0.1),
             width: 1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
                   Icon(
@@ -1527,11 +1591,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   _formatTodoTimeRange(startTime, dueDate, isAllDay);
 
               return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                padding: const EdgeInsets.all(8),
+                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[850] : Colors.white70,
-                  borderRadius: BorderRadius.circular(8),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.05)
+                      : Colors.white.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2485,36 +2551,64 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   Widget _buildQuickQuestion(String text) {
-    return ActionChip(
-      label: Text(text),
-      onPressed: () {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () {
         _inputCtrl.text = text;
         _sendMessage();
       },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 13,
+            color: colorScheme.onSurface.withValues(alpha: 0.8),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.role == ChatRole.user;
     final timeStr = DateFormat('HH:mm').format(msg.timestamp);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       child: Row(
         mainAxisAlignment:
             isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end, // 对齐到底部，更符合现代聊天习惯
         children: [
           if (!isUser) ...[
             Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.smart_toy_outlined,
-                size: 18,
+              margin: const EdgeInsets.only(bottom: 20),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                child: Icon(
+                  Icons.smart_toy_rounded,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -2532,51 +2626,92 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+                    horizontal: 16,
+                    vertical: 10,
                   ),
                   decoration: BoxDecoration(
+                    gradient: isUser
+                        ? LinearGradient(
+                            colors: [
+                              colorScheme.primary,
+                              colorScheme.primary.withValues(alpha: 0.85),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
                     color: isUser
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest
-                            .withValues(alpha: isDark ? 0.3 : 0.7),
-                    borderRadius: BorderRadius.circular(12),
+                        ? null
+                        : isDark
+                            ? colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.4)
+                            : Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(20),
+                      topRight: const Radius.circular(20),
+                      bottomLeft: Radius.circular(isUser ? 20 : 4),
+                      bottomRight: Radius.circular(isUser ? 4 : 20),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                    border: isUser
+                        ? null
+                        : Border.all(
+                            color: colorScheme.outlineVariant
+                                .withValues(alpha: 0.5),
+                            width: 0.5,
+                          ),
                   ),
                   child: isUser
                       ? Text(
                           msg.content,
                           style: TextStyle(
-                            color: isUser
-                                ? Theme.of(context).colorScheme.onPrimary
-                                : Theme.of(context).colorScheme.onSurface,
+                            color: colorScheme.onPrimary,
                             fontSize: 15,
+                            height: 1.4,
                           ),
                         )
                       : MarkdownBody(
                           data: msg.content,
                           styleSheet: MarkdownStyleSheet(
                             p: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
+                              color: colorScheme.onSurface,
                               fontSize: 15,
+                              height: 1.4,
                             ),
                             strong: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
+                              color: colorScheme.primary,
                               fontWeight: FontWeight.bold,
                             ),
                             listBullet: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface,
+                              color: colorScheme.primary,
                               fontSize: 15,
                             ),
                             code: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer,
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .onPrimaryContainer,
+                              color: colorScheme.secondary,
+                              backgroundColor: colorScheme.secondaryContainer
+                                  .withValues(alpha: 0.5),
                               fontSize: 14,
+                              fontFamily: 'monospace',
+                            ),
+                            blockquote: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            blockquoteDecoration: BoxDecoration(
+                              border: Border(
+                                left: BorderSide(
+                                  color: colorScheme.primary,
+                                  width: 4,
+                                ),
+                              ),
+                              color: colorScheme.primaryContainer
+                                  .withValues(alpha: 0.1),
                             ),
                           ),
                           selectable: true,
@@ -2584,34 +2719,35 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 ),
                 if (msg.todoActions != null && msg.todoActions!.isNotEmpty)
                   _buildMessageTodoActions(msg, isDark),
-                const SizedBox(height: 4),
-                Text(
-                  timeStr,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.4),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
+                  child: Text(
+                    timeStr,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w300,
+                      color: colorScheme.onSurface.withValues(alpha: 0.35),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          if (isUser) const SizedBox(width: 8),
-          if (isUser)
+          if (isUser) ...[
+            const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.person_outline,
-                size: 18,
-                color: Colors.white,
+              margin: const EdgeInsets.only(bottom: 20),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: colorScheme.secondary.withValues(alpha: 0.1),
+                child: Icon(
+                  Icons.person_rounded,
+                  size: 18,
+                  color: colorScheme.secondary,
+                ),
               ),
             ),
+          ],
         ],
       ),
     );
@@ -2726,14 +2862,15 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Widget _buildInputArea(ColorScheme colorScheme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
           ),
         ],
       ),
@@ -2742,141 +2879,158 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _inputCtrl,
-                    maxLines: 4,
-                    minLines: 1,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      hintText: '输入你的问题...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      isDense: true,
-                    ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send_rounded),
-                  onPressed: _isLoading ? null : _sendMessage,
-                  style: IconButton.styleFrom(
-                    backgroundColor: colorScheme.primary,
-                    foregroundColor: colorScheme.onPrimary,
-                    shape: const CircleBorder(),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
               children: [
                 _buildModelSelector(),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+                  icon: Icon(
+                    Icons.delete_sweep_rounded,
+                    size: 20,
+                    color: colorScheme.error.withValues(alpha: 0.7),
+                  ),
                   onPressed: _clearHistory,
                   tooltip: '清空当前对话记录',
                   constraints: const BoxConstraints(),
-                  padding: EdgeInsets.zero,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ],
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 6),
+            Container(
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _inputCtrl,
+                      maxLines: 5,
+                      minLines: 1,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: '问问助手关于待办的事...',
+                        hintStyle: TextStyle(
+                          color: colorScheme.onSurface.withValues(alpha: 0.4),
+                          fontSize: 14,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        isDense: true,
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    child: IconButton(
+                      icon: _isLoading
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.onPrimary,
+                              ),
+                            )
+                          : const Icon(Icons.arrow_upward_rounded),
+                      onPressed: _isLoading ? null : _sendMessage,
+                      style: IconButton.styleFrom(
+                        backgroundColor: colorScheme.primary,
+                        foregroundColor: colorScheme.onPrimary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.all(10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               child: Row(
                 children: [
-                  FilterChip(
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.psychology_outlined,
-                          size: 16,
-                          color: _deepThinking
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.6),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '深度思考',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _deepThinking
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ],
-                    ),
-                    selected: _deepThinking,
-                    onSelected: (val) async {
+                  _buildInputOption(
+                    icon: Icons.psychology_rounded,
+                    label: '深度思考',
+                    isSelected: _deepThinking,
+                    onTap: (val) async {
                       setState(() => _deepThinking = val);
                       await ChatStorageService.setDeepThinkingEnabled(val);
                     },
-                    visualDensity: VisualDensity.compact,
                   ),
                   const SizedBox(width: 8),
-                  FilterChip(
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _smartContext
-                              ? Icons.auto_awesome
-                              : Icons.auto_awesome_outlined,
-                          size: 16,
-                          color: _smartContext
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.6),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '智能上下文',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _smartContext
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ],
-                    ),
-                    selected: _smartContext,
-                    onSelected: (val) {
+                  _buildInputOption(
+                    icon: Icons.auto_awesome_rounded,
+                    label: '智能上下文',
+                    isSelected: _smartContext,
+                    onTap: (val) {
                       setState(() => _smartContext = val);
                     },
-                    visualDensity: VisualDensity.compact,
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputOption({
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required Function(bool) onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () => onTap(!isSelected),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primaryContainer
+              : colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? colorScheme.primary.withValues(alpha: 0.3)
+                : colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
               ),
             ),
           ],
