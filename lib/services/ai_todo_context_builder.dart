@@ -15,7 +15,8 @@ class AiTodoContextBuilder {
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
-    final nowText = DateFormat('yyyy-MM-dd HH:mm').format(nowValue);
+    final nowText =
+        '${DateFormat('yyyy-MM-dd HH:mm').format(nowValue)} (${_formatTimeZone(nowValue)})';
     final todoList = _formatTodos(todos, todoGroups);
     final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
         ? customPrompt
@@ -34,6 +35,9 @@ ${_formatCountdowns(countdowns)}
 
 【用户当前番茄标签】
 ${_formatPomodoroTags(pomodoroTags)}
+
+【时间规则】
+所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
 【待办管理功能 - 重要规则】
 当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办，或新增/修改/删除专注记录，或开始/停止番茄钟，或新增/修改/完成/删除倒计时，或新增/改名/改色/删除番茄标签时，必须在回复末尾附加JSON操作块。
@@ -159,8 +163,9 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     required List<TodoGroup> todoGroups,
     DateTime? now,
   }) {
+    final nowValue = now ?? DateTime.now();
     final nowText =
-        DateFormat('yyyy-MM-dd HH:mm').format(now ?? DateTime.now());
+        '${DateFormat('yyyy-MM-dd HH:mm').format(nowValue)} (${_formatTimeZone(nowValue)})';
     final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
         ? customPrompt
         : ChatStorageService.defaultPrompt;
@@ -232,7 +237,7 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
   static String _formatTimeLogs(List<TimeLogItem> timeLogs) {
     if (timeLogs.isEmpty) return '专注记录: 暂无';
     final lines = timeLogs.where((t) => !t.isDeleted).take(20).map((t) {
-      final start = DateFormat('MM-dd HH:mm')
+      final start = DateFormat('yyyy-MM-dd HH:mm')
           .format(DateTime.fromMillisecondsSinceEpoch(t.startTime));
       final minutes = ((t.endTime - t.startTime) / 60000).round();
       return '- [ID: ${t.id}] $start ${t.title} | $minutes分钟';
@@ -260,5 +265,14 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
         .map((t) => '- ${t.name} | ID: ${t.uuid} | 成员: ${t.memberCount}')
         .join('\n');
     return '团队协作:\n$lines';
+  }
+
+  static String _formatTimeZone(DateTime value) {
+    final offset = value.timeZoneOffset;
+    final sign = offset.isNegative ? '-' : '+';
+    final absOffset = offset.abs();
+    final hours = absOffset.inHours.toString().padLeft(2, '0');
+    final minutes = (absOffset.inMinutes % 60).toString().padLeft(2, '0');
+    return 'UTC$sign$hours:$minutes ${value.timeZoneName}';
   }
 }

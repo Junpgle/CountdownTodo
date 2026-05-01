@@ -170,10 +170,10 @@ class CalendarSyncService {
   }
 
   static CalendarSyncEntry? _todoToEntry(TodoItem todo) {
-    final start = todo.createdDate != null && todo.createdDate! > 0
-        ? DateTime.fromMillisecondsSinceEpoch(todo.createdDate!).toLocal()
-        : todo.dueDate?.toLocal();
-    if (start == null) return null;
+    final start = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
 
     DateTime end =
         todo.dueDate?.toLocal() ?? start.add(const Duration(minutes: 30));
@@ -191,15 +191,15 @@ class CalendarSyncService {
       if (todo.remark?.trim().isNotEmpty == true) todo.remark!.trim(),
     ];
     final shouldWriteAsAllDay = _shouldWriteAsAllDayTodo(todo, start, end);
+    final allDayStart = _dateOnly(start);
+    final allDayEnd = _exclusiveAllDayEnd(start, end);
 
     return CalendarSyncEntry(
       id: todo.id,
       type: CalendarSyncEntryType.todo,
       title: todo.title,
-      start: shouldWriteAsAllDay ? _dateOnly(start) : start,
-      end: shouldWriteAsAllDay
-          ? _dateOnly(start).add(const Duration(days: 1))
-          : end,
+      start: shouldWriteAsAllDay ? allDayStart : start,
+      end: shouldWriteAsAllDay ? allDayEnd : end,
       allDay: shouldWriteAsAllDay,
       description: details.isEmpty ? null : details.join('\n'),
     );
@@ -262,22 +262,29 @@ class CalendarSyncService {
   static DateTime _dateOnly(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
+  static DateTime _exclusiveAllDayEnd(DateTime start, DateTime end) {
+    final endDate = _dateOnly(end);
+    if (end.hour == 0 &&
+        end.minute == 0 &&
+        end.second == 0 &&
+        end.millisecond == 0 &&
+        end.microsecond == 0 &&
+        end.isAfter(start)) {
+      return endDate;
+    }
+    return endDate.add(const Duration(days: 1));
+  }
+
   static bool _shouldWriteAsAllDayTodo(
     TodoItem todo,
     DateTime start,
     DateTime end,
   ) {
     if (todo.isAllDay) return true;
-    final sameDay = start.year == end.year &&
-        start.month == end.month &&
-        start.day == end.day;
-    if (!sameDay) {
-      final looksLikeWholeDay = start.hour == 0 &&
-          start.minute == 0 &&
-          (end.hour == 23 && end.minute == 59 ||
-              (end.hour == 0 && end.minute == 0 && end.isAfter(start)));
-      return looksLikeWholeDay;
-    }
-    return false;
+    final startIsMidnight = start.hour == 0 && start.minute == 0;
+    final endLooksLikeMidnightOrEndOfDay =
+        (end.hour == 23 && end.minute == 59) ||
+            (end.hour == 0 && end.minute == 0 && end.isAfter(start));
+    return startIsMidnight && endLooksLikeMidnightOrEndOfDay;
   }
 }

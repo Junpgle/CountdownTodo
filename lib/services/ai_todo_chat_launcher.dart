@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../screens/todo_chat_screen.dart';
 import 'pomodoro_service.dart';
 
 class AiTodoChatLauncher {
+  static final DateFormat _localDateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
+
   static Future<void> open(
     BuildContext context, {
     required String username,
@@ -46,13 +49,8 @@ class AiTodoChatLauncher {
             'id': t.id,
             'title': t.title,
             'remark': t.remark ?? '',
-            'startTime': t.createdDate != null
-                ? DateTime.fromMillisecondsSinceEpoch(
-                    t.createdDate!,
-                    isUtc: true,
-                  ).toLocal().toIso8601String()
-                : '',
-            'endTime': t.dueDate?.toIso8601String() ?? '',
+            'startTime': _formatEpochMillis(t.createdDate),
+            'endTime': _formatDateTime(t.dueDate),
             'isAllDay': t.isAllDayTask,
             'isDone': t.isDone,
             'isDeleted': t.isDeleted,
@@ -62,5 +60,16 @@ class AiTodoChatLauncher {
           },
         )
         .toList();
+  }
+
+  static String _formatEpochMillis(int? value) {
+    if (value == null) return '';
+    return _localDateTimeFormat
+        .format(DateTime.fromMillisecondsSinceEpoch(value).toLocal());
+  }
+
+  static String _formatDateTime(DateTime? value) {
+    if (value == null) return '';
+    return _localDateTimeFormat.format(value.toLocal());
   }
 }

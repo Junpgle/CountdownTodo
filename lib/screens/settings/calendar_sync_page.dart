@@ -335,32 +335,32 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
           const Text('可用日历', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           ..._calendars.map(
-            (calendar) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              leading: Icon(
-                calendar['writable'] == true
-                    ? Icons.edit_calendar_outlined
-                    : Icons.visibility_outlined,
-              ),
-              title: Text(calendar['name']?.toString() ?? '日历'),
-              subtitle: Text([
-                if ((calendar['account']?.toString() ?? '').isNotEmpty)
-                  calendar['account'].toString(),
-                if (calendar['writable'] == true) '可写' else '只读',
-              ].join(' · ')),
-              trailing: Radio<int>(
-                value: (calendar['id'] as num).toInt(),
-                groupValue: _calendarId,
-                onChanged: _working
-                    ? null
-                    : (value) => setState(() => _calendarId = value),
-              ),
-              onTap: _working
-                  ? null
-                  : () => setState(
-                      () => _calendarId = (calendar['id'] as num).toInt()),
-            ),
+            (calendar) {
+              final id = (calendar['id'] as num).toInt();
+              final selected = _calendarId == id;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading: Icon(
+                  calendar['writable'] == true
+                      ? Icons.edit_calendar_outlined
+                      : Icons.visibility_outlined,
+                ),
+                title: Text(calendar['name']?.toString() ?? '日历'),
+                subtitle: Text([
+                  if ((calendar['account']?.toString() ?? '').isNotEmpty)
+                    calendar['account'].toString(),
+                  if (calendar['writable'] == true) '可写' else '只读',
+                ].join(' · ')),
+                trailing: selected
+                    ? Icon(
+                        Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
+                    : null,
+                onTap: _working ? null : () => setState(() => _calendarId = id),
+              );
+            },
           ),
           const SizedBox(height: 8),
         ],
@@ -477,10 +477,25 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   String _formatEntryTime(CalendarSyncEntry entry) {
-    final date = DateFormat('yyyy-MM-dd').format(entry.start);
-    if (entry.allDay) return '$date 全天';
-    final start = DateFormat('HH:mm').format(entry.start);
-    final end = DateFormat('HH:mm').format(entry.end);
-    return '$date $start-$end';
+    final dateFormat = DateFormat('yyyy-MM-dd');
+    final timeFormat = DateFormat('HH:mm');
+    final dateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
+
+    if (entry.allDay) {
+      final inclusiveEnd = entry.end.subtract(const Duration(days: 1));
+      final startDate = dateFormat.format(entry.start);
+      if (_isSameDate(entry.start, inclusiveEnd)) return '$startDate 全天';
+      return '$startDate 至 ${dateFormat.format(inclusiveEnd)} 全天';
+    }
+
+    if (_isSameDate(entry.start, entry.end)) {
+      return '${dateFormat.format(entry.start)} '
+          '${timeFormat.format(entry.start)}-${timeFormat.format(entry.end)}';
+    }
+    return '${dateTimeFormat.format(entry.start)} 至 '
+        '${dateTimeFormat.format(entry.end)}';
   }
+
+  bool _isSameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 }

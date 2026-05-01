@@ -245,8 +245,8 @@ class TodoItem {
         data['dueDate']);
     if (startMs <= 0 || endMs <= startMs) return false;
 
-    final start = DateTime.fromMillisecondsSinceEpoch(startMs);
-    final end = DateTime.fromMillisecondsSinceEpoch(endMs);
+    final start = DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+    final end = DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
 
     // 判定为全天任务：时间正好跨越 00:00 到 23:59 或次日 00:00
     if (start.hour == 0 && start.minute == 0) {
