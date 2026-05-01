@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import 'ai_todo_action.dart';
 
 enum ChatRole { user, assistant }
 
@@ -8,7 +9,7 @@ class ChatMessage {
   final String content;
   final String reasoningContent;
   final DateTime timestamp;
-  final List<Map<String, dynamic>>? todoActions;
+  final List<AiTodoAction>? todoActions;
 
   ChatMessage({
     String? id,
@@ -26,7 +27,7 @@ class ChatMessage {
         'content': content,
         'reasoningContent': reasoningContent,
         'timestamp': timestamp.millisecondsSinceEpoch,
-        'todoActions': todoActions,
+        'todoActions': todoActions?.map((e) => e.toJson()).toList(),
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -39,7 +40,10 @@ class ChatMessage {
         json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
         isUtc: true,
       ).toLocal(),
-      todoActions: (json['todoActions'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      todoActions: (json['todoActions'] as List?)
+          ?.whereType<Map>()
+          .map((e) => AiTodoAction.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 

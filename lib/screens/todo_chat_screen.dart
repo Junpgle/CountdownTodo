@@ -4,7 +4,9 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../models/ai_todo_action.dart';
 import '../models/chat_message.dart';
+import '../services/ai_action_parser.dart';
 import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
 import '../screens/settings/llm_config_page.dart';
@@ -53,7 +55,6 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   List<ChatSession> _sessions = [];
   bool _includeContextTodos = true;
   String? _activeSessionId;
-  String? _username;
   Map<String, int> _categoryReminderDefaults = {};
 
   @override
@@ -68,11 +69,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Future<void> _loadCategoryDefaults() async {
     final username = widget.username;
-    final defaults =
-        await StorageService.getCategoryReminderMinutes(username);
+    final defaults = await StorageService.getCategoryReminderMinutes(username);
     if (mounted) {
       setState(() {
-        _username = username;
         _categoryReminderDefaults = defaults;
       });
     }
@@ -254,11 +253,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       prompt = ChatStorageService.defaultPrompt;
     }
 
-    prompt = prompt
-        .replaceAll('{now}', now)
-        .replaceAll('{todos}', todoList);
+    prompt = prompt.replaceAll('{now}', now).replaceAll('{todos}', todoList);
 
-    final folderList = widget.todoGroups.isEmpty ? '暂无分类' : widget.todoGroups.map((g) => '- 名称: ${g.name} | ID: ${g.id}').join('\n');
+    final folderList = widget.todoGroups.isEmpty
+        ? '暂无分类'
+        : widget.todoGroups
+            .map((g) => '- 名称: ${g.name} | ID: ${g.id}')
+            .join('\n');
 
     return '''$prompt
 
@@ -266,22 +267,34 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 $folderList
 
 【待办管理功能 - 重要规则】
-1. 当用户明确要求创建/添加待办，或者要求对现有待办进行分类、移动、整理、排序分类时，你**必须**在回复末尾附加相应的 JSON 操作块。
-2. 特别注意：如果用户说"整理一下分类"、"归类一下"、"把XX放到XX文件夹"，你**必须**针对每一个受影响的待办返回 `categorize_todo` 操作。即使你已经用文字解释了分类方案，也**必须**包含 JSON 以便系统执行自动更新。
-3. JSON格式必须严格遵循以下两种之一：
+1. 当用户明确要求创建、修改、完成、删除、延期、分类、整理待办时，你**必须**在回复末尾附加 JSON 操作块。
+2. 对已有待办操作时必须使用待办 ID；如果不确定是哪一条，先追问，不要臆造 ID。
+3. JSON格式必须严格遵循以下动作之一：
 
 创建待办：
 [ACTION_START]{"action":"create_todo","todos":[{"title":"待办标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","customIntervalDays":3,"recurrenceEndDate":"YYYY-MM-DD","groupId":"分类ID","reminderMinutes":5}]}[ACTION_END]
 
-归类/更正待办：
+修改待办：
+[ACTION_START]{"action":"update_todo","updates":[{"todoId":"待办ID","title":"新标题","remark":"新备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"groupId":"分类ID","reminderMinutes":5}]}[ACTION_END]
+
+完成待办：
+[ACTION_START]{"action":"complete_todo","updates":[{"todoId":"待办ID","title":"待办标题"}]}[ACTION_END]
+
+删除待办：
+[ACTION_START]{"action":"delete_todo","updates":[{"todoId":"待办ID","title":"待办标题"}]}[ACTION_END]
+
+延期/改期：
+[ACTION_START]{"action":"reschedule_todo","updates":[{"todoId":"待办ID","title":"待办标题","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"reminderMinutes":5}]}[ACTION_END]
+
+归类/整理待办：
 [ACTION_START]{"action":"categorize_todo","updates":[{"todoId":"待办ID","title":"待办标题","groupId":"新的分类ID","reminderMinutes":5}]}[ACTION_END]
 
 合并多种操作（推荐）：
-[ACTION_START][{"action":"create_todo","todos":[...]},{"action":"categorize_todo","updates":[...]}] [ACTION_END]
+[ACTION_START][{"action":"create_todo","todos":[...]},{"action":"categorize_todo","updates":[...]}][ACTION_END]
 
 字段说明：
-- action: "create_todo" 或 "categorize_todo"
-- todoId: 现有待办的ID（仅在 categorize_todo 时使用）
+- action: "create_todo"、"update_todo"、"complete_todo"、"delete_todo"、"reschedule_todo" 或 "categorize_todo"
+- todoId: 现有待办的ID（除 create_todo 外必须使用）
 - title: 待办标题
 - groupId: 所属分类的ID
 - reminderMinutes: 提前多少分钟提醒（默认为 5）
@@ -296,6 +309,10 @@ $folderList
 1. [ACTION_START] 和 [ACTION_END] 标记是**强制性**的，绝对不能遗漏。
 2. **意图判定准则 (核心)**：
    - **判定为“创建(create_todo)”**：如果用户提到“规划、安排、提醒我、记一下、今天要做、明天要做、以后要抽空做”。
+   - **判定为“修改(update_todo)”**：用户明确要求改标题、备注、提醒、分类、时间等多个字段。
+   - **判定为“完成(complete_todo)”**：用户明确要求完成、标记已做。
+   - **判定为“删除(delete_todo)”**：用户明确要求删除、移除。
+   - **判定为“延期/改期(reschedule_todo)”**：用户明确要求推迟、提前、改到另一个时间。
    - **判定为“整理(categorize_todo)”**：仅当用户提到“分类、移动到文件夹、整理已有的、给XX加个分类”。
 3. **文件夹归类准则 (严禁乱分类)**：
    - **语义优先**：只有当待办内容与文件夹名称有明显的语义关联（如“英语作业”对应“英语组”）时才分配 `groupId`。
@@ -305,161 +322,6 @@ $folderList
 5. 操作块中**严禁**夹带对已有分类任务的重复分类操作。
 6. JSON块必须放在[ACTION_START]和[ACTION_END]标记之间。
 7. 建议问题必须放在回复的最后，使用[SUGGEST_START]和[SUGGEST_END]标记。''';
-  }
-
-  List<Map<String, dynamic>> _extractTodoActions(String content) {
-    final List<Map<String, dynamic>> actions = [];
-    String jsonCandidate = '';
-
-    // 1. 首先尝试匹配标准标记 [ACTION_START]... [ACTION_END]
-    final regex = RegExp(
-      r'\[ACTION_START\](.*?)\[ACTION_END\]',
-      dotAll: true,
-    );
-    final matches = regex.allMatches(content).toList();
-
-    void parseAndProcess(String jsonStr) {
-      if (jsonStr.trim().isEmpty) return;
-      
-      try {
-        // 尝试自动修复可能被截断的 JSON
-        String formattedJson = jsonStr.trim();
-        int openBraces = 0;
-        int closeBraces = 0;
-        int openBrackets = 0;
-        int closeBrackets = 0;
-        
-        for (int i = 0; i < formattedJson.length; i++) {
-          if (formattedJson[i] == '{') {
-            openBraces++;
-          } else if (formattedJson[i] == '}') closeBraces++;
-          else if (formattedJson[i] == '[') openBrackets++;
-          else if (formattedJson[i] == ']') closeBrackets++;
-        }
-        
-        // 简单的补齐逻辑
-        while (closeBrackets < openBrackets) {
-          formattedJson += ']';
-          closeBrackets++;
-        }
-        while (closeBraces < openBraces) {
-          formattedJson += '}';
-          closeBraces++;
-        }
-
-        final data = jsonDecode(formattedJson);
-        void processActionMap(Map<String, dynamic> data) {
-          if (data['action'] == 'create_todo') {
-            final todos = data['todos'] as List?;
-            if (todos != null) {
-              for (final todo in todos) {
-                final Map<String, dynamic> action = Map.from(todo as Map);
-                action['type'] = 'create';
-                action['isSelected'] = true;
-                action['isAdded'] = false;
-                actions.add(action);
-              }
-            }
-          } else if (data['action'] == 'categorize_todo') {
-            final updates = data['updates'] as List?;
-            if (updates != null) {
-              for (final update in updates) {
-                final Map<String, dynamic> action = Map.from(update as Map);
-                action['type'] = 'update';
-                action['isSelected'] = true;
-                action['isAdded'] = false;
-
-                // 找回标题逻辑
-                if (action['title'] == null || action['title'] == '') {
-                  final id = action['todoId'];
-                  final existing = widget.todos.firstWhere(
-                    (t) => t['id'] == id,
-                    orElse: () => <String, dynamic>{},
-                  );
-                  if (existing.containsKey('title')) {
-                    action['title'] = existing['title'];
-                  }
-                }
-                actions.add(action);
-              }
-            }
-          }
-        }
-
-        if (data is Map<String, dynamic>) {
-          processActionMap(data);
-        } else if (data is List) {
-          for (var item in data) {
-            if (item is Map<String, dynamic>) processActionMap(item);
-          }
-        }
-      } catch (e) {
-        debugPrint('❌ 待办 JSON 解析失败: $e');
-        debugPrint('失败的 JSON 内容: $jsonStr');
-      }
-    }
-
-    if (matches.isNotEmpty) {
-      for (final m in matches) {
-        parseAndProcess(m.group(1) ?? '');
-      }
-    } else {
-      // 2. 备选方案：如果缺失 [ACTION_END] (常见于流式截断)，尝试寻找 [ACTION_START] 后面的内容
-      final startIndex = content.indexOf('[ACTION_START]');
-      if (startIndex != -1) {
-        final remaining = content.substring(startIndex + '[ACTION_START]'.length);
-        // 如果后面还有 [SUGGEST_START]，则截断到那里
-        final suggestIndex = remaining.indexOf('[SUGGEST_START]');
-        final jsonPart = suggestIndex != -1 ? remaining.substring(0, suggestIndex) : remaining;
-        parseAndProcess(jsonPart);
-      }
-    }
-    return actions;
-  }
-
-  String _cleanActionContent(String content) {
-    String cleaned = content
-        .replaceAll(
-          RegExp(r'\[ACTION_START\].*?\[ACTION_END\]', dotAll: true),
-          '',
-        )
-        .replaceAll(
-          RegExp(r'\[SUGGEST_START\].*?\[SUGGEST_END\]', dotAll: true),
-          '',
-        );
-
-    // 兜底逻辑：删除未被标记包裹但符合待办模式的原始 JSON 块
-    cleaned = cleaned.replaceAll(
-      RegExp(r'(\[[\s\S]*?\]|\{[\s\S]*?\}|JSON:[\s\S]*?)(?="action":\s*"(?:create|categorize)_todo")[\s\S]*?(?:\n\s*\]|\})', dotAll: true),
-      '',
-    );
-    
-    // 简单暴力一点：如果文本中包含明显的 JSON 长块且包含关键字，尝试直接抹去，防止显示一大长串代码
-    if (cleaned.contains('"action":') && (cleaned.contains('create_todo') || cleaned.contains('categorize_todo'))) {
-       cleaned = cleaned.replaceAll(RegExp(r'\[\s*\{\s*"action"[\s\S]*?\}\s*\]', dotAll: true), '');
-       cleaned = cleaned.replaceAll(RegExp(r'\{\s*"action"[\s\S]*?\}', dotAll: true), '');
-    }
-
-    return cleaned.trim();
-  }
-
-  List<String> _extractSuggestionsFromResponse(String content) {
-    final List<String> suggestions = [];
-    final regex = RegExp(
-      r'\[SUGGEST_START\](.*?)\[SUGGEST_END\]',
-      dotAll: true,
-    );
-    for (final match in regex.allMatches(content)) {
-      try {
-        final jsonStr = match.group(1)!.trim();
-        final list = jsonDecode(jsonStr) as List;
-        for (final item in list) {
-          final s = item.toString().trim();
-          if (s.isNotEmpty) suggestions.add(s);
-        }
-      } catch (_) {}
-    }
-    return suggestions;
   }
 
   static const int _maxContextMessages = 15;
@@ -699,17 +561,20 @@ $folderList
             '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''} (共$chunkCount个数据块)');
       }
 
-      final todoActions = _extractTodoActions(fullContent);
-      final inlineSuggestions = _extractSuggestionsFromResponse(fullContent);
-      final cleanContent = _cleanActionContent(fullContent);
+      final existingTodoTitles = {
+        for (final todo in widget.todos)
+          if (todo['id'] != null)
+            todo['id'].toString(): '${todo['title'] ?? ''}',
+      };
+      final todoActions = AiActionParser.extractTodoActions(
+        fullContent,
+        originalText: text,
+        existingTodoTitles: existingTodoTitles,
+      );
+      final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
+      final cleanContent = AiActionParser.cleanActionContent(fullContent);
 
       setState(() {
-        if (todoActions.isNotEmpty) {
-          // 为每个待办动作关联原始用户指令
-          for (final todo in todoActions) {
-            todo['originalText'] = text;
-          }
-        }
         final assistantMsg = ChatMessage(
           role: ChatRole.assistant,
           content: cleanContent,
@@ -1154,8 +1019,8 @@ $folderList
         return Stack(
           children: [
             ModalBarrier(
-              color: Colors.black.withValues(alpha: 
-                0.3 * anim1.value,
+              color: Colors.black.withValues(
+                alpha: 0.3 * anim1.value,
               ),
               dismissible: true,
             ),
@@ -1333,7 +1198,10 @@ $folderList
             size: 20,
             color: _chatModel.isNotEmpty
                 ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                : Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
           ),
           const SizedBox(width: 2),
           Text(
@@ -1343,7 +1211,10 @@ $folderList
               fontWeight: FontWeight.w500,
               color: _chatModel.isNotEmpty
                   ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                  : Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6),
             ),
           ),
           const Icon(Icons.arrow_drop_down, size: 20),
@@ -1649,16 +1520,20 @@ $folderList
   }
 
   Widget _buildMessageTodoActions(ChatMessage msg, bool isDark) {
-    bool allAdded = msg.todoActions!.every((t) => t['isAdded'] == true);
+    bool allAdded = msg.todoActions!.every((t) => t.isAdded);
     if (allAdded) return const SizedBox.shrink();
+    final hasExistingMutations =
+        msg.todoActions?.any((t) => t.mutatesExistingTodo) == true;
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color:
-              Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+          color: Theme.of(context)
+              .colorScheme
+              .primaryContainer
+              .withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
@@ -1679,9 +1554,7 @@ $folderList
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    msg.todoActions?.any((t) => t['type'] == 'update') == true
-                        ? '建议整理待办'
-                        : '建议添加待办',
+                    hasExistingMutations ? '建议整理待办' : '建议添加待办',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -1692,16 +1565,15 @@ $folderList
               ),
             ),
             ...msg.todoActions!.asMap().entries.map((entry) {
-              final idx = entry.key;
               final todo = entry.value;
-              if (todo['isAdded'] == true) return const SizedBox.shrink();
+              if (todo.isAdded) return const SizedBox.shrink();
 
-              final isSelected = todo['isSelected'] == true;
-              final currentGroupId = todo['groupId'] as String?;
-              final startTime = todo['startTime'] as String?;
-              final dueDate = todo['dueDate'] as String?;
-              final isAllDay = todo['isAllDay'] == true;
-              final recurrence = todo['recurrence'] as String? ?? 'none';
+              final isSelected = todo.isSelected;
+              final currentGroupId = todo.groupId;
+              final startTime = todo.startTime;
+              final dueDate = todo.dueDate;
+              final isAllDay = todo.isAllDay;
+              final recurrence = todo.recurrence;
               final timeStr =
                   _formatTodoTimeRange(startTime, dueDate, isAllDay);
 
@@ -1724,7 +1596,7 @@ $folderList
                             value: isSelected,
                             onChanged: (val) {
                               setState(() {
-                                todo['isSelected'] = val;
+                                todo.isSelected = val == true;
                               });
                               _saveHistorySilently();
                             },
@@ -1737,45 +1609,10 @@ $folderList
                             children: [
                               Row(
                                 children: [
-                                  if (todo['type'] == 'update')
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 4, vertical: 1),
-                                      margin: const EdgeInsets.only(right: 6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                            color:
-                                                Colors.orange.withValues(alpha: 0.3)),
-                                      ),
-                                      child: const Text('整理',
-                                          style: TextStyle(
-                                              fontSize: 9,
-                                              color: Colors.orange,
-                                              fontWeight: FontWeight.bold)),
-                                    )
-                                  else
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 4, vertical: 1),
-                                      margin: const EdgeInsets.only(right: 6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                            color:
-                                                Colors.green.withValues(alpha: 0.3)),
-                                      ),
-                                      child: const Text('新增',
-                                          style: TextStyle(
-                                              fontSize: 9,
-                                              color: Colors.green,
-                                              fontWeight: FontWeight.bold)),
-                                    ),
+                                  _buildActionBadge(todo),
                                   Expanded(
                                     child: Text(
-                                      todo['title'] ?? '未命名待办',
+                                      todo.title ?? '未命名待办',
                                       style: const TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
@@ -1786,14 +1623,15 @@ $folderList
                                   ),
                                 ],
                               ),
-                              if (todo['type'] == 'update')
+                              if (todo.mutatesExistingTodo)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 2),
                                   child: Text(
-                                    '从 [${_getTodoCurrentFolderName(todo['todoId'])}] 移动',
+                                    _getMutationHint(todo),
                                     style: TextStyle(
                                         fontSize: 10,
-                                        color: Colors.grey.withValues(alpha: 0.8),
+                                        color:
+                                            Colors.grey.withValues(alpha: 0.8),
                                         fontStyle: FontStyle.italic),
                                   ),
                                 ),
@@ -1846,8 +1684,7 @@ $folderList
                         ],
                       ),
                     ),
-                    if (todo['remark'] != null &&
-                        (todo['remark'] as String).isNotEmpty)
+                    if (todo.remark != null && todo.remark!.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(left: 28, top: 4),
                         child: Row(
@@ -1864,7 +1701,7 @@ $folderList
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                todo['remark'],
+                                todo.remark!,
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Theme.of(context)
@@ -1880,9 +1717,13 @@ $folderList
                     Padding(
                       padding: const EdgeInsets.only(left: 28, top: 6),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(
@@ -1902,12 +1743,15 @@ $folderList
                                       ? currentGroupId
                                       : null,
                                   isDense: true,
-                                  icon: const Icon(Icons.arrow_drop_down, size: 16),
-                                  hint: const Text('选择分类', style: TextStyle(fontSize: 11)),
+                                  icon: const Icon(Icons.arrow_drop_down,
+                                      size: 16),
+                                  hint: const Text('选择分类',
+                                      style: TextStyle(fontSize: 11)),
                                   items: [
                                     const DropdownMenuItem<String?>(
                                       value: null,
-                                      child: Text('默认分类', style: TextStyle(fontSize: 11)),
+                                      child: Text('默认分类',
+                                          style: TextStyle(fontSize: 11)),
                                     ),
                                     ...widget.todoGroups.map(
                                       (g) => DropdownMenuItem<String?>(
@@ -1921,7 +1765,7 @@ $folderList
                                   ],
                                   onChanged: (val) {
                                     setState(() {
-                                      todo['groupId'] = val;
+                                      todo.groupId = val;
                                     });
                                     _saveHistorySilently();
                                   },
@@ -1942,7 +1786,7 @@ $folderList
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: msg.todoActions!.any(
-                    (t) => t['isSelected'] == true && t['isAdded'] != true,
+                    (t) => t.isSelected && !t.isAdded,
                   )
                       ? () => _addTodosForMessage(msg)
                       : null,
@@ -1958,8 +1802,9 @@ $folderList
                       const Icon(Icons.add_task, size: 16),
                       const SizedBox(width: 8),
                       Text(
-                        '添加到清单 (${msg.todoActions!.where((t) => t['isSelected'] == true && t['isAdded'] != true).length})',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        '执行所选操作 (${msg.todoActions!.where((t) => t.isSelected && !t.isAdded).length})',
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -1972,8 +1817,116 @@ $folderList
     );
   }
 
+  Widget _buildActionBadge(AiTodoAction action) {
+    Color color;
+    String label;
+    switch (action.type) {
+      case AiTodoActionType.createTodo:
+        color = Colors.green;
+        label = '新增';
+        break;
+      case AiTodoActionType.completeTodo:
+        color = Colors.blue;
+        label = '完成';
+        break;
+      case AiTodoActionType.deleteTodo:
+        color = Colors.red;
+        label = '删除';
+        break;
+      case AiTodoActionType.rescheduleTodo:
+        color = Colors.purple;
+        label = '改期';
+        break;
+      case AiTodoActionType.updateTodo:
+        color = Colors.orange;
+        label = '修改';
+        break;
+      case AiTodoActionType.categorizeTodo:
+        color = Colors.orange;
+        label = '整理';
+        break;
+      case AiTodoActionType.unknown:
+        color = Colors.grey;
+        label = '操作';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      margin: const EdgeInsets.only(right: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 9,
+          color: color,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  String _getMutationHint(AiTodoAction action) {
+    switch (action.type) {
+      case AiTodoActionType.completeTodo:
+        return '标记为已完成';
+      case AiTodoActionType.deleteTodo:
+        return '移动到已删除';
+      case AiTodoActionType.rescheduleTodo:
+        return '调整时间安排';
+      case AiTodoActionType.updateTodo:
+        return '更新待办内容';
+      case AiTodoActionType.categorizeTodo:
+        return '从 [${_getTodoCurrentFolderName(action.todoId)}] 移动';
+      case AiTodoActionType.createTodo:
+      case AiTodoActionType.unknown:
+        return '';
+    }
+  }
+
   Future<void> _saveHistorySilently() async {
     await ChatStorageService.saveHistory(_messages, _activeSessionId);
+  }
+
+  RecurrenceType _parseRecurrence(
+    String recurrence,
+    Map<String, dynamic> existing,
+  ) {
+    if (recurrence != 'none') {
+      return RecurrenceType.values.firstWhere(
+        (e) => e.name == recurrence,
+        orElse: () => RecurrenceType.none,
+      );
+    }
+
+    final existingRecurrence = existing['recurrence'];
+    if (existingRecurrence is int &&
+        existingRecurrence >= 0 &&
+        existingRecurrence < RecurrenceType.values.length) {
+      return RecurrenceType.values[existingRecurrence];
+    }
+    return RecurrenceType.values.firstWhere(
+      (e) => e.name == existingRecurrence?.toString(),
+      orElse: () => RecurrenceType.none,
+    );
+  }
+
+  int? _parseNullableInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  DateTime? _parseExistingDate(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is num) return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    return DateTime.tryParse(value.toString());
   }
 
   void _addTodosForMessage(ChatMessage msg) {
@@ -1981,69 +1934,108 @@ $folderList
 
     final List<TodoItem> newTodos = [];
     final List<TodoItem> updatedTodos = [];
-    final selectedActions = msg.todoActions!.where((t) => t['isSelected'] == true && t['isAdded'] != true).toList();
+    final selectedActions =
+        msg.todoActions!.where((t) => t.isSelected && !t.isAdded).toList();
 
     for (final todoData in selectedActions) {
-      if (todoData['type'] == 'update') {
-        final id = todoData['todoId'];
+      if (todoData.mutatesExistingTodo) {
+        final id = todoData.todoId;
         if (id == null) continue;
-        final gId = todoData['groupId']?.toString();
+        final gId = todoData.groupId;
         // 查找真实的现有待办数据
         final existingMatch = widget.todos.where((t) => t['id'] == id).toList();
         if (existingMatch.isNotEmpty) {
-           final e = existingMatch.first;
-           // 必须带上现有的所有核心字段，尤其是那些 UI 判定需要的字段
-           updatedTodos.add(TodoItem(
-             id: id,
-             title: todoData['title'] ?? e['title'] ?? '',
-             groupId: (gId == null || gId.isEmpty) ? null : gId,
-             isDone: e['isDone'] ?? false,
-             isDeleted: e['isDeleted'] ?? false,
-             remark: e['remark'] ?? todoData['remark'],
-             dueDate: e['endTime'] != null ? DateTime.tryParse(e['endTime']) : null,
-             createdDate: (e['startTime'] != null) ? DateTime.tryParse(e['startTime'])?.millisecondsSinceEpoch : null,
-             reminderMinutes: todoData['reminderMinutes'] ?? e['reminderMinutes'] as int?,
-           )..markAsChanged());
+          final e = existingMatch.first;
+          final existingGroupId = e['groupId']?.toString();
+          final nextGroupId = todoData.type == AiTodoActionType.categorizeTodo
+              ? ((gId == null || gId.isEmpty) ? null : gId)
+              : ((gId != null && gId.isNotEmpty) ? gId : existingGroupId);
+          final existingStartTime = e['startTime'] != null
+              ? DateTime.tryParse(e['startTime'].toString())
+              : null;
+          final existingDueDate = e['endTime'] != null
+              ? DateTime.tryParse(e['endTime'].toString())
+              : null;
+          final nextStartTime = todoData.startTime != null
+              ? DateTime.tryParse(todoData.startTime!)
+              : existingStartTime;
+          final nextDueDate = todoData.dueDate != null
+              ? DateTime.tryParse(todoData.dueDate!)
+              : existingDueDate;
+          // 必须带上现有的所有核心字段，尤其是那些 UI 判定需要的字段
+          updatedTodos.add(TodoItem(
+            id: id,
+            title: todoData.title ?? e['title'] ?? '',
+            groupId: nextGroupId,
+            isDone: todoData.type == AiTodoActionType.completeTodo
+                ? true
+                : e['isDone'] ?? false,
+            isDeleted: todoData.type == AiTodoActionType.deleteTodo
+                ? true
+                : e['isDeleted'] ?? false,
+            remark: todoData.remark ?? e['remark'],
+            dueDate: nextDueDate,
+            createdDate: nextStartTime?.millisecondsSinceEpoch,
+            recurrence: _parseRecurrence(todoData.recurrence, e),
+            customIntervalDays: todoData.customIntervalDays ??
+                _parseNullableInt(
+                    e['customIntervalDays'] ?? e['custom_interval_days']),
+            recurrenceEndDate: todoData.recurrenceEndDate != null
+                ? DateTime.tryParse(todoData.recurrenceEndDate!)
+                : _parseExistingDate(
+                    e['recurrenceEndDate'] ?? e['recurrence_end_date']),
+            isAllDay: todoData.isAllDay || e['isAllDay'] == true,
+            reminderMinutes:
+                todoData.reminderMinutes ?? e['reminderMinutes'] as int?,
+          )..markAsChanged());
         } else {
           updatedTodos.add(TodoItem(
             id: id,
-            title: todoData['title'] ?? '',
+            title: todoData.title ?? '',
             groupId: (gId == null || gId.isEmpty) ? null : gId,
-            reminderMinutes: todoData['reminderMinutes'],
+            isDone: todoData.type == AiTodoActionType.completeTodo,
+            isDeleted: todoData.type == AiTodoActionType.deleteTodo,
+            reminderMinutes: todoData.reminderMinutes,
           )..markAsChanged());
         }
-        todoData['isAdded'] = true;
+        todoData.isAdded = true;
         continue;
       }
 
-      DateTime? startTime = todoData['startTime'] != null ? DateTime.tryParse(todoData['startTime']) : null;
-      DateTime? dueDate = todoData['dueDate'] != null ? DateTime.tryParse(todoData['dueDate']) : null;
-      DateTime? recurrenceEndDate = todoData['recurrenceEndDate'] != null ? DateTime.tryParse(todoData['recurrenceEndDate']) : null;
+      DateTime? startTime = todoData.startTime != null
+          ? DateTime.tryParse(todoData.startTime!)
+          : null;
+      DateTime? dueDate = todoData.dueDate != null
+          ? DateTime.tryParse(todoData.dueDate!)
+          : null;
+      DateTime? recurrenceEndDate = todoData.recurrenceEndDate != null
+          ? DateTime.tryParse(todoData.recurrenceEndDate!)
+          : null;
 
       RecurrenceType recurrence = RecurrenceType.none;
-      if (todoData['recurrence'] != null) {
-        recurrence = RecurrenceType.values.firstWhere(
-          (e) => e.name == todoData['recurrence'],
-          orElse: () => RecurrenceType.none,
-        );
-      }
+      recurrence = RecurrenceType.values.firstWhere(
+        (e) => e.name == todoData.recurrence,
+        orElse: () => RecurrenceType.none,
+      );
 
-      final gId = todoData['groupId']?.toString();
+      final gId = todoData.groupId;
       newTodos.add(TodoItem(
-        title: todoData['title'] ?? '未命名待办',
-        remark: todoData['remark'],
+        title: todoData.title ?? '未命名待办',
+        remark: todoData.remark,
         dueDate: dueDate,
-        createdDate: startTime?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch,
+        createdDate: startTime?.millisecondsSinceEpoch ??
+            DateTime.now().millisecondsSinceEpoch,
         recurrence: recurrence,
-        customIntervalDays: todoData['customIntervalDays'],
+        customIntervalDays: todoData.customIntervalDays,
         recurrenceEndDate: recurrenceEndDate,
-        originalText: todoData['originalText'],
+        originalText: todoData.originalText,
         groupId: (gId == null || gId.isEmpty) ? null : gId,
-        reminderMinutes: todoData['reminderMinutes'] ??
+        isAllDay: todoData.isAllDay,
+        reminderMinutes: todoData.reminderMinutes ??
             (gId != null ? _categoryReminderDefaults[gId] : null),
       ));
-      
-      todoData['isAdded'] = true;
+
+      todoData.isAdded = true;
     }
 
     if (newTodos.isNotEmpty || updatedTodos.isNotEmpty) {
@@ -2525,8 +2517,10 @@ class _CollapsibleReasoningWidgetState
                   Icon(
                     Icons.psychology_outlined,
                     size: 16,
-                    color:
-                        Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.7),
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -2559,8 +2553,10 @@ class _CollapsibleReasoningWidgetState
                         ? Icons.keyboard_arrow_up
                         : Icons.keyboard_arrow_down,
                     size: 20,
-                    color:
-                        Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.5),
                   ),
                 ],
               ),
