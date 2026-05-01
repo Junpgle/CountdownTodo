@@ -9,6 +9,21 @@ enum AiTodoActionType {
   planTodos,
   splitTodo,
   mergeTodos,
+  createTimeLog,
+  updateTimeLog,
+  deleteTimeLog,
+  startPomodoro,
+  stopPomodoro,
+  createCountdown,
+  updateCountdown,
+  completeCountdown,
+  deleteCountdown,
+  createTodoGroup,
+  updateTodoGroup,
+  deleteTodoGroup,
+  createPomodoroTag,
+  updatePomodoroTag,
+  deletePomodoroTag,
   unknown,
 }
 
@@ -26,6 +41,10 @@ class AiTodoAction {
     this.recurrenceEndDate,
     this.groupId,
     this.reminderMinutes,
+    this.durationMinutes,
+    this.tagUuids = const [],
+    this.status,
+    this.color,
     this.isSelected = true,
     this.isAdded = false,
     this.originalText,
@@ -46,6 +65,10 @@ class AiTodoAction {
   String? recurrenceEndDate;
   String? groupId;
   int? reminderMinutes;
+  int? durationMinutes;
+  List<String> tagUuids;
+  String? status;
+  String? color;
   bool isSelected;
   bool isAdded;
   String? originalText;
@@ -59,13 +82,56 @@ class AiTodoAction {
       type == AiTodoActionType.splitTodo ||
       type == AiTodoActionType.mergeTodos;
 
-  bool get mutatesExistingTodo =>
+  bool get isTodoAction =>
+      createsTodo ||
       type == AiTodoActionType.updateTodo ||
       type == AiTodoActionType.completeTodo ||
       type == AiTodoActionType.deleteTodo ||
       type == AiTodoActionType.rescheduleTodo ||
       type == AiTodoActionType.bulkRescheduleTodo ||
       type == AiTodoActionType.categorizeTodo;
+
+  bool get isTimeLogAction =>
+      type == AiTodoActionType.createTimeLog ||
+      type == AiTodoActionType.updateTimeLog ||
+      type == AiTodoActionType.deleteTimeLog;
+
+  bool get isPomodoroAction =>
+      type == AiTodoActionType.startPomodoro ||
+      type == AiTodoActionType.stopPomodoro;
+
+  bool get isCountdownAction =>
+      type == AiTodoActionType.createCountdown ||
+      type == AiTodoActionType.updateCountdown ||
+      type == AiTodoActionType.completeCountdown ||
+      type == AiTodoActionType.deleteCountdown;
+
+  bool get isPomodoroTagAction =>
+      type == AiTodoActionType.createPomodoroTag ||
+      type == AiTodoActionType.updatePomodoroTag ||
+      type == AiTodoActionType.deletePomodoroTag;
+
+  bool get isTodoGroupAction =>
+      type == AiTodoActionType.createTodoGroup ||
+      type == AiTodoActionType.updateTodoGroup ||
+      type == AiTodoActionType.deleteTodoGroup;
+
+  bool get mutatesExistingTodo =>
+      type == AiTodoActionType.updateTodo ||
+      type == AiTodoActionType.completeTodo ||
+      type == AiTodoActionType.deleteTodo ||
+      type == AiTodoActionType.rescheduleTodo ||
+      type == AiTodoActionType.bulkRescheduleTodo ||
+      type == AiTodoActionType.categorizeTodo ||
+      type == AiTodoActionType.updateTimeLog ||
+      type == AiTodoActionType.deleteTimeLog ||
+      type == AiTodoActionType.updateCountdown ||
+      type == AiTodoActionType.completeCountdown ||
+      type == AiTodoActionType.deleteCountdown ||
+      type == AiTodoActionType.updateTodoGroup ||
+      type == AiTodoActionType.deleteTodoGroup ||
+      type == AiTodoActionType.updatePomodoroTag ||
+      type == AiTodoActionType.deletePomodoroTag;
 
   String get legacyType => createsTodo ? 'create' : 'update';
 
@@ -83,6 +149,10 @@ class AiTodoAction {
         'recurrenceEndDate': recurrenceEndDate,
         'groupId': groupId,
         'reminderMinutes': reminderMinutes,
+        'durationMinutes': durationMinutes,
+        'tagUuids': tagUuids,
+        'status': status,
+        'color': color,
         'isSelected': isSelected,
         'isAdded': isAdded,
         'originalText': originalText,
@@ -109,7 +179,7 @@ class AiTodoAction {
 
     return AiTodoAction(
       type: parsedType,
-      todoId: json['todoId']?.toString(),
+      todoId: (json['todoId'] ?? json['logId'] ?? json['id'])?.toString(),
       title: json['title']?.toString(),
       remark: json['remark']?.toString(),
       startTime: json['startTime']?.toString(),
@@ -120,6 +190,10 @@ class AiTodoAction {
       recurrenceEndDate: json['recurrenceEndDate']?.toString(),
       groupId: json['groupId']?.toString(),
       reminderMinutes: _parseInt(json['reminderMinutes']),
+      durationMinutes: _parseInt(json['durationMinutes'] ?? json['minutes']),
+      tagUuids: _parseStringList(json['tagUuids'] ?? json['tagIds']),
+      status: json['status']?.toString(),
+      color: json['color']?.toString(),
       isSelected: json['isSelected'] != false,
       isAdded: json['isAdded'] == true,
       originalText: json['originalText']?.toString(),
@@ -158,6 +232,45 @@ class AiTodoAction {
         return AiTodoActionType.splitTodo;
       case 'merge_todos':
         return AiTodoActionType.mergeTodos;
+      case 'create_time_log':
+        return AiTodoActionType.createTimeLog;
+      case 'update_time_log':
+        return AiTodoActionType.updateTimeLog;
+      case 'delete_time_log':
+        return AiTodoActionType.deleteTimeLog;
+      case 'start_pomodoro':
+        return AiTodoActionType.startPomodoro;
+      case 'stop_pomodoro':
+        return AiTodoActionType.stopPomodoro;
+      case 'create_countdown':
+        return AiTodoActionType.createCountdown;
+      case 'update_countdown':
+        return AiTodoActionType.updateCountdown;
+      case 'complete_countdown':
+        return AiTodoActionType.completeCountdown;
+      case 'delete_countdown':
+        return AiTodoActionType.deleteCountdown;
+      case 'create_todo_group':
+      case 'create_group':
+      case 'create_category':
+      case 'create_folder':
+        return AiTodoActionType.createTodoGroup;
+      case 'update_todo_group':
+      case 'update_group':
+      case 'update_category':
+      case 'update_folder':
+        return AiTodoActionType.updateTodoGroup;
+      case 'delete_todo_group':
+      case 'delete_group':
+      case 'delete_category':
+      case 'delete_folder':
+        return AiTodoActionType.deleteTodoGroup;
+      case 'create_pomodoro_tag':
+        return AiTodoActionType.createPomodoroTag;
+      case 'update_pomodoro_tag':
+        return AiTodoActionType.updatePomodoroTag;
+      case 'delete_pomodoro_tag':
+        return AiTodoActionType.deletePomodoroTag;
     }
     if (legacyType == 'create') return AiTodoActionType.createTodo;
     if (legacyType == 'update') return AiTodoActionType.categorizeTodo;

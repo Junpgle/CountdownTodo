@@ -14,6 +14,7 @@ import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../services/pomodoro_service.dart';
 import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
 import 'home_sections.dart';
@@ -3154,8 +3155,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       todoGroups: widget.todoGroups,
                       courses: aiContext.courses,
                       timeLogs: aiContext.timeLogs,
+                      pomodoroRecords: aiContext.pomodoroRecords,
                       conflicts: widget.conflicts,
                       teams: aiContext.teams,
+                      onTodoGroupsChanged: widget.onGroupsChanged,
                       onTodosBatchAction: (inserted, updated) {
                         final List<TodoItem> resultList =
                             List<TodoItem>.from(widget.todos);
@@ -3255,6 +3258,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       final results = await Future.wait<dynamic>([
         CourseService.getAllCourses(widget.username),
         StorageService.getTimeLogs(widget.username),
+        PomodoroService.getRecords(),
       ]);
       final courses = (results[0] as List<CourseItem>)
           .where((course) => !course.isDeleted)
@@ -3262,9 +3266,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       final timeLogs = (results[1] as List<TimeLogItem>)
           .where((log) => !log.isDeleted)
           .toList();
+      final pomodoroRecords = (results[2] as List<PomodoroRecord>)
+          .where((record) => !record.isDeleted)
+          .toList();
       return _AiAssistantContext(
         courses: courses,
         timeLogs: timeLogs,
+        pomodoroRecords: pomodoroRecords,
         teams: _teams,
       );
     } catch (e) {
@@ -4289,11 +4297,13 @@ class _AiAssistantContext {
   const _AiAssistantContext({
     this.courses = const [],
     this.timeLogs = const [],
+    this.pomodoroRecords = const [],
     this.teams = const [],
   });
 
   final List<CourseItem> courses;
   final List<TimeLogItem> timeLogs;
+  final List<PomodoroRecord> pomodoroRecords;
   final List<Team> teams;
 }
 

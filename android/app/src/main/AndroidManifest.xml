@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <!-- 开机自启：重新注册提醒 Alarm -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
 
     <!-- 存储权限：用于 Android 10 及以下版本 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />

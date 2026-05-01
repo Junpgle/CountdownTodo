@@ -2479,9 +2479,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         todoGroups: groups.where((g) => !g.isDeleted).toList(),
         courses: _allCourses,
         timeLogs: _allTimeLogs,
+        pomodoroRecords: _allPomodoroRecords,
+        pomodoroTags: _pomodoroTags,
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(allTodos, inserted, updated);
+          final merged = AiTodoActionExecutor.mergeTodoUpdates(
+              allTodos, inserted, updated);
           await StorageService.saveTodos(widget.username, merged);
           await _loadData();
         },

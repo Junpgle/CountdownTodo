@@ -1054,9 +1054,8 @@ class StorageService {
     if (!_isLocalScheduleConflict(data)) return;
 
     final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
-    final startMs = _parseMillis(data?['start_time']) ??
-        item.createdDate ??
-        item.createdAt;
+    final startMs =
+        _parseMillis(data?['start_time']) ?? item.createdDate ?? item.createdAt;
     final endMs =
         _parseMillis(data?['end_time']) ?? item.dueDate?.millisecondsSinceEpoch;
     if (startMs <= 0 || endMs == null || endMs <= 0) return;
@@ -2232,10 +2231,10 @@ class StorageService {
                 endTime: _parseNullableInt(m['end_time']) ?? 0,
                 remark: (m['notes'] ?? m['remark'])?.toString(),
                 version: _parseNullableInt(m['version']) ?? 1,
-                updatedAt:
-                    _parseNullableInt(m['updated_at']) ?? DateTime.now().millisecondsSinceEpoch,
-                createdAt:
-                    _parseNullableInt(m['created_at']) ?? DateTime.now().millisecondsSinceEpoch,
+                updatedAt: _parseNullableInt(m['updated_at']) ??
+                    DateTime.now().millisecondsSinceEpoch,
+                createdAt: _parseNullableInt(m['created_at']) ??
+                    DateTime.now().millisecondsSinceEpoch,
                 isDeleted: (m['is_deleted'] == 1),
                 deviceId: _emptyToNull(m['device_id']),
                 teamUuid: _emptyToNull(m['team_uuid']),
@@ -2842,8 +2841,7 @@ class StorageService {
       for (var raw in serverTodos) {
         final serverRaw =
             raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
-        final sanitizedServerRaw =
-            _stripClientOnlyConflictForSync(serverRaw);
+        final sanitizedServerRaw = _stripClientOnlyConflictForSync(serverRaw);
         TodoItem sItem = TodoItem.fromJson(sanitizedServerRaw);
         if (ignoredUuids.contains(sItem.id)) {
           debugPrint('🚫 [合并跳过] UUID: ${sItem.id} 已在本地忽略列表中');
@@ -3096,12 +3094,12 @@ class StorageService {
         if (duration >= 23.5 * 3600 * 1000) {
           isAllDayRange = true;
         } else {
-          final st = DateTime.fromMillisecondsSinceEpoch(startMs);
-          final et = DateTime.fromMillisecondsSinceEpoch(endMs);
+          final st = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+          final et = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
           if (st.hour == 0 &&
               st.minute == 0 &&
-              et.hour == 23 &&
-              et.minute == 59) {
+              ((et.hour == 23 && et.minute == 59) ||
+                  (et.hour == 0 && et.minute == 0 && et.isAfter(st)))) {
             isAllDayRange = true;
           }
         }

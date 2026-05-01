@@ -262,11 +262,25 @@ class NotificationService {
         .toLocal();
     final DateTime dueDate = todo.dueDate!.toLocal();
 
-    return _isSameDay(startDate, dueDate) &&
-        startDate.hour == 0 &&
+    return _isAllDayRange(startDate, dueDate);
+  }
+
+  static bool _isAllDayRange(DateTime startDate, DateTime dueDate) {
+    if (!_isSameDay(startDate, dueDate)) {
+      final endsAtNextMidnight = startDate.hour == 0 &&
+          startDate.minute == 0 &&
+          dueDate.hour == 0 &&
+          dueDate.minute == 0 &&
+          dueDate.isAfter(startDate);
+      return endsAtNextMidnight;
+    }
+
+    return startDate.hour == 0 &&
         startDate.minute == 0 &&
-        dueDate.hour == 23 &&
-        dueDate.minute == 59;
+        ((dueDate.hour == 23 && dueDate.minute == 59) ||
+            (dueDate.hour == 0 &&
+                dueDate.minute == 0 &&
+                dueDate.isAfter(startDate)));
   }
 
   static String _windowsAllDayTodoKey(TodoItem todo) {
@@ -293,8 +307,10 @@ class NotificationService {
             todo.createdDate ?? todo.createdAt,
             isUtc: true)
         .toLocal();
-    String timeStr =
-        "${DateFormat('HH:mm').format(startDate)} - ${DateFormat('HH:mm').format(todo.dueDate!.toLocal())}";
+    final dueDate = todo.dueDate!.toLocal();
+    String timeStr = isAllDayTodo
+        ? '全天'
+        : "${DateFormat('HH:mm').format(startDate)} - ${DateFormat('HH:mm').format(dueDate)}";
     final notifId = todo.id.hashCode;
 
     debugPrint(
@@ -494,7 +510,8 @@ class NotificationService {
   }
 
   static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return [];
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows)
+      return [];
 
     if (Platform.isWindows) {
       return await StorageService.getWindowsScheduledReminders();
@@ -723,7 +740,8 @@ class NotificationService {
     }
 
     try {
-      await _channel.invokeMethod('cancelNotification'); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
+      await _channel.invokeMethod(
+          'cancelNotification'); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
     } catch (e) {}
   }
 }

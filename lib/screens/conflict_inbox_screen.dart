@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
+import '../services/pomodoro_service.dart';
 import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
 
@@ -618,22 +619,30 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         StorageService.getTodoGroups(widget.username),
         CourseService.getAllCourses(widget.username),
         StorageService.getTimeLogs(widget.username),
+        PomodoroService.getRecords(),
       ]);
       if (!mounted) return;
       await AiTodoChatLauncher.open(
         context,
         username: widget.username,
-        todos: (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList(),
+        todos:
+            (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList(),
         todoGroups:
             (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList(),
-        courses:
-            (results[2] as List<CourseItem>).where((c) => !c.isDeleted).toList(),
-        timeLogs:
-            (results[3] as List<TimeLogItem>).where((l) => !l.isDeleted).toList(),
+        courses: (results[2] as List<CourseItem>)
+            .where((c) => !c.isDeleted)
+            .toList(),
+        timeLogs: (results[3] as List<TimeLogItem>)
+            .where((l) => !l.isDeleted)
+            .toList(),
+        pomodoroRecords: (results[4] as List<PomodoroRecord>)
+            .where((r) => !r.isDeleted)
+            .toList(),
         conflicts: _buildAiConflictContext(),
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(allTodos, inserted, updated);
+          final merged = AiTodoActionExecutor.mergeTodoUpdates(
+              allTodos, inserted, updated);
           await StorageService.saveTodos(widget.username, merged);
           await _loadConflicts();
         },
@@ -3088,8 +3097,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         data['dueDate']);
     if (startMs <= 0 || endMs <= startMs) return false;
 
-    final start = DateTime.fromMillisecondsSinceEpoch(startMs);
-    final end = DateTime.fromMillisecondsSinceEpoch(endMs);
+    final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+    final end = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
 
     // 判定为全天任务：时间正好跨越 00:00 到 23:59 或次日 00:00
     if (start.hour == 0 && start.minute == 0) {

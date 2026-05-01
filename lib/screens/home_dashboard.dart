@@ -32,6 +32,7 @@ import '../services/pomodoro_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
+import '../services/island_slot_provider.dart';
 
 // 引入其他页面
 import 'screen_time_detail_screen.dart';
@@ -1082,7 +1083,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                           Icon(
                             event.type == 'course'
                                 ? Icons.location_on_outlined
-                                : Icons.sticky_note_2_outlined,
+                                : event.type == 'special_todo'
+                                    ? Icons.confirmation_number_outlined
+                                    : Icons.sticky_note_2_outlined,
                             size: 11,
                             color: isLight ? Colors.white70 : Colors.grey[600],
                           ),
@@ -1242,9 +1245,32 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
     }
 
-    // 3. 待办 (临近或进行中)
+    // 3. 特殊待办 (快递/取餐/餐饮等): 当天都进入 Banner
     for (final todo in _todos) {
       if (todo.isDone || todo.isDeleted || todo.dueDate == null) continue;
+
+      final specialType = IslandSlotProvider.detectTodoType(todo.title);
+      if (specialType == 'default') continue;
+      if (!_isSameDay(todo.dueDate!.toLocal(), now)) continue;
+
+      events.add(HomeBannerEvent(
+        type: 'special_todo',
+        title: todo.title,
+        subtitle: todo.remark,
+        label: _specialTodoBannerLabel(specialType),
+        timeInfo: _specialTodoBannerTimeInfo(todo, now),
+        baseColor: _specialTodoBannerColor(specialType),
+        icon: _specialTodoBannerIcon(specialType),
+        priority: 2,
+        isTeam: todo.teamUuid != null,
+        onTap: () => _openTodoEditor(todo),
+      ));
+    }
+
+    // 4. 普通待办 (临近或进行中)
+    for (final todo in _todos) {
+      if (todo.isDone || todo.isDeleted || todo.dueDate == null) continue;
+      if (IslandSlotProvider.detectTodoType(todo.title) != 'default') continue;
 
       final startMs = todo.createdDate ?? todo.createdAt;
       final startTime = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
@@ -1275,25 +1301,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           icon: '📝',
           priority: 3,
           isTeam: todo.teamUuid != null,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => TodoEditScreen(
-                todo: todo,
-                todos: _todos,
-                onTodosChanged: (newTodos) {
-                  setState(() => _todos = newTodos);
-                  _loadAllData();
-                },
-                todoGroups: _todoGroups,
-                onGroupsChanged: (newGroups) {
-                  setState(() => _todoGroups = newGroups);
-                  _loadAllData();
-                },
-                username: widget.username,
-              ),
-            ),
-          ),
+          onTap: () => _openTodoEditor(todo),
         ));
       } else if (diffStart >= 0 && diffStart <= 30) {
         events.add(HomeBannerEvent(
@@ -1306,25 +1314,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           icon: '📝',
           priority: 5,
           isTeam: todo.teamUuid != null,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => TodoEditScreen(
-                todo: todo,
-                todos: _todos,
-                onTodosChanged: (newTodos) {
-                  setState(() => _todos = newTodos);
-                  _loadAllData();
-                },
-                todoGroups: _todoGroups,
-                onGroupsChanged: (newGroups) {
-                  setState(() => _todoGroups = newGroups);
-                  _loadAllData();
-                },
-                username: widget.username,
-              ),
-            ),
-          ),
+          onTap: () => _openTodoEditor(todo),
         ));
       }
     }
@@ -1332,6 +1322,88 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 排序: 优先级数值越小越靠前
     events.sort((a, b) => a.priority.compareTo(b.priority));
     return events;
+  }
+
+  void _openTodoEditor(TodoItem todo) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TodoEditScreen(
+          todo: todo,
+          todos: _todos,
+          onTodosChanged: (newTodos) {
+            setState(() => _todos = newTodos);
+            _loadAllData();
+          },
+          todoGroups: _todoGroups,
+          onGroupsChanged: (newGroups) {
+            setState(() => _todoGroups = newGroups);
+            _loadAllData();
+          },
+          username: widget.username,
+        ),
+      ),
+    );
+  }
+
+  String _specialTodoBannerLabel(String specialType) {
+    switch (specialType) {
+      case 'delivery':
+        return '📦 取件待办';
+      case 'cafe':
+      case 'food':
+        return '🥡 取餐待办';
+      case 'restaurant':
+        return '🍽️ 餐饮待办';
+      default:
+        return '📌 特殊待办';
+    }
+  }
+
+  String _specialTodoBannerIcon(String specialType) {
+    switch (specialType) {
+      case 'delivery':
+        return '📦';
+      case 'cafe':
+        return '☕';
+      case 'food':
+        return '🥡';
+      case 'restaurant':
+        return '🍽️';
+      default:
+        return '📌';
+    }
+  }
+
+  Color _specialTodoBannerColor(String specialType) {
+    switch (specialType) {
+      case 'delivery':
+        return const Color(0xFFFF8A65);
+      case 'cafe':
+        return const Color(0xFF8D6E63);
+      case 'food':
+        return const Color(0xFFFF7043);
+      case 'restaurant':
+        return const Color(0xFFFFB74D);
+      default:
+        return Colors.amber[700]!;
+    }
+  }
+
+  String _specialTodoBannerTimeInfo(TodoItem todo, DateTime now) {
+    final dueDate = todo.dueDate?.toLocal();
+    if (dueDate == null) return '今日';
+
+    final startMs = todo.createdDate ?? todo.createdAt;
+    final startTime = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+    final isAllDay = startTime.hour == 0 &&
+        startTime.minute == 0 &&
+        dueDate.hour == 23 &&
+        dueDate.minute == 59;
+
+    if (dueDate.isBefore(now)) return '待处理';
+    if (isAllDay) return '今日';
+    return DateFormat('HH:mm').format(dueDate);
   }
 
   // === 业务与辅助逻辑 ===
@@ -3807,7 +3879,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
 /// 🚀 首页 Banner 事件模型
 class HomeBannerEvent {
-  final String type; // 'pomodoro', 'course', 'todo'
+  final String type; // 'pomodoro', 'course', 'todo', 'special_todo'
   final String title;
   final String? subtitle; // 地点或备注
   final String label; // e.g. "正在进行的课程"

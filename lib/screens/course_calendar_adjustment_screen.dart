@@ -200,7 +200,13 @@ class _CourseCalendarAdjustmentScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('放假与调休')),
+      appBar: AppBar(
+        title: const Text('放假与调休'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -468,7 +474,7 @@ class _AddSheet extends StatelessWidget {
   }
 }
 
-class _HolidaySuggestionGroup extends StatelessWidget {
+class _HolidaySuggestionGroup extends StatefulWidget {
   final OfficialHolidayWindow window;
   final CourseCalendarAdjustment adjustment;
   final String Function(String date) formatDateShort;
@@ -482,19 +488,47 @@ class _HolidaySuggestionGroup extends StatelessWidget {
   });
 
   @override
+  State<_HolidaySuggestionGroup> createState() =>
+      _HolidaySuggestionGroupState();
+}
+
+class _HolidaySuggestionGroupState extends State<_HolidaySuggestionGroup> {
+  late Set<String> _locallyAdded;
+
+  @override
+  void initState() {
+    super.initState();
+    _locallyAdded = {};
+  }
+
+  @override
+  void didUpdateWidget(_HolidaySuggestionGroup oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sync with parent adjustment
+    _locallyAdded.retainAll(widget.adjustment.holidayDates);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return _SuggestionGroup(
-      title: window.name,
-      subtitle: '${window.year} · ${window.holidayDates.length} 天',
+      title: widget.window.name,
+      subtitle:
+          '${widget.window.year} · ${widget.window.holidayDates.length} 天',
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: window.holidayDates.map((date) {
-          final added = adjustment.holidayDates.contains(date);
+        children: widget.window.holidayDates.map((date) {
+          final added = widget.adjustment.holidayDates.contains(date) ||
+              _locallyAdded.contains(date);
           return ActionChip(
             avatar: Icon(added ? Icons.check : Icons.add, size: 18),
-            label: Text(formatDateShort(date)),
-            onPressed: added ? null : () => onAdd(date),
+            label: Text(widget.formatDateShort(date)),
+            onPressed: added
+                ? null
+                : () {
+                    setState(() => _locallyAdded.add(date));
+                    widget.onAdd(date);
+                  },
           );
         }).toList(),
       ),
@@ -502,7 +536,7 @@ class _HolidaySuggestionGroup extends StatelessWidget {
   }
 }
 
-class _TransferSuggestionGroup extends StatelessWidget {
+class _TransferSuggestionGroup extends StatefulWidget {
   final OfficialHolidayWindow window;
   final CourseCalendarAdjustment adjustment;
   final ValueChanged<CourseDayTransfer> onAdd;
@@ -514,20 +548,51 @@ class _TransferSuggestionGroup extends StatelessWidget {
   });
 
   @override
+  State<_TransferSuggestionGroup> createState() =>
+      _TransferSuggestionGroupState();
+}
+
+class _TransferSuggestionGroupState extends State<_TransferSuggestionGroup> {
+  late List<CourseDayTransfer> _locallyAdded;
+
+  @override
+  void initState() {
+    super.initState();
+    _locallyAdded = [];
+  }
+
+  @override
+  void didUpdateWidget(_TransferSuggestionGroup oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Remove locally added items that are now in the parent adjustment
+    _locallyAdded.removeWhere((local) => widget.adjustment.transfers.any(
+        (item) =>
+            item.fromDate == local.fromDate && item.toDate == local.toDate));
+  }
+
+  @override
   Widget build(BuildContext context) {
     return _SuggestionGroup(
-      title: window.name,
-      subtitle: '${window.year} · ${window.transfers.length} 条调休',
+      title: widget.window.name,
+      subtitle: '${widget.window.year} · ${widget.window.transfers.length} 条调休',
       child: Column(
-        children: window.transfers.map((transfer) {
-          final added = adjustment.transfers.any((item) =>
-              item.fromDate == transfer.fromDate &&
-              item.toDate == transfer.toDate);
+        children: widget.window.transfers.map((transfer) {
+          final added = widget.adjustment.transfers.any((item) =>
+                  item.fromDate == transfer.fromDate &&
+                  item.toDate == transfer.toDate) ||
+              _locallyAdded.any((item) =>
+                  item.fromDate == transfer.fromDate &&
+                  item.toDate == transfer.toDate);
           return _TransferRow(
             transfer: transfer,
             dense: true,
             added: added,
-            onTap: added ? null : () => onAdd(transfer),
+            onTap: added
+                ? null
+                : () {
+                    setState(() => _locallyAdded.add(transfer));
+                    widget.onAdd(transfer);
+                  },
           );
         }).toList(),
       ),
