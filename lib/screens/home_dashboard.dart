@@ -85,6 +85,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   List<CountdownItem> _countdowns = [];
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
+  List<ConflictInfo> _latestSyncConflicts = [];
   Map<String, dynamic> _mathStats = {};
   List<dynamic> _screenTimeStats = [];
   Map<String, dynamic> _dashboardCourseData = {
@@ -106,7 +107,12 @@ class _HomeDashboardState extends State<HomeDashboard>
   DateTime? _semesterEnd;
 
   List<String> _leftSections = ['courses', 'todos', 'math'];
-  List<String> _rightSections = ['countdowns', 'screenTime', 'timeline', 'pomodoro'];
+  List<String> _rightSections = [
+    'countdowns',
+    'screenTime',
+    'timeline',
+    'pomodoro'
+  ];
 
   Map<String, bool> _sectionVisibility = {
     'courses': true,
@@ -128,7 +134,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
   // 每次自增触发首页专注记录卡片与时间轴刷新
-  final ValueNotifier<int> _timelineRefreshTriggerNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> _timelineRefreshTriggerNotifier =
+      ValueNotifier<int>(0);
 
   int _selectedTabIndex = 0;
 
@@ -176,7 +183,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   late final ValueNotifier<List<CountdownItem>> _countdownsNotifier;
   late final ValueNotifier<Map<String, dynamic>> _mathStatsNotifier;
 
-  final ValueNotifier<bool> _isGlobalLoadingNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _isGlobalLoadingNotifier =
+      ValueNotifier<bool>(false);
   final ValueNotifier<int> _todoUpdateSignalNotifier = ValueNotifier<int>(0);
 
   // 🚀 GlobalKeys for Zoom Animations
@@ -201,10 +209,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 Granular Refresh Initialization
     _todosNotifier = ValueNotifier<List<TodoItem>>(_todos);
     _groupsNotifier = ValueNotifier<List<TodoGroup>>(_todoGroups);
-    _courseDataNotifier = ValueNotifier<Map<String, dynamic>>(_dashboardCourseData);
+    _courseDataNotifier =
+        ValueNotifier<Map<String, dynamic>>(_dashboardCourseData);
     _countdownsNotifier = ValueNotifier<List<CountdownItem>>(_countdowns);
     _mathStatsNotifier = ValueNotifier<Map<String, dynamic>>(_mathStats);
-    
+
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
     StorageService.dataRefreshNotifier.addListener(_loadAllData);
 
@@ -293,7 +302,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       });
 
       // 🚀 Banner 倒计时实时刷新：每 10 秒强制触发一次 UI 重绘，确保“剩 Xm”动态更新
-      _bannerRefreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _bannerRefreshTimer =
+          Timer.periodic(const Duration(seconds: 10), (timer) {
         if (mounted) setState(() {});
       });
 
@@ -352,7 +362,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   /// 导航到待办确认页面
   void _navigateToTodoConfirm(List<Map<String, dynamic>> results,
-      String? imagePath, String? originalText, [String? teamUuid, String? teamName]) {
+      String? imagePath, String? originalText,
+      [String? teamUuid, String? teamName]) {
     if (!mounted || results.isEmpty) return;
 
     Navigator.push(
@@ -372,7 +383,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   /// 批量添加待办 (支持团队上下文关联)
-  Future<void> _batchAddTodos(List<Map<String, dynamic>> todosData, [String? teamUuid, String? teamName]) async {
+  Future<void> _batchAddTodos(List<Map<String, dynamic>> todosData,
+      [String? teamUuid, String? teamName]) async {
     if (todosData.isEmpty) return;
 
     final newTodos = todosData.map((data) {
@@ -685,7 +697,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       case 'TEAM_UPDATE':
       case 'SYNC_DATA':
-      case 'JOIN_REQUEST_APPROVED': 
+      case 'JOIN_REQUEST_APPROVED':
       case 'TEAM_MEMBER_JOINED':
       case 'NEW_INVITATION':
         debugPrint('🚀 [协同信号] 收到 ${signal.action}, 触发静默同步');
@@ -865,11 +877,11 @@ class _HomeDashboardState extends State<HomeDashboard>
       final now = DateTime.now().millisecondsSinceEpoch;
       final pomMode = _localPomodoro!.mode;
       final isActuallyCountUp = pomMode == TimerMode.countUp;
-      
+
       final rem = isActuallyCountUp
           ? ((now - _localPomodoro!.sessionStartMs) / 1000).floor()
           : ((_localPomodoro!.targetEndMs - now) / 1000).ceil();
-          
+
       setState(() {
         _localPomodoroRemaining = rem;
         if (!isActuallyCountUp && _localPomodoroRemaining <= 0) {
@@ -1016,7 +1028,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: isLight ? Colors.white.withValues(alpha: 0.9) : baseColor,
+                      color: isLight
+                          ? Colors.white.withValues(alpha: 0.9)
+                          : baseColor,
                     ),
                   ),
                   const SizedBox(height: 1),
@@ -1037,11 +1051,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                       if (event.isTeam)
                         Container(
                           margin: const EdgeInsets.only(left: 6),
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            color: isLight ? Colors.white.withValues(alpha: 0.2) : baseColor.withValues(alpha: 0.1),
+                            color: isLight
+                                ? Colors.white.withValues(alpha: 0.2)
+                                : baseColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: isLight ? Colors.white38 : baseColor.withValues(alpha: 0.3)),
+                            border: Border.all(
+                                color: isLight
+                                    ? Colors.white38
+                                    : baseColor.withValues(alpha: 0.3)),
                           ),
                           child: Text(
                             '团队',
@@ -1060,7 +1080,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                       child: Row(
                         children: [
                           Icon(
-                            event.type == 'course' ? Icons.location_on_outlined : Icons.sticky_note_2_outlined,
+                            event.type == 'course'
+                                ? Icons.location_on_outlined
+                                : Icons.sticky_note_2_outlined,
                             size: 11,
                             color: isLight ? Colors.white70 : Colors.grey[600],
                           ),
@@ -1070,7 +1092,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                               event.subtitle!,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: isLight ? Colors.white70 : Colors.grey[600],
+                                color:
+                                    isLight ? Colors.white70 : Colors.grey[600],
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1111,12 +1134,14 @@ class _HomeDashboardState extends State<HomeDashboard>
       final rem = isCountUp
           ? ((nowMs - _localPomodoro!.sessionStartMs) / 1000).floor()
           : ((_localPomodoro!.targetEndMs - nowMs) / 1000).ceil();
-          
+
       final m = rem ~/ 60;
       final s = rem % 60;
       final timeStr = isCountUp
           ? '已专注 ${rem ~/ 60}m'
-          : (rem > 60 ? '$m 分钟' : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
+          : (rem > 60
+              ? '$m 分钟'
+              : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
 
       events.add(HomeBannerEvent(
         type: 'pomodoro',
@@ -1146,7 +1171,9 @@ class _HomeDashboardState extends State<HomeDashboard>
       final isCountUp = _remotePomodoro!.mode == 1;
       final timeStr = isCountUp
           ? '已专注 ${rem ~/ 60}m'
-          : (rem > 60 ? '$m 分钟' : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
+          : (rem > 60
+              ? '$m 分钟'
+              : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
 
       events.add(HomeBannerEvent(
         type: 'pomodoro',
@@ -1165,18 +1192,20 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     // 2. 课程
-    final List<CourseItem> courses = (_dashboardCourseData['courses'] as List?)?.cast<CourseItem>() ?? [];
+    final List<CourseItem> courses =
+        (_dashboardCourseData['courses'] as List?)?.cast<CourseItem>() ?? [];
     for (final course in courses) {
       final startTime = _resolveCourseStartTime(course, now);
       if (startTime == null) continue;
-      
+
       final endHour = course.endTime ~/ 100;
       final endMin = course.endTime % 100;
-      final endTime = DateTime(startTime.year, startTime.month, startTime.day, endHour, endMin);
-      
+      final endTime = DateTime(
+          startTime.year, startTime.month, startTime.day, endHour, endMin);
+
       final diffStart = startTime.difference(now).inMinutes;
       final isOngoing = now.isAfter(startTime) && now.isBefore(endTime);
-      
+
       if (isOngoing) {
         final remaining = endTime.difference(now).inMinutes;
         events.add(HomeBannerEvent(
@@ -1216,17 +1245,19 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 3. 待办 (临近或进行中)
     for (final todo in _todos) {
       if (todo.isDone || todo.isDeleted || todo.dueDate == null) continue;
-      
+
       final startMs = todo.createdDate ?? todo.createdAt;
       final startTime = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
       final endTime = todo.dueDate!.toLocal();
-      
+
       // 判定全天任务或跨天任务
-      bool isAllDay = startTime.hour == 0 && startTime.minute == 0 &&
-                      endTime.hour == 23 && endTime.minute == 59;
-      bool isCrossDay = startTime.year != endTime.year || 
-                        startTime.month != endTime.month || 
-                        startTime.day != endTime.day;
+      bool isAllDay = startTime.hour == 0 &&
+          startTime.minute == 0 &&
+          endTime.hour == 23 &&
+          endTime.minute == 59;
+      bool isCrossDay = startTime.year != endTime.year ||
+          startTime.month != endTime.month ||
+          startTime.day != endTime.day;
       if (isAllDay || isCrossDay) continue;
 
       final diffStart = startTime.difference(now).inMinutes;
@@ -1303,7 +1334,6 @@ class _HomeDashboardState extends State<HomeDashboard>
     return events;
   }
 
-
   // === 业务与辅助逻辑 ===
   DateTime? _resolveCourseStartTime(CourseItem course, DateTime now) {
     final dateText = course.date.trim();
@@ -1332,7 +1362,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _checkUpcomingEvents() async {
     DateTime now = DateTime.now();
 
-    final dashboardData = await CourseService.getDashboardCourses(widget.username);
+    final dashboardData =
+        await CourseService.getDashboardCourses(widget.username);
     List<CourseItem> courses =
         (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
@@ -1502,7 +1533,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 均按照默认排序
     // 首页: 重要日(countdowns), 课程(courses), 待办(todos)
     // 专注页: 最近专注(pomodoro), 屏幕时间(screenTime), 测验(math)
-    
+
     // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
     _leftSections = ['banners', 'countdowns', 'todos'];
     _rightSections = ['courses', 'timeline', 'pomodoro', 'screenTime', 'math'];
@@ -1638,10 +1669,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     try {
       final rawTeams = await ApiService.fetchTeams();
       int totalPending = 0;
-      
+
       // 并发获取各团队待处理数
       await Future.wait(rawTeams.map((t) async {
-        if (t['role'] == 0) { // 如果是管理员
+        if (t['role'] == 0) {
+          // 如果是管理员
           final reqs = await ApiService.fetchPendingRequests(t['uuid']);
           totalPending += reqs.length;
         }
@@ -1662,7 +1694,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (guideNeeded) return;
 
     int interval = await StorageService.getSyncInterval();
-    DateTime? lastSync = await StorageService.getLastAutoSyncTime(widget.username);
+    DateTime? lastSync =
+        await StorageService.getLastAutoSyncTime(widget.username);
     DateTime now = DateTime.now();
 
     if (force || interval == 0) {
@@ -1776,7 +1809,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       todoUuid: currentTodo.id,
       sessionUuid: _localPomodoro?.sessionUuid,
     );
-    
+
     // 🚀 Uni-Sync 4.0 优化：改用单条原子化更新，性能提升显著
     await StorageService.updateSingleTodo(widget.username, currentTodo);
 
@@ -1949,7 +1982,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   void _debounceCollaborativeSync() {
     _collaborativeSyncDebouncer?.cancel();
-    _collaborativeSyncDebouncer = Timer(const Duration(milliseconds: 1500), () async {
+    _collaborativeSyncDebouncer =
+        Timer(const Duration(milliseconds: 1500), () async {
       if (!mounted) return;
       debugPrint('🔄 [协同] 防抖触发：执行批量同步与界面刷新...');
       await _handleManualSync(silent: true);
@@ -2011,17 +2045,22 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       // 1. 读取基础数据 (并发执行，带超时保护)
       final results = await Future.wait([
-        _loadDataTask("Todos", StorageService.getTodos(widget.username, limit: 200)),
+        _loadDataTask(
+            "Todos", StorageService.getTodos(widget.username, limit: 200)),
         _loadDataTask("Groups", StorageService.getTodoGroups(widget.username)),
-        _loadDataTask("Countdowns", StorageService.getCountdowns(widget.username)),
+        _loadDataTask(
+            "Countdowns", StorageService.getCountdowns(widget.username)),
         _loadDataTask("Math", StorageService.getMathStats(widget.username)),
-        _loadDataTask("Courses", CourseService.getDashboardCourses(widget.username)),
+        _loadDataTask(
+            "Courses", CourseService.getDashboardCourses(widget.username)),
       ]);
 
-      final List<TodoItem> allTodos =
-          _safeListResult<TodoItem>(results[0]).where((t) => !t.isDeleted).toList();
-      final List<TodoGroup> allGroups =
-          _safeListResult<TodoGroup>(results[1]).where((g) => !g.isDeleted).toList();
+      final List<TodoItem> allTodos = _safeListResult<TodoItem>(results[0])
+          .where((t) => !t.isDeleted)
+          .toList();
+      final List<TodoGroup> allGroups = _safeListResult<TodoGroup>(results[1])
+          .where((g) => !g.isDeleted)
+          .toList();
       final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
         results[2],
       ).where((c) => !c.isDeleted).toList();
@@ -2043,11 +2082,15 @@ class _HomeDashboardState extends State<HomeDashboard>
             }
             return true;
           }) ||
-          allGroups.any((g) => g.hasConflict && (g.teamUuid?.isNotEmpty ?? false)) ||
-          allCountdowns.any((c) => c.hasConflict && (c.teamUuid?.isNotEmpty ?? false));
+          allGroups
+              .any((g) => g.hasConflict && (g.teamUuid?.isNotEmpty ?? false)) ||
+          allCountdowns
+              .any((c) => c.hasConflict && (c.teamUuid?.isNotEmpty ?? false));
 
-      final Map<String, dynamic> mathStats = (results[3] ?? {}) as Map<String, dynamic>;
-      final Map<String, dynamic> courseData = (results[4] ?? {'title': '课程提醒', 'courses': []}) as Map<String, dynamic>;
+      final Map<String, dynamic> mathStats =
+          (results[3] ?? {}) as Map<String, dynamic>;
+      final Map<String, dynamic> courseData = (results[4] ??
+          {'title': '课程提醒', 'courses': []}) as Map<String, dynamic>;
 
       if (mounted) {
         // 🚀 Granular Update: Only update notifiers if content actually changed
@@ -2113,8 +2156,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${window.name}课表调整提醒'),
-        content: const Text(
-            '临近法定节假日。不同学校放假和补课安排可能不同，请手动选择放假日期，并确认哪一天的课调到哪一天。'),
+        content: const Text('临近法定节假日。不同学校放假和补课安排可能不同，请手动选择放假日期，并确认哪一天的课调到哪一天。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -2245,8 +2287,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               ..addAll(updatedTodoIds);
             _remoteTodoHighlightSignal++;
           });
-          _remoteTodoHighlightTimer =
-              Timer(const Duration(seconds: 8), () {
+          _remoteTodoHighlightTimer = Timer(const Duration(seconds: 8), () {
             if (!mounted) return;
             setState(() => _updatedByOthersTodoIds.clear());
           });
@@ -2254,6 +2295,9 @@ class _HomeDashboardState extends State<HomeDashboard>
 
         // 🚀 新增：处理冲突信息
         final List<ConflictInfo> conflicts = syncResult['conflicts'] ?? [];
+        if (mounted) {
+          setState(() => _latestSyncConflicts = conflicts);
+        }
         if (conflicts.isNotEmpty && mounted) {
           final shouldOpenConflictCenter =
               await ConflictAlertDialog.show(context, conflicts);
@@ -2295,7 +2339,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           FloatWindowService.invalidateSlotCache();
           _loadAllData(); // _loadAllData 内部会重新 scheduleAll
         }
-        
+
         // 🚀 同步手环版本信息
         unawaited(UpdateService.syncBandVersionInfo());
       }
@@ -2347,18 +2391,26 @@ class _HomeDashboardState extends State<HomeDashboard>
               children: [
                 const Icon(Icons.analytics_outlined, color: Colors.blueAccent),
                 const SizedBox(width: 10),
-                const Text("链路诊断报告", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text("链路诊断报告",
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             content: SizedBox(
               width: double.maxFinite,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildDiagnosticItem("核心 API 服务", ApiService.ping()),
-                  _buildDiagnosticItem("实时同步通道", Future.value(PomodoroSyncService.instance.connectionState == SyncConnectionState.connected)),
-                  _buildDiagnosticItem("增量引擎状态", Future.value(true)), // 逻辑始终为真，仅展示
+                  _buildDiagnosticItem(
+                      "实时同步通道",
+                      Future.value(
+                          PomodoroSyncService.instance.connectionState ==
+                              SyncConnectionState.connected)),
+                  _buildDiagnosticItem(
+                      "增量引擎状态", Future.value(true)), // 逻辑始终为真，仅展示
                   const Divider(height: 32),
                   _buildEnvironmentInfo(),
                 ],
@@ -2390,7 +2442,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       builder: (context, snapshot) {
         bool? isOk = snapshot.data;
         bool isLoading = snapshot.connectionState == ConnectionState.waiting;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
@@ -2411,11 +2463,16 @@ class _HomeDashboardState extends State<HomeDashboard>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text(label,
+                        style: const TextStyle(fontWeight: FontWeight.w500)),
                     if (!isLoading)
                       Text(
                         isOk == true ? "服务运行正常" : "连接受阻，部分功能受限",
-                        style: TextStyle(fontSize: 11, color: isOk == true ? Colors.grey : Colors.redAccent.withValues(alpha: 0.8)),
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: isOk == true
+                                ? Colors.grey
+                                : Colors.redAccent.withValues(alpha: 0.8)),
                       ),
                   ],
                 ),
@@ -2438,7 +2495,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       child: Column(
         children: [
           const SizedBox(height: 4),
-          _buildInfoRow("当前接入点", isTest ? "Aliyun (Test Node)" : "Aliyun (Global Node)"),
+          _buildInfoRow(
+              "当前接入点", isTest ? "Aliyun (Test Node)" : "Aliyun (Global Node)"),
           const SizedBox(height: 4),
         ],
       ),
@@ -2450,7 +2508,11 @@ class _HomeDashboardState extends State<HomeDashboard>
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        Text(value, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.blueGrey)),
       ],
     );
   }
@@ -2548,7 +2610,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   void _handleWallpaperError() {
     if (!mounted || _isWallpaperLoadingError) return;
-    debugPrint("[Wallpaper] Current URL failed: $_wallpaperUrl. Trying fallback...");
+    debugPrint(
+        "[Wallpaper] Current URL failed: $_wallpaperUrl. Trying fallback...");
 
     setState(() {
       _wallpaperRetryCount++;
@@ -2776,11 +2839,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     final double maxWidth = isCompact ? size.width : 1180;
     final double panelWidth = (size.width - 40).clamp(0, maxWidth);
     final double left = (size.width - panelWidth) / 2;
-    
+
     // 🚀 核心改进：计算搜索面板在 Overlay 中的实际位置，使动画不再铺满全屏，而是缩放到板块
     // 修复对齐问题：需要加上 SafeArea 的顶部高度（状态栏）
     final statusBarHeight = MediaQuery.of(context).padding.top;
-    final targetRect = Rect.fromLTWH(left, statusBarHeight + 60, panelWidth, 150); // 150px 约等于搜索框+快捷提示的高度
+    final targetRect = Rect.fromLTWH(
+        left, statusBarHeight + 60, panelWidth, 150); // 150px 约等于搜索框+快捷提示的高度
     final targetBorderRadius = BorderRadius.circular(28);
 
     PageTransitions.pushFromRect(
@@ -2792,10 +2856,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     ).then((_) async {
       // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
       await Future.delayed(const Duration(milliseconds: 200));
-      if (mounted) setState(() {
-        _isSearchOpen = false;
-        _timelineRefreshTriggerNotifier.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
-      });
+      if (mounted)
+        setState(() {
+          _isSearchOpen = false;
+          _timelineRefreshTriggerNotifier.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
+        });
       _loadAllData(deferred: true);
     });
   }
@@ -2816,7 +2881,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       barrierColor: barrierColor,
       barrierLabel: barrierLabel,
       pageBuilder: pageBuilder,
-      transitionsBuilder: transitionBuilder ?? (ctx, anim1, anim2, child) => child,
+      transitionsBuilder:
+          transitionBuilder ?? (ctx, anim1, anim2, child) => child,
       transitionDuration: transitionDuration,
     ));
   }
@@ -2925,12 +2991,13 @@ class _HomeDashboardState extends State<HomeDashboard>
                   SyncStatusBanner(
                     onDiagnosticRequested: _showLinkDiagnostics,
                   ),
-                
+
                 // DEBUG: 检查状态
                 // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
 
                 // 🚀 Uni-Sync 4.0: 团队置顶公告
-                if (_activeAnnouncement != null && (_selectedTabIndex != 1 || isTablet))
+                if (_activeAnnouncement != null &&
+                    (_selectedTabIndex != 1 || isTablet))
                   StickyAnnouncementBanner(
                     announcement: _activeAnnouncement!,
                     onAcknowledge: () async {
@@ -2939,7 +3006,6 @@ class _HomeDashboardState extends State<HomeDashboard>
                       await ApiService.markAnnouncementAsRead(uuid);
                     },
                   ),
-
 
                 // 待确认待办入口卡片（从图片识别来）
                 if (_selectedTabIndex != 1 || isTablet)
@@ -2954,395 +3020,517 @@ class _HomeDashboardState extends State<HomeDashboard>
                         children: [
                           (isLoading &&
                                   _todos.isEmpty &&
-                                  (_dashboardCourseData['courses'] as List? ?? []).isEmpty)
+                                  (_dashboardCourseData['courses'] as List? ??
+                                          [])
+                                      .isEmpty)
                               ? _buildDashboardSkeleton(isLight)
                               : LayoutBuilder(
                                   builder: (context, constraints) {
+                                    // ... (rest of section definitions)
+                                    Widget courseSection = CourseSectionWidget(
+                                        dashboardCourseData:
+                                            _dashboardCourseData,
+                                        isLight: isLight);
+                                    Widget countdownSection =
+                                        CountdownSectionWidget(
+                                            countdowns: _countdowns,
+                                            username: widget.username,
+                                            isLight: isLight,
+                                            onDataChanged: () {
+                                              _loadAllData();
+                                              _timelineRefreshTriggerNotifier
+                                                  .value++;
+                                            });
+                                    Widget todoSection =
+                                        ValueListenableBuilder<int>(
+                                      valueListenable:
+                                          _todoUpdateSignalNotifier,
+                                      builder: (context, signal, _) {
+                                        return TodoSectionWidget(
+                                          todos: _todos,
+                                          highlightedTodoIds:
+                                              _updatedByOthersTodoIds,
+                                          remoteUpdateHighlightSignal:
+                                              _remoteTodoHighlightSignal,
+                                          todoGroups: _todoGroups,
+                                          conflicts: _latestSyncConflicts,
+                                          username: widget.username,
+                                          isLight: isLight,
+                                          onTeamChanged: (teamUuid, teamName) {
+                                            setState(() {
+                                              _currentSelectedTeamUuid =
+                                                  teamUuid;
+                                              _currentSelectedTeamName =
+                                                  teamName;
+                                            });
+                                          },
+                                          onGroupsChanged: (newGroups) async {
+                                            setState(() => _todoGroups =
+                                                newGroups
+                                                    .where((g) => !g.isDeleted)
+                                                    .toList());
+                                            final allGroups =
+                                                await StorageService
+                                                    .getTodoGroups(
+                                                        widget.username);
+                                            for (var g in newGroups) {
+                                              int idx = allGroups.indexWhere(
+                                                  (x) => x.id == g.id);
+                                              if (idx != -1) {
+                                                if (g.updatedAt >=
+                                                    allGroups[idx].updatedAt)
+                                                  allGroups[idx] = g;
+                                              } else {
+                                                allGroups.add(g);
+                                              }
+                                            }
+                                            await StorageService.saveTodoGroups(
+                                                widget.username, allGroups,
+                                                sync: true);
+                                          },
+                                          onTodosChanged: (newTodos) async {
+                                            // 🚀 记录变更，用于通知清除
+                                            final oldTodos =
+                                                List<TodoItem>.from(_todos);
+                                            _todos = newTodos;
+                                            _timelineRefreshTriggerNotifier
+                                                .value++;
 
-                      // ... (rest of section definitions)
-                      Widget courseSection = CourseSectionWidget(
-                          dashboardCourseData: _dashboardCourseData,
-                          isLight: isLight);
-                      Widget countdownSection = CountdownSectionWidget(
-                          countdowns: _countdowns,
-                          username: widget.username,
-                          isLight: isLight,
-                          onDataChanged: () {
-                            _loadAllData();
-                            _timelineRefreshTriggerNotifier.value++;
-                          });
-                      Widget todoSection = ValueListenableBuilder<int>(
-                        valueListenable: _todoUpdateSignalNotifier,
-                        builder: (context, signal, _) {
-                          return TodoSectionWidget(
-                            todos: _todos,
-                            highlightedTodoIds: _updatedByOthersTodoIds,
-                            remoteUpdateHighlightSignal: _remoteTodoHighlightSignal,
-                            todoGroups: _todoGroups,
-                            username: widget.username,
-                            isLight: isLight,
-                            onTeamChanged: (teamUuid, teamName) {
-                              setState(() {
-                                _currentSelectedTeamUuid = teamUuid;
-                                _currentSelectedTeamName = teamName;
-                              });
-                            },
-                            onGroupsChanged: (newGroups) async {
-                              setState(() => _todoGroups = newGroups.where((g) => !g.isDeleted).toList());
-                              final allGroups = await StorageService.getTodoGroups(widget.username);
-                              for (var g in newGroups) {
-                                int idx = allGroups.indexWhere((x) => x.id == g.id);
-                                if (idx != -1) {
-                                  if (g.updatedAt >= allGroups[idx].updatedAt) allGroups[idx] = g;
-                                } else {
-                                  allGroups.add(g);
-                                }
-                              }
-                              await StorageService.saveTodoGroups(widget.username, allGroups, sync: true);
-                            },
-                            onTodosChanged: (newTodos) async {
-                              // 🚀 记录变更，用于通知清除
-                              final oldTodos = List<TodoItem>.from(_todos);
-                              _todos = newTodos;
-                              _timelineRefreshTriggerNotifier.value++;
-    
-                              // 🚀 核心修复：任务完成后自动清除对应通知
-                              for (var nt in newTodos) {
-                                if (nt.isDone) {
-                                  final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
-                                  if (!ot.isDone) {
-                                    // 刚完成
-                                    debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
-                                    NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
-                                  }
-                                }
-                              }
+                                            // 🚀 核心修复：任务完成后自动清除对应通知
+                                            for (var nt in newTodos) {
+                                              if (nt.isDone) {
+                                                final ot = oldTodos.firstWhere(
+                                                    (t) => t.id == nt.id,
+                                                    orElse: () => nt);
+                                                if (!ot.isDone) {
+                                                  // 刚完成
+                                                  debugPrint(
+                                                      "🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
+                                                  NotificationService
+                                                      .cancelSpecialTodoNotification(
+                                                          nt.id.hashCode);
+                                                }
+                                              }
+                                            }
 
-                              final allTodos = await StorageService.getTodos(widget.username);
-                              for (var newT in _todos) {
-                                int idx = allTodos.indexWhere((x) => x.id == newT.id);
-                                if (idx != -1) {
-                                  allTodos[idx] = newT;
-                                } else {
-                                  allTodos.add(newT);
-                                }
-                              }
-                              await StorageService.saveTodos(widget.username, allTodos);
-                              await _saveTodosToSharedFile(allTodos);
+                                            final allTodos =
+                                                await StorageService.getTodos(
+                                                    widget.username);
+                                            for (var newT in _todos) {
+                                              int idx = allTodos.indexWhere(
+                                                  (x) => x.id == newT.id);
+                                              if (idx != -1) {
+                                                allTodos[idx] = newT;
+                                              } else {
+                                                allTodos.add(newT);
+                                              }
+                                            }
+                                            await StorageService.saveTodos(
+                                                widget.username, allTodos);
+                                            await _saveTodosToSharedFile(
+                                                allTodos);
 
-                              FloatWindowService.triggerReminderCheck();
-                              FloatWindowService.invalidateSlotCache();
-                              FloatWindowService.update();
-                              _syncTodoNotification();
-                              _rescheduleAlarms();
-                              await WidgetService.updateTodoWidget(_todos);
+                                            FloatWindowService
+                                                .triggerReminderCheck();
+                                            FloatWindowService
+                                                .invalidateSlotCache();
+                                            FloatWindowService.update();
+                                            _syncTodoNotification();
+                                            _rescheduleAlarms();
+                                            await WidgetService
+                                                .updateTodoWidget(_todos);
 
-                              _todoUpdateSignalNotifier.value++; // 🚀 触发局部更新
-                            },
-                            initialSelectedTeamUuid: _currentSelectedTeamUuid,
-                            onRefreshRequested: _handleManualSync, 
-                            onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
-                              _navigateToTodoConfirm(
-                                  results, imagePath, originalText, tUuid, tName);
-                            },
-                          );
-                        },
-                      );
-                      Widget screenTimeSection = RepaintBoundary(
-                        child: KeyedSubtree(
-                          key: _screenTimeCardKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SectionHeader(
-                                  title: "屏幕时间 (今日汇总)",
-                                  icon: Icons.timer_outlined,
-                                  isLight: isLight),
-                              ScreenTimeCard(
-                                stats: _screenTimeStats,
-                                hasPermission: _hasUsagePermission,
-                                isLoading: _isLoadingScreenTime,
-                                lastSyncTime: _lastScreenTimeSync,
-                                onOpenSettings: () async {
-                                  if (Platform.isAndroid || Platform.isIOS) {
-                                    await ScreenTimeService.openSettings();
-                                  }
-                                  _initScreenTime();
-                                },
-                                onViewDetail: () {
-                                  PageTransitions.pushFromRect(
-                                    context: context,
-                                    page: ScreenTimeDetailScreen(
-                                        todayStats: _screenTimeStats),
-                                    sourceKey: _screenTimeCardKey,
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                      Widget mathSection = RepaintBoundary(
-                        child: KeyedSubtree(
-                          key: _mathCardKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SectionHeader(
-                                  title: "数学测验",
-                                  icon: Icons.functions,
-                                  isLight: isLight),
-                              MathStatsCard(
-                                  stats: _mathStats,
-                                  onTap: () async {
-                                    await PageTransitions.pushFromRect(
-                                      context: context,
-                                      page: MathMenuScreen(
-                                          username: widget.username),
-                                      sourceKey: _mathCardKey,
+                                            _todoUpdateSignalNotifier
+                                                .value++; // 🚀 触发局部更新
+                                          },
+                                          initialSelectedTeamUuid:
+                                              _currentSelectedTeamUuid,
+                                          onRefreshRequested: _handleManualSync,
+                                          onLLMResultsParsed: (results,
+                                              imagePath,
+                                              originalText,
+                                              tUuid,
+                                              tName) {
+                                            _navigateToTodoConfirm(
+                                                results,
+                                                imagePath,
+                                                originalText,
+                                                tUuid,
+                                                tName);
+                                          },
+                                        );
+                                      },
                                     );
-                                    _loadAllData(deferred: true);
-                                  }),
-                            ],
-                          ),
-                        ),
-                      );
-                      Widget timelineSection = ValueListenableBuilder<int>(
-                        valueListenable: _timelineRefreshTriggerNotifier,
-                        builder: (context, trigger, _) {
-                          return PersonalTimelineSection(
-                            username: widget.username,
-                            isLight: isLight,
-                            refreshTrigger: trigger,
-                          );
-                        },
-                      );
-
-                      Widget pomodoroSection = RepaintBoundary(
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: _timelineRefreshTriggerNotifier,
-                          builder: (context, trigger, _) {
-                            return KeyedSubtree(
-                              key: _pomodoroCardKey,
-                              child: PomodoroTodaySection(
-                                username: widget.username,
-                                isLight: isLight,
-                                refreshTrigger: trigger,
-                                onTap: () async {
-                                  await PageTransitions.pushFromRect(
-                                    context: context,
-                                    page: PomodoroScreen(
-                                      username: widget.username,
-                                      initialTab: 1,
-                                    ),
-                                    sourceKey: _pomodoroCardKey,
-                                  );
-                                  _timelineRefreshTriggerNotifier.value++;
-                                  _loadAllData();
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                      );
-
-                      Map<String, Widget> sectionsMap = {
-                        'banners': _buildUniversalBanner(isLight),
-                        'courses': courseSection,
-                        'countdowns': countdownSection,
-                        'todos': todoSection,
-                        'screenTime': screenTimeSection,
-                        'math': mathSection,
-                        'pomodoro': pomodoroSection,
-                        'timeline': timelineSection,
-                      };
-
-                      bool hasNoCourse = (_dashboardCourseData['courses'] ==
-                              null ||
-                          (_dashboardCourseData['courses'] as List).isEmpty);
-
-                      if (!isTablet) {
-                        List<String> tab1Order = ['banners', 'countdowns', 'courses', 'todos'];
-                        if (hasNoCourse) {
-                          if (_noCourseBehavior == 'hide') {
-                            tab1Order.remove('courses');
-                          } else if (_noCourseBehavior == 'bottom') {
-                            tab1Order.remove('courses');
-                            tab1Order.add('courses');
-                          }
-                        }
-
-                        List<Widget> tab1Widgets = tab1Order
-                            .where((key) =>
-                                (_sectionVisibility[key] ?? true) &&
-                                sectionsMap.containsKey(key))
-                            .map((key) => Padding(
-                                padding: const EdgeInsets.only(bottom: 24.0),
-                                child: sectionsMap[key]!))
-                            .toList();
-
-                        List<Widget> tab3Widgets = ['timeline', 'pomodoro', 'screenTime', 'math']
-                            .where((key) =>
-                                (_sectionVisibility[key] ?? true) &&
-                                sectionsMap.containsKey(key))
-                            .map((key) => Padding(
-                                padding: const EdgeInsets.only(bottom: 24.0),
-                                child: sectionsMap[key]!))
-                            .toList();
-
-                        return IndexedStack(
-                          index: _selectedTabIndex == 2 ? 1 : 0,
-                          children: [
-                            // Tab 1: 重要日、课程、待办
-                            RepaintBoundary(
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    ...tab1Widgets,
-                                    if (_wallpaperCopyright != null && _wallpaperCopyright!.isNotEmpty)
-                                      _buildWallpaperCopyright(isLight),
-                                    const SizedBox(height: 100), // 为悬浮底栏留出空间
-                                  ],
-                                ),
-                              ),
-                            ),
-                            // Tab 2 (mapped to index 2 in bottom bar): 今日专注、屏幕时间
-                            RepaintBoundary(
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    ...tab3Widgets,
-                                    if (_wallpaperCopyright != null && _wallpaperCopyright!.isNotEmpty)
-                                      _buildWallpaperCopyright(isLight),
-                                    const SizedBox(height: 100), // 为悬浮底栏留出空间
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      }
-
-                      // Tablet Layout
-                      List<String> currentLeft = List.from(_leftSections);
-                      List<String> currentRight = List.from(_rightSections);
-
-                      void applyNoCourseBehavior(List<String> targetList) {
-                        if (hasNoCourse && targetList.contains('courses')) {
-                          if (_noCourseBehavior == 'hide') {
-                            targetList.remove('courses');
-                          } else if (_noCourseBehavior == 'bottom') {
-                            targetList.remove('courses');
-                            targetList.add('courses');
-                          }
-                        }
-                      }
-
-                      applyNoCourseBehavior(currentLeft);
-                      applyNoCourseBehavior(currentRight);
-
-                      List<Widget> buildColumnWidgets(List<String> keys) {
-                        return keys
-                            .where((key) =>
-                                (_sectionVisibility[key] ?? true) &&
-                                sectionsMap.containsKey(key))
-                            .map((key) => Padding(
-                                padding: const EdgeInsets.only(bottom: 24.0),
-                                child: sectionsMap[key]!))
-                            .toList();
-                      }
-
-                      List<Widget> leftWidgets =
-                          buildColumnWidgets(currentLeft);
-                      List<Widget> rightWidgets =
-                          buildColumnWidgets(currentRight);
-
-                      return SingleChildScrollView(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: isTablet ? 32 : 16, vertical: 16),
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1400),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                isTablet
-                                    ? Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                              flex: 10,
-                                              child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: leftWidgets)),
-                                          if (rightWidgets.isNotEmpty)
-                                            const SizedBox(width: 40),
-                                          if (rightWidgets.isNotEmpty)
-                                            Expanded(
-                                                flex: 11,
-                                                child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment.start,
-                                                    children: rightWidgets)),
-                                        ],
-                                      )
-                                    : Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          ...leftWidgets,
-                                          ...rightWidgets,
-                                        ],
-                                      ),
-                                if (_wallpaperCopyright != null &&
-                                    _wallpaperCopyright!.isNotEmpty)
-                                  Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(
-                                          top: 16.0, bottom: 32.0),
-                                      child: Text(
-                                        _wallpaperCopyright!,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: isLight
-                                              ? Colors.white.withValues(alpha: 0.7)
-                                              : Colors.grey[600],
-                                          fontStyle: FontStyle.italic,
+                                    Widget screenTimeSection = RepaintBoundary(
+                                      child: KeyedSubtree(
+                                        key: _screenTimeCardKey,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            SectionHeader(
+                                                title: "屏幕时间 (今日汇总)",
+                                                icon: Icons.timer_outlined,
+                                                isLight: isLight),
+                                            ScreenTimeCard(
+                                              stats: _screenTimeStats,
+                                              hasPermission:
+                                                  _hasUsagePermission,
+                                              isLoading: _isLoadingScreenTime,
+                                              lastSyncTime: _lastScreenTimeSync,
+                                              onOpenSettings: () async {
+                                                if (Platform.isAndroid ||
+                                                    Platform.isIOS) {
+                                                  await ScreenTimeService
+                                                      .openSettings();
+                                                }
+                                                _initScreenTime();
+                                              },
+                                              onViewDetail: () {
+                                                PageTransitions.pushFromRect(
+                                                  context: context,
+                                                  page: ScreenTimeDetailScreen(
+                                                      todayStats:
+                                                          _screenTimeStats),
+                                                  sourceKey: _screenTimeCardKey,
+                                                );
+                                              },
+                                            ),
+                                          ],
                                         ),
-                                        textAlign: TextAlign.center,
                                       ),
-                                    ),
-                                  ),
-                              ],
+                                    );
+                                    Widget mathSection = RepaintBoundary(
+                                      child: KeyedSubtree(
+                                        key: _mathCardKey,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            SectionHeader(
+                                                title: "数学测验",
+                                                icon: Icons.functions,
+                                                isLight: isLight),
+                                            MathStatsCard(
+                                                stats: _mathStats,
+                                                onTap: () async {
+                                                  await PageTransitions
+                                                      .pushFromRect(
+                                                    context: context,
+                                                    page: MathMenuScreen(
+                                                        username:
+                                                            widget.username),
+                                                    sourceKey: _mathCardKey,
+                                                  );
+                                                  _loadAllData(deferred: true);
+                                                }),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                    Widget timelineSection =
+                                        ValueListenableBuilder<int>(
+                                      valueListenable:
+                                          _timelineRefreshTriggerNotifier,
+                                      builder: (context, trigger, _) {
+                                        return PersonalTimelineSection(
+                                          username: widget.username,
+                                          isLight: isLight,
+                                          refreshTrigger: trigger,
+                                        );
+                                      },
+                                    );
+
+                                    Widget pomodoroSection = RepaintBoundary(
+                                      child: ValueListenableBuilder<int>(
+                                        valueListenable:
+                                            _timelineRefreshTriggerNotifier,
+                                        builder: (context, trigger, _) {
+                                          return KeyedSubtree(
+                                            key: _pomodoroCardKey,
+                                            child: PomodoroTodaySection(
+                                              username: widget.username,
+                                              isLight: isLight,
+                                              refreshTrigger: trigger,
+                                              onTap: () async {
+                                                await PageTransitions
+                                                    .pushFromRect(
+                                                  context: context,
+                                                  page: PomodoroScreen(
+                                                    username: widget.username,
+                                                    initialTab: 1,
+                                                  ),
+                                                  sourceKey: _pomodoroCardKey,
+                                                );
+                                                _timelineRefreshTriggerNotifier
+                                                    .value++;
+                                                _loadAllData();
+                                              },
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    );
+
+                                    Map<String, Widget> sectionsMap = {
+                                      'banners': _buildUniversalBanner(isLight),
+                                      'courses': courseSection,
+                                      'countdowns': countdownSection,
+                                      'todos': todoSection,
+                                      'screenTime': screenTimeSection,
+                                      'math': mathSection,
+                                      'pomodoro': pomodoroSection,
+                                      'timeline': timelineSection,
+                                    };
+
+                                    bool hasNoCourse =
+                                        (_dashboardCourseData['courses'] ==
+                                                null ||
+                                            (_dashboardCourseData['courses']
+                                                    as List)
+                                                .isEmpty);
+
+                                    if (!isTablet) {
+                                      List<String> tab1Order = [
+                                        'banners',
+                                        'countdowns',
+                                        'courses',
+                                        'todos'
+                                      ];
+                                      if (hasNoCourse) {
+                                        if (_noCourseBehavior == 'hide') {
+                                          tab1Order.remove('courses');
+                                        } else if (_noCourseBehavior ==
+                                            'bottom') {
+                                          tab1Order.remove('courses');
+                                          tab1Order.add('courses');
+                                        }
+                                      }
+
+                                      List<Widget> tab1Widgets = tab1Order
+                                          .where((key) =>
+                                              (_sectionVisibility[key] ??
+                                                  true) &&
+                                              sectionsMap.containsKey(key))
+                                          .map((key) => Padding(
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 24.0),
+                                              child: sectionsMap[key]!))
+                                          .toList();
+
+                                      List<Widget> tab3Widgets = [
+                                        'timeline',
+                                        'pomodoro',
+                                        'screenTime',
+                                        'math'
+                                      ]
+                                          .where((key) =>
+                                              (_sectionVisibility[key] ??
+                                                  true) &&
+                                              sectionsMap.containsKey(key))
+                                          .map((key) => Padding(
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 24.0),
+                                              child: sectionsMap[key]!))
+                                          .toList();
+
+                                      return IndexedStack(
+                                        index: _selectedTabIndex == 2 ? 1 : 0,
+                                        children: [
+                                          // Tab 1: 重要日、课程、待办
+                                          RepaintBoundary(
+                                            child: SingleChildScrollView(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 16),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  ...tab1Widgets,
+                                                  if (_wallpaperCopyright !=
+                                                          null &&
+                                                      _wallpaperCopyright!
+                                                          .isNotEmpty)
+                                                    _buildWallpaperCopyright(
+                                                        isLight),
+                                                  const SizedBox(
+                                                      height: 100), // 为悬浮底栏留出空间
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          // Tab 2 (mapped to index 2 in bottom bar): 今日专注、屏幕时间
+                                          RepaintBoundary(
+                                            child: SingleChildScrollView(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 16),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  ...tab3Widgets,
+                                                  if (_wallpaperCopyright !=
+                                                          null &&
+                                                      _wallpaperCopyright!
+                                                          .isNotEmpty)
+                                                    _buildWallpaperCopyright(
+                                                        isLight),
+                                                  const SizedBox(
+                                                      height: 100), // 为悬浮底栏留出空间
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }
+
+                                    // Tablet Layout
+                                    List<String> currentLeft =
+                                        List.from(_leftSections);
+                                    List<String> currentRight =
+                                        List.from(_rightSections);
+
+                                    void applyNoCourseBehavior(
+                                        List<String> targetList) {
+                                      if (hasNoCourse &&
+                                          targetList.contains('courses')) {
+                                        if (_noCourseBehavior == 'hide') {
+                                          targetList.remove('courses');
+                                        } else if (_noCourseBehavior ==
+                                            'bottom') {
+                                          targetList.remove('courses');
+                                          targetList.add('courses');
+                                        }
+                                      }
+                                    }
+
+                                    applyNoCourseBehavior(currentLeft);
+                                    applyNoCourseBehavior(currentRight);
+
+                                    List<Widget> buildColumnWidgets(
+                                        List<String> keys) {
+                                      return keys
+                                          .where((key) =>
+                                              (_sectionVisibility[key] ??
+                                                  true) &&
+                                              sectionsMap.containsKey(key))
+                                          .map((key) => Padding(
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 24.0),
+                                              child: sectionsMap[key]!))
+                                          .toList();
+                                    }
+
+                                    List<Widget> leftWidgets =
+                                        buildColumnWidgets(currentLeft);
+                                    List<Widget> rightWidgets =
+                                        buildColumnWidgets(currentRight);
+
+                                    return SingleChildScrollView(
+                                      padding: EdgeInsets.symmetric(
+                                          horizontal: isTablet ? 32 : 16,
+                                          vertical: 16),
+                                      child: Align(
+                                        alignment: Alignment.topCenter,
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                              maxWidth: 1400),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              isTablet
+                                                  ? Row(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Expanded(
+                                                            flex: 10,
+                                                            child: Column(
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
+                                                                children:
+                                                                    leftWidgets)),
+                                                        if (rightWidgets
+                                                            .isNotEmpty)
+                                                          const SizedBox(
+                                                              width: 40),
+                                                        if (rightWidgets
+                                                            .isNotEmpty)
+                                                          Expanded(
+                                                              flex: 11,
+                                                              child: Column(
+                                                                  crossAxisAlignment:
+                                                                      CrossAxisAlignment
+                                                                          .start,
+                                                                  children:
+                                                                      rightWidgets)),
+                                                      ],
+                                                    )
+                                                  : Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        ...leftWidgets,
+                                                        ...rightWidgets,
+                                                      ],
+                                                    ),
+                                              if (_wallpaperCopyright != null &&
+                                                  _wallpaperCopyright!
+                                                      .isNotEmpty)
+                                                Center(
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                            top: 16.0,
+                                                            bottom: 32.0),
+                                                    child: Text(
+                                                      _wallpaperCopyright!,
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: isLight
+                                                            ? Colors.white
+                                                                .withValues(
+                                                                    alpha: 0.7)
+                                                            : Colors.grey[600],
+                                                        fontStyle:
+                                                            FontStyle.italic,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                          // 🚀 移动端底部悬浮胶囊底栏 (始终显示，不受加载状态影响)
+                          if (!isTablet)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: _buildCustomBottomBar(isDarkMode, isLight),
                             ),
-                          ),
-                        ),
+                        ],
                       );
-                        },
-                      ),
-                      // 🚀 移动端底部悬浮胶囊底栏 (始终显示，不受加载状态影响)
-                      if (!isTablet)
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0, 
-                          child: _buildCustomBottomBar(isDarkMode, isLight),
-                        ),
-                    ],
-                  );
-                },
-              ),
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
         ],
       ),
       bottomNavigationBar: null,
@@ -3376,15 +3564,18 @@ class _HomeDashboardState extends State<HomeDashboard>
               context: context,
               page: AddTodoScreen(
                 todoGroups: _todoGroups,
-                initialTeamUuid: _currentSelectedTeamUuid, // 🚀 关键修复：将当前选中的团队 Tab 传给创建页
+                initialTeamUuid:
+                    _currentSelectedTeamUuid, // 🚀 关键修复：将当前选中的团队 Tab 传给创建页
                 initialTeamName: _currentSelectedTeamName,
                 onTodoAdded: (todo) async {
-                  final allTodos = await StorageService.getTodos(widget.username);
+                  final allTodos =
+                      await StorageService.getTodos(widget.username);
                   allTodos.add(todo);
                   await StorageService.saveTodos(widget.username, allTodos);
                   // 🚀 协作实时化：发送更新信号
                   if (todo.teamUuid != null) {
-                    PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid);
+                    PomodoroSyncService.instance
+                        .sendTeamUpdateSignal(todo.teamUuid);
                   }
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
@@ -3395,17 +3586,22 @@ class _HomeDashboardState extends State<HomeDashboard>
                   if (mounted) {
                     await _loadAllData(deferred: true);
                     // 🧪 额外加固：确保 UI 刷新
-                    setState(() {}); 
+                    setState(() {});
                   }
                 },
                 onTodosBatchAdded: (todos) async {
-                  final allTodos = await StorageService.getTodos(widget.username);
+                  final allTodos =
+                      await StorageService.getTodos(widget.username);
                   allTodos.addAll(todos);
                   await StorageService.saveTodos(widget.username, allTodos);
                   // 🚀 协作实时化：发送更新信号
-                  final updatedTeamUuid = todos.firstWhere((t) => t.teamUuid != null, orElse: () => todos.first).teamUuid;
+                  final updatedTeamUuid = todos
+                      .firstWhere((t) => t.teamUuid != null,
+                          orElse: () => todos.first)
+                      .teamUuid;
                   if (updatedTeamUuid != null) {
-                    PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+                    PomodoroSyncService.instance
+                        .sendTeamUpdateSignal(updatedTeamUuid);
                   }
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
@@ -3415,9 +3611,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                   await WidgetService.updateTodoWidget(allTodos);
                   if (mounted) await _loadAllData(deferred: true);
                 },
-                onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
+                onLLMResultsParsed:
+                    (results, imagePath, originalText, tUuid, tName) {
                   Navigator.pop(context); // 关闭添加页面
-                  _navigateToTodoConfirm(results, imagePath, originalText, tUuid, tName);
+                  _navigateToTodoConfirm(
+                      results, imagePath, originalText, tUuid, tName);
                 },
               ),
               sourceKey: _fabTodoKey,
@@ -3453,17 +3651,22 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
     final Color primaryColor = Theme.of(context).colorScheme.primary;
-    final Color inactiveColor = (isLight || !isDarkMode) ? Colors.black45 : Colors.white54;
+    final Color inactiveColor =
+        (isLight || !isDarkMode) ? Colors.black45 : Colors.white54;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
       height: 54 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6), // 进一步压缩高度
       margin: const EdgeInsets.fromLTRB(40, 0, 40, 12), // 增加左右间距以减小宽度
       decoration: BoxDecoration(
-        color: isDarkMode ? Colors.black.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.2),
+        color: isDarkMode
+            ? Colors.black.withValues(alpha: 0.4)
+            : Colors.white.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(40), // 更圆润的边缘
         border: Border.all(
-          color: isDarkMode ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.2),
+          color: isDarkMode
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.white.withValues(alpha: 0.2),
           width: 0.5,
         ),
       ),
@@ -3476,9 +3679,11 @@ class _HomeDashboardState extends State<HomeDashboard>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildTabItem(0, Icons.dashboard_rounded, '首页', primaryColor, inactiveColor),
+                _buildTabItem(0, Icons.dashboard_rounded, '首页', primaryColor,
+                    inactiveColor),
                 _buildCourseCenterButton(primaryColor),
-                _buildTabItem(2, Icons.adjust_rounded, '专注', primaryColor, inactiveColor),
+                _buildTabItem(
+                    2, Icons.adjust_rounded, '专注', primaryColor, inactiveColor),
               ],
             ),
           ),
@@ -3487,7 +3692,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
-  Widget _buildTabItem(int index, IconData icon, String label, Color primary, Color inactive) {
+  Widget _buildTabItem(
+      int index, IconData icon, String label, Color primary, Color inactive) {
     bool isSelected = _selectedTabIndex == index;
     return InkWell(
       onTap: () => setState(() => _selectedTabIndex = index),
@@ -3520,35 +3726,34 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   Widget _buildCourseCenterButton(Color primary) {
     return InkWell(
-      onTap: () {
-        PageTransitions.pushFromRect(
-          context: context,
-          page: WeeklyCourseScreen(username: widget.username),
-          sourceKey: _courseCenterKey,
-        );
-      },
-      child: Container(
-        key: _courseCenterKey,
-        width: 48, // 缩小中键按钮
-        height: 48,
-        decoration: BoxDecoration(
-          color: primary,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: primary.withValues(alpha: 0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.calendar_today_rounded,
-          color: Colors.white,
-          size: 22,
-        ),
-    )
-    );
+        onTap: () {
+          PageTransitions.pushFromRect(
+            context: context,
+            page: WeeklyCourseScreen(username: widget.username),
+            sourceKey: _courseCenterKey,
+          );
+        },
+        child: Container(
+          key: _courseCenterKey,
+          width: 48, // 缩小中键按钮
+          height: 48,
+          decoration: BoxDecoration(
+            color: primary,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: primary.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.calendar_today_rounded,
+            color: Colors.white,
+            size: 22,
+          ),
+        ));
   }
 
   // 🚀 辅助方法：内容级深度比较，用于按需刷新
@@ -3569,8 +3774,10 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
     return true;
   }
+
   Widget _buildDashboardSkeleton(bool isLight) {
-    final baseColor = isLight ? Colors.white.withValues(alpha: 0.3) : Colors.grey[800]!;
+    final baseColor =
+        isLight ? Colors.white.withValues(alpha: 0.3) : Colors.grey[800]!;
     return SingleChildScrollView(
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),

@@ -12,9 +12,10 @@ import '../storage_service.dart';
 import '../screens/historical_todos_screen.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
+import '../services/course_service.dart';
+import '../services/ai_todo_chat_launcher.dart';
 import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
-import '../screens/todo_chat_screen.dart';
 import 'home_sections.dart';
 import 'todo_group_widget.dart';
 import '../utils/page_transitions.dart';
@@ -31,10 +32,12 @@ class TodoSectionWidget extends StatefulWidget {
   final Set<String> highlightedTodoIds;
   final int remoteUpdateHighlightSignal;
   final List<TodoGroup> todoGroups;
+  final List<ConflictInfo> conflicts;
   final Function(List<TodoGroup>) onGroupsChanged;
 
   /// 大模型识别成功后的回调，用于导航到确认页面
-  final Function(List<Map<String, dynamic>>, String?, String?, String?, String?)?
+  final Function(
+          List<Map<String, dynamic>>, String?, String?, String?, String?)?
       onLLMResultsParsed; // 🚀 参数：Results, imagePath, originalText, teamUuid, teamName
 
   final Function(String?, String?)? onTeamChanged; // 🚀 传参：ID, Name
@@ -49,6 +52,7 @@ class TodoSectionWidget extends StatefulWidget {
     this.highlightedTodoIds = const <String>{},
     this.remoteUpdateHighlightSignal = 0,
     this.todoGroups = const [],
+    this.conflicts = const [],
     this.onGroupsChanged = _defaultOnGroupsChanged,
     this.onLLMResultsParsed,
     this.onTeamChanged,
@@ -81,6 +85,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
   final Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
+  List<Team> _teams = [];
 
   @override
   void initState() {
@@ -95,9 +100,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       final teams = await ApiService.fetchTeams();
       if (mounted) {
         setState(() {
+          _teams = teams
+              .whereType<Map>()
+              .map((t) => Team.fromJson(Map<String, dynamic>.from(t)))
+              .toList();
           for (var t in teams) {
             final uuid = t['uuid']?.toString();
-            final role = (t['role'] == 0 || t['user_role'] == 0) ? 'admin' : 'member';
+            final role =
+                (t['role'] == 0 || t['user_role'] == 0) ? 'admin' : 'member';
             if (uuid != null) _teamRoles[uuid] = role;
           }
         });
@@ -193,8 +203,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           existingTeams[t.teamUuid!] = t.teamName!;
         }
       }
-      final currentTeamName = _selectedSubTeamUuid != null ? existingTeams[_selectedSubTeamUuid] : null;
-      widget.onLLMResultsParsed!(llmResults, imagePath, originalText, _selectedSubTeamUuid, currentTeamName);
+      final currentTeamName = _selectedSubTeamUuid != null
+          ? existingTeams[_selectedSubTeamUuid]
+          : null;
+      widget.onLLMResultsParsed!(llmResults, imagePath, originalText,
+          _selectedSubTeamUuid, currentTeamName);
     } else {
       // 如果没有回调，使用旧的对话框方式
       _showAddTodoDialogWithData(llmResults, imagePath);
@@ -900,16 +913,27 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                       // 如果有回调，关闭对话框并导航到确认页面
                                       if (widget.onLLMResultsParsed != null) {
                                         Navigator.pop(ctx);
-                                        final existingTeams = <String, String>{};
+                                        final existingTeams =
+                                            <String, String>{};
                                         for (var t in widget.todos) {
-                                          if (t.teamUuid != null && t.teamName != null) {
-                                            existingTeams[t.teamUuid!] = t.teamName!;
+                                          if (t.teamUuid != null &&
+                                              t.teamName != null) {
+                                            existingTeams[t.teamUuid!] =
+                                                t.teamName!;
                                           }
                                         }
-                                        final currentTeamName = _selectedSubTeamUuid != null ? existingTeams[_selectedSubTeamUuid] : null;
+                                        final currentTeamName =
+                                            _selectedSubTeamUuid != null
+                                                ? existingTeams[
+                                                    _selectedSubTeamUuid]
+                                                : null;
 
                                         widget.onLLMResultsParsed!(
-                                            results, imagePath, aiInputCtrl.text, _selectedSubTeamUuid, currentTeamName);
+                                            results,
+                                            imagePath,
+                                            aiInputCtrl.text,
+                                            _selectedSubTeamUuid,
+                                            currentTeamName);
                                         return;
                                       }
 
@@ -1416,9 +1440,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
     // ── 颜色层 ──
     final Color cardBg = todo.isDone
-        ? colorScheme.surfaceContainerHighest.withValues(alpha: isLight ? 0.25 : 0.08)
-        : colorScheme.surface.withValues(alpha: 
-            isPast
+        ? colorScheme.surfaceContainerHighest
+            .withValues(alpha: isLight ? 0.25 : 0.08)
+        : colorScheme.surface.withValues(
+            alpha: isPast
                 ? (isLight ? 0.9 : 0.45)
                 : isFuture
                     ? (isLight ? 0.85 : 0.35)
@@ -1505,51 +1530,53 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     }
 
     return LongPressDraggable<String>(
-      data: todo.id,
-      feedback: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.8,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(color: Colors.black26, blurRadius: 12, spreadRadius: 1)
-            ],
+        data: todo.id,
+        feedback: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.8,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black26, blurRadius: 12, spreadRadius: 1)
+              ],
+            ),
+            child: Text(todo.title,
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 14)),
           ),
-          child: Text(todo.title,
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 14)),
         ),
-      ),
-      childWhenDragging: Opacity(
-        opacity: 0.3,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            color: cardBg,
-            borderRadius: BorderRadius.circular(14),
+        childWhenDragging: Opacity(
+          opacity: 0.3,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(todo.title,
+                style: TextStyle(
+                    color: titleColor.withValues(alpha: 0.95), fontSize: 14.5)),
           ),
-          child: Text(todo.title,
-              style: TextStyle(color: titleColor.withValues(alpha: 0.95), fontSize: 14.5)),
         ),
-      ),
-      child: VisibilityDetector(
-        key: Key('todo_item_vis_${todo.id}'),
-        onVisibilityChanged: (info) {
-          if (info.visibleFraction > 0.1 &&
-              !_animatedTodoIds.contains(todo.id)) {
-            if (mounted) {
-              setState(() {
-                _animatedTodoIds.add(todo.id);
-              });
+        child: VisibilityDetector(
+          key: Key('todo_item_vis_${todo.id}'),
+          onVisibilityChanged: (info) {
+            if (info.visibleFraction > 0.1 &&
+                !_animatedTodoIds.contains(todo.id)) {
+              if (mounted) {
+                setState(() {
+                  _animatedTodoIds.add(todo.id);
+                });
+              }
             }
-          }
-        },
-        child: Dismissible(
+          },
+          child: Dismissible(
             key: key ?? _getTodoDismissKey('dismiss', todo.id),
             direction: DismissDirection.endToStart,
             background: Container(
@@ -1614,15 +1641,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   );
                 },
                 child: KeyedSubtree(
-                    key: _getTodoCardKey(todo.id),
-                    child: Container(
+                  key: _getTodoCardKey(todo.id),
+                  child: Container(
                     margin: const EdgeInsets.only(bottom: 6),
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       color: todo.teamUuid != null
                           ? (isLight
                               ? colorScheme.surface.withValues(alpha: 0.92)
-                              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4))
+                              : colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.4))
                           : cardBg,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
@@ -1687,8 +1715,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                 curve: Curves.easeOutCubic,
                                 builder: (context, value, _) {
                                   return Align(
-                                    alignment:
-                                        Alignment(-1.4 + 2.8 * value, 0),
+                                    alignment: Alignment(-1.4 + 2.8 * value, 0),
                                     child: FractionallySizedBox(
                                       widthFactor: 0.3,
                                       heightFactor: 1,
@@ -1697,8 +1724,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                           gradient: LinearGradient(
                                             colors: [
                                               Colors.transparent,
-                                              Colors.amberAccent.withValues(
-                                                  alpha: 0.22),
+                                              Colors.amberAccent
+                                                  .withValues(alpha: 0.22),
                                               Colors.transparent,
                                             ],
                                             begin: Alignment.centerLeft,
@@ -1720,10 +1747,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               tween: Tween<double>(
                                   begin: 0.0,
                                   end: _animatedTodoIds.contains(todo.id)
-                                      ? (progress < 0.08 ? 0.08 : progress.clamp(0.0, 1.0))
+                                      ? (progress < 0.08
+                                          ? 0.08
+                                          : progress.clamp(0.0, 1.0))
                                       : 0.0),
                               builder: (context, value, child) {
-                                final fillColor = _getProgressFillColor(progress, isPast);
+                                final fillColor =
+                                    _getProgressFillColor(progress, isPast);
                                 return FractionallySizedBox(
                                   alignment: Alignment.centerLeft,
                                   widthFactor: value,
@@ -1731,8 +1761,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(
                                         colors: [
-                                          fillColor.withValues(alpha: isLight ? 0.32 : 0.18),
-                                          fillColor.withValues(alpha: isLight ? 0.15 : 0.08),
+                                          fillColor.withValues(
+                                              alpha: isLight ? 0.32 : 0.18),
+                                          fillColor.withValues(
+                                              alpha: isLight ? 0.15 : 0.08),
                                         ],
                                         begin: Alignment.centerLeft,
                                         end: Alignment.centerRight,
@@ -1755,64 +1787,96 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                   if (todo.teamUuid != null)
                                     Container(
                                       width: 4,
-                                      margin: const EdgeInsets.symmetric(vertical: 8),
+                                      margin: const EdgeInsets.symmetric(
+                                          vertical: 8),
                                       decoration: BoxDecoration(
                                         color: colorScheme.primary,
-                                        borderRadius: const BorderRadius.horizontal(
+                                        borderRadius:
+                                            const BorderRadius.horizontal(
                                           right: Radius.circular(3),
                                         ),
                                       ),
                                     ),
                                   Expanded(
                                     child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 9),
                                       child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
                                         children: [
                                           SizedBox(
                                             width: 24,
                                             height: 24,
                                             child: Checkbox(
-                                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                              visualDensity: VisualDensity.compact,
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                              materialTapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(6)),
                                               activeColor: colorScheme.primary,
                                               value: todo.isDone,
                                               onChanged: (val) {
                                                 if (val == null) return;
-                                                
+
                                                 // 🚀 乐观 UI 更新：立即修改状态并通知父组件
-                                                final bool wasDone = todo.isDone;
+                                                final bool wasDone =
+                                                    todo.isDone;
                                                 setState(() {
                                                   todo.isDone = val;
                                                   if (val) {
-                                                    _isCompleting[todo.id] = true;
+                                                    _isCompleting[todo.id] =
+                                                        true;
                                                   } else {
-                                                    _isCompleting.remove(todo.id);
-                                                    _completingAnimations[todo.id]?.dispose();
-                                                    _completingAnimations.remove(todo.id);
+                                                    _isCompleting
+                                                        .remove(todo.id);
+                                                    _completingAnimations[
+                                                            todo.id]
+                                                        ?.dispose();
+                                                    _completingAnimations
+                                                        .remove(todo.id);
                                                   }
                                                 });
-                                                
-                                                 if (val) {
-                                                   PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
-                                                 }
-                                                 todo.markAsChanged();
-                                                List<TodoItem> updatedList = List.from(widget.todos);
-                                                // 排序以将已完成移到底部
-                                                updatedList.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-                                                widget.onTodosChanged(updatedList);
 
+                                                if (val) {
+                                                  PomodoroSyncService()
+                                                      .sendStopSignal(
+                                                          todoUuid: todo.id);
+                                                }
+                                                todo.markAsChanged();
+                                                List<TodoItem> updatedList =
+                                                    List.from(widget.todos);
+                                                // 排序以将已完成移到底部
+                                                updatedList.sort((a, b) =>
+                                                    a.isDone == b.isDone
+                                                        ? 0
+                                                        : (a.isDone ? 1 : -1));
+                                                widget.onTodosChanged(
+                                                    updatedList);
 
                                                 if (val && !wasDone) {
                                                   // 播放动画后清理
-                                                  _completingAnimations[todo.id]?.dispose();
-                                                  final controller = AnimationController(duration: const Duration(milliseconds: 400), vsync: this);
-                                                  _completingAnimations[todo.id] = controller;
-                                                  controller.forward().then((_) {
+                                                  _completingAnimations[todo.id]
+                                                      ?.dispose();
+                                                  final controller =
+                                                      AnimationController(
+                                                          duration:
+                                                              const Duration(
+                                                                  milliseconds:
+                                                                      400),
+                                                          vsync: this);
+                                                  _completingAnimations[
+                                                      todo.id] = controller;
+                                                  controller
+                                                      .forward()
+                                                      .then((_) {
                                                     if (mounted) {
                                                       setState(() {
-                                                        _isCompleting[todo.id] = false;
+                                                        _isCompleting[todo.id] =
+                                                            false;
                                                       });
                                                     }
                                                   });
@@ -1823,7 +1887,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                           const SizedBox(width: 10),
                                           Expanded(
                                             child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Row(
                                                   children: [
@@ -1831,31 +1896,69 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                       child: Text(
                                                         todo.title,
                                                         maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
                                                         style: TextStyle(
-                                                          decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                                                          decorationColor: colorScheme.onSurface.withValues(alpha: 0.3),
-                                                          color: titleColor.withValues(alpha: 0.95),
+                                                          decoration: todo
+                                                                  .isDone
+                                                              ? TextDecoration
+                                                                  .lineThrough
+                                                              : null,
+                                                          decorationColor:
+                                                              colorScheme
+                                                                  .onSurface
+                                                                  .withValues(
+                                                                      alpha:
+                                                                          0.3),
+                                                          color: titleColor
+                                                              .withValues(
+                                                                  alpha: 0.95),
                                                           fontSize: 14.5,
-                                                          fontWeight: todo.isDone || isPast || isFuture ? FontWeight.w500 : FontWeight.w600,
+                                                          fontWeight: todo
+                                                                      .isDone ||
+                                                                  isPast ||
+                                                                  isFuture
+                                                              ? FontWeight.w500
+                                                              : FontWeight.w600,
                                                           height: 1.2,
                                                         ),
                                                       ),
                                                     ),
-                                                    if (recurrenceIcon != null) ...[
+                                                    if (recurrenceIcon !=
+                                                        null) ...[
                                                       const SizedBox(width: 4),
                                                       recurrenceIcon,
                                                     ],
                                                     const SizedBox(width: 6),
                                                     Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 7,
+                                                          vertical: 2),
                                                       decoration: BoxDecoration(
-                                                        color: todo.isDone ? colorScheme.onSurface.withValues(alpha: 0.06) : badgeBg,
-                                                        borderRadius: BorderRadius.circular(6),
+                                                        color: todo.isDone
+                                                            ? colorScheme
+                                                                .onSurface
+                                                                .withValues(
+                                                                    alpha: 0.06)
+                                                            : badgeBg,
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(6),
                                                       ),
                                                       child: Text(
                                                         badge,
-                                                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: todo.isDone ? colorScheme.onSurface.withValues(alpha: 0.3) : badgeColor),
+                                                        style: TextStyle(
+                                                            fontSize: 10.5,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            color: todo.isDone
+                                                                ? colorScheme
+                                                                    .onSurface
+                                                                    .withValues(
+                                                                        alpha:
+                                                                            0.3)
+                                                                : badgeColor),
                                                       ),
                                                     ),
                                                   ],
@@ -1865,46 +1968,122 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                   Row(
                                                     children: [
                                                       Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                        decoration: BoxDecoration(
-                                                            color: colorScheme.primary.withValues(alpha: 0.18),
-                                                          borderRadius: BorderRadius.circular(4),
-                                                            border: Border.all(color: colorScheme.primary.withValues(alpha: 0.4), width: 0.8),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 6,
+                                                                vertical: 2),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: colorScheme
+                                                              .primary
+                                                              .withValues(
+                                                                  alpha: 0.18),
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(4),
+                                                          border: Border.all(
+                                                              color: colorScheme
+                                                                  .primary
+                                                                  .withValues(
+                                                                      alpha:
+                                                                          0.4),
+                                                              width: 0.8),
                                                         ),
                                                         child: Row(
-                                                          mainAxisSize: MainAxisSize.min,
+                                                          mainAxisSize:
+                                                              MainAxisSize.min,
                                                           children: [
-                                                            Icon(_selectedSubTeamUuid == null ? Icons.groups_rounded : Icons.person_outline_rounded, size: 10, color: colorScheme.primary),
-                                                            const SizedBox(width: 3),
+                                                            Icon(
+                                                                _selectedSubTeamUuid ==
+                                                                        null
+                                                                    ? Icons
+                                                                        .groups_rounded
+                                                                    : Icons
+                                                                        .person_outline_rounded,
+                                                                size: 10,
+                                                                color: colorScheme
+                                                                    .primary),
+                                                            const SizedBox(
+                                                                width: 3),
                                                             Text(
-                                                              _selectedSubTeamUuid == null 
-                                                                ? "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}"
-                                                                : "创建者：${todo.creatorName ?? '成员'}", 
-                                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorScheme.primary)
-                                                            ),
+                                                                _selectedSubTeamUuid ==
+                                                                        null
+                                                                    ? "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}"
+                                                                    : "创建者：${todo.creatorName ?? '成员'}",
+                                                                style: TextStyle(
+                                                                    fontSize:
+                                                                        10,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    color: colorScheme
+                                                                        .primary)),
                                                           ],
                                                         ),
                                                       ),
-                                                      if (todo.collabType == 1 && _teamRoles[todo.teamUuid] == 'admin') ...[
-                                                         const SizedBox(width: 6),
-                                                         GestureDetector(
-                                                           onTap: () => _showIndependentTodoStatus(todo),
-                                                           child: Container(
-                                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                             decoration: BoxDecoration(
-                                                               color: Colors.green.withValues(alpha: 0.15),
-                                                               borderRadius: BorderRadius.circular(4),
-                                                               border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 0.8),
-                                                             ),
-                                                             child: Row(
-                                                               children: [
-                                                                 const Icon(Icons.assignment_turned_in_outlined, size: 10, color: Colors.green),
-                                                                 const SizedBox(width: 3),
-                                                                 const Text("独立任务进度", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
-                                                               ],
-                                                             ),
-                                                           ),
-                                                         ),
+                                                      if (todo.collabType ==
+                                                              1 &&
+                                                          _teamRoles[todo
+                                                                  .teamUuid] ==
+                                                              'admin') ...[
+                                                        const SizedBox(
+                                                            width: 6),
+                                                        GestureDetector(
+                                                          onTap: () =>
+                                                              _showIndependentTodoStatus(
+                                                                  todo),
+                                                          child: Container(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                                    horizontal:
+                                                                        6,
+                                                                    vertical:
+                                                                        2),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: Colors
+                                                                  .green
+                                                                  .withValues(
+                                                                      alpha:
+                                                                          0.15),
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          4),
+                                                              border: Border.all(
+                                                                  color: Colors
+                                                                      .green
+                                                                      .withValues(
+                                                                          alpha:
+                                                                              0.4),
+                                                                  width: 0.8),
+                                                            ),
+                                                            child: Row(
+                                                              children: [
+                                                                const Icon(
+                                                                    Icons
+                                                                        .assignment_turned_in_outlined,
+                                                                    size: 10,
+                                                                    color: Colors
+                                                                        .green),
+                                                                const SizedBox(
+                                                                    width: 3),
+                                                                const Text(
+                                                                    "独立任务进度",
+                                                                    style: TextStyle(
+                                                                        fontSize:
+                                                                            10,
+                                                                        fontWeight:
+                                                                            FontWeight
+                                                                                .bold,
+                                                                        color: Colors
+                                                                            .green)),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
                                                       ],
                                                     ],
                                                   ),
@@ -1912,14 +2091,61 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                 const SizedBox(height: 3),
                                                 Row(
                                                   children: [
-                                                    Icon(Icons.schedule_rounded, size: 11, color: colorScheme.onSurface.withValues(alpha: todo.isDone ? 0.65 : (isPast ? 0.75 : 0.65))),
+                                                    Icon(Icons.schedule_rounded,
+                                                        size: 11,
+                                                        color: colorScheme
+                                                            .onSurface
+                                                            .withValues(
+                                                                alpha: todo
+                                                                        .isDone
+                                                                    ? 0.65
+                                                                    : (isPast
+                                                                        ? 0.75
+                                                                        : 0.65))),
                                                     const SizedBox(width: 3),
-                                                    Expanded(child: Text(_buildTimeLabel(todo, cDate, isPast, isFuture, now), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: todo.isDone ? 0.4 : isPast ? 0.75 : 0.65), height: 1.2))),
+                                                    Expanded(
+                                                        child: Text(
+                                                            _buildTimeLabel(
+                                                                todo,
+                                                                cDate,
+                                                                isPast,
+                                                                isFuture,
+                                                                now),
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style: TextStyle(
+                                                                fontSize: 11,
+                                                                color: colorScheme
+                                                                    .onSurface
+                                                                    .withValues(
+                                                                        alpha: todo.isDone
+                                                                            ? 0.4
+                                                                            : isPast
+                                                                                ? 0.75
+                                                                                : 0.65),
+                                                                height: 1.2))),
                                                   ],
                                                 ),
-                                                if (todo.remark != null && todo.remark!.isNotEmpty) ...[
+                                                if (todo.remark != null &&
+                                                    todo.remark!
+                                                        .isNotEmpty) ...[
                                                   const SizedBox(height: 2),
-                                                  Text(todo.remark!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withValues(alpha: todo.isDone ? 0.22 : 0.4), height: 1.2)),
+                                                  Text(todo.remark!,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: colorScheme
+                                                              .onSurface
+                                                              .withValues(
+                                                                  alpha: todo
+                                                                          .isDone
+                                                                      ? 0.22
+                                                                      : 0.4),
+                                                          height: 1.2)),
                                                 ],
                                               ],
                                             ),
@@ -1953,11 +2179,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: Colors.amberAccent.withValues(alpha: 0.24),
+                                  color: Colors.amberAccent
+                                      .withValues(alpha: 0.24),
                                   borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
-                                    color:
-                                        Colors.amberAccent.withValues(alpha: 0.9),
+                                    color: Colors.amberAccent
+                                        .withValues(alpha: 0.9),
                                     width: 1,
                                   ),
                                 ),
@@ -1983,14 +2210,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       ],
                     ),
                   ),
-                  ),
                 ),
               ),
             ),
-          )
-    );
+          ),
+        ));
   }
-  Widget _buildAnimatedSection({required bool expanded, required Widget child}) {
+
+  Widget _buildAnimatedSection(
+      {required bool expanded, required Widget child}) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -2027,9 +2255,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         child: Row(
           children: [
             Icon(
-              expanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
+              expanded
+                  ? Icons.keyboard_arrow_down_rounded
+                  : Icons.keyboard_arrow_right_rounded,
               size: 20,
-              color: (color ?? Theme.of(context).colorScheme.onSurface).withValues(alpha: 0.5),
+              color: (color ?? Theme.of(context).colorScheme.onSurface)
+                  .withValues(alpha: 0.5),
             ),
             const SizedBox(width: 8),
             if (icon != null) ...[
@@ -2041,7 +2272,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
-                color: (color ?? Theme.of(context).colorScheme.onSurface).withValues(alpha: 0.8),
+                color: (color ?? Theme.of(context).colorScheme.onSurface)
+                    .withValues(alpha: 0.8),
                 letterSpacing: 0.5,
               ),
             ),
@@ -2076,13 +2308,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final Iterable<TodoItem> activeTodos = widget.todos.where(
       (t) {
         if (t.isDeleted) return false;
-        
+
         // 🧪 诊断打印：仅在调试模式下打印为何任务被隐藏
         final bool isHistorical = _isHistoricalTodo(t);
-        final bool matchesTeam = _selectedSubTeamUuid == null || t.teamUuid == _selectedSubTeamUuid;
-        
+        final bool matchesTeam =
+            _selectedSubTeamUuid == null || t.teamUuid == _selectedSubTeamUuid;
+
         if (isHistorical || !matchesTeam) {
-            // debugPrint('👻 Todo [${t.title}] hidden: historical=$isHistorical, teamMatch=$matchesTeam');
+          // debugPrint('👻 Todo [${t.title}] hidden: historical=$isHistorical, teamMatch=$matchesTeam');
         }
 
         if (isHistorical) return false;
@@ -2119,14 +2352,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
     for (var t in widget.todos) {
       if (t.isDeleted || _isHistoricalTodo(t)) continue;
-      
+
       final tid = (t.groupId == null || t.groupId!.isEmpty) ? null : t.groupId;
       if (tid != null) {
         // 检查这个组在当前视角下是否存在
         bool folderExists = widget.todoGroups.any((g) => g.id == tid);
         if (folderExists) {
-            groupTodosMap.putIfAbsent(tid, () => []).add(t);
-            continue;
+          groupTodosMap.putIfAbsent(tid, () => []).add(t);
+          continue;
         }
       }
       orphanedTodos.add(t);
@@ -2150,7 +2383,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     // 1. Process Folders
     for (var g in widget.todoGroups) {
       if (g.isDeleted) continue;
-      
+
       // 🚀 核心修正：视口过滤
       // 只有在选定特定团队时才进行截流；如果是“全部”(null)，则允许所有文件夹通过
       if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid) {
@@ -2158,8 +2391,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       }
       final allGTodos = groupTodosMap[g.id] ?? [];
       // 🚀 核心过滤：如果选定了特定团队，则文件夹内的待办也要按团队过滤
-      final gTodos = _selectedSubTeamUuid == null 
-          ? allGTodos 
+      final gTodos = _selectedSubTeamUuid == null
+          ? allGTodos
           : allGTodos.where((t) => t.teamUuid == _selectedSubTeamUuid).toList();
 
       if (gTodos.isEmpty && !g.isExpanded) continue;
@@ -2199,8 +2432,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           },
           onTodoToggle: (todo) {
             if (!todo.isDone) {
-               // 这里是取反前的判断，逻辑上是即将变为 Done
-               PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+              // 这里是取反前的判断，逻辑上是即将变为 Done
+              PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
             }
             todo.isDone = !todo.isDone;
             todo.markAsChanged();
@@ -2495,8 +2728,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                               : (isDarkTheme
                                                   ? Colors.white
                                                       .withValues(alpha: 0.9)
-                                                  : Colors.black
-                                                      .withValues(alpha: 0.85))),
+                                                  : Colors.black.withValues(
+                                                      alpha: 0.85))),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16,
                                       letterSpacing: 0.2)),
@@ -2623,16 +2856,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       sections.add(_buildAnimatedSection(
           expanded: _isFutureExpanded,
           child: Column(
-               children: futureItems.map((item) {
-                final todo = item.todo;
-                if (todo != null) {
-                  return _buildTodoItemCard(todo,
-                      isPast: false,
-                      isFuture: true,
-                      key: _getTodoDismissKey('dismiss', todo.id));
-                }
-                return item.widget;
-              }).toList())));
+              children: futureItems.map((item) {
+            final todo = item.todo;
+            if (todo != null) {
+              return _buildTodoItemCard(todo,
+                  isPast: false,
+                  isFuture: true,
+                  key: _getTodoDismissKey('dismiss', todo.id));
+            }
+            return item.widget;
+          }).toList())));
     }
 
     return AnimatedSwitcher(
@@ -2732,7 +2965,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                   color: widget.isLight
                                       ? (isDarkTheme
                                           ? Colors.white.withValues(alpha: 0.6)
-                                          : Colors.black.withValues(alpha: 0.55))
+                                          : Colors.black
+                                              .withValues(alpha: 0.55))
                                       : (useDarkUI
                                               ? Colors.white
                                               : Colors.black)
@@ -2907,84 +3141,71 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     size: 20,
                     color: useDarkUI ? Colors.white70 : Colors.grey,
                   ),
-                  onPressed: () {
-                    final todosForChat = widget.todos
-                        .where((t) =>
-                            !t.isDeleted && !t.isDone && !_isHistoricalTodo(t))
-                        .map((t) {
-                      return <String, dynamic>{
-                        'id': t.id,
-                        'title': t.title,
-                        'remark': t.remark ?? '',
-                        'startTime': t.createdDate != null
-                            ? DateTime.fromMillisecondsSinceEpoch(
-                                t.createdDate!,
-                                isUtc: true,
-                              ).toLocal().toIso8601String()
-                            : '',
-                        'endTime': t.dueDate != null
-                            ? t.dueDate!.toIso8601String()
-                            : '',
-                        'isAllDay': t.dueDate != null &&
-                            t.dueDate!.hour == 23 &&
-                            t.dueDate!.minute == 59,
-                        'recurrence': t.recurrence.name,
-                        'groupId': t.groupId ?? '',
-                      };
-                    }).toList();
+                  onPressed: () async {
+                    final aiContext = await _loadAiAssistantContext();
+                    if (!context.mounted) return;
 
-                    Navigator.push(
+                    AiTodoChatLauncher.open(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => TodoChatScreen(
-                          username: widget.username,
-                          todos: todosForChat,
-                          todoGroups: widget.todoGroups,
-                          onTodoInserted: (newTodo) {
-                            final updatedList =
-                                List<TodoItem>.from(widget.todos)..add(newTodo);
-                            widget.onTodosChanged(updatedList);
-                          },
-                          onTodosBatchAction: (inserted, updated) {
-                            final List<TodoItem> resultList =
-                                List<TodoItem>.from(widget.todos);
+                      username: widget.username,
+                      todos: widget.todos
+                          .where((t) => !t.isDone && !_isHistoricalTodo(t))
+                          .toList(),
+                      todoGroups: widget.todoGroups,
+                      courses: aiContext.courses,
+                      timeLogs: aiContext.timeLogs,
+                      conflicts: widget.conflicts,
+                      teams: aiContext.teams,
+                      onTodosBatchAction: (inserted, updated) {
+                        final List<TodoItem> resultList =
+                            List<TodoItem>.from(widget.todos);
 
-                            // 1. 处理新增
-                            resultList.addAll(inserted);
+                        // 1. 处理新增
+                        resultList.addAll(inserted);
 
-                            // 2. 处理更新
-                            for (final update in updated) {
-                              final idx = resultList
-                                  .indexWhere((t) => t.id == update.id);
-                              if (idx != -1) {
-                                final existing = resultList[idx];
-                                final gId = update.groupId;
-                                resultList[idx] = TodoItem(
-                                  id: existing.id,
-                                  title: existing.title,
-                                  isDone: existing.isDone,
-                                  isDeleted: existing.isDeleted,
-                                  version: existing.version,
-                                  updatedAt:
-                                      DateTime.now().millisecondsSinceEpoch,
-                                  createdAt: existing.createdAt,
-                                  createdDate: existing.createdDate,
-                                  recurrence: existing.recurrence,
-                                  customIntervalDays:
-                                      existing.customIntervalDays,
-                                  recurrenceEndDate: existing.recurrenceEndDate,
-                                  dueDate: existing.dueDate,
-                                  remark: existing.remark,
-                                  groupId:
-                                      (gId == null || gId.isEmpty) ? null : gId,
-                                )..markAsChanged();
-                              }
-                            }
+                        // 2. 处理更新
+                        for (final update in updated) {
+                          final idx =
+                              resultList.indexWhere((t) => t.id == update.id);
+                          if (idx != -1) {
+                            final existing = resultList[idx];
+                            resultList[idx] = TodoItem(
+                              id: existing.id,
+                              title: update.title.isNotEmpty
+                                  ? update.title
+                                  : existing.title,
+                              isDone: update.isDone,
+                              isDeleted: update.isDeleted,
+                              version: existing.version,
+                              updatedAt: DateTime.now().millisecondsSinceEpoch,
+                              createdAt: existing.createdAt,
+                              createdDate:
+                                  update.createdDate ?? existing.createdDate,
+                              recurrence: update.recurrence,
+                              customIntervalDays: update.customIntervalDays,
+                              recurrenceEndDate: update.recurrenceEndDate,
+                              dueDate: update.dueDate,
+                              remark: update.remark ?? existing.remark,
+                              imagePath: existing.imagePath,
+                              originalText:
+                                  update.originalText ?? existing.originalText,
+                              groupId: update.groupId,
+                              reminderMinutes: update.reminderMinutes,
+                              teamUuid: existing.teamUuid,
+                              creatorId: existing.creatorId,
+                              creatorName: existing.creatorName,
+                              teamName: existing.teamName,
+                              collabType: existing.collabType,
+                              hasConflict: existing.hasConflict,
+                              serverVersionData: existing.serverVersionData,
+                              isAllDay: update.isAllDay,
+                              categoryId: existing.categoryId,
+                            )..markAsChanged();
+                          }
+                        }
 
-                            widget.onTodosChanged(resultList);
-                          },
-                        ),
-                      ),
+                        widget.onTodosChanged(resultList);
+                      },
                     );
                   },
                   tooltip: 'AI待办助手',
@@ -3027,6 +3248,29 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         _buildTodoList(),
       ],
     );
+  }
+
+  Future<_AiAssistantContext> _loadAiAssistantContext() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        CourseService.getAllCourses(widget.username),
+        StorageService.getTimeLogs(widget.username),
+      ]);
+      final courses = (results[0] as List<CourseItem>)
+          .where((course) => !course.isDeleted)
+          .toList();
+      final timeLogs = (results[1] as List<TimeLogItem>)
+          .where((log) => !log.isDeleted)
+          .toList();
+      return _AiAssistantContext(
+        courses: courses,
+        timeLogs: timeLogs,
+        teams: _teams,
+      );
+    } catch (e) {
+      debugPrint('加载 AI 助手上下文失败: $e');
+      return _AiAssistantContext(teams: _teams);
+    }
   }
 
   void _showCreateGroupDialog(BuildContext context) {
@@ -3076,7 +3320,8 @@ class _IndependentStatusDialog extends StatefulWidget {
   const _IndependentStatusDialog({required this.todo});
 
   @override
-  State<_IndependentStatusDialog> createState() => _IndependentStatusDialogState();
+  State<_IndependentStatusDialog> createState() =>
+      _IndependentStatusDialogState();
 }
 
 class _IndependentStatusDialogState extends State<_IndependentStatusDialog> {
@@ -3118,43 +3363,53 @@ class _IndependentStatusDialogState extends State<_IndependentStatusDialog> {
       content: SizedBox(
         width: double.maxFinite,
         height: 350,
-        child: _isLoading 
-          ? const Center(child: CircularProgressIndicator())
-          : (_error != null 
-              ? Center(child: Text("加载失败: $_error"))
-              : (_statusList.isEmpty 
-                  ? const Center(child: Text("暂无成员进度数据"))
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _statusList.length,
-                      itemBuilder: (context, index) {
-                        final s = _statusList[index];
-                        final isDone = s['is_completed'] == 1;
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: isDone ? Colors.green.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
-                            child: Text(
-                              (s['username'] as String?)?.isNotEmpty == true 
-                                  ? s['username'][0].toUpperCase() 
-                                  : '?',
-                              style: TextStyle(color: isDone ? Colors.green : Colors.grey),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : (_error != null
+                ? Center(child: Text("加载失败: $_error"))
+                : (_statusList.isEmpty
+                    ? const Center(child: Text("暂无成员进度数据"))
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _statusList.length,
+                        itemBuilder: (context, index) {
+                          final s = _statusList[index];
+                          final isDone = s['is_completed'] == 1;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: isDone
+                                  ? Colors.green.withValues(alpha: 0.1)
+                                  : Colors.grey.withValues(alpha: 0.1),
+                              child: Text(
+                                (s['username'] as String?)?.isNotEmpty == true
+                                    ? s['username'][0].toUpperCase()
+                                    : '?',
+                                style: TextStyle(
+                                    color: isDone ? Colors.green : Colors.grey),
+                              ),
                             ),
-                          ),
-                          title: Text(s['username']?.toString() ?? '未知用户', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                          subtitle: Text(
-                            isDone ? "已完成" : "进行中",
-                            style: TextStyle(fontSize: 12, color: isDone ? Colors.green : Colors.grey),
-                          ),
-                          trailing: Icon(
-                            isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-                            color: isDone ? Colors.green : Colors.grey,
-                          ),
-                        );
-                      },
-                    ))),
+                            title: Text(s['username']?.toString() ?? '未知用户',
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.bold)),
+                            subtitle: Text(
+                              isDone ? "已完成" : "进行中",
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDone ? Colors.green : Colors.grey),
+                            ),
+                            trailing: Icon(
+                              isDone
+                                  ? Icons.check_circle_rounded
+                                  : Icons.radio_button_unchecked,
+                              color: isDone ? Colors.green : Colors.grey,
+                            ),
+                          );
+                        },
+                      ))),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text("关闭")),
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text("关闭")),
       ],
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     );
@@ -3274,12 +3529,15 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     todo.collabType = _collabType;
     todo.markAsChanged();
 
-    if (_syncFolderToTeam && _selectedGroupId != null && _selectedTeamUuid != null) {
+    if (_syncFolderToTeam &&
+        _selectedGroupId != null &&
+        _selectedTeamUuid != null) {
       final groups = List<TodoGroup>.from(widget.todoGroups);
       final idx = groups.indexWhere((g) => g.id == _selectedGroupId);
       if (idx != -1) {
         groups[idx].teamUuid = _selectedTeamUuid;
-        final team = _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull;
+        final team =
+            _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull;
         if (team != null) groups[idx].teamName = team.name;
         groups[idx].markAsChanged();
         await StorageService.saveTodoGroups(widget.username, groups);
@@ -3295,16 +3553,19 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final bgColor = theme.brightness == Brightness.light ? const Color(0xFFF2F2F7) : theme.colorScheme.surface;
+    final bgColor = theme.brightness == Brightness.light
+        ? const Color(0xFFF2F2F7)
+        : theme.colorScheme.surface;
 
     final uniqueFolderMap = <String, TodoGroup>{};
     for (var g in widget.todoGroups) {
       if (g.id.isNotEmpty) uniqueFolderMap[g.id] = g;
     }
     final availableGroups = uniqueFolderMap.values.toList();
-    final effectiveGroupId = (availableGroups.any((g) => g.id == _selectedGroupId))
-        ? _selectedGroupId
-        : null;
+    final effectiveGroupId =
+        (availableGroups.any((g) => g.id == _selectedGroupId))
+            ? _selectedGroupId
+            : null;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -3322,8 +3583,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   title: const Text('删除待办'),
                   content: const Text('确定要删除这条待办吗？'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除', style: TextStyle(color: Colors.red))),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('取消')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('删除',
+                            style: TextStyle(color: Colors.red))),
                   ],
                 ),
               );
@@ -3336,11 +3602,15 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 if (mounted) Navigator.pop(context, true);
               }
             },
-            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+            icon: const Icon(Icons.delete_outline_rounded,
+                color: Colors.redAccent),
             tooltip: '删除待办',
           ),
           const SizedBox(width: 8),
-          TextButton(onPressed: _save, child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+          TextButton(
+              onPressed: _save,
+              child: const Text('保存',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
           const SizedBox(width: 8),
         ],
       ),
@@ -3352,14 +3622,19 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             decoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)],
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)
+              ],
             ),
             child: Column(
               children: [
                 TextField(
                   controller: _titleCtrl,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  decoration: const InputDecoration(hintText: "待办内容", border: InputBorder.none),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w600),
+                  decoration: const InputDecoration(
+                      hintText: "待办内容", border: InputBorder.none),
                 ),
                 const Divider(height: 1),
                 TextField(
@@ -3369,7 +3644,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   style: const TextStyle(fontSize: 15),
                   decoration: InputDecoration(
                     hintText: "备注 (可选)",
-                    hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.8)),
+                    hintStyle:
+                        TextStyle(color: Colors.grey.withValues(alpha: 0.8)),
                     border: InputBorder.none,
                   ),
                 ),
@@ -3380,10 +3656,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("时间与提醒", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text("时间与提醒",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               Row(
                 children: [
-                  const Text("全天事件", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const Text("全天事件",
+                      style: TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(width: 6),
                   SizedBox(
                     height: 24,
@@ -3393,10 +3671,17 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                         setState(() {
                           _isAllDay = val;
                           if (_isAllDay) {
-                            _createdDate = DateTime(_createdDate.year, _createdDate.month, _createdDate.day, 0, 0);
+                            _createdDate = DateTime(_createdDate.year,
+                                _createdDate.month, _createdDate.day, 0, 0);
                             _dueDate = _dueDate != null
-                                ? DateTime(_dueDate!.year, _dueDate!.month, _dueDate!.day, 23, 59)
-                                : DateTime(_createdDate.year, _createdDate.month, _createdDate.day, 23, 59);
+                                ? DateTime(_dueDate!.year, _dueDate!.month,
+                                    _dueDate!.day, 23, 59)
+                                : DateTime(
+                                    _createdDate.year,
+                                    _createdDate.month,
+                                    _createdDate.day,
+                                    23,
+                                    59);
                           }
                         });
                       },
@@ -3409,37 +3694,70 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _buildSquareTile(
+              Expanded(
+                  child: _buildSquareTile(
                 title: "开始时间",
-                subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm').format(_createdDate),
+                subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
+                    .format(_createdDate),
                 icon: Icons.play_circle_fill,
                 color: Colors.blueAccent,
                 onTap: () async {
-                  final pickedDate = await showDatePicker(context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: _createdDate);
+                  final pickedDate = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      initialDate: _createdDate);
                   if (pickedDate != null) {
                     if (_isAllDay) {
-                      setState(() => _createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
+                      setState(() => _createdDate = DateTime(pickedDate.year,
+                          pickedDate.month, pickedDate.day, 0, 0));
                     } else {
-                      final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_createdDate));
-                      if (pickedTime != null) setState(() => _createdDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+                      final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(_createdDate));
+                      if (pickedTime != null)
+                        setState(() => _createdDate = DateTime(
+                            pickedDate.year,
+                            pickedDate.month,
+                            pickedDate.day,
+                            pickedTime.hour,
+                            pickedTime.minute));
                     }
                   }
                 },
               )),
               const SizedBox(width: 12),
-              Expanded(child: _buildSquareTile(
+              Expanded(
+                  child: _buildSquareTile(
                 title: "截止时间",
-                subtitle: _dueDate == null ? "未设置" : DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm').format(_dueDate!),
+                subtitle: _dueDate == null
+                    ? "未设置"
+                    : DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
+                        .format(_dueDate!),
                 icon: Icons.stop_circle_rounded,
                 color: Colors.deepOrangeAccent,
                 onTap: () async {
-                  final pickedDate = await showDatePicker(context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: _dueDate ?? _createdDate);
+                  final pickedDate = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      initialDate: _dueDate ?? _createdDate);
                   if (pickedDate != null) {
                     if (_isAllDay) {
-                      setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
+                      setState(() => _dueDate = DateTime(pickedDate.year,
+                          pickedDate.month, pickedDate.day, 23, 59));
                     } else {
-                      final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
-                      if (pickedTime != null) setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+                      final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(
+                              _dueDate ?? DateTime.now()));
+                      if (pickedTime != null)
+                        setState(() => _dueDate = DateTime(
+                            pickedDate.year,
+                            pickedDate.month,
+                            pickedDate.day,
+                            pickedTime.hour,
+                            pickedTime.minute));
                     }
                   }
                 },
@@ -3449,23 +3767,39 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _buildPopupSquareTile<int>(
+              Expanded(
+                  child: _buildPopupSquareTile<int>(
                 title: "任务提醒",
                 subtitle: _getReminderText(_reminderMinutes),
                 icon: Icons.notifications_active_rounded,
                 color: Colors.purpleAccent,
                 value: _reminderMinutes,
-                items: [0, 5, 10, 15, 30, 45, 60, 120, 1440].map((m) => PopupMenuItem(value: m, child: Text(_getReminderText(m)))).toList(),
+                items: [0, 5, 10, 15, 30, 45, 60, 120, 1440]
+                    .map((m) => PopupMenuItem(
+                        value: m, child: Text(_getReminderText(m))))
+                    .toList(),
                 onSelected: (val) => setState(() => _reminderMinutes = val),
               )),
               const SizedBox(width: 12),
-              Expanded(child: _buildPopupSquareTile<RecurrenceType>(
+              Expanded(
+                  child: _buildPopupSquareTile<RecurrenceType>(
                 title: "循环规则",
                 subtitle: _getRecurrenceLabel(_recurrence),
                 icon: Icons.replay_rounded,
                 color: Colors.teal,
                 value: _recurrence,
-                items: [RecurrenceType.none, RecurrenceType.daily, RecurrenceType.weekly, RecurrenceType.monthly, RecurrenceType.yearly, RecurrenceType.weekdays, RecurrenceType.customDays].map((r) => PopupMenuItem(value: r, child: Text(_getRecurrenceLabel(r)))).toList(),
+                items: [
+                  RecurrenceType.none,
+                  RecurrenceType.daily,
+                  RecurrenceType.weekly,
+                  RecurrenceType.monthly,
+                  RecurrenceType.yearly,
+                  RecurrenceType.weekdays,
+                  RecurrenceType.customDays
+                ]
+                    .map((r) => PopupMenuItem(
+                        value: r, child: Text(_getRecurrenceLabel(r))))
+                    .toList(),
                 onSelected: (val) => setState(() => _recurrence = val),
               )),
             ],
@@ -3474,7 +3808,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             Container(
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black.withValues(alpha: 0.04))),
+              decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border:
+                      Border.all(color: Colors.black.withValues(alpha: 0.04))),
               child: Column(
                 children: [
                   if (_recurrence == RecurrenceType.customDays) ...[
@@ -3482,7 +3820,20 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       children: [
                         const Text("每隔"),
                         const SizedBox(width: 12),
-                        Expanded(child: TextField(controller: _customDaysCtrl, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))), onChanged: (val) => setState(() => _customDays = int.tryParse(val)))),
+                        Expanded(
+                            child: TextField(
+                                controller: _customDaysCtrl,
+                                keyboardType: TextInputType.number,
+                                textAlign: TextAlign.center,
+                                decoration: InputDecoration(
+                                    isDense: true,
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(vertical: 8),
+                                    border: OutlineInputBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(8))),
+                                onChanged: (val) => setState(
+                                    () => _customDays = int.tryParse(val)))),
                         const SizedBox(width: 12),
                         const Text("天重复"),
                       ],
@@ -3491,14 +3842,32 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   ],
                   InkWell(
                     onTap: () async {
-                      final picked = await showDatePicker(context: context, firstDate: DateTime.now(), lastDate: DateTime(2100), initialDate: _recurrenceEndDate ?? DateTime.now().add(const Duration(days: 30)));
-                      if (picked != null) setState(() => _recurrenceEndDate = picked);
+                      final picked = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                          initialDate: _recurrenceEndDate ??
+                              DateTime.now().add(const Duration(days: 30)));
+                      if (picked != null)
+                        setState(() => _recurrenceEndDate = picked);
                     },
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text("循环截止日期"),
-                        Row(children: [Text(_recurrenceEndDate == null ? "未指定" : DateFormat('yyyy-MM-dd').format(_recurrenceEndDate!), style: TextStyle(color: _recurrenceEndDate == null ? Colors.grey : colorScheme.primary)), const Icon(Icons.chevron_right, color: Colors.grey, size: 20)]),
+                        Row(children: [
+                          Text(
+                              _recurrenceEndDate == null
+                                  ? "未指定"
+                                  : DateFormat('yyyy-MM-dd')
+                                      .format(_recurrenceEndDate!),
+                              style: TextStyle(
+                                  color: _recurrenceEndDate == null
+                                      ? Colors.grey
+                                      : colorScheme.primary)),
+                          const Icon(Icons.chevron_right,
+                              color: Colors.grey, size: 20)
+                        ]),
                       ],
                     ),
                   ),
@@ -3507,35 +3876,65 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             ),
           const SizedBox(height: 24),
           if (availableGroups.isNotEmpty || _teams.isNotEmpty) ...[
-            const Text("组织与协作", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text("组织与协作",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Row(
               children: [
                 if (availableGroups.isNotEmpty)
-                  Expanded(child: _buildPopupSquareTile<String>(
+                  Expanded(
+                      child: _buildPopupSquareTile<String>(
                     title: "归属文件夹",
-                    subtitle: effectiveGroupId == null ? "未分类" : (availableGroups.where((g) => g.id == effectiveGroupId).firstOrNull?.name ?? '未知'),
+                    subtitle: effectiveGroupId == null
+                        ? "未分类"
+                        : (availableGroups
+                                .where((g) => g.id == effectiveGroupId)
+                                .firstOrNull
+                                ?.name ??
+                            '未知'),
                     icon: Icons.folder_rounded,
                     color: Colors.amber.shade600,
                     value: effectiveGroupId ?? "__none__",
-                    items: [const PopupMenuItem<String>(value: "__none__", child: Text("未分类")), ...availableGroups.map((g) => PopupMenuItem(value: g.id, child: Text(g.name)))],
+                    items: [
+                      const PopupMenuItem<String>(
+                          value: "__none__", child: Text("未分类")),
+                      ...availableGroups.map((g) =>
+                          PopupMenuItem(value: g.id, child: Text(g.name)))
+                    ],
                     onSelected: (v) => setState(() {
                       _selectedGroupId = v == "__none__" ? null : v;
-                      if (_selectedGroupId != null && _categoryReminderDefaults.containsKey(_selectedGroupId)) {
-                        _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
+                      if (_selectedGroupId != null &&
+                          _categoryReminderDefaults
+                              .containsKey(_selectedGroupId)) {
+                        _reminderMinutes =
+                            _categoryReminderDefaults[_selectedGroupId]!;
                       } else if (_selectedGroupId == null) _reminderMinutes = 5;
                     }),
                   )),
-                if (availableGroups.isNotEmpty && _teams.isNotEmpty) const SizedBox(width: 12),
+                if (availableGroups.isNotEmpty && _teams.isNotEmpty)
+                  const SizedBox(width: 12),
                 if (_teams.isNotEmpty)
-                  Expanded(child: _buildPopupSquareTile<String>(
+                  Expanded(
+                      child: _buildPopupSquareTile<String>(
                     title: "团队归属",
-                    subtitle: _selectedTeamUuid == null ? "个人私有" : (_teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name ?? '未知'),
+                    subtitle: _selectedTeamUuid == null
+                        ? "个人私有"
+                        : (_teams
+                                .where((t) => t.uuid == _selectedTeamUuid)
+                                .firstOrNull
+                                ?.name ??
+                            '未知'),
                     icon: Icons.groups_rounded,
                     color: Colors.indigoAccent,
                     value: _selectedTeamUuid ?? "__none__",
-                    items: [const PopupMenuItem<String>(value: "__none__", child: Text("个人私有 (仅自己可见)")), ..._teams.map((t) => PopupMenuItem(value: t.uuid, child: Text(t.name)))],
-                    onSelected: (v) => setState(() => _selectedTeamUuid = v == "__none__" ? null : v),
+                    items: [
+                      const PopupMenuItem<String>(
+                          value: "__none__", child: Text("个人私有 (仅自己可见)")),
+                      ..._teams.map((t) =>
+                          PopupMenuItem(value: t.uuid, child: Text(t.name)))
+                    ],
+                    onSelected: (v) => setState(
+                        () => _selectedTeamUuid = v == "__none__" ? null : v),
                   )),
               ],
             ),
@@ -3549,9 +3948,20 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     padding: const EdgeInsets.only(top: 8.0, left: 4.0),
                     child: Row(
                       children: [
-                        SizedBox(height: 24, width: 24, child: Checkbox(value: _syncFolderToTeam, onChanged: (val) => setState(() => _syncFolderToTeam = val ?? false))),
+                        SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: Checkbox(
+                                value: _syncFolderToTeam,
+                                onChanged: (val) => setState(
+                                    () => _syncFolderToTeam = val ?? false))),
                         const SizedBox(width: 8),
-                        Expanded(child: Text("将文件夹 '${folder.name}' 也同步到团队，方便队友查看分类", style: TextStyle(fontSize: 12, color: colorScheme.primary, fontStyle: FontStyle.italic))),
+                        Expanded(
+                            child: Text("将文件夹 '${folder.name}' 也同步到团队，方便队友查看分类",
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.primary,
+                                    fontStyle: FontStyle.italic))),
                       ],
                     ),
                   );
@@ -3560,19 +3970,43 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               }),
             const SizedBox(height: 24),
           ],
-          if (widget.todo.imagePath != null || (widget.todo.originalText != null && widget.todo.originalText!.isNotEmpty)) ...[
-             const Text("原始分析来源", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-             const SizedBox(height: 12),
-             if (widget.todo.imagePath != null) 
-                GestureDetector(onTap: () => _showFullImage(context, widget.todo.imagePath!), child: Container(height: 160, width: double.infinity, decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), image: DecorationImage(image: FileImage(File(widget.todo.imagePath!)), fit: BoxFit.cover)))),
-             if (widget.todo.originalText != null && widget.todo.originalText!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.black.withValues(alpha: 0.04))), child: Text(widget.todo.originalText!, style: const TextStyle(fontSize: 13, color: Colors.grey))),
-             ],
-             const SizedBox(height: 24),
+          if (widget.todo.imagePath != null ||
+              (widget.todo.originalText != null &&
+                  widget.todo.originalText!.isNotEmpty)) ...[
+            const Text("原始分析来源",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            if (widget.todo.imagePath != null)
+              GestureDetector(
+                  onTap: () => _showFullImage(context, widget.todo.imagePath!),
+                  child: Container(
+                      height: 160,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          image: DecorationImage(
+                              image: FileImage(File(widget.todo.imagePath!)),
+                              fit: BoxFit.cover)))),
+            if (widget.todo.originalText != null &&
+                widget.todo.originalText!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: Colors.black.withValues(alpha: 0.04))),
+                  child: Text(widget.todo.originalText!,
+                      style:
+                          const TextStyle(fontSize: 13, color: Colors.grey))),
+            ],
+            const SizedBox(height: 24),
           ],
           const SizedBox(height: 12),
-          const Text("数据存证", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text("数据存证",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
@@ -3585,23 +4019,32 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
-                onTap: () => VersionHistorySheet.show(context, widget.todo.id, 'todos', widget.todo.title),
+                onTap: () => VersionHistorySheet.show(
+                    context, widget.todo.id, 'todos', widget.todo.title),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Row(
                     children: [
-                      Icon(Icons.history_rounded, color: colorScheme.primary, size: 22),
+                      Icon(Icons.history_rounded,
+                          color: colorScheme.primary, size: 22),
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("版本记录与回滚", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
-                            Text("追踪修改历史，支持一键恢复至旧版本", style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                            Text("版本记录与回滚",
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14.5)),
+                            Text("追踪修改历史，支持一键恢复至旧版本",
+                                style: TextStyle(
+                                    fontSize: 11.5, color: Colors.grey)),
                           ],
                         ),
                       ),
-                      Icon(Icons.chevron_right_rounded, color: Colors.grey.withValues(alpha: 0.5)),
+                      Icon(Icons.chevron_right_rounded,
+                          color: Colors.grey.withValues(alpha: 0.5)),
                     ],
                   ),
                 ),
@@ -3650,11 +4093,15 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  Text(title,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -3701,13 +4148,20 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   String _getRecurrenceLabel(RecurrenceType type) {
     switch (type) {
-      case RecurrenceType.none: return "不重复";
-      case RecurrenceType.daily: return "每天";
-      case RecurrenceType.weekly: return "每周";
-      case RecurrenceType.monthly: return "每月";
-      case RecurrenceType.yearly: return "每年";
-      case RecurrenceType.weekdays: return "工作日";
-      case RecurrenceType.customDays: return "自定义";
+      case RecurrenceType.none:
+        return "不重复";
+      case RecurrenceType.daily:
+        return "每天";
+      case RecurrenceType.weekly:
+        return "每周";
+      case RecurrenceType.monthly:
+        return "每月";
+      case RecurrenceType.yearly:
+        return "每年";
+      case RecurrenceType.weekdays:
+        return "工作日";
+      case RecurrenceType.customDays:
+        return "自定义";
     }
   }
 
@@ -3718,12 +4172,17 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+        border: Border.all(
+            color:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text("完成规则", style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500)),
+          Text("完成规则",
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500)),
           SizedBox(
             width: 140,
             child: _buildCustomSegmentedControl(
@@ -3744,7 +4203,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Container(
       height: 36,
       decoration: BoxDecoration(
@@ -3764,16 +4223,24 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 decoration: BoxDecoration(
                   color: isSelected ? colorScheme.surface : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
-                  boxShadow: isSelected ? [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 1))
-                  ] : [],
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1))
+                        ]
+                      : [],
                 ),
                 child: Text(
                   labels[index],
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected ? colorScheme.primary : colorScheme.onSurface.withValues(alpha: 0.6),
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -3818,10 +4285,17 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   }
 }
 
+class _AiAssistantContext {
+  const _AiAssistantContext({
+    this.courses = const [],
+    this.timeLogs = const [],
+    this.teams = const [],
+  });
 
-
-
-
+  final List<CourseItem> courses;
+  final List<TimeLogItem> timeLogs;
+  final List<Team> teams;
+}
 
 class _SortedDisplayItem {
   final TodoItem? todo;

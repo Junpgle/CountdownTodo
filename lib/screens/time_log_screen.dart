@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
+import '../services/course_service.dart';
+import '../services/ai_todo_chat_launcher.dart';
+import '../services/ai_todo_action_executor.dart';
 import 'dart:ui' as ui;
 
 part 'time_log_components.dart';
@@ -159,7 +162,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   Future<void> _loadData({bool forceSync = false}) async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    
+
     if (forceSync) {
       try {
         await StorageService.syncData(widget.username,
@@ -183,7 +186,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
     setState(() {
       _tags = results[0] as List<PomodoroTag>;
-      _allLogs = (results[1] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
+      _allLogs =
+          (results[1] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
       _allPomodoros = results[2] as List<PomodoroRecord>;
       _isLoading = false;
     });
@@ -191,7 +195,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     // 🚀 如果从搜索跳转并指定了标签，数据加载完成后自动弹出统计面板
     if (widget.initialTagUuid != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final tag = _tags.where((t) => t.uuid == widget.initialTagUuid).firstOrNull;
+        final tag =
+            _tags.where((t) => t.uuid == widget.initialTagUuid).firstOrNull;
         if (tag != null && mounted) _showTagDetail(tag);
       });
     }
@@ -294,9 +299,45 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       }
     }
     acts.add(IconButton(
+        icon: const Icon(Icons.smart_toy_outlined, size: 20),
+        tooltip: 'AI专注助手',
+        onPressed: _openAiAssistant));
+    acts.add(IconButton(
         icon: const Icon(Icons.refresh, size: 20),
         onPressed: () => _loadData(forceSync: true)));
     return acts;
+  }
+
+  Future<void> _openAiAssistant() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        StorageService.getTodos(widget.username),
+        StorageService.getTodoGroups(widget.username),
+        CourseService.getAllCourses(widget.username),
+      ]);
+      if (!mounted) return;
+      await AiTodoChatLauncher.open(
+        context,
+        username: widget.username,
+        todos: (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList(),
+        todoGroups:
+            (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList(),
+        courses:
+            (results[2] as List<CourseItem>).where((c) => !c.isDeleted).toList(),
+        timeLogs: _allLogs,
+        onTodosBatchAction: (inserted, updated) async {
+          final allTodos = await StorageService.getTodos(widget.username);
+          final merged = AiTodoActionExecutor.mergeTodoUpdates(allTodos, inserted, updated);
+          await StorageService.saveTodos(widget.username, merged);
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开AI助手失败: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -666,7 +707,9 @@ class _ViewTab extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 5),
             decoration: BoxDecoration(
-                color: selected ? accent.withValues(alpha: 0.12) : Colors.transparent,
+                color: selected
+                    ? accent.withValues(alpha: 0.12)
+                    : Colors.transparent,
                 border: Border.all(
                     color: selected
                         ? accent.withValues(alpha: 0.4)
@@ -866,10 +909,13 @@ class _WeekViewState extends State<_WeekView>
                       height: 52,
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       decoration: BoxDecoration(
-                          color: isToday ? accent.withValues(alpha: 0.07) : null,
+                          color:
+                              isToday ? accent.withValues(alpha: 0.07) : null,
                           border: Border(
                               right: BorderSide(
-                                  color: _TC.divider(ctx).withValues(alpha: 0.2)))),
+                                  color: _TC
+                                      .divider(ctx)
+                                      .withValues(alpha: 0.2)))),
                       child: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Column(
@@ -906,7 +952,8 @@ class _WeekViewState extends State<_WeekView>
                                   Text('${dm}m',
                                       style: TextStyle(
                                           fontSize: 8,
-                                          color: accent.withValues(alpha: 0.5))),
+                                          color:
+                                              accent.withValues(alpha: 0.5))),
                               ]))));
             }),
           ])),
@@ -1040,7 +1087,8 @@ class _WeekViewState extends State<_WeekView>
                               horizontal: 12, vertical: 10),
                           decoration: BoxDecoration(
                               color: c.withValues(alpha: 0.07),
-                              border: Border.all(color: c.withValues(alpha: 0.25)),
+                              border:
+                                  Border.all(color: c.withValues(alpha: 0.25)),
                               borderRadius: BorderRadius.circular(10)),
                           child: Row(children: [
                             Container(
@@ -1194,7 +1242,8 @@ class _WeekColPainter extends CustomPainter {
               Rect.fromLTRB(3, top + 0.5, size.width - 1, animatedBot - 0.5),
               const Radius.circular(3)),
           Paint()
-            ..color = c.withValues(alpha: (isPom ? 0.22 : 0.35) * blockProgress));
+            ..color =
+                c.withValues(alpha: (isPom ? 0.22 : 0.35) * blockProgress));
 
       final blockH = animatedBot - top;
       final blockW = size.width - 6;
@@ -1610,7 +1659,8 @@ class _GridCanvas extends StatelessWidget {
             color: Colors.redAccent,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(color: Colors.redAccent.withValues(alpha: 0.5), blurRadius: 4)
+              BoxShadow(
+                  color: Colors.redAccent.withValues(alpha: 0.5), blurRadius: 4)
             ],
           ),
         ),
@@ -1668,24 +1718,27 @@ class _GridCanvas extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           child: ClipRRect(
             borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(isFirst ? 3 : 0),
-                bottomLeft: Radius.circular(isLast ? 3 : 0),
-                topRight: Radius.circular(isFirst && isLast ? 3 : 0),
-                bottomRight: Radius.circular(isFirst && isLast ? 3 : 0),
-              ),
+              topLeft: Radius.circular(isFirst ? 3 : 0),
+              bottomLeft: Radius.circular(isLast ? 3 : 0),
+              topRight: Radius.circular(isFirst && isLast ? 3 : 0),
+              bottomRight: Radius.circular(isFirst && isLast ? 3 : 0),
+            ),
             child: Container(
               decoration: BoxDecoration(
                 color: fillColor,
                 border: Border(
                   left: BorderSide(color: barColor, width: 2.5),
                   top: isFirst
-                      ? BorderSide(color: barColor.withValues(alpha: 0.45), width: 1.0)
+                      ? BorderSide(
+                          color: barColor.withValues(alpha: 0.45), width: 1.0)
                       : BorderSide.none,
                   bottom: isLast
-                      ? BorderSide(color: barColor.withValues(alpha: 0.45), width: 1.0)
+                      ? BorderSide(
+                          color: barColor.withValues(alpha: 0.45), width: 1.0)
                       : BorderSide.none,
                   right: isLast && colEnd < kColsPerH
-                      ? BorderSide(color: barColor.withValues(alpha: 0.25), width: 1.0)
+                      ? BorderSide(
+                          color: barColor.withValues(alpha: 0.25), width: 1.0)
                       : BorderSide.none,
                 ),
               ),

@@ -11,6 +11,9 @@ import './conflict_inbox_screen.dart';
 import './team_message_center_screen.dart';
 import './team_announcement_screen.dart';
 import '../storage_service.dart';
+import '../services/course_service.dart';
+import '../services/ai_todo_chat_launcher.dart';
+import '../services/ai_todo_action_executor.dart';
 
 class TeamManagementScreen extends StatefulWidget {
   final String username;
@@ -325,7 +328,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             if (peers is List) {
               final hasValidPeer = peers.any((p) =>
                   p is Map &&
-                  !TodoItem.fromJson(Map<String, dynamic>.from(p)).isAllDayTask);
+                  !TodoItem.fromJson(Map<String, dynamic>.from(p))
+                      .isAllDayTask);
               if (!hasValidPeer) continue;
             }
           }
@@ -751,8 +755,54 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           style: TextStyle(
               fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
       centerTitle: false,
-      actions: [_buildMessageCenterAction()],
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.smart_toy_outlined),
+          tooltip: 'AI协作助手',
+          onPressed: _openAiAssistant,
+        ),
+        _buildMessageCenterAction(),
+      ],
     );
+  }
+
+  Future<void> _openAiAssistant() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        StorageService.getTodos(widget.username),
+        StorageService.getTodoGroups(widget.username),
+        CourseService.getAllCourses(widget.username),
+        StorageService.getTimeLogs(widget.username),
+      ]);
+      if (!mounted) return;
+      await AiTodoChatLauncher.open(
+        context,
+        username: widget.username,
+        todos: (results[0] as List<TodoItem>)
+            .where((todo) =>
+                !todo.isDeleted &&
+                (_selectedTeam == null || todo.teamUuid == _selectedTeam!.uuid))
+            .toList(),
+        todoGroups:
+            (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList(),
+        courses:
+            (results[2] as List<CourseItem>).where((c) => !c.isDeleted).toList(),
+        timeLogs:
+            (results[3] as List<TimeLogItem>).where((l) => !l.isDeleted).toList(),
+        teams: _teams,
+        onTodosBatchAction: (inserted, updated) async {
+          final allTodos = await StorageService.getTodos(widget.username);
+          final merged = AiTodoActionExecutor.mergeTodoUpdates(allTodos, inserted, updated);
+          await StorageService.saveTodos(widget.username, merged);
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开AI助手失败: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildInitialLoadingState(bool isDark) {
@@ -841,14 +891,16 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                   child: LinearProgressIndicator(
                     value: progress <= 0 ? null : progress / 100,
                     minHeight: 6,
-                    backgroundColor: Colors.orangeAccent.withValues(alpha: 0.12),
+                    backgroundColor:
+                        Colors.orangeAccent.withValues(alpha: 0.12),
                     valueColor: const AlwaysStoppedAnimation<Color>(
                         Colors.orangeAccent),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text('已扫描 $current / $total',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey.shade700)),
               ],
             ),
           ),
@@ -1227,7 +1279,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                         Text(desc,
                             style: TextStyle(
                                 fontSize: 11,
-                                color: isDark ? Colors.white70 : Colors.black54),
+                                color:
+                                    isDark ? Colors.white70 : Colors.black54),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis),
                       ],
@@ -1241,12 +1294,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                 right: 10,
                 top: 10,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: const BoxDecoration(
                     color: Colors.redAccent,
                     shape: BoxShape.circle,
                   ),
-                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                  constraints:
+                      const BoxConstraints(minWidth: 18, minHeight: 18),
                   child: Text(
                     badgeCount > 9 ? '9+' : badgeCount.toString(),
                     textAlign: TextAlign.center,
@@ -2507,4 +2562,3 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     );
   }
 }
-

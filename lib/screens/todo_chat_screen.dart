@@ -1,12 +1,13 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/ai_todo_action.dart';
 import '../models/chat_message.dart';
 import '../services/ai_action_parser.dart';
+import '../services/ai_chat_service.dart';
+import '../services/ai_todo_context_builder.dart';
+import '../services/ai_todo_action_executor.dart';
 import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
 import '../screens/settings/llm_config_page.dart';
@@ -16,6 +17,10 @@ class TodoChatScreen extends StatefulWidget {
   final String username;
   final List<Map<String, dynamic>> todos;
   final List<TodoGroup> todoGroups;
+  final List<CourseItem> courses;
+  final List<TimeLogItem> timeLogs;
+  final List<ConflictInfo> conflicts;
+  final List<Team> teams;
   final Function(TodoItem)? onTodoInserted;
   final Function(List<TodoItem>)? onTodosBatchInserted;
   final Function(List<TodoItem>)? onTodosUpdated;
@@ -27,6 +32,10 @@ class TodoChatScreen extends StatefulWidget {
     required this.username,
     required this.todos,
     this.todoGroups = const [],
+    this.courses = const [],
+    this.timeLogs = const [],
+    this.conflicts = const [],
+    this.teams = const [],
     this.onTodoInserted,
     this.onTodosBatchInserted,
     this.onTodosUpdated,
@@ -53,9 +62,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _chatApiUrl = '';
   String _globalModelName = '';
   List<ChatSession> _sessions = [];
-  bool _includeContextTodos = true;
+  bool _smartContext = true;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
+
+  // 🚀 宽屏适配相关
+  bool _sidebarVisible = true;
+  bool get _isWide => MediaQuery.of(context).size.width >= 900;
 
   @override
   void initState() {
@@ -223,105 +236,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   String _buildSystemPrompt() {
-    String todoList = '暂无待办';
-    if (_includeContextTodos && widget.todos.isNotEmpty) {
-      todoList = widget.todos.map((t) {
-        final id = t['id'] ?? 'unknown';
-        final title = t['title'] ?? '';
-        final remark = t['remark'] ?? '';
-        final startTime = t['startTime'] ?? '';
-        final endTime = t['endTime'] ?? '';
-        final isAllDay = t['isAllDay'] ?? false;
-        final recurrence = t['recurrence'] ?? 'none';
-        final reminderMinutes = t['reminderMinutes'] ?? 5;
-        final gid = t['groupId'] ?? '';
-        String folderName = '';
-        if (gid.isNotEmpty) {
-          folderName = widget.todoGroups
-              .firstWhere((g) => g.id == gid, orElse: () => TodoGroup(name: ''))
-              .name;
-        }
-
-        return '- [ID: $id] 标题: $title${remark.isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.isNotEmpty ? ' | 开始: $startTime' : ''}${endTime.isNotEmpty ? ' | 结束: $endTime' : ''} | 全天: $isAllDay | 循环: $recurrence | 提醒: 提前$reminderMinutes分钟';
-      }).join('\n');
-    }
-
-    final now = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
-
-    String prompt = _customPrompt;
-    if (prompt.isEmpty) {
-      prompt = ChatStorageService.defaultPrompt;
-    }
-
-    prompt = prompt.replaceAll('{now}', now).replaceAll('{todos}', todoList);
-
-    final folderList = widget.todoGroups.isEmpty
-        ? '暂无分类'
-        : widget.todoGroups
-            .map((g) => '- 名称: ${g.name} | ID: ${g.id}')
-            .join('\n');
-
-    return '''$prompt
-
-【用户当前分类/文件夹】
-$folderList
-
-【待办管理功能 - 重要规则】
-1. 当用户明确要求创建、修改、完成、删除、延期、分类、整理待办时，你**必须**在回复末尾附加 JSON 操作块。
-2. 对已有待办操作时必须使用待办 ID；如果不确定是哪一条，先追问，不要臆造 ID。
-3. JSON格式必须严格遵循以下动作之一：
-
-创建待办：
-[ACTION_START]{"action":"create_todo","todos":[{"title":"待办标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","customIntervalDays":3,"recurrenceEndDate":"YYYY-MM-DD","groupId":"分类ID","reminderMinutes":5}]}[ACTION_END]
-
-修改待办：
-[ACTION_START]{"action":"update_todo","updates":[{"todoId":"待办ID","title":"新标题","remark":"新备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"groupId":"分类ID","reminderMinutes":5}]}[ACTION_END]
-
-完成待办：
-[ACTION_START]{"action":"complete_todo","updates":[{"todoId":"待办ID","title":"待办标题"}]}[ACTION_END]
-
-删除待办：
-[ACTION_START]{"action":"delete_todo","updates":[{"todoId":"待办ID","title":"待办标题"}]}[ACTION_END]
-
-延期/改期：
-[ACTION_START]{"action":"reschedule_todo","updates":[{"todoId":"待办ID","title":"待办标题","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"reminderMinutes":5}]}[ACTION_END]
-
-归类/整理待办：
-[ACTION_START]{"action":"categorize_todo","updates":[{"todoId":"待办ID","title":"待办标题","groupId":"新的分类ID","reminderMinutes":5}]}[ACTION_END]
-
-合并多种操作（推荐）：
-[ACTION_START][{"action":"create_todo","todos":[...]},{"action":"categorize_todo","updates":[...]}][ACTION_END]
-
-字段说明：
-- action: "create_todo"、"update_todo"、"complete_todo"、"delete_todo"、"reschedule_todo" 或 "categorize_todo"
-- todoId: 现有待办的ID（除 create_todo 外必须使用）
-- title: 待办标题
-- groupId: 所属分类的ID
-- reminderMinutes: 提前多少分钟提醒（默认为 5）
-
-【后续建议功能 - 重要规则】
-在每次回复的最后，请附带3-4个简短的后续问题建议，帮助用户继续对话
-格式必须严格如下，放在[SUGGEST_START]和[SUGGEST_END]标记之间：
-[SUGGEST_START]["建议1", "建议2", "建议3", "建议4"][SUGGEST_END]
-每个建议不超过15个字，要具体、实用、与待办相关
-
-注意：
-1. [ACTION_START] 和 [ACTION_END] 标记是**强制性**的，绝对不能遗漏。
-2. **意图判定准则 (核心)**：
-   - **判定为“创建(create_todo)”**：如果用户提到“规划、安排、提醒我、记一下、今天要做、明天要做、以后要抽空做”。
-   - **判定为“修改(update_todo)”**：用户明确要求改标题、备注、提醒、分类、时间等多个字段。
-   - **判定为“完成(complete_todo)”**：用户明确要求完成、标记已做。
-   - **判定为“删除(delete_todo)”**：用户明确要求删除、移除。
-   - **判定为“延期/改期(reschedule_todo)”**：用户明确要求推迟、提前、改到另一个时间。
-   - **判定为“整理(categorize_todo)”**：仅当用户提到“分类、移动到文件夹、整理已有的、给XX加个分类”。
-3. **文件夹归类准则 (严禁乱分类)**：
-   - **语义优先**：只有当待办内容与文件夹名称有明显的语义关联（如“英语作业”对应“英语组”）时才分配 `groupId`。
-   - **疑从无**：如果不确定建议归到哪个文件夹，请将 `groupId` 设为 `null`（或者空字符串 ""）。**严禁**为了有分类而乱选一个无关的文件夹（如把“计组”归到“英语组”）。
-   - **默认行为**：除非用户明确要求分类，或者关联度极高，否则新创建的待办应默认不带 `groupId`。
-4. **禁止过度整理**：严禁对**已有**分类的任务再次进行无意义的 `categorize_todo` 操作。
-5. 操作块中**严禁**夹带对已有分类任务的重复分类操作。
-6. JSON块必须放在[ACTION_START]和[ACTION_END]标记之间。
-7. 建议问题必须放在回复的最后，使用[SUGGEST_START]和[SUGGEST_END]标记。''';
+    return AiTodoContextBuilder.buildSystemPrompt(
+      customPrompt: _customPrompt,
+      promptEnabled: _promptEnabled,
+      todos: widget.todos,
+      todoGroups: widget.todoGroups,
+    );
   }
 
   static const int _maxContextMessages = 15;
@@ -338,38 +258,68 @@ $folderList
           'content': msg.content,
         });
       }
-      return apiMessages;
-    }
-
-    final firstUserMsg = _messages.firstWhere(
-      (m) => m.role == ChatRole.user,
-      orElse: () => _messages.first,
-    );
-    apiMessages.add({
-      'role': 'user',
-      'content': firstUserMsg.content,
-    });
-
-    final summaryMsg = _buildContextSummary();
-    if (summaryMsg.isNotEmpty) {
+    } else {
+      final firstUserMsg = _messages.firstWhere(
+        (m) => m.role == ChatRole.user,
+        orElse: () => _messages.first,
+      );
       apiMessages.add({
-        'role': 'assistant',
-        'content': summaryMsg,
+        'role': 'user',
+        'content': firstUserMsg.content,
       });
+
+      final summaryMsg = _buildContextSummary();
+      if (summaryMsg.isNotEmpty) {
+        apiMessages.add({
+          'role': 'assistant',
+          'content': summaryMsg,
+        });
+      }
+
+      final recentCount = _maxContextMessages - 2;
+      final startIndex = _messages.length - recentCount;
+      final recentMessages =
+          _messages.sublist(startIndex > 0 ? startIndex : 0);
+      for (final msg in recentMessages) {
+        if (msg.content == firstUserMsg.content) continue;
+        apiMessages.add({
+          'role': msg.role == ChatRole.user ? 'user' : 'assistant',
+          'content': msg.content,
+        });
+      }
     }
 
-    final recentCount = _maxContextMessages - 2;
-    final startIndex = _messages.length - recentCount;
-    final recentMessages = _messages.sublist(startIndex > 0 ? startIndex : 0);
-    for (final msg in recentMessages) {
-      if (msg.content == firstUserMsg.content) continue;
-      apiMessages.add({
-        'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-        'content': msg.content,
-      });
-    }
-
+    _injectContext(apiMessages);
     return apiMessages;
+  }
+
+  /// 根据最后一条用户消息的关键词，按需注入课程/时间日志/冲突/团队上下文。
+  void _injectContext(List<Map<String, String>> apiMessages) {
+    if (!_smartContext) return;
+    // 找到最后一条 user 消息
+    int lastUserIdx = -1;
+    for (int i = apiMessages.length - 1; i >= 0; i--) {
+      if (apiMessages[i]['role'] == 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    if (lastUserIdx == -1) return;
+
+    final userText = apiMessages[lastUserIdx]['content'] ?? '';
+    final injection = AiTodoContextBuilder.buildContextInjection(
+      userMessage: userText,
+      courses: widget.courses,
+      timeLogs: widget.timeLogs,
+      conflicts: widget.conflicts,
+      teams: widget.teams,
+    );
+    if (injection != null) {
+      apiMessages[lastUserIdx] = {
+        'role': 'user',
+        'content': '$injection\n\n$userText',
+      };
+    }
   }
 
   String _buildContextSummary() {
@@ -431,9 +381,7 @@ $folderList
       }
     }
 
-    if (apiUrl.isEmpty) {
-      apiUrl = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-    }
+    if (apiUrl.isEmpty) apiUrl = AiChatService.defaultApiUrl;
 
     final userMsg = ChatMessage(
       role: ChatRole.user,
@@ -450,115 +398,39 @@ $folderList
     _scrollToBottom();
 
     try {
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      };
-
       final List<Map<String, String>> apiMessages = _buildApiMessages();
-
-      final body = jsonEncode({
-        'model': model,
-        'messages': apiMessages,
-        'temperature': 0.7,
-        'max_tokens': 2000,
-        'stream': true,
-        'stream_options': {'include_usage': true},
-        'thinking': {
-          'type': _deepThinking ? 'enabled' : 'disabled',
-        },
-      });
-
-      final client = http.Client();
-      final request = http.Request('POST', Uri.parse(apiUrl));
-      request.headers.addAll(headers);
-      request.body = body;
-
-      final streamedResponse = await client.send(request).timeout(
-            const Duration(seconds: 60),
-          );
-
-      if (streamedResponse.statusCode != 200) {
-        throw Exception('请求失败: ${streamedResponse.statusCode}');
-      }
-
       String fullContent = '';
       String reasoningContent = '';
-      String buffer = '';
-      String lastError = '';
-      int chunkCount = 0;
-      await for (final chunk in streamedResponse.stream.transform(
-        utf8.decoder,
+
+      await for (final chunk in AiChatService.streamChat(
+        apiUrl: apiUrl,
+        apiKey: apiKey,
+        model: model,
+        messages: apiMessages,
+        deepThinking: _deepThinking,
       )) {
-        buffer += chunk;
-        while (true) {
-          final newlineIdx = buffer.indexOf('\n');
-          if (newlineIdx == -1) break;
-          final line = buffer.substring(0, newlineIdx).replaceAll('\r', '');
-          buffer = buffer.substring(newlineIdx + 1);
-          final trimmed = line.trim();
-          if (trimmed.isEmpty) continue;
-          if (!trimmed.startsWith('data:')) {
-            lastError = '非SSE行: $trimmed';
-            continue;
+        if (chunk.reasoningContent.isNotEmpty) {
+          reasoningContent += chunk.reasoningContent;
+          if (mounted) {
+            setState(() {
+              _streamingReasoning = reasoningContent;
+            });
+            _scrollToBottom();
           }
-          final data = trimmed.substring(5).trim();
-          if (data == '[DONE]') continue;
-
-          chunkCount++;
-          try {
-            final json = jsonDecode(data) as Map<String, dynamic>;
-
-            final error = json['error'] as Map<String, dynamic>?;
-            if (error != null) {
-              throw Exception('API错误: ${error['message']}');
-            }
-
-            final choices = json['choices'] as List?;
-            if (choices != null && choices.isNotEmpty) {
-              final delta = choices[0]['delta'] as Map<String, dynamic>?;
-              if (delta != null) {
-                final reasoning = delta['reasoning_content'] as String?;
-                final content = delta['content'] as String?;
-                if (reasoning != null && reasoning.isNotEmpty) {
-                  reasoningContent += reasoning;
-                  if (mounted) {
-                    setState(() {
-                      _streamingReasoning = reasoningContent;
-                    });
-                    _scrollToBottom();
-                  }
-                }
-                if (content != null && content.isNotEmpty) {
-                  fullContent += content;
-                  if (mounted) {
-                    setState(() {
-                      _streamingContent = fullContent;
-                    });
-                    _scrollToBottom();
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            print(
-                'SSE解析错误: $e, 数据: ${data.substring(0, data.length > 100 ? 100 : data.length)}');
-            lastError = '$e';
+        }
+        if (chunk.content.isNotEmpty) {
+          fullContent += chunk.content;
+          if (mounted) {
+            setState(() {
+              _streamingContent = fullContent;
+            });
+            _scrollToBottom();
           }
         }
       }
 
-      print(
-          '流式接收完成: 收到 $chunkCount 个data块, 内容长度=${fullContent.length}, 推理长度=${reasoningContent.length}');
-      if (lastError.isNotEmpty) {
-        print('最后错误: $lastError');
-      }
-
-      client.close();
-
       if (fullContent.isEmpty && reasoningContent.isEmpty) {
-        throw Exception(
-            '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''} (共$chunkCount个数据块)');
+        throw Exception('未收到有效回复');
       }
 
       final existingTodoTitles = {
@@ -630,23 +502,18 @@ $folderList
         }
       }
 
-      if (apiUrl.isEmpty) {
-        apiUrl = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-      }
+      if (apiUrl.isEmpty) apiUrl = AiChatService.defaultApiUrl;
 
       final firstUserMsg = _messages.firstWhere(
         (m) => m.role == ChatRole.user,
         orElse: () => _messages.first,
       );
 
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      };
-
-      final body = jsonEncode({
-        'model': model,
-        'messages': [
+      String title = await AiChatService.completeChat(
+        apiUrl: apiUrl,
+        apiKey: apiKey,
+        model: model,
+        messages: [
           {
             'role': 'system',
             'content': '请根据用户的第一个问题生成一个简短的对话标题，不超过10个字，只返回标题文本，不要任何其他内容。',
@@ -656,42 +523,23 @@ $folderList
             'content': firstUserMsg.content,
           },
         ],
-        'temperature': 0.5,
-        'max_tokens': 30,
-      });
+      );
+      title = title.trim().replaceAll('"', '').replaceAll("'", '');
+      if (title.length > 15) title = '${title.substring(0, 15)}...';
+      if (title.isEmpty) {
+        final content = firstUserMsg.content;
+        title = content.substring(0, content.length > 15 ? 15 : content.length);
+      }
 
-      final response = await http
-          .post(
-            Uri.parse(apiUrl),
-            headers: headers,
-            body: body,
-          )
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final choices = data['choices'] as List?;
-        if (choices != null && choices.isNotEmpty) {
-          String title = choices[0]['message']['content'] as String;
-          title = title.trim().replaceAll('"', '').replaceAll("'", '');
-          if (title.length > 15) title = '${title.substring(0, 15)}...';
-          if (title.isEmpty) {
-            final content = firstUserMsg.content;
-            title =
-                content.substring(0, content.length > 15 ? 15 : content.length);
+      await ChatStorageService.updateSessionTitle(session.id, title);
+      if (mounted) {
+        setState(() {
+          final idx = _sessions.indexWhere((s) => s.id == session.id);
+          if (idx != -1) {
+            _sessions[idx].title = title;
+            _sessions[idx].updatedAt = DateTime.now();
           }
-
-          await ChatStorageService.updateSessionTitle(session.id, title);
-          if (mounted) {
-            setState(() {
-              final idx = _sessions.indexWhere((s) => s.id == session.id);
-              if (idx != -1) {
-                _sessions[idx].title = title;
-                _sessions[idx].updatedAt = DateTime.now();
-              }
-            });
-          }
-        }
+        });
       }
     } catch (_) {}
   }
@@ -811,7 +659,7 @@ $folderList
                     _promptEnabled = enabled;
                   });
                 }
-                if (mounted) Navigator.pop(ctx);
+                if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text('保存'),
             ),
@@ -822,25 +670,12 @@ $folderList
   }
 
   void _showPromptPreview(String prompt, bool enabled) {
-    final todoList = widget.todos.map((t) {
-      final title = t['title'] ?? '';
-      final remark = t['remark'] ?? '';
-      final startTime = t['startTime'] ?? '';
-      final endTime = t['endTime'] ?? '';
-      final isAllDay = t['isAllDay'] ?? false;
-      final recurrence = t['recurrence'] ?? 'none';
-      return '- 标题: $title${remark.isNotEmpty ? ' | 备注: $remark' : ''}${startTime.isNotEmpty ? ' | 开始: $startTime' : ''}${endTime.isNotEmpty ? ' | 结束: $endTime' : ''} | 全天: $isAllDay | 循环: $recurrence';
-    }).join('\n');
-
-    final now = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
-
-    String resolvedPrompt = prompt;
-    if (resolvedPrompt.isEmpty) {
-      resolvedPrompt = ChatStorageService.defaultPrompt;
-    }
-    resolvedPrompt = resolvedPrompt
-        .replaceAll('{now}', now)
-        .replaceAll('{todos}', todoList.isEmpty ? '暂无待办' : todoList);
+    final resolvedPrompt = AiTodoContextBuilder.buildPromptPreview(
+      customPrompt: prompt,
+      promptEnabled: enabled,
+      todos: widget.todos,
+      todoGroups: widget.todoGroups,
+    );
 
     showDialog(
       context: context,
@@ -872,129 +707,206 @@ $folderList
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-          tooltip: '返回',
-        ),
-        title: Text(
-          _getCurrentSessionTitle(),
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
+      appBar: _buildResponsiveAppBar(isDark, colorScheme),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 900) {
+            return _buildWideLayout(isDark, colorScheme);
+          }
+          return _buildMobileLayout(isDark, colorScheme);
+        },
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildResponsiveAppBar(bool isDark, ColorScheme colorScheme) {
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => Navigator.pop(context),
+        tooltip: '返回',
+      ),
+      title: Text(
+        _getCurrentSessionTitle(),
+        overflow: TextOverflow.ellipsis,
+      ),
+      actions: [
+        if (_isWide)
           IconButton(
-            icon: const Icon(Icons.add_comment_outlined),
-            onPressed: () {
-              _newSession();
-            },
-            tooltip: '新建对话',
+            icon: Icon(_sidebarVisible ? Icons.menu_open : Icons.menu),
+            onPressed: () => setState(() => _sidebarVisible = !_sidebarVisible),
+            tooltip: _sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
           ),
+        IconButton(
+          icon: const Icon(Icons.add_comment_outlined),
+          onPressed: _newSession,
+          tooltip: '新建对话',
+        ),
+        if (!_isWide)
           IconButton(
             icon: const Icon(Icons.history_outlined),
             onPressed: _showHistorySidebar,
             tooltip: '历史对话',
           ),
-          IconButton(
-            icon: const Icon(Icons.tune_outlined),
-            onPressed: _showPromptSettings,
-            tooltip: '提示词设置',
+        IconButton(
+          icon: const Icon(Icons.tune_outlined),
+          onPressed: _showPromptSettings,
+          tooltip: '提示词设置',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWideLayout(bool isDark, ColorScheme colorScheme) {
+    return Row(
+      children: [
+        if (_sidebarVisible)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 280,
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+            child: _buildHistorySidebarContent(context, isWideMode: true),
+          ),
+        Expanded(
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: _buildMessageList(isDark, colorScheme),
+                  ),
+                ),
+              ),
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: Column(
+                    children: [
+                      if (_suggestions.isNotEmpty && !_isLoading)
+                        _buildSuggestionsArea(colorScheme),
+                      _buildInputArea(colorScheme),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout(bool isDark, ColorScheme colorScheme) {
+    return Column(
+      children: [
+        Expanded(child: _buildMessageList(isDark, colorScheme)),
+        if (_suggestions.isNotEmpty && !_isLoading)
+          _buildSuggestionsArea(colorScheme),
+        _buildInputArea(colorScheme),
+      ],
+    );
+  }
+
+  Widget _buildMessageList(bool isDark, ColorScheme colorScheme) {
+    if (_messages.isEmpty) {
+      return _buildEmptyState(colorScheme);
+    }
+    return ListView.builder(
+      controller: _scrollCtrl,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 12,
+      ),
+      itemCount: _messages.length + (_isLoading ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (_isLoading && index == _messages.length) {
+          return _buildStreamingBubble(isDark);
+        }
+        final msg = _messages[index];
+        return _buildMessageBubble(msg, isDark);
+      },
+    );
+  }
+
+  Widget _buildEmptyState(ColorScheme colorScheme) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.smart_toy_outlined,
+            size: 64,
+            color: colorScheme.primary.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '你好！我是AI待办助手',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '你可以问我任何问题关于你的待办',
+            style: TextStyle(
+              fontSize: 14,
+              color: colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _getDefaultSuggestions()
+                .map(_buildQuickQuestion)
+                .toList(),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _messages.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.smart_toy_outlined,
-                          size: 64,
-                          color: colorScheme.primary.withValues(alpha: 0.5),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '你好！我是AI待办助手',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '你可以问我任何问题关于你的待办',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _getDefaultSuggestions()
-                              .map(_buildQuickQuestion)
-                              .toList(),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollCtrl,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    itemCount: _messages.length + (_isLoading ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (_isLoading && index == _messages.length) {
-                        return _buildStreamingBubble(isDark);
-                      }
-                      final msg = _messages[index];
-                      return _buildMessageBubble(msg, isDark);
-                    },
-                  ),
+    );
+  }
+
+  Widget _buildSuggestionsArea(ColorScheme colorScheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 4,
+            offset: const Offset(0, -1),
           ),
-          if (_suggestions.isNotEmpty && !_isLoading)
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 4,
-                    offset: const Offset(0, -1),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '💡 你可以继续问我：',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: _suggestions.map(_buildQuickQuestion).toList(),
-                  ),
-                ],
-              ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '💡 你可以继续问我：',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
             ),
-          _buildInputArea(colorScheme),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _suggestions.map(_buildQuickQuestion).toList(),
+          ),
         ],
       ),
     );
@@ -1051,96 +963,101 @@ $folderList
                       ),
                     ],
                   ),
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: Row(
-                          children: [
-                            const Text(
-                              '历史对话',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.delete_sweep_outlined,
-                                  size: 20, color: Colors.grey),
-                              onPressed: () => _deleteAllSessions(ctx),
-                              tooltip: '清空所有历史对话',
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.close, size: 20),
-                              onPressed: () => Navigator.pop(ctx),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      Expanded(
-                        child: _sessions.isEmpty
-                            ? const Center(child: Text('暂无历史对话'))
-                            : ListView.builder(
-                                itemCount: _sessions.length,
-                                itemBuilder: (context, index) {
-                                  final session = _sessions[index];
-                                  final isActive =
-                                      session.id == _activeSessionId;
-                                  return ListTile(
-                                    leading: Icon(
-                                      Icons.chat_bubble_outline,
-                                      color: isActive
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .primary
-                                          : null,
-                                    ),
-                                    title: Text(
-                                      session.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontWeight:
-                                            isActive ? FontWeight.bold : null,
-                                        color: isActive
-                                            ? Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                            : null,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      DateFormat('MM/dd HH:mm').format(
-                                        session.updatedAt,
-                                      ),
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
-                                    trailing: IconButton(
-                                      icon: const Icon(Icons.close, size: 18),
-                                      onPressed: () {
-                                        Navigator.pop(ctx);
-                                        _deleteSession(session.id);
-                                      },
-                                    ),
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      _switchSession(session.id);
-                                    },
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
-                  ),
+                  child: _buildHistorySidebarContent(ctx, isWideMode: false),
                 ),
               ),
             ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildHistorySidebarContent(BuildContext context, {required bool isWideMode}) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              const Text(
+                '历史对话',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.delete_sweep_outlined,
+                    size: 20, color: Colors.grey),
+                onPressed: () => _deleteAllSessions(context),
+                tooltip: '清空所有历史对话',
+              ),
+              if (!isWideMode)
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _sessions.isEmpty
+              ? const Center(child: Text('暂无历史对话'))
+              : ListView.builder(
+                  itemCount: _sessions.length,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemBuilder: (context, index) {
+                    final session = _sessions[index];
+                    final isActive = session.id == _activeSessionId;
+                    return ListTile(
+                      dense: isWideMode,
+                      leading: Icon(
+                        isActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                        size: 20,
+                        color: isActive
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
+                      title: Text(
+                        session.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isActive ? FontWeight.bold : null,
+                          color: isActive
+                              ? Theme.of(context).colorScheme.primary
+                              : null,
+                        ),
+                      ),
+                      subtitle: Text(
+                        DateFormat('MM/dd HH:mm').format(
+                          session.updatedAt,
+                        ),
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        onPressed: () {
+                          if (!isWideMode) Navigator.pop(context);
+                          _deleteSession(session.id);
+                        },
+                        tooltip: '删除对话',
+                      ),
+                      selected: isActive,
+                      selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                      onTap: () {
+                        if (!isWideMode) Navigator.pop(context);
+                        _switchSession(session.id);
+                      },
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -1168,6 +1085,7 @@ $folderList
 
     if (confirmed == true) {
       await ChatStorageService.clearAllSessions();
+      if (!mounted || !sidebarCtx.mounted) return;
       setState(() {
         _sessions = [];
         _messages = [];
@@ -1175,12 +1093,10 @@ $folderList
         _suggestions = _getDefaultSuggestions();
       });
       // 关闭侧边栏
-      if (mounted) {
-        Navigator.pop(sidebarCtx);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已清空所有历史对话')),
-        );
-      }
+      Navigator.pop(sidebarCtx);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已清空所有历史对话')),
+      );
     }
   }
 
@@ -1378,7 +1294,7 @@ $folderList
                       _chatApiUrl = '';
                     });
                   }
-                  if (mounted) Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
                 },
                 child: const Text('清除'),
               ),
@@ -1386,12 +1302,14 @@ $folderList
               onPressed: useCustom
                   ? () async {
                       if (modelCtrl.text.trim().isEmpty) {
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('请输入模型名称')),
                         );
                         return;
                       }
                       if (apiKeyCtrl.text.trim().isEmpty) {
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('请输入API密钥')),
                         );
@@ -1411,7 +1329,7 @@ $folderList
                           _chatApiUrl = apiUrlCtrl.text.trim();
                         });
                       }
-                      if (mounted) Navigator.pop(ctx);
+                      if (ctx.mounted) Navigator.pop(ctx);
                     }
                   : null,
               child: const Text('保存'),
@@ -1714,6 +1632,31 @@ $folderList
                           ],
                         ),
                       ),
+                    _buildChangeSummary(todo),
+                    if (_isDangerousAction(todo))
+                      Padding(
+                        padding: const EdgeInsets.only(left: 28, top: 6),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 13,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                _getDangerHint(todo),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(context).colorScheme.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsets.only(left: 28, top: 6),
                       child: Container(
@@ -1837,6 +1780,10 @@ $folderList
         color = Colors.purple;
         label = '改期';
         break;
+      case AiTodoActionType.bulkRescheduleTodo:
+        color = Colors.purple;
+        label = '批改';
+        break;
       case AiTodoActionType.updateTodo:
         color = Colors.orange;
         label = '修改';
@@ -1844,6 +1791,18 @@ $folderList
       case AiTodoActionType.categorizeTodo:
         color = Colors.orange;
         label = '整理';
+        break;
+      case AiTodoActionType.planTodos:
+        color = Colors.teal;
+        label = '规划';
+        break;
+      case AiTodoActionType.splitTodo:
+        color = Colors.indigo;
+        label = '拆分';
+        break;
+      case AiTodoActionType.mergeTodos:
+        color = Colors.indigo;
+        label = '合并';
         break;
       case AiTodoActionType.unknown:
         color = Colors.grey;
@@ -1878,11 +1837,148 @@ $folderList
         return '移动到已删除';
       case AiTodoActionType.rescheduleTodo:
         return '调整时间安排';
+      case AiTodoActionType.bulkRescheduleTodo:
+        return '批量调整时间安排';
       case AiTodoActionType.updateTodo:
         return '更新待办内容';
       case AiTodoActionType.categorizeTodo:
         return '从 [${_getTodoCurrentFolderName(action.todoId)}] 移动';
+      case AiTodoActionType.planTodos:
+        return '生成计划待办';
+      case AiTodoActionType.splitTodo:
+        return action.sourceTodoIds.isEmpty
+            ? '拆分为子任务'
+            : '从 [${action.sourceTodoIds.join(', ')}] 拆分';
+      case AiTodoActionType.mergeTodos:
+        return action.sourceTodoIds.isEmpty
+            ? '合并为新待办'
+            : '合并 [${action.sourceTodoIds.join(', ')}]';
       case AiTodoActionType.createTodo:
+      case AiTodoActionType.unknown:
+        return '';
+    }
+  }
+
+  Widget _buildChangeSummary(AiTodoAction action) {
+    if (!action.mutatesExistingTodo) return const SizedBox.shrink();
+    final existing = _findExistingTodo(action.todoId);
+    if (existing == null) return const SizedBox.shrink();
+
+    final rows = <String>[];
+    void addRow(String label, String before, String after) {
+      if (before == after || after.isEmpty) return;
+      rows.add('$label: $before -> $after');
+    }
+
+    addRow('标题', '${existing['title'] ?? ''}', action.title ?? '');
+    addRow('备注', '${existing['remark'] ?? ''}', action.remark ?? '');
+    if (action.startTime != null || action.dueDate != null) {
+      final beforeTime = _formatTodoTimeRange(
+        existing['startTime']?.toString(),
+        existing['endTime']?.toString(),
+        existing['isAllDay'] == true,
+      );
+      final afterTime = _formatTodoTimeRange(
+        action.startTime ?? existing['startTime']?.toString(),
+        action.dueDate ?? existing['endTime']?.toString(),
+        action.isAllDay || existing['isAllDay'] == true,
+      );
+      addRow('时间', beforeTime, afterTime);
+    }
+    if (action.groupId != null ||
+        action.type == AiTodoActionType.categorizeTodo) {
+      addRow(
+        '分类',
+        _getGroupName(existing['groupId']?.toString()),
+        _getGroupName(action.groupId),
+      );
+    }
+    if (action.reminderMinutes != null) {
+      addRow(
+        '提醒',
+        '提前${existing['reminderMinutes'] ?? 5}分钟',
+        '提前${action.reminderMinutes}分钟',
+      );
+    }
+    if (action.type == AiTodoActionType.completeTodo) {
+      addRow('状态', existing['isDone'] == true ? '已完成' : '未完成', '已完成');
+    }
+    if (action.type == AiTodoActionType.deleteTodo) {
+      addRow('删除', existing['isDeleted'] == true ? '已删除' : '未删除', '已删除');
+    }
+
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(left: 28, top: 6),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(context)
+              .colorScheme
+              .surfaceContainerHighest
+              .withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rows
+              .map(
+                (row) => Text(
+                  row,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.65),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  Map<String, dynamic>? _findExistingTodo(String? todoId) {
+    if (todoId == null) return null;
+    for (final todo in widget.todos) {
+      if (todo['id'] == todoId) return todo;
+    }
+    return null;
+  }
+
+  String _getGroupName(String? groupId) {
+    if (groupId == null || groupId.isEmpty) return '默认分类';
+    return widget.todoGroups
+        .firstWhere((g) => g.id == groupId, orElse: () => TodoGroup(name: '未知'))
+        .name;
+  }
+
+  bool _isDangerousAction(AiTodoAction action) {
+    return action.type == AiTodoActionType.deleteTodo ||
+        (action.type == AiTodoActionType.splitTodo &&
+            action.deleteSourceTodos) ||
+        (action.type == AiTodoActionType.mergeTodos &&
+            action.deleteSourceTodos);
+  }
+
+  String _getDangerHint(AiTodoAction action) {
+    switch (action.type) {
+      case AiTodoActionType.deleteTodo:
+        return '将删除已有待办，执行前请确认';
+      case AiTodoActionType.splitTodo:
+        return '拆分后会删除原待办，执行前请确认';
+      case AiTodoActionType.mergeTodos:
+        return '合并后会删除源待办，执行前请确认';
+      case AiTodoActionType.createTodo:
+      case AiTodoActionType.updateTodo:
+      case AiTodoActionType.completeTodo:
+      case AiTodoActionType.rescheduleTodo:
+      case AiTodoActionType.bulkRescheduleTodo:
+      case AiTodoActionType.categorizeTodo:
+      case AiTodoActionType.planTodos:
       case AiTodoActionType.unknown:
         return '';
     }
@@ -1892,168 +1988,31 @@ $folderList
     await ChatStorageService.saveHistory(_messages, _activeSessionId);
   }
 
-  RecurrenceType _parseRecurrence(
-    String recurrence,
-    Map<String, dynamic> existing,
-  ) {
-    if (recurrence != 'none') {
-      return RecurrenceType.values.firstWhere(
-        (e) => e.name == recurrence,
-        orElse: () => RecurrenceType.none,
-      );
-    }
-
-    final existingRecurrence = existing['recurrence'];
-    if (existingRecurrence is int &&
-        existingRecurrence >= 0 &&
-        existingRecurrence < RecurrenceType.values.length) {
-      return RecurrenceType.values[existingRecurrence];
-    }
-    return RecurrenceType.values.firstWhere(
-      (e) => e.name == existingRecurrence?.toString(),
-      orElse: () => RecurrenceType.none,
-    );
-  }
-
-  int? _parseNullableInt(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value.toString());
-  }
-
-  DateTime? _parseExistingDate(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
-    if (value is num) return DateTime.fromMillisecondsSinceEpoch(value.toInt());
-    return DateTime.tryParse(value.toString());
-  }
-
   void _addTodosForMessage(ChatMessage msg) {
     if (msg.todoActions == null) return;
 
-    final List<TodoItem> newTodos = [];
-    final List<TodoItem> updatedTodos = [];
-    final selectedActions =
-        msg.todoActions!.where((t) => t.isSelected && !t.isAdded).toList();
+    final result = AiTodoActionExecutor.execute(
+      actions: msg.todoActions!,
+      existingTodos: widget.todos,
+      categoryReminderDefaults: _categoryReminderDefaults,
+    );
 
-    for (final todoData in selectedActions) {
-      if (todoData.mutatesExistingTodo) {
-        final id = todoData.todoId;
-        if (id == null) continue;
-        final gId = todoData.groupId;
-        // 查找真实的现有待办数据
-        final existingMatch = widget.todos.where((t) => t['id'] == id).toList();
-        if (existingMatch.isNotEmpty) {
-          final e = existingMatch.first;
-          final existingGroupId = e['groupId']?.toString();
-          final nextGroupId = todoData.type == AiTodoActionType.categorizeTodo
-              ? ((gId == null || gId.isEmpty) ? null : gId)
-              : ((gId != null && gId.isNotEmpty) ? gId : existingGroupId);
-          final existingStartTime = e['startTime'] != null
-              ? DateTime.tryParse(e['startTime'].toString())
-              : null;
-          final existingDueDate = e['endTime'] != null
-              ? DateTime.tryParse(e['endTime'].toString())
-              : null;
-          final nextStartTime = todoData.startTime != null
-              ? DateTime.tryParse(todoData.startTime!)
-              : existingStartTime;
-          final nextDueDate = todoData.dueDate != null
-              ? DateTime.tryParse(todoData.dueDate!)
-              : existingDueDate;
-          // 必须带上现有的所有核心字段，尤其是那些 UI 判定需要的字段
-          updatedTodos.add(TodoItem(
-            id: id,
-            title: todoData.title ?? e['title'] ?? '',
-            groupId: nextGroupId,
-            isDone: todoData.type == AiTodoActionType.completeTodo
-                ? true
-                : e['isDone'] ?? false,
-            isDeleted: todoData.type == AiTodoActionType.deleteTodo
-                ? true
-                : e['isDeleted'] ?? false,
-            remark: todoData.remark ?? e['remark'],
-            dueDate: nextDueDate,
-            createdDate: nextStartTime?.millisecondsSinceEpoch,
-            recurrence: _parseRecurrence(todoData.recurrence, e),
-            customIntervalDays: todoData.customIntervalDays ??
-                _parseNullableInt(
-                    e['customIntervalDays'] ?? e['custom_interval_days']),
-            recurrenceEndDate: todoData.recurrenceEndDate != null
-                ? DateTime.tryParse(todoData.recurrenceEndDate!)
-                : _parseExistingDate(
-                    e['recurrenceEndDate'] ?? e['recurrence_end_date']),
-            isAllDay: todoData.isAllDay || e['isAllDay'] == true,
-            reminderMinutes:
-                todoData.reminderMinutes ?? e['reminderMinutes'] as int?,
-          )..markAsChanged());
-        } else {
-          updatedTodos.add(TodoItem(
-            id: id,
-            title: todoData.title ?? '',
-            groupId: (gId == null || gId.isEmpty) ? null : gId,
-            isDone: todoData.type == AiTodoActionType.completeTodo,
-            isDeleted: todoData.type == AiTodoActionType.deleteTodo,
-            reminderMinutes: todoData.reminderMinutes,
-          )..markAsChanged());
-        }
-        todoData.isAdded = true;
-        continue;
-      }
-
-      DateTime? startTime = todoData.startTime != null
-          ? DateTime.tryParse(todoData.startTime!)
-          : null;
-      DateTime? dueDate = todoData.dueDate != null
-          ? DateTime.tryParse(todoData.dueDate!)
-          : null;
-      DateTime? recurrenceEndDate = todoData.recurrenceEndDate != null
-          ? DateTime.tryParse(todoData.recurrenceEndDate!)
-          : null;
-
-      RecurrenceType recurrence = RecurrenceType.none;
-      recurrence = RecurrenceType.values.firstWhere(
-        (e) => e.name == todoData.recurrence,
-        orElse: () => RecurrenceType.none,
-      );
-
-      final gId = todoData.groupId;
-      newTodos.add(TodoItem(
-        title: todoData.title ?? '未命名待办',
-        remark: todoData.remark,
-        dueDate: dueDate,
-        createdDate: startTime?.millisecondsSinceEpoch ??
-            DateTime.now().millisecondsSinceEpoch,
-        recurrence: recurrence,
-        customIntervalDays: todoData.customIntervalDays,
-        recurrenceEndDate: recurrenceEndDate,
-        originalText: todoData.originalText,
-        groupId: (gId == null || gId.isEmpty) ? null : gId,
-        isAllDay: todoData.isAllDay,
-        reminderMinutes: todoData.reminderMinutes ??
-            (gId != null ? _categoryReminderDefaults[gId] : null),
-      ));
-
-      todoData.isAdded = true;
-    }
-
-    if (newTodos.isNotEmpty || updatedTodos.isNotEmpty) {
+    if (result.hasChanges) {
       if (widget.onTodosBatchAction != null) {
-        widget.onTodosBatchAction!(newTodos, updatedTodos);
+        widget.onTodosBatchAction!(result.newTodos, result.updatedTodos);
       } else {
         // Fallback to separate calls
-        if (newTodos.isNotEmpty) {
+        if (result.newTodos.isNotEmpty) {
           if (widget.onTodosBatchInserted != null) {
-            widget.onTodosBatchInserted!(newTodos);
+            widget.onTodosBatchInserted!(result.newTodos);
           } else if (widget.onTodoInserted != null) {
-            for (final t in newTodos) {
+            for (final t in result.newTodos) {
               widget.onTodoInserted!(t);
             }
           }
         }
-        if (updatedTodos.isNotEmpty && widget.onTodosUpdated != null) {
-          widget.onTodosUpdated!(updatedTodos);
+        if (result.updatedTodos.isNotEmpty && widget.onTodosUpdated != null) {
+          widget.onTodosUpdated!(result.updatedTodos);
         }
       }
 
@@ -2063,7 +2022,7 @@ $folderList
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                '已执行所选操作 (新待办: ${newTodos.length}, 整理: ${updatedTodos.length})')),
+                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理: ${result.updatedTodos.length})')),
       );
     }
   }
@@ -2428,11 +2387,11 @@ $folderList
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          _includeContextTodos
-                              ? Icons.inventory_2
-                              : Icons.inventory_2_outlined,
+                          _smartContext
+                              ? Icons.auto_awesome
+                              : Icons.auto_awesome_outlined,
                           size: 16,
-                          color: _includeContextTodos
+                          color: _smartContext
                               ? Theme.of(context).colorScheme.primary
                               : Theme.of(context)
                                   .colorScheme
@@ -2441,10 +2400,10 @@ $folderList
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '包含待办',
+                          '智能上下文',
                           style: TextStyle(
                             fontSize: 12,
-                            color: _includeContextTodos
+                            color: _smartContext
                                 ? Theme.of(context).colorScheme.primary
                                 : Theme.of(context)
                                     .colorScheme
@@ -2454,9 +2413,9 @@ $folderList
                         ),
                       ],
                     ),
-                    selected: _includeContextTodos,
+                    selected: _smartContext,
                     onSelected: (val) {
-                      setState(() => _includeContextTodos = val);
+                      setState(() => _smartContext = val);
                     },
                     visualDensity: VisualDensity.compact,
                   ),

@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
+import '../services/course_service.dart';
+import '../services/ai_todo_chat_launcher.dart';
+import '../services/ai_todo_action_executor.dart';
 import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
 
@@ -31,14 +34,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   bool _isApplyingScheduleFix = false;
   _ConflictFilter _selectedFilter = _ConflictFilter.all;
   dynamic _selectedItem; // 🚀 新增：当前选中的冲突项，用于桌面端双栏展示
-  
+
   // 🚀 批量操作相关
   bool _isBatchMode = false;
   final Set<String> _selectedConflictIds = {};
   bool _isBatchApplying = false;
 
   bool get _isWide => MediaQuery.of(context).size.width > 900;
-  
+
   String _getConflictId(dynamic item) {
     if (item is TodoItem) return 'todo_${item.id}';
     if (item is TodoGroup) return 'group_${item.id}';
@@ -382,8 +385,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final serverVersion = _findServerVersion(item);
     final serverVer = (serverVersion?['version'] as num?)?.toInt() ?? 0;
     final currentVer = (localJson['version'] as num?)?.toInt() ?? 1;
-    final newVersion =
-        serverVer > currentVer ? serverVer + 1 : currentVer + 1;
+    final newVersion = serverVer > currentVer ? serverVer + 1 : currentVer + 1;
     final now = DateTime.now().millisecondsSinceEpoch;
 
     localJson['version'] = newVersion;
@@ -527,6 +529,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           const SizedBox(width: 16),
           if (!_isBatchMode) ...[
             _buildAppBarAction(
+              icon: Icons.smart_toy_outlined,
+              onTap: _openAiAssistant,
+              tooltip: 'AI冲突助手',
+            ),
+            const SizedBox(width: 12),
+            _buildAppBarAction(
               icon: _isScanning ? null : Icons.radar_rounded,
               loading: _isScanning,
               onTap: _isScanning ? null : _scanAllTodoConflicts,
@@ -547,7 +555,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             const SizedBox(width: 12),
             _buildAppBarAction(
               icon: Icons.checklist_rounded,
-              onTap: _conflictItems.isNotEmpty ? () => setState(() => _isBatchMode = true) : null,
+              onTap: _conflictItems.isNotEmpty
+                  ? () => setState(() => _isBatchMode = true)
+                  : null,
               tooltip: '批量管理',
             ),
           ] else ...[
@@ -561,7 +571,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                           _selectedConflictIds.add(_getConflictId(item));
                         }
                       }),
-              tooltip: _selectedConflictIds.length == _visibleConflictItems.length ? '取消全选' : '全选',
+              tooltip:
+                  _selectedConflictIds.length == _visibleConflictItems.length
+                      ? '取消全选'
+                      : '全选',
             ),
           ]
         ],
@@ -596,6 +609,74 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openAiAssistant() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        StorageService.getTodos(widget.username),
+        StorageService.getTodoGroups(widget.username),
+        CourseService.getAllCourses(widget.username),
+        StorageService.getTimeLogs(widget.username),
+      ]);
+      if (!mounted) return;
+      await AiTodoChatLauncher.open(
+        context,
+        username: widget.username,
+        todos: (results[0] as List<TodoItem>).where((t) => !t.isDeleted).toList(),
+        todoGroups:
+            (results[1] as List<TodoGroup>).where((g) => !g.isDeleted).toList(),
+        courses:
+            (results[2] as List<CourseItem>).where((c) => !c.isDeleted).toList(),
+        timeLogs:
+            (results[3] as List<TimeLogItem>).where((l) => !l.isDeleted).toList(),
+        conflicts: _buildAiConflictContext(),
+        onTodosBatchAction: (inserted, updated) async {
+          final allTodos = await StorageService.getTodos(widget.username);
+          final merged = AiTodoActionExecutor.mergeTodoUpdates(allTodos, inserted, updated);
+          await StorageService.saveTodos(widget.username, merged);
+          await _loadConflicts();
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开AI助手失败: $e')),
+        );
+      }
+    }
+  }
+
+  List<ConflictInfo> _buildAiConflictContext() {
+    final conflicts = <ConflictInfo>[...?widget.syncConflicts];
+    for (final item in _conflictItems) {
+      if (item is TodoItem && item.serverVersionData != null) {
+        conflicts.add(
+          ConflictInfo(
+            type: item.serverVersionData!['type']?.toString() ?? 'todo',
+            item: item.toJson(),
+            conflictWith: item.serverVersionData!,
+          ),
+        );
+      } else if (item is TodoGroup && item.conflictData != null) {
+        conflicts.add(
+          ConflictInfo(
+            type: 'group',
+            item: item.toJson(),
+            conflictWith: item.conflictData!,
+          ),
+        );
+      } else if (item is CountdownItem && item.conflictData != null) {
+        conflicts.add(
+          ConflictInfo(
+            type: 'countdown',
+            item: item.toJson(),
+            conflictWith: item.conflictData!,
+          ),
+        );
+      }
+    }
+    return conflicts;
   }
 
   Widget _buildWideLayout(bool isDark) {
@@ -866,12 +947,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             _resolveConflict(item);
           }
         },
-        onLongPress: _isBatchMode ? null : () {
-          setState(() {
-            _isBatchMode = true;
-            _selectedConflictIds.add(itemId);
-          });
-        },
+        onLongPress: _isBatchMode
+            ? null
+            : () {
+                setState(() {
+                  _isBatchMode = true;
+                  _selectedConflictIds.add(itemId);
+                });
+              },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -914,9 +997,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight:
-                                  isSelected || isBatchSelected ? FontWeight.bold : FontWeight.w500,
-                              color: isDark ? Colors.white : Colors.blueGrey.shade800,
+                              fontWeight: isSelected || isBatchSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
+                              color: isDark
+                                  ? Colors.white
+                                  : Colors.blueGrey.shade800,
                             ),
                           ),
                         ),
@@ -927,8 +1013,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                       spacing: 8,
                       runSpacing: 4,
                       children: [
-                        _buildMiniBadge(_conflictLabel(item),
-                            conflictColor.withValues(alpha: 0.1), conflictColor),
+                        _buildMiniBadge(
+                            _conflictLabel(item),
+                            conflictColor.withValues(alpha: 0.1),
+                            conflictColor),
                         _buildMiniBadge(_relationLabel(item),
                             Colors.blue.withValues(alpha: 0.1), Colors.blue),
                       ],
@@ -971,7 +1059,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           ),
         ),
       ),
-      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      padding: EdgeInsets.fromLTRB(
+          16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1004,7 +1093,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+                    side:
+                        BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
                   ),
                 ),
               ),
@@ -1928,11 +2018,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   Future<void> _batchKeepLocal() async {
     if (_selectedConflictIds.isEmpty) return;
     setState(() => _isBatchApplying = true);
-    
+
     try {
       int successCount = 0;
       final ids = _selectedConflictIds.toList();
-      
+
       for (final itemId in ids) {
         try {
           // 根据 ID 格式查找对应的冲突项
@@ -1941,7 +2031,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             orElse: () => null,
           );
           if (conflictItem == null) continue;
-          
+
           // 对于有服务器版本的冲突，使用 _ConflictResolutionSheet 的逻辑
           final serverVersion = _findServerVersion(conflictItem);
           if (serverVersion != null && serverVersion.isNotEmpty) {
@@ -1962,7 +2052,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (successCount > 0) {
         Future.microtask(() => StorageService.syncData(widget.username));
       }
-      
+
       if (mounted) {
         _selectedConflictIds.clear();
         _isBatchMode = false;
@@ -1988,11 +2078,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   Future<void> _batchAcceptServer() async {
     if (_selectedConflictIds.isEmpty) return;
     setState(() => _isBatchApplying = true);
-    
+
     try {
       int successCount = 0;
       final ids = _selectedConflictIds.toList();
-      
+
       for (final itemId in ids) {
         try {
           final conflictItem = _visibleConflictItems.firstWhere(
@@ -2000,16 +2090,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             orElse: () => null,
           );
           if (conflictItem == null) continue;
-          
+
           final serverVersion = _findServerVersion(conflictItem);
           if (serverVersion == null || serverVersion.isEmpty) continue;
-          
+
           final localJson = _itemToJson(conflictItem);
           final table = _resolveTable(conflictItem);
           final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
-          
+
           serverVersion['has_conflict'] = 0;
-          
+
           await StorageService.resolveConflictLocally(
             uuid: uuid,
             table: table,
@@ -2017,7 +2107,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             createOplog: false,
             touchUpdatedAt: false,
           );
-          
+
           try {
             await ApiService.resolveConflict(
               uuid: uuid,
@@ -2025,13 +2115,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
               resolution: 'accept_server',
             );
           } catch (_) {}
-          
+
           successCount++;
         } catch (e) {
           debugPrint('批量采用服务器版本失败 $itemId: $e');
         }
       }
-      
+
       if (mounted) {
         _selectedConflictIds.clear();
         _isBatchMode = false;
@@ -2056,7 +2146,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   Future<void> _batchApplyRecommended() async {
     if (_selectedConflictIds.isEmpty) return;
-    
+
     _showBatchResolutionDialog();
   }
 
@@ -2103,12 +2193,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded, size: 18, color: Colors.blue),
+                  Icon(Icons.info_outline_rounded,
+                      size: 18, color: Colors.blue),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '推荐方案将根据时间冲突自动调整任务时间，或选择最合适的版本。',
-                      style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.blue.shade700),
                     ),
                   ),
                 ],
@@ -2146,12 +2238,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   Future<void> _batchApplyRecommendedExecute() async {
     setState(() => _isBatchApplying = true);
-    
+
     try {
       int successCount = 0;
       int schedulerCount = 0;
       final ids = _selectedConflictIds.toList();
-      
+
       for (final itemId in ids) {
         try {
           final conflictItem = _visibleConflictItems.firstWhere(
@@ -2159,17 +2251,20 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             orElse: () => null,
           );
           if (conflictItem == null) continue;
-          
+
           // 对于时间冲突，使用推荐时间调整
-          if (_isLocalScheduleConflict(conflictItem) && conflictItem is TodoItem) {
+          if (_isLocalScheduleConflict(conflictItem) &&
+              conflictItem is TodoItem) {
             final peers = _conflictPeers(conflictItem);
-            final recommendedWindow = _suggestPreferredWindow(conflictItem, peers);
+            final recommendedWindow =
+                _suggestPreferredWindow(conflictItem, peers);
             if (recommendedWindow != null) {
-              final allTodos =
-                  await StorageService.getTodos(widget.username, includeDeleted: true);
+              final allTodos = await StorageService.getTodos(widget.username,
+                  includeDeleted: true);
               final idx = allTodos.indexWhere((t) => t.id == conflictItem.id);
               if (idx != -1) {
-                allTodos[idx].createdDate = recommendedWindow.start.millisecondsSinceEpoch;
+                allTodos[idx].createdDate =
+                    recommendedWindow.start.millisecondsSinceEpoch;
                 allTodos[idx].dueDate = recommendedWindow.end;
                 allTodos[idx].markAsChanged();
                 await StorageService.saveTodos(widget.username, allTodos);
@@ -2182,26 +2277,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             if (serverVersion != null && serverVersion.isNotEmpty) {
               final localJson = _itemToJson(conflictItem);
               final table = _resolveTable(conflictItem);
-              
+
               final uuid = localJson['uuid'] ?? localJson['id'] ?? '';
               final serverVer = serverVersion['version'] as int? ?? 0;
               final currentVer = localJson['version'] as int? ?? 1;
-              final newVersion = serverVer > currentVer ? serverVer + 1 : currentVer + 1;
+              final newVersion =
+                  serverVer > currentVer ? serverVer + 1 : currentVer + 1;
               final now = DateTime.now().millisecondsSinceEpoch;
-              
+
               localJson['version'] = newVersion;
               localJson['updated_at'] = now;
               localJson['has_conflict'] = 0;
               localJson.remove('conflict_data');
               localJson.remove('serverVersionData');
-              
+
               await StorageService.resolveConflictLocally(
                 uuid: uuid,
                 table: table,
                 resolvedData: localJson,
                 createOplog: true,
               );
-              
+
               try {
                 await ApiService.resolveConflict(
                   uuid: uuid,
@@ -2211,7 +2307,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   data: localJson,
                 );
               } catch (_) {}
-              
+
               successCount++;
             }
           }
@@ -2219,7 +2315,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           debugPrint('批量推荐方案失败 $itemId: $e');
         }
       }
-      
+
       if (mounted) {
         _selectedConflictIds.clear();
         _isBatchMode = false;
