@@ -1608,8 +1608,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 },
                 cacheSizeStr: _cacheSizeStr,
                 onClearCache: _storageManagementHandler.clearCache,
-                onClearTodoHistory:
-                    _storageManagementHandler.clearTodoHistory,
                 onShowStorageAnalysis:
                     _storageManagementHandler.showStorageAnalysis,
                 isCheckingUpdate: _isCheckingUpdate,
@@ -1991,8 +1989,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         },
                         cacheSizeStr: _cacheSizeStr,
                         onClearCache: _storageManagementHandler.clearCache,
-                        onClearTodoHistory:
-                            _storageManagementHandler.clearTodoHistory,
                         onShowStorageAnalysis:
                             _storageManagementHandler.showStorageAnalysis,
                         isCheckingUpdate: _isCheckingUpdate,
