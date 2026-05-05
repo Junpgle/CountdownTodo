@@ -74,6 +74,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _chatApiKey = '';
   String _chatApiUrl = '';
   String _globalModelName = '';
+  String _lastRequestSmartContext = '';
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
   String? _activeSessionId;
@@ -81,13 +82,28 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   // 🚀 宽屏适配相关
   bool _sidebarVisible = true;
+  bool _actionRailCollapsed = false;
   bool get _isWide => MediaQuery.of(context).size.width >= 900;
-  bool get _usesActionRail {
+  bool get _hasPendingActionMessages => _pendingActionMessages.isNotEmpty;
+  int get _pendingActionCount => _pendingActionMessages.fold<int>(
+        0,
+        (sum, msg) =>
+            sum +
+            (msg.todoActions
+                    ?.where((action) => !action.isAdded && !action.isIgnored)
+                    .length ??
+                0),
+      );
+  bool get _hasActionRailSpace {
     final width = MediaQuery.of(context).size.width;
     const actionRailWidth = 344.0;
     final historyWidth = _sidebarVisible ? 304.0 : 0.0;
     return width >= 900 && width - historyWidth - actionRailWidth >= 520;
   }
+
+  bool get _shouldDetachActions =>
+      _hasActionRailSpace && _hasPendingActionMessages;
+  bool get _usesActionRail => _shouldDetachActions && !_actionRailCollapsed;
 
   @override
   void initState() {
@@ -309,13 +325,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       }
     }
 
-    _injectContext(apiMessages);
+    _lastRequestSmartContext = _injectContext(apiMessages);
     return apiMessages;
   }
 
   /// 根据最后一条用户消息的关键词，按需注入课程/时间日志/冲突/团队上下文。
-  void _injectContext(List<Map<String, String>> apiMessages) {
-    if (!_smartContext) return;
+  String _injectContext(List<Map<String, String>> apiMessages) {
+    if (!_smartContext) return '';
     // 找到最后一条 user 消息
     int lastUserIdx = -1;
     for (int i = apiMessages.length - 1; i >= 0; i--) {
@@ -324,7 +340,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         break;
       }
     }
-    if (lastUserIdx == -1) return;
+    if (lastUserIdx == -1) return '';
 
     final userText = apiMessages[lastUserIdx]['content'] ?? '';
     final injection = AiTodoContextBuilder.buildContextInjection(
@@ -341,7 +357,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         'role': 'user',
         'content': '$injection\n\n$userText',
       };
+      return injection;
     }
+    return '';
   }
 
   String _buildContextSummary() {
@@ -471,6 +489,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           content: cleanContent,
           rawContent: fullContent,
           reasoningContent: reasoningContent,
+          smartContext: _lastRequestSmartContext,
           todoActions: todoActions.isNotEmpty ? todoActions : null,
         );
 
@@ -481,6 +500,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _suggestions = inlineSuggestions.isNotEmpty
             ? inlineSuggestions
             : _getDefaultSuggestions();
+        if (todoActions.isNotEmpty) {
+          _actionRailCollapsed = false;
+        }
         ChatStorageService.addMessage(assistantMsg);
       });
       _scrollToBottom();
@@ -904,6 +926,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           SizedBox(
             width: 344,
             child: _buildActionRail(isDark, colorScheme),
+          )
+        else if (_shouldDetachActions)
+          SizedBox(
+            width: 48,
+            child: _buildCollapsedActionRailHandle(colorScheme),
           ),
       ],
     );
@@ -925,6 +952,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Widget _buildActionRail(bool isDark, ColorScheme colorScheme) {
     final actionMessages = _pendingActionMessages;
+    final actionCount = _pendingActionCount;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -958,17 +986,25 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 const Spacer(),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
-                  child: actionMessages.isEmpty
+                  child: actionCount == 0
                       ? const SizedBox.shrink()
                       : Text(
-                          '${actionMessages.length}',
-                          key: ValueKey(actionMessages.length),
+                          '$actionCount',
+                          key: ValueKey(actionCount),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: colorScheme.primary,
                           ),
                         ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.keyboard_double_arrow_right_rounded),
+                  iconSize: 20,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: '收起建议操作',
+                  onPressed: () => setState(() => _actionRailCollapsed = true),
                 ),
               ],
             ),
@@ -1040,6 +1076,56 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCollapsedActionRailHandle(ColorScheme colorScheme) {
+    final count = _pendingActionCount;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          left: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.68),
+          ),
+        ),
+      ),
+      child: Center(
+        child: Tooltip(
+          message: '展开建议操作',
+          child: Material(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => _actionRailCollapsed = false),
+              child: SizedBox(
+                width: 36,
+                height: 96,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.keyboard_double_arrow_left_rounded,
+                      size: 20,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -3025,6 +3111,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       sections.add('[REASONING]\n${msg.reasoningContent.trim()}');
     }
 
+    if (msg.smartContext.trim().isNotEmpty) {
+      sections.add('[SMART_CONTEXT]\n${msg.smartContext.trim()}');
+    } else {
+      sections.add('[SMART_CONTEXT]\n本次回复没有注入智能上下文。');
+    }
+
     return sections.join('\n\n');
   }
 
@@ -3187,7 +3279,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                             selectable: true,
                           ),
                   ),
-                  if (!_usesActionRail &&
+                  if (!_shouldDetachActions &&
                       msg.todoActions != null &&
                       msg.todoActions!.isNotEmpty)
                     _buildMessageTodoActions(msg, isDark),
