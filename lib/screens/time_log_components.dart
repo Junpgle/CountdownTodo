@@ -7,25 +7,39 @@ class _DayView extends StatefulWidget {
   final DateTime date;
   final bool crossDay;
   final List<TimeLogItem> logs;
+  final List<TodoPlanBlock> planBlocks;
   final List<PomodoroRecord> pomodoros;
   final List<PomodoroTag> tags;
+  final List<TodoItem> todos;
+  final String username;
+  final _EntryMode entryMode;
   final VoidCallback onBack;
+  final ValueChanged<_EntryMode> onEntryModeChanged;
   final ValueChanged<bool> onCrossDayChanged;
   final void Function(TimeLogItem) onSaveLog;
+  final void Function(TodoPlanBlock) onSavePlanBlock;
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(String) onDeleteLog;
+  final void Function(String) onDeletePlanBlock;
 
   const _DayView(
       {required this.date,
       required this.crossDay,
       required this.logs,
+      required this.planBlocks,
       required this.pomodoros,
       required this.tags,
+      required this.todos,
+      required this.username,
+      required this.entryMode,
       required this.onBack,
+      required this.onEntryModeChanged,
       required this.onCrossDayChanged,
       required this.onSaveLog,
+      required this.onSavePlanBlock,
       required this.onPomodoroTap,
-      required this.onDeleteLog});
+      required this.onDeleteLog,
+      required this.onDeletePlanBlock});
 
   @override
   State<_DayView> createState() => _DayViewState();
@@ -66,6 +80,22 @@ class _DayViewState extends State<_DayView> {
     final gs = _gridStart;
     final st = gs.add(Duration(minutes: _ss * _minutesPerBlock));
     final en = gs.add(Duration(minutes: (_se + 1) * _minutesPerBlock));
+    if (widget.entryMode == _EntryMode.plan) {
+      showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => _PlanEntrySheet(
+              initialStart: st,
+              initialEnd: en,
+              username: widget.username,
+              todos: widget.todos,
+              onSave: (block) {
+                Navigator.pop(context);
+                widget.onSavePlanBlock(block);
+              }));
+      return;
+    }
     showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -121,7 +151,8 @@ class _DayViewState extends State<_DayView> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 3),
                       decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                          color:
+                              const Color(0xFF3B82F6).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(20)),
                       child: Text('${dayLogs.length}条',
                           style: const TextStyle(
@@ -215,7 +246,8 @@ class _DayViewState extends State<_DayView> {
                           const SizedBox(width: 4),
                           IconButton(
                             icon: Icon(Icons.delete_outline,
-                                size: 20, color: Colors.red.withValues(alpha: 0.6)),
+                                size: 20,
+                                color: Colors.red.withValues(alpha: 0.6)),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(
                                 minWidth: 36, minHeight: 36),
@@ -276,9 +308,12 @@ class _DayViewState extends State<_DayView> {
     final geMs = gsMs + 86400000;
     final dLogN =
         widget.logs.where((l) => l.endTime > gsMs && l.startTime < geMs).length;
+    final dPlanN = widget.planBlocks
+        .where((p) => p.endTime > gsMs && p.startTime < geMs)
+        .length;
 
     return Column(children: [
-      _buildCrossDayBar(dLogN),
+      _buildCrossDayBar(dLogN, dPlanN),
       Expanded(
           child: Row(children: [
         Expanded(child: LayoutBuilder(builder: (ctx, c) {
@@ -304,19 +339,24 @@ class _DayViewState extends State<_DayView> {
             Expanded(child: _buildGrid(hourH, c.maxHeight)),
           ]);
         })),
-        _buildTagSidebar(),
+        if (widget.entryMode == _EntryMode.log) _buildTagSidebar(),
       ])),
       if (_dragStart != null) _buildBottomBar(),
     ]);
   }
 
-  Widget _buildCrossDayBar(int dLogN) => Container(
+  Widget _buildCrossDayBar(int dLogN, int dPlanN) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         color: _TC.topBar(context),
         child: Row(children: [
           const SizedBox(width: 8),
+          _EntryModeToggle(
+            mode: widget.entryMode,
+            onChanged: widget.onEntryModeChanged,
+          ),
+          const SizedBox(width: 8),
           // 已补录数量
-          if (dLogN > 0)
+          if (widget.entryMode == _EntryMode.log && dLogN > 0)
             GestureDetector(
                 onTap: _showDayLogList,
                 child: Container(
@@ -325,7 +365,8 @@ class _DayViewState extends State<_DayView> {
                     decoration: BoxDecoration(
                         color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
                         border: Border.all(
-                            color: const Color(0xFF3B82F6).withValues(alpha: 0.35)),
+                            color: const Color(0xFF3B82F6)
+                                .withValues(alpha: 0.35)),
                         borderRadius: BorderRadius.circular(8)),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.list_alt_outlined,
@@ -337,6 +378,25 @@ class _DayViewState extends State<_DayView> {
                               color: Color(0xFF60A5FA),
                               fontWeight: FontWeight.w600)),
                     ]))),
+          if (widget.entryMode == _EntryMode.plan && dPlanN > 0)
+            Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                    color: Colors.deepPurple.withValues(alpha: 0.1),
+                    border: Border.all(
+                        color: Colors.deepPurple.withValues(alpha: 0.35)),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.event_note,
+                      size: 12, color: Colors.deepPurple),
+                  const SizedBox(width: 4),
+                  Text('已规划 $dPlanN',
+                      style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.deepPurple,
+                          fontWeight: FontWeight.w600)),
+                ])),
           // 退出补录
           GestureDetector(
             onTap: widget.onBack,
@@ -348,9 +408,10 @@ class _DayViewState extends State<_DayView> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.close, size: 12, color: Colors.red.withValues(alpha: 0.8)),
+                Icon(Icons.close,
+                    size: 12, color: Colors.red.withValues(alpha: 0.8)),
                 const SizedBox(width: 4),
-                Text('退出补录',
+                Text(widget.entryMode == _EntryMode.plan ? '退出规划' : '退出补录',
                     style: TextStyle(
                         fontSize: 11,
                         color: Colors.red.withValues(alpha: 0.8),
@@ -412,6 +473,8 @@ class _DayViewState extends State<_DayView> {
                       dragStart: _dragStart,
                       dragEnd: _dragEnd,
                       logs: widget.logs,
+                      planBlocks: widget.planBlocks,
+                      showPlans: widget.entryMode == _EntryMode.plan,
                       tags: widget.tags,
                       gridStart: _gridStart,
                       selColor: selTag != null
@@ -504,7 +567,9 @@ class _DayViewState extends State<_DayView> {
                               horizontal: 5, vertical: 4),
                           padding: const EdgeInsets.symmetric(vertical: 9),
                           decoration: BoxDecoration(
-                              color: sel ? c.withValues(alpha: 0.2) : _TC.card(ctx),
+                              color: sel
+                                  ? c.withValues(alpha: 0.2)
+                                  : _TC.card(ctx),
                               border: Border.all(
                                   color: sel ? c : c.withValues(alpha: 0.2),
                                   width: sel ? 1.5 : 1),
@@ -586,8 +651,8 @@ class _DayViewState extends State<_DayView> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 elevation: 0),
-            child: const Text('详情录入',
-                style: TextStyle(fontWeight: FontWeight.w700))),
+            child: Text(widget.entryMode == _EntryMode.plan ? '添加规划' : '详情录入',
+                style: const TextStyle(fontWeight: FontWeight.w700))),
       ]),
     );
   }
@@ -600,6 +665,8 @@ class _DayGridPainter extends CustomPainter {
   final int minutesPerBlock;
   final int? dragStart, dragEnd;
   final List<TimeLogItem> logs;
+  final List<TodoPlanBlock> planBlocks;
+  final bool showPlans;
   final List<PomodoroTag> tags;
   final DateTime gridStart;
   final Color selColor;
@@ -611,6 +678,8 @@ class _DayGridPainter extends CustomPainter {
       this.dragStart,
       this.dragEnd,
       required this.logs,
+      required this.planBlocks,
+      required this.showPlans,
       required this.tags,
       required this.gridStart,
       required this.selColor,
@@ -679,13 +748,48 @@ class _DayGridPainter extends CustomPainter {
       }
     }
 
+    if (showPlans) {
+      for (final plan in planBlocks) {
+        if (plan.endTime <= gsMs || plan.startTime >= geMs) continue;
+        final sMs = max(plan.startTime, gsMs);
+        final eMs = min(plan.endTime, geMs);
+        final sIdx = (sMs - gsMs) ~/ (60000 * minutesPerBlock);
+        final eIdx = ((eMs - gsMs - 1) ~/ (60000 * minutesPerBlock))
+            .clamp(0, 24 * bpr - 1);
+        final base = plan.status == TodoPlanStatus.finished
+            ? const Color(0xFF22C55E)
+            : const Color(0xFF7C3AED);
+        final fill = base.withValues(alpha: isDark ? 0.18 : 0.12);
+        final bar = base.withValues(alpha: 0.58);
+        for (int i = sIdx; i <= eIdx; i++) {
+          final rowStartMs = gsMs + i * 60 * minutesPerBlock * 1000;
+          final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
+          final segStart = max(sMs, rowStartMs);
+          final segEnd = min(eMs, rowEndMs);
+          final startOffset =
+              (segStart - rowStartMs) / (60 * minutesPerBlock * 1000);
+          final endOffset =
+              (segEnd - rowStartMs) / (60 * minutesPerBlock * 1000);
+          final left = i % bpr * bw + startOffset * bw;
+          final width = ((endOffset - startOffset) * bw).clamp(1.0, bw);
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                  Rect.fromLTWH(left, i ~/ bpr * hourH + 1, width, hourH - 2),
+                  const Radius.circular(3)),
+              Paint()..color = fill);
+          canvas.drawRect(
+              Rect.fromLTWH(left, i ~/ bpr * hourH + 1, 3, hourH - 2),
+              Paint()..color = bar);
+        }
+      }
+    }
+
     if (dragStart != null && dragEnd != null) {
       final s = min(dragStart!, dragEnd!);
       final e = max(dragStart!, dragEnd!);
       for (int i = s; i <= e; i++) {
         final rowStartMs = gsMs + i * 60 * minutesPerBlock * 1000;
         final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
-        final segStart = rowStartMs;
         final segEnd = min(rowEndMs, geMs);
         final startOffset = 0.0;
         final endOffset = (segEnd - rowStartMs) / (60 * minutesPerBlock * 1000);
@@ -718,6 +822,313 @@ class _DayGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DayGridPainter o) => true;
+}
+
+class _EntryModeToggle extends StatelessWidget {
+  final _EntryMode mode;
+  final ValueChanged<_EntryMode> onChanged;
+
+  const _EntryModeToggle({required this.mode, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget item(_EntryMode value, String label, IconData icon) {
+      final selected = mode == value;
+      final color = value == _EntryMode.plan
+          ? Colors.deepPurple
+          : Theme.of(context).colorScheme.primary;
+      return GestureDetector(
+        onTap: () => onChanged(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color:
+                selected ? color.withValues(alpha: 0.14) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon,
+                size: 12, color: selected ? color : _TC.textHint(context)),
+            const SizedBox(width: 4),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? color : _TC.textSub(context))),
+          ]),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: _TC.inputFill(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _TC.divider(context)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        item(_EntryMode.log, '补录', Icons.edit_calendar),
+        item(_EntryMode.plan, '规划', Icons.event_note),
+      ]),
+    );
+  }
+}
+
+class _PlanEntrySheet extends StatefulWidget {
+  final DateTime initialStart;
+  final DateTime initialEnd;
+  final String username;
+  final List<TodoItem> todos;
+  final void Function(TodoPlanBlock) onSave;
+
+  const _PlanEntrySheet({
+    required this.initialStart,
+    required this.initialEnd,
+    required this.username,
+    required this.todos,
+    required this.onSave,
+  });
+
+  @override
+  State<_PlanEntrySheet> createState() => _PlanEntrySheetState();
+}
+
+class _PlanEntrySheetState extends State<_PlanEntrySheet> {
+  late DateTime _start;
+  late DateTime _end;
+  late TextEditingController _remarkCtrl;
+  String? _todoId;
+  int _reminderMinutes = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    _start = widget.initialStart;
+    _end = widget.initialEnd;
+    _remarkCtrl = TextEditingController();
+    if (widget.todos.isNotEmpty) _todoId = widget.todos.first.id;
+  }
+
+  @override
+  void dispose() {
+    _remarkCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickTime(bool start) async {
+    final value = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(start ? _start : _end),
+    );
+    if (value == null) return;
+    setState(() {
+      if (start) {
+        _start = DateTime(
+            _start.year, _start.month, _start.day, value.hour, value.minute);
+      } else {
+        _end =
+            DateTime(_end.year, _end.month, _end.day, value.hour, value.minute);
+      }
+    });
+  }
+
+  void _save() {
+    final block = _buildBlock();
+    if (block == null) return;
+    widget.onSave(block);
+  }
+
+  TodoPlanBlock? _buildBlock() {
+    if (_todoId == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请先选择待办')));
+      return null;
+    }
+    if (!_end.isAfter(_start)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间')));
+      return null;
+    }
+    final todo = widget.todos
+        .cast<TodoItem?>()
+        .firstWhere((t) => t?.id == _todoId, orElse: () => null);
+    return TodoPlanBlock(
+      todoId: _todoId!,
+      titleSnapshot: todo?.title,
+      startTime: _start.millisecondsSinceEpoch,
+      endTime: _end.millisecondsSinceEpoch,
+      plannedMinutes: _end.difference(_start).inMinutes,
+      remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
+      reminderMinutes: _reminderMinutes,
+    );
+  }
+
+  Future<void> _saveAndStartFocus() async {
+    final block = _buildBlock();
+    if (block == null) return;
+    final todo = widget.todos
+        .cast<TodoItem?>()
+        .firstWhere((t) => t?.id == block.todoId, orElse: () => null);
+    if (todo == null) return;
+    block.status = TodoPlanStatus.focusing;
+    await StorageService.savePlanBlocks(widget.username, [block]);
+    final settings = await PomodoroService.getSettings();
+    await PomodoroControlService.startFocus(
+      settings: settings,
+      boundTodo: todo,
+      durationMinutes: max(1, block.plannedMinutes),
+      planBlockId: block.uuid,
+    );
+    if (!mounted) return;
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PomodoroScreen(username: widget.username),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Colors.deepPurple;
+    final duration = _end.difference(_start).inMinutes;
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        left: 20,
+        right: 20,
+        top: 20,
+      ),
+      decoration: BoxDecoration(
+        color: _TC.card(context),
+        border: Border(top: BorderSide(color: _TC.divider(context))),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text('添加规划',
+                style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: _TC.text(context))),
+            const Spacer(),
+            Text('$duration 分钟',
+                style: TextStyle(
+                    color: accent, fontSize: 12, fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 16),
+          Text('TODO',
+              style: TextStyle(
+                  fontSize: 9, color: _TC.textHint(context), letterSpacing: 2)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _todoId,
+            isExpanded: true,
+            items: widget.todos
+                .map((todo) => DropdownMenuItem(
+                    value: todo.id,
+                    child: Text(
+                      todo.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )))
+                .toList(),
+            onChanged: (value) => setState(() => _todoId = value),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: _TC.inputFill(context),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(
+                child: _TimePickerCard(
+                    label: '开始时间',
+                    dt: _start,
+                    onTapTime: () => _pickTime(true),
+                    onTapDate: () {})),
+            const SizedBox(width: 10),
+            Expanded(
+                child: _TimePickerCard(
+                    label: '结束时间',
+                    dt: _end,
+                    onTapTime: () => _pickTime(false),
+                    onTapDate: () {})),
+          ]),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _remarkCtrl,
+            style: TextStyle(color: _TC.text(context), fontSize: 13),
+            decoration: InputDecoration(
+              hintText: '规划备注（可选）',
+              hintStyle: TextStyle(color: _TC.textHint(context)),
+              filled: true,
+              fillColor: _TC.inputFill(context),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Text('提前提醒',
+                style: TextStyle(fontSize: 13, color: _TC.textSub(context))),
+            const Spacer(),
+            DropdownButton<int>(
+              value: _reminderMinutes,
+              items: [0, 5, 10, 15, 30]
+                  .map((m) => DropdownMenuItem(
+                      value: m, child: Text(m == 0 ? '不提醒' : '$m 分钟前')))
+                  .toList(),
+              onChanged: (value) =>
+                  setState(() => _reminderMinutes = value ?? 5),
+            ),
+          ]),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _saveAndStartFocus,
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('开始专注'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _save,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        elevation: 0),
+                    child: const Text('保存规划',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -869,7 +1280,8 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
                   decoration: BoxDecoration(
                       color: const Color(0xFF22C55E).withValues(alpha: 0.12),
                       border: Border.all(
-                          color: const Color(0xFF22C55E).withValues(alpha: 0.35)),
+                          color:
+                              const Color(0xFF22C55E).withValues(alpha: 0.35)),
                       borderRadius: BorderRadius.circular(20)),
                   child: Text(_durLabel(),
                       style: const TextStyle(
@@ -1094,8 +1506,8 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
         decoration: BoxDecoration(
           color: isSel ? color : _TC.inputFill(context),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: isSel ? color : _TC.divider(context), width: 1),
+          border:
+              Border.all(color: isSel ? color : _TC.divider(context), width: 1),
         ),
         child: Text(title,
             style: TextStyle(
@@ -1150,7 +1562,8 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
     String Function(int) formatLabel = (v) => '${v}m';
 
     if (_scale == _ChartScale.session) {
-      final chartRecs = allRecs.length > 30 ? allRecs.sublist(allRecs.length - 30) : allRecs;
+      final chartRecs =
+          allRecs.length > 30 ? allRecs.sublist(allRecs.length - 30) : allRecs;
       if (_chartType == 0) {
         chartData = chartRecs.map((r) => r.durationMin).toList();
         formatLabel = (v) => '${v}m';
@@ -1184,7 +1597,9 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
         grouped[key] = (grouped[key] ?? 0) + r.durationMin;
       }
       final sortedKeys = grouped.keys.toList(); // 已经按时间顺序
-      xLabels = sortedKeys.length > 20 ? sortedKeys.sublist(sortedKeys.length - 20) : sortedKeys;
+      xLabels = sortedKeys.length > 20
+          ? sortedKeys.sublist(sortedKeys.length - 20)
+          : sortedKeys;
       chartData = xLabels.map((k) => grouped[k]!).toList();
     }
 
@@ -1192,8 +1607,8 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       decoration: BoxDecoration(
           color: _TC.card(context),
-          border:
-              Border(top: BorderSide(color: c.withValues(alpha: 0.35), width: 1.5)),
+          border: Border(
+              top: BorderSide(color: c.withValues(alpha: 0.35), width: 1.5)),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
       child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1428,9 +1843,11 @@ class _MiniLineChartState extends State<_MiniLineChart> {
       height: widget.height,
       width: double.infinity,
       child: GestureDetector(
-        onPanUpdate: (d) => widget.onTouch(d.localPosition.translate(_sc.offset, 0)),
+        onPanUpdate: (d) =>
+            widget.onTouch(d.localPosition.translate(_sc.offset, 0)),
         onPanEnd: (_) => widget.onTouch(null),
-        onTapDown: (d) => widget.onTouch(d.localPosition.translate(_sc.offset, 0)),
+        onTapDown: (d) =>
+            widget.onTouch(d.localPosition.translate(_sc.offset, 0)),
         onTapUp: (_) => widget.onTouch(null),
         child: SingleChildScrollView(
           controller: _sc,
@@ -1484,9 +1901,9 @@ class _LineChartPainter extends CustomPainter {
     // 计算起始位置，如果数据点较少，则靠右排列，保持固定间距
     final double totalPointsW = (data.length - 1) * itemW;
     final double startX = max(20.0, size.width - 20 - totalPointsW);
-    
-    final pts = List.generate(
-        data.length, (i) => Offset(startX + i * itemW, calcY(data[i].toDouble())));
+
+    final pts = List.generate(data.length,
+        (i) => Offset(startX + i * itemW, calcY(data[i].toDouble())));
 
     if (data.length < 2) {
       // 只有一个点的情况
@@ -1515,8 +1932,11 @@ class _LineChartPainter extends CustomPainter {
       end: Alignment.bottomCenter,
       colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.0)],
     );
-    canvas.drawPath(fillPath,
-        Paint()..shader = gradient.createShader(Rect.fromLTWH(0, 0, size.width, size.height)));
+    canvas.drawPath(
+        fillPath,
+        Paint()
+          ..shader = gradient
+              .createShader(Rect.fromLTWH(0, 0, size.width, size.height)));
 
     // 2. 绘制平滑曲线
     final path = Path();
@@ -1553,7 +1973,7 @@ class _LineChartPainter extends CustomPainter {
     for (int i = 0; i < pts.length; i++) {
       final p = pts[i];
       final isHover = i == activeIdx;
-      
+
       // 节点点
       canvas.drawCircle(p, isHover ? 6 : 4, Paint()..color = color);
       if (isHover) {
@@ -1565,7 +1985,10 @@ class _LineChartPainter extends CustomPainter {
         final dateTp = TextPainter(
           text: TextSpan(
             text: xLabels[i],
-            style: TextStyle(fontSize: 9, color: color.withValues(alpha: 0.6), fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 9,
+                color: color.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w500),
           ),
           textDirection: ui.TextDirection.ltr,
         )..layout();
@@ -1574,22 +1997,30 @@ class _LineChartPainter extends CustomPainter {
 
       // 活跃点的指示线和数值
       if (isHover) {
-        final lineP = Paint()..color = color.withValues(alpha: 0.5)..strokeWidth = 1.0;
+        final lineP = Paint()
+          ..color = color.withValues(alpha: 0.5)
+          ..strokeWidth = 1.0;
         canvas.drawLine(Offset(p.dx, 0), Offset(p.dx, size.height - 30), lineP);
-        
+
         final valText = formatLabel(data[i]);
         final valTp = TextPainter(
           text: TextSpan(
             text: valText,
-            style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+                fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
           ),
           textDirection: ui.TextDirection.ltr,
         )..layout();
-        
+
         // 绘制气泡背景
-        final bgR = Rect.fromCenter(center: Offset(p.dx, p.dy - 25), width: valTp.width + 16, height: valTp.height + 8);
-        canvas.drawRRect(RRect.fromRectAndRadius(bgR, const Radius.circular(8)), Paint()..color = color);
-        valTp.paint(canvas, Offset(p.dx - valTp.width / 2, p.dy - 25 - valTp.height / 2));
+        final bgR = Rect.fromCenter(
+            center: Offset(p.dx, p.dy - 25),
+            width: valTp.width + 16,
+            height: valTp.height + 8);
+        canvas.drawRRect(RRect.fromRectAndRadius(bgR, const Radius.circular(8)),
+            Paint()..color = color);
+        valTp.paint(canvas,
+            Offset(p.dx - valTp.width / 2, p.dy - 25 - valTp.height / 2));
       }
     }
   }
@@ -1977,7 +2408,8 @@ class _TinyButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool primary;
-  const _TinyButton({required this.label, required this.onTap, required this.primary});
+  const _TinyButton(
+      {required this.label, required this.onTap, required this.primary});
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;

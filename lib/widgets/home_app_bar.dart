@@ -44,10 +44,12 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
 
   @override
   Widget build(BuildContext context) {
-    final baseColor =
-        widget.isLight ? Colors.white.withValues(alpha: 0.3) : Colors.grey[800]!;
-    final highlightColor =
-        widget.isLight ? Colors.white.withValues(alpha: 0.6) : Colors.grey[700]!;
+    final baseColor = widget.isLight
+        ? Colors.white.withValues(alpha: 0.3)
+        : Colors.grey[800]!;
+    final highlightColor = widget.isLight
+        ? Colors.white.withValues(alpha: 0.6)
+        : Colors.grey[700]!;
 
     return AnimatedBuilder(
       animation: _animation,
@@ -177,7 +179,10 @@ class _HomeAppBarState extends State<HomeAppBar>
       decoration: BoxDecoration(
         color: widget.isLight
             ? Colors.white.withValues(alpha: 0.15)
-            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            : Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.5),
         shape: BoxShape.circle,
       ),
       child: Stack(
@@ -221,8 +226,8 @@ class _HomeAppBarState extends State<HomeAppBar>
                       fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
-                ),
               ),
+            ),
           if (showAlertDot && badgeCount <= 0)
             Positioned(
               right: isSmall ? 2 : 7,
@@ -328,8 +333,9 @@ class _HomeAppBarState extends State<HomeAppBar>
             widget.currentGreeting,
             style: TextStyle(
               fontSize: greetingSize,
-              color:
-                  widget.isLight ? Colors.white.withValues(alpha: 0.7) : Colors.grey,
+              color: widget.isLight
+                  ? Colors.white.withValues(alpha: 0.7)
+                  : Colors.grey,
             ),
           ),
         ],
@@ -339,7 +345,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           if (widget.showCourseButton)
             _buildActionButton(
               context,
-              icon: Icons.calendar_month_rounded,
+              icon: Icons.calendar_view_week_rounded,
               onPressed: () async {
                 await PageTransitions.pushFromRect(
                   context: context,
@@ -385,5 +391,4 @@ class _HomeAppBarState extends State<HomeAppBar>
       ],
     );
   }
-
 }
