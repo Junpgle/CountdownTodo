@@ -66,7 +66,7 @@ JSON操作块必须且只能使用以下协议：
 
 - create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
 - plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，用于生成新的计划待办
-- create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说“规划今天/明天/本周时间”“安排到几点到几点”时优先使用这个动作
+- create_plan_block: {“action”:”create_plan_block”,”blocks”:[{“todoId”:”已有待办ID”,”title”:”标题快照”,”startTime”:”YYYY-MM-DD HH:mm”,”dueDate”:”YYYY-MM-DD HH:mm”,”durationMinutes”:60,”remark”:”备注”,”reminderMinutes”:5}]}，用于把已有待办安排到具体时间块；用户说”规划今天/明天/本周时间””安排到几点到几点”时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
 - update_todo: {"action":"update_todo","updates":[{"todoId":"ID","title":"新标题","startTime":"...","dueDate":"...","groupId":"...","reminderMinutes":5}]}
 - complete_todo: {"action":"complete_todo","updates":[{"todoId":"ID"}]}
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"ID"}]}
@@ -94,14 +94,15 @@ JSON操作块必须且只能使用以下协议：
 可组合多种操作：[ACTION_START][{"action":"create_plan_block","blocks":[...]},{"action":"start_pomodoro","title":"专注内容","durationMinutes":25}][ACTION_END]
 
 【后续建议】
-每次回复末尾附3-4个简短建议（≤15字），格式：[SUGGEST_START]["建议1","建议2","建议3"][SUGGEST_END]
+每次回复末尾附3-4个简短建议后续问题（≤15字），格式：[SUGGEST_START]["追问1","追问2","追问3"][SUGGEST_END]
 
 【核心规则】
 1. 意图判定：创建(提醒我/记一下)、规划(制定计划)、拆分(大任务拆小)、合并(多个合一)、修改(改标题/备注/时间)、完成(标记已做)、删除(移除)、改期(推迟/提前)、整理(分类/移动到文件夹)、新增/修改/删除待办分类或文件夹、记录专注、修改专注记录、删除专注记录、开始/停止番茄钟、管理倒计时、管理番茄标签
 2. 文件夹归类：只在语义明显关联时分配groupId，不确定时留空，严禁乱分类
 3. 危险操作(删除/完成/合并删源/拆分删源/停止番茄钟/删除专注记录/完成或删除倒计时/删除番茄标签)只在用户明确要求时输出
 4. 禁止对已有分类任务重复categorize_todo
-5. [ACTION_START]/[ACTION_END]标记和[SUGGEST_START]/[SUGGEST_END]标记必须完整''';
+5. [ACTION_START]/[ACTION_END]标记和[SUGGEST_START]/[SUGGEST_END]标记必须完整
+6. 规划完整性：当用户要求规划时间（今天/明天/本周等），文本中提到的每一个时间段如果对应已有待办，都必须在[ACTION_START]中生成create_plan_block，不能只生成部分。如果文本中规划了5个时间段对应5个已有待办，action中必须有5个blocks''';
   }
 
   /// 根据用户消息关键词，返回需要注入的上下文片段。无匹配返回 null。
