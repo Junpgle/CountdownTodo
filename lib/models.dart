@@ -1,10 +1,9 @@
-import 'dart:math';
+import 'dart:math'; // test
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
-
 
 // ==========================================
 // 0. 时间轴相关 (Timeline)
@@ -179,15 +178,15 @@ class TodoItem {
   String? originalText; // 📄 原始分析文本
   String? groupId; // 📁 所属分组 ID (null 表示未分组)
   int? reminderMinutes; // 🚀 新增：提前几分钟提醒
-  String? creatorId; 
+  String? creatorId;
   String? teamUuid;
   String? creatorName;
   String? teamName;
   int collabType; // 🚀 0: 所有人共同协作, 1: 每个人独立完成
-  bool hasConflict; 
-  Map<String, dynamic>? serverVersionData; 
-  bool isAllDay; 
-  String? categoryId; 
+  bool hasConflict;
+  Map<String, dynamic>? serverVersionData;
+  bool isAllDay;
+  String? categoryId;
 
   TodoItem({
     String? id,
@@ -245,8 +244,10 @@ class TodoItem {
         data['dueDate']);
     if (startMs <= 0 || endMs <= startMs) return false;
 
-    final start = DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
-    final end = DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+    final start =
+        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+    final end =
+        DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
 
     // 判定为全天任务：时间正好跨越 00:00 到 23:59 或次日 00:00
     if (start.hour == 0 && start.minute == 0) {
@@ -295,7 +296,8 @@ class TodoItem {
         'is_all_day': isAllDay ? 1 : 0,
         'category_id': categoryId,
         'has_conflict': hasConflict ? 1 : 0,
-        'conflict_data': serverVersionData != null ? jsonEncode(serverVersionData) : null,
+        'conflict_data':
+            serverVersionData != null ? jsonEncode(serverVersionData) : null,
       };
 
   factory TodoItem.fromSql(Map<String, dynamic> map) => TodoItem.fromJson(map);
@@ -328,9 +330,12 @@ class TodoItem {
               ? _parseTimestamp(json['createdDate'])
               : null),
 
-      recurrence: RecurrenceType.values[int.tryParse(json['recurrence']?.toString() ?? '0') ?? 0],
+      recurrence: RecurrenceType
+          .values[int.tryParse(json['recurrence']?.toString() ?? '0') ?? 0],
       // 兼容两种字段名：后端列名 custom_interval_days 和本地存储名 customIntervalDays
-      customIntervalDays: int.tryParse(json['customIntervalDays']?.toString() ?? json['custom_interval_days']?.toString() ?? ''),
+      customIntervalDays: int.tryParse(json['customIntervalDays']?.toString() ??
+          json['custom_interval_days']?.toString() ??
+          ''),
       // 兼容两种字段名：后端列名 recurrence_end_date 和本地存储名 recurrenceEndDate
       recurrenceEndDate: _parseDateField(
           json['recurrenceEndDate'] ?? json['recurrence_end_date']),
@@ -354,9 +359,14 @@ class TodoItem {
       teamName: json['team_name'] ?? json['teamName'],
       collabType: json['collab_type'] ?? json['collabType'] ?? 0,
       isAllDay: json['is_all_day'] == 1 || json['isAllDay'] == true,
-      categoryId: json['category_id']?.toString() ?? json['categoryId']?.toString(),
+      categoryId:
+          json['category_id']?.toString() ?? json['categoryId']?.toString(),
       hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
-      serverVersionData: json['conflict_data'] != null ? (json['conflict_data'] is String ? jsonDecode(json['conflict_data']) : json['conflict_data']) : null,
+      serverVersionData: json['conflict_data'] != null
+          ? (json['conflict_data'] is String
+              ? jsonDecode(json['conflict_data'])
+              : json['conflict_data'])
+          : null,
     );
   }
 
@@ -450,7 +460,8 @@ class CountdownItem {
         'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
       };
 
-  factory CountdownItem.fromSql(Map<String, dynamic> map) => CountdownItem.fromJson(map);
+  factory CountdownItem.fromSql(Map<String, dynamic> map) =>
+      CountdownItem.fromJson(map);
 
   factory CountdownItem.fromJson(Map<String, dynamic> json) {
     // 优先读取后端的 uuid 字段
@@ -481,7 +492,11 @@ class CountdownItem {
       creatorId: json['creator_id'] ?? json['creatorId'],
       creatorName: json['creator_name'] ?? json['creatorName'],
       hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
-      conflictData: json['conflict_data'] != null ? (json['conflict_data'] is String ? jsonDecode(json['conflict_data']) : json['conflict_data']) : null,
+      conflictData: json['conflict_data'] != null
+          ? (json['conflict_data'] is String
+              ? jsonDecode(json['conflict_data'])
+              : json['conflict_data'])
+          : null,
     );
   }
 }
@@ -545,7 +560,8 @@ class TodoGroup {
         'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
       };
 
-  factory TodoGroup.fromSql(Map<String, dynamic> map) => TodoGroup.fromJson(map);
+  factory TodoGroup.fromSql(Map<String, dynamic> map) =>
+      TodoGroup.fromJson(map);
 
   factory TodoGroup.fromJson(Map<String, dynamic> json) {
     String parsedId =
@@ -563,7 +579,11 @@ class TodoGroup {
       creatorId: json['creator_id']?.toString(),
       creatorName: json['creator_name']?.toString(),
       hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
-      conflictData: json['conflict_data'] != null ? (json['conflict_data'] is String ? jsonDecode(json['conflict_data']) : json['conflict_data']) : null,
+      conflictData: json['conflict_data'] != null
+          ? (json['conflict_data'] is String
+              ? jsonDecode(json['conflict_data'])
+              : json['conflict_data'])
+          : null,
     );
   }
 }
@@ -598,8 +618,8 @@ DateTime? _parseDateField(dynamic val) {
     final n = int.tryParse(trimmed);
     if (n != null) {
       ms = n;
-      } else {
-        final dt = DateTime.tryParse(trimmed);
+    } else {
+      final dt = DateTime.tryParse(trimmed);
       if (dt != null) {
         return dt.toUtc().millisecondsSinceEpoch > 0 ? dt.toLocal() : null;
       }
@@ -665,15 +685,22 @@ class TimeLogItem {
 
   factory TimeLogItem.fromJson(Map<String, dynamic> json) {
     return TimeLogItem(
-      id: json['id']?.toString() ?? json['uuid']?.toString() ?? const Uuid().v4(),
+      id: json['id']?.toString() ??
+          json['uuid']?.toString() ??
+          const Uuid().v4(),
       title: json['title']?.toString() ?? '',
-      tagUuids: (json['tag_uuids'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      tagUuids: (json['tag_uuids'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
       startTime: (json['start_time'] as num?)?.toInt() ?? 0,
       endTime: (json['end_time'] as num?)?.toInt() ?? 0,
       remark: json['remark']?.toString(),
       version: (json['version'] as num?)?.toInt() ?? 1,
-      updatedAt: (json['updated_at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
-      createdAt: (json['created_at'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+      updatedAt: (json['updated_at'] as num?)?.toInt() ??
+          DateTime.now().millisecondsSinceEpoch,
+      createdAt: (json['created_at'] as num?)?.toInt() ??
+          DateTime.now().millisecondsSinceEpoch,
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
       deviceId: json['device_id']?.toString(),
       teamUuid: json['team_uuid']?.toString(),
@@ -681,6 +708,123 @@ class TimeLogItem {
   }
 }
 
+// ==========================================
+// 🚀 2.5 待办规划区块 (Todo Plan Blocks)
+// ==========================================
+
+enum TodoPlanStatus {
+  planned,
+  finished,
+  delayed,
+  cancelled,
+  reminded,
+  focusing,
+  missed,
+  skipped,
+}
+
+enum TodoPlanSource { manual, ai, calendar }
+
+class TodoPlanBlock {
+  String id; // Global unique ID
+  String todoId;
+  String? titleSnapshot;
+  int startTime; // UTC ms
+  int endTime; // UTC ms
+  int plannedMinutes;
+  int actualFocusSeconds;
+  TodoPlanStatus status;
+  TodoPlanSource source;
+  String? remark;
+  int reminderMinutes;
+  List<String> pomodoroRecordIds;
+  int version;
+  int createdAt;
+  int updatedAt;
+  bool isDeleted;
+  bool isChangedLocally;
+  String? deviceId;
+
+  String get uuid => id; // Alias for database compatibility
+
+  TodoPlanBlock({
+    String? id,
+    required this.todoId,
+    this.titleSnapshot,
+    required this.startTime,
+    required this.endTime,
+    this.plannedMinutes = 0,
+    this.actualFocusSeconds = 0,
+    this.status = TodoPlanStatus.planned,
+    this.source = TodoPlanSource.manual,
+    this.remark,
+    this.reminderMinutes = 5,
+    List<String>? pomodoroRecordIds,
+    this.version = 1,
+    int? createdAt,
+    int? updatedAt,
+    this.isDeleted = false,
+    this.isChangedLocally = false,
+    this.deviceId,
+  })  : id = id ?? const Uuid().v4(),
+        pomodoroRecordIds = pomodoroRecordIds ?? [],
+        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  void markAsChanged() {
+    isChangedLocally = true;
+    updatedAt = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  Map<String, dynamic> toJson() => {
+        'uuid': id,
+        'todo_uuid': todoId,
+        'title_snapshot': titleSnapshot,
+        'start_time': startTime,
+        'end_time': endTime,
+        'planned_minutes': plannedMinutes,
+        'actual_focus_seconds': actualFocusSeconds,
+        'status': status.index,
+        'source': source.index,
+        'remark': remark,
+        'reminder_minutes': reminderMinutes,
+        'pomodoro_record_ids': pomodoroRecordIds.join(','),
+        'version': version,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'is_deleted': isDeleted ? 1 : 0,
+        'device_id': deviceId,
+      };
+
+  Map<String, dynamic> toDbJson() => toJson();
+
+  factory TodoPlanBlock.fromJson(Map<String, dynamic> j) => TodoPlanBlock(
+        id: (j['uuid'] ?? j['id'])?.toString(),
+        todoId:
+            (j['todo_uuid'] ?? j['todo_id'] ?? j['todoId'])?.toString() ?? '',
+        titleSnapshot: (j['title_snapshot'] ?? j['titleSnapshot'])?.toString(),
+        startTime: (j['start_time'] as num?)?.toInt() ?? 0,
+        endTime: (j['end_time'] as num?)?.toInt() ?? 0,
+        plannedMinutes: (j['planned_minutes'] as num?)?.toInt() ?? 0,
+        actualFocusSeconds: (j['actual_focus_seconds'] as num?)?.toInt() ?? 0,
+        status: TodoPlanStatus.values[(j['status'] as int? ?? 0)
+            .clamp(0, TodoPlanStatus.values.length - 1)],
+        source: TodoPlanSource.values[(j['source'] as int? ?? 0)
+            .clamp(0, TodoPlanSource.values.length - 1)],
+        remark: j['remark']?.toString(),
+        reminderMinutes: (j['reminder_minutes'] as num?)?.toInt() ?? 5,
+        pomodoroRecordIds: (j['pomodoro_record_ids'] as String?)
+                ?.split(',')
+                .where((s) => s.isNotEmpty)
+                .toList() ??
+            [],
+        version: (j['version'] as num?)?.toInt() ?? 1,
+        createdAt: (j['created_at'] as num?)?.toInt(),
+        updatedAt: (j['updated_at'] as num?)?.toInt(),
+        isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
+        deviceId: j['device_id']?.toString(),
+      );
+}
 // ==========================================
 // 🚀 3. 课表相关
 // ==========================================
@@ -718,54 +862,60 @@ class CourseItem {
     int? updatedAt,
     int? createdAt,
     this.isDeleted = false,
-  }) : uuid = uuid ?? generateDeterministicUuid(courseName, weekday, startTime, endTime, weekIndex, roomName),
-       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
+  })  : uuid = uuid ??
+            generateDeterministicUuid(
+                courseName, weekday, startTime, endTime, weekIndex, roomName),
+        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
-  static String generateDeterministicUuid(String name, int day, int start, int end, int week, String room) {
-    const namespace = '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Namespace URL as seed
+  static String generateDeterministicUuid(
+      String name, int day, int start, int end, int week, String room) {
+    const namespace =
+        '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Namespace URL as seed
     final input = "$name|$day|$start|$end|$week|$room";
     return const Uuid().v5(namespace, input);
   }
 
-  String get formattedStartTime => '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
-  String get formattedEndTime => '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
+  String get formattedStartTime =>
+      '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
+  String get formattedEndTime =>
+      '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
 
   Map<String, dynamic> toJson() => {
-    'uuid': uuid,
-    'courseName': courseName,
-    'teacherName': teacherName,
-    'date': date,
-    'weekday': weekday,
-    'startTime': startTime,
-    'endTime': endTime,
-    'weekIndex': weekIndex,
-    'roomName': roomName,
-    'lessonType': lessonType,
-    'team_uuid': teamUuid,
-    'version': version,
-    'updated_at': updatedAt,
-    'created_at': createdAt,
-    'is_deleted': isDeleted ? 1 : 0,
-  };
+        'uuid': uuid,
+        'courseName': courseName,
+        'teacherName': teacherName,
+        'date': date,
+        'weekday': weekday,
+        'startTime': startTime,
+        'endTime': endTime,
+        'weekIndex': weekIndex,
+        'roomName': roomName,
+        'lessonType': lessonType,
+        'team_uuid': teamUuid,
+        'version': version,
+        'updated_at': updatedAt,
+        'created_at': createdAt,
+        'is_deleted': isDeleted ? 1 : 0,
+      };
 
   factory CourseItem.fromJson(Map<String, dynamic> json) => CourseItem(
-    uuid: json['uuid'] ?? json['id'],
-    courseName: json['courseName'] ?? json['course_name'] ?? '未知课程',
-    teacherName: json['teacherName'] ?? json['teacher_name'] ?? '未知教师',
-    date: json['date'] ?? '',
-    weekday: json['weekday'] ?? 1,
-    startTime: json['startTime'] ?? json['start_time'] ?? 0,
-    endTime: json['endTime'] ?? json['end_time'] ?? 0,
-    weekIndex: json['weekIndex'] ?? json['week_index'] ?? 1,
-    roomName: json['roomName'] ?? json['room_name'] ?? '未知地点',
-    lessonType: json['lessonType'] ?? json['lesson_type'],
-    teamUuid: json['team_uuid'] ?? json['teamUuid'],
-    version: (json['version'] as num?)?.toInt() ?? 1,
-    updatedAt: (json['updated_at'] as num?)?.toInt(),
-    createdAt: (json['created_at'] as num?)?.toInt(),
-    isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
-  );
+        uuid: json['uuid'] ?? json['id'],
+        courseName: json['courseName'] ?? json['course_name'] ?? '未知课程',
+        teacherName: json['teacherName'] ?? json['teacher_name'] ?? '未知教师',
+        date: json['date'] ?? '',
+        weekday: json['weekday'] ?? 1,
+        startTime: json['startTime'] ?? json['start_time'] ?? 0,
+        endTime: json['endTime'] ?? json['end_time'] ?? 0,
+        weekIndex: json['weekIndex'] ?? json['week_index'] ?? 1,
+        roomName: json['roomName'] ?? json['room_name'] ?? '未知地点',
+        lessonType: json['lessonType'] ?? json['lesson_type'],
+        teamUuid: json['team_uuid'] ?? json['teamUuid'],
+        version: (json['version'] as num?)?.toInt() ?? 1,
+        updatedAt: (json['updated_at'] as num?)?.toInt(),
+        createdAt: (json['created_at'] as num?)?.toInt(),
+        isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
+      );
 }
 
 // ==========================================
@@ -790,12 +940,12 @@ class TeamMember {
   });
 
   factory TeamMember.fromJson(Map<String, dynamic> json) => TeamMember(
-    userId: (json['user_id'] as num).toInt(),
-    username: json['username'] as String?,
-    email: json['email'] as String?,
-    role: (json['role'] == 0) ? TeamRole.admin : TeamRole.member,
-    joinedAt: _parseTimestamp(json['joined_at']),
-  );
+        userId: (json['user_id'] as num).toInt(),
+        username: json['username'] as String?,
+        email: json['email'] as String?,
+        role: (json['role'] == 0) ? TeamRole.admin : TeamRole.member,
+        joinedAt: _parseTimestamp(json['joined_at']),
+      );
 }
 
 class Team {
@@ -818,14 +968,16 @@ class Team {
   });
 
   factory Team.fromJson(Map<String, dynamic> json) => Team(
-    uuid: json['uuid']?.toString() ?? '',
-    name: json['name']?.toString() ?? '未命名团队',
-    creatorId: int.tryParse(json['creator_id']?.toString() ?? '0') ?? 0,
-    createdAt: _parseTimestamp(json['created_at']),
-    userRole: (json['role'] == 0 || json['user_role'] == 0) ? TeamRole.admin : TeamRole.member,
-    memberCount: int.tryParse(json['member_count']?.toString() ?? '1') ?? 1,
-    inviteCode: json['invite_code']?.toString(),
-  );
+        uuid: json['uuid']?.toString() ?? '',
+        name: json['name']?.toString() ?? '未命名团队',
+        creatorId: int.tryParse(json['creator_id']?.toString() ?? '0') ?? 0,
+        createdAt: _parseTimestamp(json['created_at']),
+        userRole: (json['role'] == 0 || json['user_role'] == 0)
+            ? TeamRole.admin
+            : TeamRole.member,
+        memberCount: int.tryParse(json['member_count']?.toString() ?? '1') ?? 1,
+        inviteCode: json['invite_code']?.toString(),
+      );
 }
 
 class TeamInvitation {
@@ -852,11 +1004,13 @@ class ConflictInfo {
   });
 
   factory ConflictInfo.fromJson(Map<String, dynamic> json) => ConflictInfo(
-    type: json['type']?.toString() ?? 'unknown',
-    item: (json['item'] as Map?)?.cast<String, dynamic>() ?? {},
-    conflictWith: (json['conflict_with'] as Map?)?.cast<String, dynamic>() ?? {},
-  );
+        type: json['type']?.toString() ?? 'unknown',
+        item: (json['item'] as Map?)?.cast<String, dynamic>() ?? {},
+        conflictWith:
+            (json['conflict_with'] as Map?)?.cast<String, dynamic>() ?? {},
+      );
 }
+
 class TeamAnnouncement {
   final String uuid;
   final String teamUuid;
@@ -898,23 +1052,35 @@ class TeamAnnouncement {
   }
 
   Map<String, dynamic> toJson() => {
-    'uuid': uuid,
-    'team_uuid': teamUuid,
-    'title': title,
-    'content': content,
-    'creator_name': creatorName,
-    'created_at': createdAt,
-    'expires_at': expiresAt,
-    'is_priority': isPriority ? 1 : 0,
-    'is_read': isRead ? 1 : 0,
-  };
+        'uuid': uuid,
+        'team_uuid': teamUuid,
+        'title': title,
+        'content': content,
+        'creator_name': creatorName,
+        'created_at': createdAt,
+        'expires_at': expiresAt,
+        'is_priority': isPriority ? 1 : 0,
+        'is_read': isRead ? 1 : 0,
+      };
 }
 
 // ==========================================
 // 🔍 5. 全局搜索模型 (Global Search)
 // ==========================================
 
-enum SearchResultType { todo, todoGroup, countdown, course, log, setting, action, tag, app, recommend, history }
+enum SearchResultType {
+  todo,
+  todoGroup,
+  countdown,
+  course,
+  log,
+  setting,
+  action,
+  tag,
+  app,
+  recommend,
+  history
+}
 
 class SearchResult {
   final String id;

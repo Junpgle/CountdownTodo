@@ -154,7 +154,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 24, // V24: 强制触发 courses 老库字段自愈
+          version: 25, // V25: 新增 todo_plan_blocks 规划块表
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -559,6 +559,41 @@ class DatabaseHelper {
                 debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
               }
             }
+            if (oldVersion < 25) {
+              try {
+                // 1. 创建规划块表
+                await db.execute('''
+                CREATE TABLE IF NOT EXISTS todo_plan_blocks (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT UNIQUE,
+                  todo_uuid TEXT,
+                  title_snapshot TEXT,
+                  start_time INTEGER,
+                  end_time INTEGER,
+                  planned_minutes INTEGER,
+                  status INTEGER,
+                  actual_focus_seconds INTEGER,
+                  pomodoro_record_ids TEXT,
+                  source INTEGER,
+                  remark TEXT,
+                  reminder_minutes INTEGER,
+                  is_deleted INTEGER DEFAULT 0,
+                  version INTEGER DEFAULT 1,
+                  created_at INTEGER,
+                  updated_at INTEGER,
+                  device_id TEXT
+                )
+              ''');
+                // 2. 为 pomodoro_records 补全 plan_block_id
+                final info = await db.rawQuery("PRAGMA table_info(pomodoro_records)");
+                if (!info.any((row) => row['name'] == 'plan_block_id')) {
+                  await db.execute("ALTER TABLE pomodoro_records ADD COLUMN plan_block_id TEXT;");
+                }
+                debugPrint("✅ Database: 升级 V25 (新增规划块与关联字段)");
+              } catch (e) {
+                debugPrint("⚠️ Database: 升级 V25 失败: $e");
+              }
+            }
           },
           onOpen: (db) async {
             await ensureCourseTableSchema(db);
@@ -939,6 +974,7 @@ class DatabaseHelper {
         actual_duration $integerType,
         status $textType,
         device_id $jsonType,
+        plan_block_id TEXT,
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,
@@ -1037,6 +1073,30 @@ class DatabaseHelper {
       )
     ''');
     debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
+
+    // 13. 创建规划块表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS todo_plan_blocks (
+        id $idType,
+        uuid $textType UNIQUE,
+        todo_uuid $jsonType,
+        title_snapshot $textType,
+        start_time $integerType,
+        end_time $integerType,
+        planned_minutes $integerType,
+        status $integerType DEFAULT 0,
+        actual_focus_seconds $integerType DEFAULT 0,
+        pomodoro_record_ids $jsonType,
+        source $integerType DEFAULT 0,
+        remark $jsonType,
+        reminder_minutes $integerType DEFAULT 5,
+        is_deleted $boolType DEFAULT 0,
+        version $integerType DEFAULT 1,
+        created_at $integerType,
+        updated_at $integerType,
+        device_id $jsonType
+      )
+    ''');
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)
