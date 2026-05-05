@@ -26,11 +26,13 @@ class AiChatService {
     double temperature = 0.7,
     int maxTokens = 2000,
     Duration timeout = const Duration(seconds: 60),
+    Completer<void>? cancelToken,
   }) async* {
     final client = http.Client();
     var chunkCount = 0;
     var emittedCount = 0;
     var lastError = '';
+    var cancelled = false;
 
     try {
       final request = http.Request('POST', Uri.parse(_resolveApiUrl(apiUrl)));
@@ -54,6 +56,10 @@ class AiChatService {
 
       var buffer = '';
       await for (final chunk in response.stream.transform(utf8.decoder)) {
+        if (cancelToken?.isCompleted == true) {
+          cancelled = true;
+          break;
+        }
         buffer += chunk;
         while (true) {
           final newlineIdx = buffer.indexOf('\n');
@@ -100,7 +106,7 @@ class AiChatService {
         }
       }
 
-      if (chunkCount == 0 || emittedCount == 0) {
+      if (!cancelled && (chunkCount == 0 || emittedCount == 0)) {
         throw Exception(
           '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''}',
         );

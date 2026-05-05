@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -80,6 +81,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
   List<TodoPlanBlock> _planBlocks = [];
+  Completer<void>? _cancelGeneration;
 
   // 🚀 宽屏适配相关
   bool _sidebarVisible = true;
@@ -447,6 +449,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     _inputCtrl.clear();
     _scrollToBottom();
 
+    _cancelGeneration = Completer<void>();
+
     try {
       final List<Map<String, String>> apiMessages = _buildApiMessages();
       String fullContent = '';
@@ -458,6 +462,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         model: model,
         messages: apiMessages,
         deepThinking: _deepThinking,
+        cancelToken: _cancelGeneration,
       )) {
         if (chunk.reasoningContent.isNotEmpty) {
           reasoningContent += chunk.reasoningContent;
@@ -477,6 +482,48 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             _scrollToBottom();
           }
         }
+      }
+
+      // 用户主动打断：保存已有内容为部分回复
+      if (_cancelGeneration?.isCompleted == true) {
+        if (fullContent.isNotEmpty || reasoningContent.isNotEmpty) {
+          final existingTodoTitles = {
+            for (final todo in widget.todos)
+              if (todo['id'] != null)
+                todo['id'].toString(): '${todo['title'] ?? ''}',
+          };
+          final todoActions = AiActionParser.extractTodoActions(
+            fullContent,
+            originalText: text,
+            existingTodoTitles: existingTodoTitles,
+          );
+          final cleanContent = AiActionParser.cleanActionContent(fullContent);
+          setState(() {
+            final assistantMsg = ChatMessage(
+              role: ChatRole.assistant,
+              content: '$cleanContent\n\n*(已中断)*',
+              rawContent: fullContent,
+              reasoningContent: reasoningContent,
+              smartContext: _lastRequestSmartContext,
+              todoActions: todoActions.isNotEmpty ? todoActions : null,
+            );
+            _messages.add(assistantMsg);
+            _streamingContent = '';
+            _streamingReasoning = '';
+            _isLoading = false;
+            _cancelGeneration = null;
+            ChatStorageService.addMessage(assistantMsg);
+          });
+        } else {
+          setState(() {
+            _streamingContent = '';
+            _streamingReasoning = '';
+            _isLoading = false;
+            _cancelGeneration = null;
+          });
+        }
+        _scrollToBottom();
+        return;
       }
 
       if (fullContent.isEmpty && reasoningContent.isEmpty) {
@@ -510,6 +557,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _streamingContent = '';
         _streamingReasoning = '';
         _isLoading = false;
+        _cancelGeneration = null;
         _suggestions = inlineSuggestions.isNotEmpty
             ? inlineSuggestions
             : _getDefaultSuggestions();
@@ -524,6 +572,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       setState(() {
         _streamingContent = '';
         _isLoading = false;
+        _cancelGeneration = null;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -531,6 +580,27 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         );
       }
     }
+  }
+
+  void _stopGeneration() {
+    if (_cancelGeneration != null && !_cancelGeneration!.isCompleted) {
+      _cancelGeneration!.complete();
+    }
+  }
+
+  void _retryLastMessage() {
+    // 找到最后一条用户消息
+    final lastUserMsg = _messages.lastWhere(
+      (m) => m.role == ChatRole.user,
+      orElse: () => ChatMessage(role: ChatRole.user, content: ''),
+    );
+    if (lastUserMsg.content.isEmpty) return;
+    // 删除最后一条助手消息（如果有）
+    if (_messages.isNotEmpty && _messages.last.role == ChatRole.assistant) {
+      _messages.removeLast();
+    }
+    _inputCtrl.text = lastUserMsg.content;
+    _sendMessage();
   }
 
   Future<void> _generateSessionTitle() async {
@@ -2727,7 +2797,6 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.deletePomodoroTag:
         return '删除番茄标签';
       case AiTodoActionType.createTodo:
-      case AiTodoActionType.createPlanBlock:
       case AiTodoActionType.unknown:
         return '';
     }
@@ -3591,6 +3660,18 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     ),
                   ),
                   const SizedBox(width: 4),
+                  if (!_isLoading &&
+                      _messages.isNotEmpty &&
+                      _messages.last.role == ChatRole.assistant)
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      tooltip: '重试',
+                      onPressed: _retryLastMessage,
+                      style: IconButton.styleFrom(
+                        foregroundColor: colorScheme.onSurfaceVariant,
+                        padding: const EdgeInsets.all(8),
+                      ),
+                    ),
                   IconButton(
                     icon: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 180),
@@ -3604,14 +3685,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                         ),
                       ),
                       child: _isLoading
-                          ? SizedBox(
-                              key: const ValueKey('loading'),
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: colorScheme.onPrimary,
-                              ),
+                          ? const Icon(
+                              Icons.stop_rounded,
+                              key: ValueKey('stop'),
+                              size: 20,
                             )
                           : const Icon(
                               Icons.arrow_upward_rounded,
@@ -3619,7 +3696,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                               size: 20,
                             ),
                     ),
-                    onPressed: _isLoading ? null : _sendMessage,
+                    onPressed: _isLoading ? _stopGeneration : _sendMessage,
                     style: IconButton.styleFrom(
                       backgroundColor: colorScheme.primary,
                       foregroundColor: colorScheme.onPrimary,
