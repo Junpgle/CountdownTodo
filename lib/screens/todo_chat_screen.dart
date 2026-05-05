@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
@@ -460,6 +463,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         final assistantMsg = ChatMessage(
           role: ChatRole.assistant,
           content: cleanContent,
+          rawContent: fullContent,
           reasoningContent: reasoningContent,
           todoActions: todoActions.isNotEmpty ? todoActions : null,
         );
@@ -1671,342 +1675,342 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: isDark
-              ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.2)
-              : colorScheme.primaryContainer.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: colorScheme.primary.withValues(alpha: 0.1),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.add_task_outlined,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    hasPomodoroActions
-                        ? '建议操作番茄钟'
-                        : hasTimeLogActions
-                            ? '建议整理专注记录'
-                            : hasCountdownActions
-                                ? '建议整理倒计时'
-                                : hasTagActions
-                                    ? '建议整理番茄标签'
-                                    : hasExistingMutations
-                                        ? '建议整理待办'
-                                        : '建议添加待办',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
+      child: _IridescentActionPanel(
+        isDark: isDark,
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: isDark
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.24)
+                : colorScheme.primaryContainer.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-            ),
-            ...msg.todoActions!.asMap().entries.map((entry) {
-              final todo = entry.value;
-              if (todo.isAdded) return const SizedBox.shrink();
-
-              final isSelected = todo.isSelected;
-              final currentGroupId = todo.groupId;
-              final startTime = todo.startTime;
-              final dueDate = todo.dueDate;
-              final isAllDay = todo.isAllDay;
-              final recurrence = todo.recurrence;
-              final timeStr =
-                  _formatTodoTimeRange(startTime, dueDate, isAllDay);
-
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.05)
-                      : Colors.white.withValues(alpha: 0.8),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: Checkbox(
-                            value: isSelected,
-                            onChanged: (val) {
-                              setState(() {
-                                todo.isSelected = val == true;
-                              });
-                              _saveHistorySilently();
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  _buildActionBadge(todo),
-                                  Expanded(
-                                    child: Text(
-                                      todo.title ?? '未命名待办',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (todo.mutatesExistingTodo)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Text(
-                                    _getMutationHint(todo),
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        color:
-                                            Colors.grey.withValues(alpha: 0.8),
-                                        fontStyle: FontStyle.italic),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          tooltip: '编辑执行内容',
-                          onPressed: () => _editAction(todo),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ],
+                    Icon(
+                      Icons.add_task_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 16,
                     ),
-                    // 时间和循环信息
-                    Padding(
-                      padding: const EdgeInsets.only(left: 28, top: 4),
-                      child: Row(
+                    const SizedBox(width: 6),
+                    Text(
+                      hasPomodoroActions
+                          ? '建议操作番茄钟'
+                          : hasTimeLogActions
+                              ? '建议整理专注记录'
+                              : hasCountdownActions
+                                  ? '建议整理倒计时'
+                                  : hasTagActions
+                                      ? '建议整理番茄标签'
+                                      : hasExistingMutations
+                                          ? '建议整理待办'
+                                          : '建议添加待办',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...msg.todoActions!.asMap().entries.map((entry) {
+                final todo = entry.value;
+                if (todo.isAdded) return const SizedBox.shrink();
+
+                final isSelected = todo.isSelected;
+                final currentGroupId = todo.groupId;
+                final startTime = todo.startTime;
+                final dueDate = todo.dueDate;
+                final isAllDay = todo.isAllDay;
+                final recurrence = todo.recurrence;
+                final timeStr =
+                    _formatTodoTimeRange(startTime, dueDate, isAllDay);
+
+                return Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.white.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Icon(
-                            Icons.access_time,
-                            size: 13,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.5),
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: Checkbox(
+                              value: isSelected,
+                              onChanged: (val) {
+                                setState(() {
+                                  todo.isSelected = val == true;
+                                });
+                                _saveHistorySilently();
+                              },
+                            ),
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            timeStr,
-                            style: TextStyle(
-                              fontSize: 11,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    _buildActionBadge(todo),
+                                    Expanded(
+                                      child: Text(
+                                        todo.title ?? '未命名待办',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (todo.mutatesExistingTodo)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      _getMutationHint(todo),
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.grey
+                                              .withValues(alpha: 0.8),
+                                          fontStyle: FontStyle.italic),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            tooltip: '编辑执行内容',
+                            onPressed: () => _editAction(todo),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
+                      // 时间和循环信息
+                      Padding(
+                        padding: const EdgeInsets.only(left: 28, top: 4),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.access_time,
+                              size: 13,
                               color: Theme.of(context)
                                   .colorScheme
                                   .onSurface
                                   .withValues(alpha: 0.5),
                             ),
-                          ),
-                          if (recurrence != 'none') ...[
-                            const SizedBox(width: 12),
-                            Icon(
-                              Icons.repeat,
-                              size: 13,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
                             const SizedBox(width: 4),
                             Text(
-                              _getRecurrenceText(recurrence),
+                              timeStr,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.w500,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.5),
                               ),
                             ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    if (todo.remark != null && todo.remark!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 28, top: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.notes,
-                              size: 13,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.4),
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                todo.remark!,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withValues(alpha: 0.6),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    _buildChangeSummary(todo),
-                    if (_isDangerousAction(todo))
-                      Padding(
-                        padding: const EdgeInsets.only(left: 28, top: 6),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.warning_amber_rounded,
-                              size: 13,
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                _getDangerHint(todo),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Theme.of(context).colorScheme.error,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (todo.isTodoAction)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 28, top: 6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            children: [
+                            if (recurrence != 'none') ...[
+                              const SizedBox(width: 12),
                               Icon(
-                                Icons.folder_outlined,
+                                Icons.repeat,
                                 size: 13,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 4),
+                              Text(
+                                _getRecurrenceText(recurrence),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (todo.remark != null && todo.remark!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 28, top: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.notes,
+                                size: 13,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.4),
+                              ),
+                              const SizedBox(width: 4),
                               Expanded(
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String?>(
-                                    value: widget.todoGroups.any(
-                                      (g) => g.id == currentGroupId,
-                                    )
-                                        ? currentGroupId
-                                        : null,
-                                    isDense: true,
-                                    icon: const Icon(Icons.arrow_drop_down,
-                                        size: 16),
-                                    hint: const Text('选择分类',
-                                        style: TextStyle(fontSize: 11)),
-                                    items: [
-                                      const DropdownMenuItem<String?>(
-                                        value: null,
-                                        child: Text('默认分类',
-                                            style: TextStyle(fontSize: 11)),
-                                      ),
-                                      ...widget.todoGroups.map(
-                                        (g) => DropdownMenuItem<String?>(
-                                          value: g.id,
-                                          child: Text(
-                                            g.name,
-                                            style:
-                                                const TextStyle(fontSize: 11),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                    onChanged: (val) {
-                                      setState(() {
-                                        todo.groupId = val;
-                                      });
-                                      _saveHistorySilently();
-                                    },
+                                child: Text(
+                                  todo.remark!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.6),
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              );
-            }),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: msg.todoActions!.any(
-                    (t) => t.isSelected && !t.isAdded,
-                  )
-                      ? () => _addTodosForMessage(msg)
-                      : null,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 0),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.add_task, size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        '执行所选操作 (${msg.todoActions!.where((t) => t.isSelected && !t.isAdded).length})',
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.bold),
-                      ),
+                      _buildChangeSummary(todo),
+                      if (_isDangerousAction(todo))
+                        Padding(
+                          padding: const EdgeInsets.only(left: 28, top: 6),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                size: 13,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  _getDangerHint(todo),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(context).colorScheme.error,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (todo.isTodoAction)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 28, top: 6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.folder_outlined,
+                                  size: 13,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String?>(
+                                      value: widget.todoGroups.any(
+                                        (g) => g.id == currentGroupId,
+                                      )
+                                          ? currentGroupId
+                                          : null,
+                                      isDense: true,
+                                      icon: const Icon(Icons.arrow_drop_down,
+                                          size: 16),
+                                      hint: const Text('选择分类',
+                                          style: TextStyle(fontSize: 11)),
+                                      items: [
+                                        const DropdownMenuItem<String?>(
+                                          value: null,
+                                          child: Text('默认分类',
+                                              style: TextStyle(fontSize: 11)),
+                                        ),
+                                        ...widget.todoGroups.map(
+                                          (g) => DropdownMenuItem<String?>(
+                                            value: g.id,
+                                            child: Text(
+                                              g.name,
+                                              style:
+                                                  const TextStyle(fontSize: 11),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (val) {
+                                        setState(() {
+                                          todo.groupId = val;
+                                        });
+                                        _saveHistorySilently();
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
+                  ),
+                );
+              }),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: msg.todoActions!.any(
+                      (t) => t.isSelected && !t.isAdded,
+                    )
+                        ? () => _addTodosForMessage(msg)
+                        : null,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 0),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.add_task, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          '执行所选操作 (${msg.todoActions!.where((t) => t.isSelected && !t.isAdded).length})',
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2785,6 +2789,65 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
+  String _buildRawReplyDebugText(ChatMessage msg) {
+    final sections = <String>[];
+    if (msg.rawContent.trim().isNotEmpty) {
+      sections.add(msg.rawContent.trim());
+    } else {
+      sections.add('当前历史消息没有保存模型原始回复。');
+      if (msg.content.trim().isNotEmpty) {
+        sections.add('[CLEANED_CONTENT]\n${msg.content.trim()}');
+      }
+    }
+
+    final actions = msg.todoActions;
+    if (actions != null && actions.isNotEmpty) {
+      const encoder = JsonEncoder.withIndent('  ');
+      sections.add('[PARSED_ACTIONS]\n${encoder.convert(
+        actions.map((action) => action.toJson()).toList(),
+      )}');
+    }
+
+    if (msg.reasoningContent.trim().isNotEmpty) {
+      sections.add('[REASONING]\n${msg.reasoningContent.trim()}');
+    }
+
+    return sections.join('\n\n');
+  }
+
+  Future<void> _showRawReplyDialog(ChatMessage msg) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('模型原始回复'),
+        content: SizedBox(
+          width: MediaQuery.of(context).size.width * 0.82,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720, maxHeight: 560),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                _buildRawReplyDebugText(msg),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.45,
+                  color: colorScheme.onSurface,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.role == ChatRole.user;
     final timeStr = DateFormat('HH:mm').format(msg.timestamp);
@@ -2915,14 +2978,53 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     _buildMessageTodoActions(msg, isDark),
                   Padding(
                     padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
-                    child: Text(
-                      timeStr,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w300,
-                        color: colorScheme.onSurfaceVariant
-                            .withValues(alpha: 0.75),
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          timeStr,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w300,
+                            color: colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.75),
+                          ),
+                        ),
+                        if (!isUser) ...[
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: () => _showRawReplyDialog(msg),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.data_object_rounded,
+                                    size: 12,
+                                    color: colorScheme.primary
+                                        .withValues(alpha: 0.82),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '原始回复',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w500,
+                                      color: colorScheme.primary
+                                          .withValues(alpha: 0.88),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],
@@ -3309,6 +3411,141 @@ class _PressableScaleState extends State<_PressableScale> {
         ),
       ),
     );
+  }
+}
+
+class _IridescentActionPanel extends StatefulWidget {
+  final Widget child;
+  final bool isDark;
+
+  const _IridescentActionPanel({
+    required this.child,
+    required this.isDark,
+  });
+
+  @override
+  State<_IridescentActionPanel> createState() => _IridescentActionPanelState();
+}
+
+class _IridescentActionPanelState extends State<_IridescentActionPanel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 5200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return CustomPaint(
+            foregroundPainter: _IridescentBorderPainter(
+              progress: _controller.value,
+              isDark: widget.isDark,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(2.5),
+              child: child,
+            ),
+          );
+        },
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _IridescentBorderPainter extends CustomPainter {
+  final double progress;
+  final bool isDark;
+
+  const _IridescentBorderPainter({
+    required this.progress,
+    required this.isDark,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+
+    final rect = Offset.zero & size;
+    final center = rect.center;
+    final borderRect = rect.deflate(2.0);
+    final radius = BorderRadius.circular(18).toRRect(borderRect);
+    final colors = <Color>[
+      const Color(0xFF5EFCE8).withValues(alpha: isDark ? 0.88 : 0.82),
+      const Color(0xFF736EFE).withValues(alpha: isDark ? 0.82 : 0.74),
+      const Color(0xFFFF7CE5).withValues(alpha: isDark ? 0.90 : 0.78),
+      const Color(0xFFFFF275).withValues(alpha: isDark ? 0.86 : 0.72),
+      const Color(0xFF7CFF8A).withValues(alpha: isDark ? 0.84 : 0.70),
+      const Color(0xFF5EFCE8).withValues(alpha: isDark ? 0.88 : 0.82),
+    ];
+    final shader = SweepGradient(
+      colors: colors,
+      stops: const [0, 0.18, 0.38, 0.58, 0.78, 1],
+      transform: GradientRotation(progress * math.pi * 2),
+    ).createShader(rect);
+
+    final glowPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 5.0
+      ..shader = shader
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    canvas.drawRRect(radius, glowPaint);
+
+    for (var i = 0; i < 3; i++) {
+      final wave = math.sin((progress * math.pi * 2) + i * 1.7);
+      final drift = Offset(
+        math.cos(progress * math.pi * 2 + i) * 0.8,
+        math.sin(progress * math.pi * 2 + i * 1.3) * 0.8,
+      );
+      final rippleRect = Rect.fromCenter(
+        center: center + drift,
+        width: borderRect.width - (i * 1.2) + wave,
+        height: borderRect.height - (i * 1.2) - wave,
+      );
+      final ripple = BorderRadius.circular(18.0 - i).toRRect(rippleRect);
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = i == 0 ? 2.1 : 1.1
+        ..shader = shader
+        ..blendMode = BlendMode.srcOver;
+      canvas.drawRRect(ripple, paint);
+    }
+
+    final sheenPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = Colors.white.withValues(alpha: isDark ? 0.28 : 0.38);
+    final highlightRect = borderRect.deflate(1.2).shift(
+          Offset(
+            math.cos(progress * math.pi * 2) * 0.7,
+            math.sin(progress * math.pi * 2) * 0.7,
+          ),
+        );
+    canvas.drawRRect(
+        BorderRadius.circular(16).toRRect(highlightRect), sheenPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _IridescentBorderPainter oldDelegate) {
+    return oldDelegate.progress != progress || oldDelegate.isDark != isDark;
   }
 }
 

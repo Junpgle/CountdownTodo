@@ -3,6 +3,18 @@ import 'dart:convert';
 import '../models/ai_todo_action.dart';
 
 class AiActionParser {
+  static const String _actionTypes = 'create_todo|update_todo|complete_todo|'
+      'delete_todo|reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
+      'categorize_todo|plan_todos|split_todo|merge_todos|'
+      'create_time_log|update_time_log|delete_time_log|'
+      'start_pomodoro|stop_pomodoro|'
+      'create_countdown|update_countdown|complete_countdown|delete_countdown|'
+      'create_todo_group|update_todo_group|delete_todo_group|'
+      'create_group|update_group|delete_group|'
+      'create_category|update_category|delete_category|'
+      'create_folder|update_folder|delete_folder|'
+      'create_pomodoro_tag|update_pomodoro_tag|delete_pomodoro_tag';
+
   static List<AiTodoAction> extractTodoActions(
     String content, {
     required String originalText,
@@ -50,6 +62,18 @@ class AiActionParser {
       }
     }
 
+    if (actions.isEmpty) {
+      final contentWithoutSuggestions = content.replaceAll(
+        RegExp(r'\[SUGGEST_START\].*?\[SUGGEST_END\]', dotAll: true),
+        '',
+      );
+      for (final candidate in _findLooseActionJsonBlocks(
+        contentWithoutSuggestions,
+      )) {
+        parseAndProcess(candidate);
+      }
+    }
+
     for (final action in actions) {
       action.originalText ??= originalText;
     }
@@ -69,26 +93,9 @@ class AiActionParser {
 
     // Only remove well-formed JSON arrays/objects that start with "action" key
     // and contain known action types, to avoid accidentally removing user text.
-    const actionTypes = 'create_todo|update_todo|complete_todo|delete_todo|'
-        'reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
-        'categorize_todo|plan_todos|split_todo|merge_todos|'
-        'create_time_log|update_time_log|delete_time_log|'
-        'start_pomodoro|stop_pomodoro|'
-        'create_countdown|update_countdown|complete_countdown|delete_countdown|'
-        'create_todo_group|update_todo_group|delete_todo_group|'
-        'create_group|update_group|delete_group|'
-        'create_category|update_category|delete_category|'
-        'create_folder|update_folder|delete_folder|'
-        'create_pomodoro_tag|update_pomodoro_tag|delete_pomodoro_tag';
-    final looseActionBlock = RegExp(
-      '\\[\\s*\\{\\s*"action"\\s*:\\s*"(?:$actionTypes)"[\\s\\S]*?\\}\\s*\\]',
-    );
-    cleaned = cleaned.replaceAll(looseActionBlock, '');
-
-    final looseActionObj = RegExp(
-      '\\{\\s*"action"\\s*:\\s*"(?:$actionTypes)"[\\s\\S]*?\\}',
-    );
-    cleaned = cleaned.replaceAll(looseActionObj, '');
+    for (final candidate in _findLooseActionJsonBlocks(cleaned)) {
+      cleaned = cleaned.replaceAll(candidate, '');
+    }
 
     return cleaned.trim();
   }
@@ -119,7 +126,7 @@ class AiActionParser {
     switch (data['action']) {
       case 'create_todo':
       case 'plan_todos':
-        return _listFrom(data['todos']).map((todo) {
+        return _listFromOrSelf(data, data['todos']).map((todo) {
           return AiTodoAction.fromJson({
             ...todo,
             'action': data['action'],
@@ -132,7 +139,7 @@ class AiActionParser {
       case 'bulk_reschedule':
       case 'bulk_reschedule_todo':
       case 'categorize_todo':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(data, data['updates']).map((update) {
           final action = AiTodoAction.fromJson({
             ...update,
             'action': data['action'],
@@ -148,7 +155,7 @@ class AiActionParser {
       case 'merge_todos':
         return _processMergeTodos(data, existingTodoTitles);
       case 'create_time_log':
-        return _listFrom(data['logs']).map((log) {
+        return _listFromOrSelf(data, data['logs']).map((log) {
           return AiTodoAction.fromJson({
             ...log,
             'action': data['action'],
@@ -156,7 +163,7 @@ class AiActionParser {
         }).toList();
       case 'update_time_log':
       case 'delete_time_log':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(data, data['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ?? update['logId'] ?? update['id'],
@@ -172,7 +179,7 @@ class AiActionParser {
           }),
         ];
       case 'create_countdown':
-        return _listFrom(data['countdowns']).map((countdown) {
+        return _listFromOrSelf(data, data['countdowns']).map((countdown) {
           return AiTodoAction.fromJson({
             ...countdown,
             'action': data['action'],
@@ -181,7 +188,7 @@ class AiActionParser {
       case 'update_countdown':
       case 'complete_countdown':
       case 'delete_countdown':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(data, data['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ?? update['countdownId'] ?? update['id'],
@@ -192,8 +199,8 @@ class AiActionParser {
       case 'create_group':
       case 'create_category':
       case 'create_folder':
-        return _listFrom(
-                data['groups'] ?? data['categories'] ?? data['folders'])
+        return _listFromOrSelf(
+                data, data['groups'] ?? data['categories'] ?? data['folders'])
             .map((group) {
           return AiTodoAction.fromJson({
             ...group,
@@ -209,7 +216,7 @@ class AiActionParser {
       case 'delete_group':
       case 'delete_category':
       case 'delete_folder':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(data, data['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ??
@@ -222,7 +229,7 @@ class AiActionParser {
           });
         }).toList();
       case 'create_pomodoro_tag':
-        return _listFrom(data['tags']).map((tag) {
+        return _listFromOrSelf(data, data['tags']).map((tag) {
           return AiTodoAction.fromJson({
             ...tag,
             'title': tag['title'] ?? tag['name'],
@@ -231,7 +238,7 @@ class AiActionParser {
         }).toList();
       case 'update_pomodoro_tag':
       case 'delete_pomodoro_tag':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(data, data['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ?? update['tagId'] ?? update['id'],
@@ -314,6 +321,15 @@ class AiActionParser {
         .toList();
   }
 
+  static List<Map<String, dynamic>> _listFromOrSelf(
+    Map<String, dynamic> self,
+    dynamic value,
+  ) {
+    final list = _listFrom(value);
+    if (list.isNotEmpty) return list;
+    return [self];
+  }
+
   static List<String> _stringList(dynamic value) {
     if (value == null) return const [];
     if (value is List) return value.map((e) => e.toString()).toList();
@@ -348,5 +364,62 @@ class AiActionParser {
       closeBraces++;
     }
     return formattedJson;
+  }
+
+  static List<String> _findLooseActionJsonBlocks(String content) {
+    final candidates = <String>[];
+    final seen = <String>{};
+    for (var i = 0; i < content.length; i++) {
+      final char = content[i];
+      if (char != '{' && char != '[') continue;
+
+      final end = _findBalancedJsonEnd(content, i);
+      if (end == -1) continue;
+
+      final candidate = content.substring(i, end + 1).trim();
+      if (!RegExp('"action"\\s*:\\s*"(?:$_actionTypes)"').hasMatch(candidate)) {
+        continue;
+      }
+      if (seen.add(candidate)) {
+        candidates.add(candidate);
+      }
+      i = end;
+    }
+    return candidates;
+  }
+
+  static int _findBalancedJsonEnd(String content, int start) {
+    final stack = <String>[];
+    var inString = false;
+    var escaped = false;
+
+    for (var i = start; i < content.length; i++) {
+      final char = content[i];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char == '\\') {
+          escaped = true;
+        } else if (char == '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char == '"') {
+        inString = true;
+      } else if (char == '{') {
+        stack.add('}');
+      } else if (char == '[') {
+        stack.add(']');
+      } else if (char == '}' || char == ']') {
+        if (stack.isEmpty || stack.last != char) return -1;
+        stack.removeLast();
+        if (stack.isEmpty) return i;
+      }
+    }
+
+    return -1;
   }
 }
