@@ -754,14 +754,30 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             ),
             overflow: TextOverflow.ellipsis,
           ),
-          Text(
-            _isLoading ? '正在思考...' : 'AI 助手在线',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.normal,
-              color: _isLoading
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.25),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            ),
+            child: Text(
+              _isLoading ? '正在思考...' : 'AI 助手在线',
+              key: ValueKey(_isLoading),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.normal,
+                color: _isLoading
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ],
@@ -798,21 +814,31 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   Widget _buildWideLayout(bool isDark, ColorScheme colorScheme) {
     return Row(
       children: [
-        if (_sidebarVisible)
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            width: 304,
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              border: Border(
-                right: BorderSide(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.7),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          width: _sidebarVisible ? 304 : 0,
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            border: Border(
+              right: BorderSide(
+                color: colorScheme.outlineVariant.withValues(
+                  alpha: _sidebarVisible ? 0.7 : 0,
                 ),
               ),
             ),
-            child: _buildHistorySidebarContent(context, isWideMode: true),
           ),
+          child: ClipRect(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              widthFactor: _sidebarVisible ? 1 : 0,
+              child: SizedBox(
+                width: 304,
+                child: _buildHistorySidebarContent(context, isWideMode: true),
+              ),
+            ),
+          ),
+        ),
         Expanded(
           child: Column(
             children: [
@@ -829,8 +855,22 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   constraints: const BoxConstraints(maxWidth: 900),
                   child: Column(
                     children: [
-                      if (_suggestions.isNotEmpty && !_isLoading)
-                        _buildSuggestionsArea(colorScheme),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) => SizeTransition(
+                          sizeFactor: animation,
+                          axisAlignment: 1,
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        ),
+                        child: _suggestions.isNotEmpty && !_isLoading
+                            ? _buildSuggestionsArea(colorScheme)
+                            : const SizedBox.shrink(),
+                      ),
                       _buildInputArea(colorScheme),
                     ],
                   ),
@@ -847,8 +887,22 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     return Column(
       children: [
         Expanded(child: _buildMessageList(isDark, colorScheme)),
-        if (_suggestions.isNotEmpty && !_isLoading)
-          _buildSuggestionsArea(colorScheme),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => SizeTransition(
+            sizeFactor: animation,
+            axisAlignment: 1,
+            child: FadeTransition(
+              opacity: animation,
+              child: child,
+            ),
+          ),
+          child: _suggestions.isNotEmpty && !_isLoading
+              ? _buildSuggestionsArea(colorScheme)
+              : const SizedBox.shrink(),
+        ),
         _buildInputArea(colorScheme),
       ],
     );
@@ -864,7 +918,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       itemCount: _messages.length + (_isLoading ? 1 : 0),
       itemBuilder: (context, index) {
         if (_isLoading && index == _messages.length) {
-          return _buildStreamingBubble(isDark);
+          return _StaggeredFadeSlide(
+            delay: Duration.zero,
+            child: _buildStreamingBubble(isDark),
+          );
         }
         final msg = _messages[index];
         return TweenAnimationBuilder<double>(
@@ -896,47 +953,63 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.55),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.smart_toy_rounded,
-                  size: 36,
-                  color: colorScheme.onPrimaryContainer,
+              _StaggeredFadeSlide(
+                delay: const Duration(milliseconds: 40),
+                child: _PulseAvatar(
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color:
+                          colorScheme.primaryContainer.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.smart_toy_rounded,
+                      size: 36,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
-              Text(
-                'AI待办助手',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
-                  color: colorScheme.onSurface,
+              _StaggeredFadeSlide(
+                delay: const Duration(milliseconds: 110),
+                child: Text(
+                  'AI待办助手',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                    color: colorScheme.onSurface,
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                '可以直接问课程、待办、专注记录，也可以让它帮你生成可执行的任务操作。',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.55,
-                  color: colorScheme.onSurfaceVariant,
+              _StaggeredFadeSlide(
+                delay: const Duration(milliseconds: 170),
+                child: Text(
+                  '可以直接问课程、待办、专注记录，也可以让它帮你生成可执行的任务操作。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.55,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               const SizedBox(height: 28),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 10,
-                runSpacing: 10,
-                children:
-                    _getDefaultSuggestions().map(_buildQuickQuestion).toList(),
+              _StaggeredFadeSlide(
+                delay: const Duration(milliseconds: 230),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: _getDefaultSuggestions()
+                      .map(_buildQuickQuestion)
+                      .toList(),
+                ),
               ),
             ],
           ),
@@ -2673,7 +2746,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Widget _buildQuickQuestion(String text, {bool compact = false}) {
     final colorScheme = Theme.of(context).colorScheme;
-    return InkWell(
+    return _PressableScale(
       onTap: () {
         _inputCtrl.text = text;
         _sendMessage();
@@ -3068,16 +3141,33 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   ),
                   const SizedBox(width: 4),
                   IconButton(
-                    icon: _isLoading
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: colorScheme.onPrimary,
+                    icon: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOutBack,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) => ScaleTransition(
+                        scale: animation,
+                        child: FadeTransition(
+                          opacity: animation,
+                          child: child,
+                        ),
+                      ),
+                      child: _isLoading
+                          ? SizedBox(
+                              key: const ValueKey('loading'),
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.onPrimary,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.arrow_upward_rounded,
+                              key: ValueKey('send'),
+                              size: 20,
                             ),
-                          )
-                        : const Icon(Icons.arrow_upward_rounded, size: 20),
+                    ),
                     onPressed: _isLoading ? null : _sendMessage,
                     style: IconButton.styleFrom(
                       backgroundColor: colorScheme.primary,
@@ -3109,7 +3199,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       child: InkWell(
         onTap: () => onTap(!isSelected),
         borderRadius: BorderRadius.circular(12),
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: isSelected
@@ -3117,12 +3209,102 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 : Colors.transparent,
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: isSelected
-                ? colorScheme.primary
-                : colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+          child: AnimatedScale(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutBack,
+            scale: isSelected ? 1.08 : 1,
+            child: Icon(
+              icon,
+              size: 18,
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StaggeredFadeSlide extends StatelessWidget {
+  final Widget child;
+  final Duration delay;
+
+  const _StaggeredFadeSlide({
+    required this.child,
+    this.delay = Duration.zero,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 360 + delay.inMilliseconds),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        final delayedValue = delay.inMilliseconds == 0
+            ? value
+            : ((value * (360 + delay.inMilliseconds) - delay.inMilliseconds) /
+                    360)
+                .clamp(0.0, 1.0);
+        return Opacity(
+          opacity: delayedValue,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - delayedValue)),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+class _PressableScale extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  final BorderRadius borderRadius;
+
+  const _PressableScale({
+    required this.child,
+    required this.onTap,
+    required this.borderRadius,
+  });
+
+  @override
+  State<_PressableScale> createState() => _PressableScaleState();
+}
+
+class _PressableScaleState extends State<_PressableScale> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = _pressed ? 0.96 : (_hovered ? 1.03 : 1.0);
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() {
+        _hovered = false;
+        _pressed = false;
+      }),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) => setState(() => _pressed = false),
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: widget.borderRadius,
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: widget.borderRadius,
+              child: widget.child,
+            ),
           ),
         ),
       ),
@@ -3152,7 +3334,9 @@ class _CollapsibleReasoningWidgetState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
       margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
         color: widget.isDark
@@ -3208,22 +3392,26 @@ class _CollapsibleReasoningWidgetState
                       ),
                     ),
                   const SizedBox(width: 4),
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    size: 20,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.5),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    child: Icon(
+                      Icons.keyboard_arrow_down,
+                      size: 20,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.5),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          if (_expanded)
-            Padding(
+          AnimatedCrossFade(
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: MarkdownBody(
                 data: widget.reasoning,
@@ -3248,6 +3436,14 @@ class _CollapsibleReasoningWidgetState
                 selectable: true,
               ),
             ),
+            crossFadeState: _expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 220),
+            firstCurve: Curves.easeInCubic,
+            secondCurve: Curves.easeOutCubic,
+            sizeCurve: Curves.easeOutCubic,
+          ),
         ],
       ),
     );
