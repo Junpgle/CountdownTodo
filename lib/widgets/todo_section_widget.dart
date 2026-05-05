@@ -1665,11 +1665,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 },
                 child: KeyedSubtree(
                   key: _getTodoCardKey(todo.id),
-                  child: AiGeneratedTodoWaterBorder(
-                    enabled: _isAiGeneratedTodo(todo),
-                    isLight: isLight,
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 6),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: AiGeneratedTodoWaterBorder(
+                      enabled: _isAiGeneratedTodo(todo),
+                      isLight: isLight,
+                      child: Container(
                       clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
                         color: todo.teamUuid != null
@@ -2256,6 +2257,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         ],
                       ),
                     ),
+                  ),
                   ),
                 ),
               ),
