@@ -47,6 +47,7 @@ class AiTodoAction {
     this.color,
     this.isSelected = true,
     this.isAdded = false,
+    this.isIgnored = false,
     this.originalText,
     this.sourceTodoIds = const [],
     this.deleteSourceTodos = false,
@@ -71,6 +72,7 @@ class AiTodoAction {
   String? color;
   bool isSelected;
   bool isAdded;
+  bool isIgnored;
   String? originalText;
   List<String> sourceTodoIds;
   bool deleteSourceTodos;
@@ -155,6 +157,7 @@ class AiTodoAction {
         'color': color,
         'isSelected': isSelected,
         'isAdded': isAdded,
+        'isIgnored': isIgnored,
         'originalText': originalText,
         'sourceTodoIds': sourceTodoIds,
         'deleteSourceTodos': deleteSourceTodos,
@@ -196,6 +199,7 @@ class AiTodoAction {
       color: json['color']?.toString(),
       isSelected: json['isSelected'] != false,
       isAdded: json['isAdded'] == true,
+      isIgnored: json['isIgnored'] == true,
       originalText: json['originalText']?.toString(),
       sourceTodoIds: _parseStringList(
         json['sourceTodoIds'] ?? json['sourceTodoId'] ?? json['todoIds'],

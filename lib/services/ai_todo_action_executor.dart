@@ -65,8 +65,9 @@ class AiTodoActionExecutor {
     final updatedTodoGroups = <TodoGroup>[];
     final newPomodoroTags = <PomodoroTag>[];
     final updatedPomodoroTags = <PomodoroTag>[];
-    final selectedActions =
-        actions.where((action) => action.isSelected && !action.isAdded);
+    final selectedActions = actions.where(
+      (action) => action.isSelected && !action.isAdded && !action.isIgnored,
+    );
     final createdAtFallback = now ?? DateTime.now();
 
     for (final action in selectedActions) {

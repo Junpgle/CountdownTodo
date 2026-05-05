@@ -82,6 +82,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   // 🚀 宽屏适配相关
   bool _sidebarVisible = true;
   bool get _isWide => MediaQuery.of(context).size.width >= 900;
+  bool get _usesActionRail {
+    final width = MediaQuery.of(context).size.width;
+    const actionRailWidth = 344.0;
+    final historyWidth = _sidebarVisible ? 304.0 : 0.0;
+    return width >= 900 && width - historyWidth - actionRailWidth >= 520;
+  }
 
   @override
   void initState() {
@@ -726,7 +732,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth >= 900) {
-            return _buildWideLayout(isDark, colorScheme);
+            return _buildWideLayout(
+              isDark,
+              colorScheme,
+            );
           }
           return _buildMobileLayout(isDark, colorScheme);
         },
@@ -815,7 +824,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
-  Widget _buildWideLayout(bool isDark, ColorScheme colorScheme) {
+  Widget _buildWideLayout(
+    bool isDark,
+    ColorScheme colorScheme,
+  ) {
+    final useActionRail = _usesActionRail;
     return Row(
       children: [
         AnimatedContainer(
@@ -849,7 +862,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               Expanded(
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 920),
+                    constraints: BoxConstraints(
+                      maxWidth: useActionRail ? 760 : 920,
+                    ),
                     child: _buildMessageList(isDark, colorScheme),
                   ),
                 ),
@@ -859,22 +874,24 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   constraints: const BoxConstraints(maxWidth: 900),
                   child: Column(
                     children: [
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) => SizeTransition(
-                          sizeFactor: animation,
-                          axisAlignment: 1,
-                          child: FadeTransition(
-                            opacity: animation,
-                            child: child,
+                      if (!useActionRail)
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) =>
+                              SizeTransition(
+                            sizeFactor: animation,
+                            axisAlignment: 1,
+                            child: FadeTransition(
+                              opacity: animation,
+                              child: child,
+                            ),
                           ),
+                          child: _suggestions.isNotEmpty && !_isLoading
+                              ? _buildSuggestionsArea(colorScheme)
+                              : const SizedBox.shrink(),
                         ),
-                        child: _suggestions.isNotEmpty && !_isLoading
-                            ? _buildSuggestionsArea(colorScheme)
-                            : const SizedBox.shrink(),
-                      ),
                       _buildInputArea(colorScheme),
                     ],
                   ),
@@ -883,7 +900,185 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             ],
           ),
         ),
+        if (useActionRail)
+          SizedBox(
+            width: 344,
+            child: _buildActionRail(isDark, colorScheme),
+          ),
       ],
+    );
+  }
+
+  List<ChatMessage> get _pendingActionMessages {
+    return _messages
+        .where(
+          (msg) =>
+              msg.todoActions != null &&
+              msg.todoActions!.any(
+                (action) => !action.isAdded && !action.isIgnored,
+              ),
+        )
+        .toList()
+        .reversed
+        .toList();
+  }
+
+  Widget _buildActionRail(bool isDark, ColorScheme colorScheme) {
+    final actionMessages = _pendingActionMessages;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          left: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.68),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_motion_rounded,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '建议操作',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const Spacer(),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: actionMessages.isEmpty
+                      ? const SizedBox.shrink()
+                      : Text(
+                          '${actionMessages.length}',
+                          key: ValueKey(actionMessages.length),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+          Divider(
+            height: 1,
+            color: colorScheme.outlineVariant.withValues(alpha: 0.62),
+          ),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: actionMessages.isEmpty && _suggestions.isEmpty
+                  ? _buildActionRailEmptyState(colorScheme)
+                  : ListView(
+                      key: ValueKey(
+                        '${actionMessages.length}-${_suggestions.length}',
+                      ),
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+                      children: [
+                        if (actionMessages.isNotEmpty)
+                          ...actionMessages.map(
+                            (msg) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _buildMessageTodoActions(msg, isDark),
+                            ),
+                          ),
+                        if (_suggestions.isNotEmpty && !_isLoading) ...[
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              4,
+                              actionMessages.isNotEmpty ? 8 : 0,
+                              4,
+                              10,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.lightbulb_outline_rounded,
+                                  size: 16,
+                                  color: colorScheme.secondary,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '下一步问题',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ..._suggestions.map(
+                            (text) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _buildQuickQuestion(
+                                text,
+                                compact: true,
+                                expand: true,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionRailEmptyState(ColorScheme colorScheme) {
+    return Center(
+      key: const ValueKey('empty-action-rail'),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.fact_check_outlined,
+              size: 34,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.58),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '暂无待执行操作',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '模型生成可执行待办后会出现在这里。',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.45,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1659,18 +1854,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   Widget _buildMessageTodoActions(ChatMessage msg, bool isDark) {
-    bool allAdded = msg.todoActions!.every((t) => t.isAdded);
-    if (allAdded) return const SizedBox.shrink();
+    final activeActions = msg.todoActions!
+        .where((action) => !action.isAdded && !action.isIgnored)
+        .toList();
+    if (activeActions.isEmpty) return const SizedBox.shrink();
     final hasExistingMutations =
-        msg.todoActions?.any((t) => t.mutatesExistingTodo) == true;
-    final hasPomodoroActions =
-        msg.todoActions?.any((t) => t.isPomodoroAction) == true;
-    final hasTimeLogActions =
-        msg.todoActions?.any((t) => t.isTimeLogAction) == true;
-    final hasCountdownActions =
-        msg.todoActions?.any((t) => t.isCountdownAction) == true;
-    final hasTagActions =
-        msg.todoActions?.any((t) => t.isPomodoroTagAction) == true;
+        activeActions.any((t) => t.mutatesExistingTodo);
+    final hasPomodoroActions = activeActions.any((t) => t.isPomodoroAction);
+    final hasTimeLogActions = activeActions.any((t) => t.isTimeLogAction);
+    final hasCountdownActions = activeActions.any((t) => t.isCountdownAction);
+    final hasTagActions = activeActions.any((t) => t.isPomodoroTagAction);
 
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
@@ -1726,9 +1919,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   ],
                 ),
               ),
-              ...msg.todoActions!.asMap().entries.map((entry) {
+              ...activeActions.asMap().entries.map((entry) {
                 final todo = entry.value;
-                if (todo.isAdded) return const SizedBox.shrink();
 
                 final isSelected = todo.isSelected;
                 final currentGroupId = todo.groupId;
@@ -1807,6 +1999,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                             icon: const Icon(Icons.edit_outlined, size: 18),
                             tooltip: '编辑执行内容',
                             onPressed: () => _editAction(todo),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            tooltip: '忽略此操作',
+                            onPressed: () => _ignoreAction(todo),
                             visualDensity: VisualDensity.compact,
                           ),
                         ],
@@ -1984,7 +2182,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: msg.todoActions!.any(
-                      (t) => t.isSelected && !t.isAdded,
+                      (t) => t.isSelected && !t.isAdded && !t.isIgnored,
                     )
                         ? () => _addTodosForMessage(msg)
                         : null,
@@ -2000,7 +2198,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                         const Icon(Icons.add_task, size: 16),
                         const SizedBox(width: 8),
                         Text(
-                          '执行所选操作 (${msg.todoActions!.where((t) => t.isSelected && !t.isAdded).length})',
+                          '执行所选操作 (${activeActions.where((t) => t.isSelected).length})',
                           style: const TextStyle(
                               fontSize: 13, fontWeight: FontWeight.bold),
                         ),
@@ -2143,6 +2341,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         ),
       ),
     );
+  }
+
+  void _ignoreAction(AiTodoAction action) {
+    setState(() {
+      action.isIgnored = true;
+      action.isSelected = false;
+    });
+    _saveHistorySilently();
   }
 
   Future<void> _editAction(AiTodoAction action) async {
@@ -2748,7 +2954,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     }
   }
 
-  Widget _buildQuickQuestion(String text, {bool compact = false}) {
+  Widget _buildQuickQuestion(
+    String text, {
+    bool compact = false,
+    bool expand = false,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return _PressableScale(
       onTap: () {
@@ -2756,33 +2966,36 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _sendMessage();
       },
       borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 12 : 14,
-          vertical: compact ? 7 : 10,
-        ),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+      child: SizedBox(
+        width: expand ? double.infinity : null,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 12 : 14,
+            vertical: compact ? 7 : 10,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.6),
             ),
-          ],
-        ),
-        child: Text(
-          text,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 12 : 13,
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            text,
+            maxLines: expand ? 2 : 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 12 : 13,
+              color: colorScheme.onSurface,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ),
@@ -2974,7 +3187,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                             selectable: true,
                           ),
                   ),
-                  if (msg.todoActions != null && msg.todoActions!.isNotEmpty)
+                  if (!_usesActionRail &&
+                      msg.todoActions != null &&
+                      msg.todoActions!.isNotEmpty)
                     _buildMessageTodoActions(msg, isDark),
                   Padding(
                     padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
