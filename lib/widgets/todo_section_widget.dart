@@ -4278,13 +4278,22 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                         ],
                       ),
                     )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _relatedPlanBlocks.length,
-                      separatorBuilder: (context, index) =>
-                          const Divider(height: 1),
-                      itemBuilder: (context, index) {
+                  : Column(
+                      children: [
+                        // ── 统计摘要 ──
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                          child: _buildPlanBlockSummary(colorScheme),
+                        ),
+                        const Divider(height: 1),
+                        // ── 规划块列表 ──
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _relatedPlanBlocks.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) {
                         final plan = _relatedPlanBlocks[index];
                         final start =
                             DateTime.fromMillisecondsSinceEpoch(plan.startTime);
@@ -4318,11 +4327,64 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                               size: 20, color: Colors.grey),
                         );
                       },
+                        ),
+                      ],
                     ),
         ),
         const SizedBox(height: 24),
       ],
     );
+  }
+
+  Widget _buildPlanBlockSummary(ColorScheme colorScheme) {
+    final blocks = _relatedPlanBlocks;
+    final planned = blocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
+    final actual = blocks.fold<int>(0, (s, b) => s + b.actualFocusSeconds ~/ 60);
+    final done = blocks.where((b) =>
+        b.status == TodoPlanStatus.finished ||
+        (b.plannedMinutes > 0 &&
+            b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.9)).length;
+    final missed = blocks.where((b) => b.status == TodoPlanStatus.missed).length;
+    final skipped = blocks.where((b) => b.status == TodoPlanStatus.skipped).length;
+    final rate = planned <= 0 ? 0.0 : (actual / planned).clamp(0.0, 999.0);
+
+    Widget chip(String label, String value, Color color) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.20)),
+          ),
+          child: Column(
+            children: [
+              Text(value,
+                  style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14)),
+              Text(label,
+                  style: TextStyle(
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
+                      fontSize: 10)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Row(children: [
+      chip('计划', '${planned}m', Colors.deepPurple),
+      const SizedBox(width: 6),
+      chip('实际', '${actual}m', Colors.green),
+      const SizedBox(width: 6),
+      chip('达成', '${(rate * 100).round()}%', Colors.blue),
+      const SizedBox(width: 6),
+      chip('完成', '$done', Colors.teal),
+      const SizedBox(width: 6),
+      chip('漏做', '$missed', Colors.redAccent),
+    ]);
   }
 
   Widget _buildSquareTile({
