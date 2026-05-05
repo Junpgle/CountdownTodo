@@ -25,6 +25,13 @@ import '../screens/folder_manage_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import 'version_history_sheet.dart';
 
+enum _TodoFolderDisplayMode {
+  inline,
+  separate,
+  urgentFirst,
+  hidden,
+}
+
 class TodoSectionWidget extends StatefulWidget {
   final List<TodoItem> todos;
   final String username;
@@ -83,6 +90,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   final Map<String, AnimationController> _completingAnimations = {};
   final Map<String, bool> _isCompleting = {};
   bool _inlineFolders = true;
+  _TodoFolderDisplayMode _folderDisplayMode = _TodoFolderDisplayMode.inline;
   final Set<String> _animatedTodoIds = {};
 
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
@@ -129,11 +137,22 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
   Future<void> _loadSettings() async {
     final inline = await StorageService.getTodoFoldersInline();
+    final modeName = await StorageService.getTodoFolderDisplayMode();
     if (mounted) {
       setState(() {
         _inlineFolders = inline;
+        _folderDisplayMode = _parseFolderDisplayMode(modeName);
       });
     }
+  }
+
+  _TodoFolderDisplayMode _parseFolderDisplayMode(String modeName) {
+    return _TodoFolderDisplayMode.values.firstWhere(
+      (mode) => mode.name == modeName,
+      orElse: () => _inlineFolders
+          ? _TodoFolderDisplayMode.inline
+          : _TodoFolderDisplayMode.separate,
+    );
   }
 
   @override
@@ -2335,6 +2354,40 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     return [...undone, ...done];
   }
 
+  String _folderDisplayModeLabel(_TodoFolderDisplayMode mode) {
+    switch (mode) {
+      case _TodoFolderDisplayMode.inline:
+        return '时间线内展示文件夹';
+      case _TodoFolderDisplayMode.separate:
+        return '文件夹单独展示';
+      case _TodoFolderDisplayMode.urgentFirst:
+        return '每个文件夹只展开最紧急待办';
+      case _TodoFolderDisplayMode.hidden:
+        return '不展示文件夹';
+    }
+  }
+
+  IconData _folderDisplayModeIcon(_TodoFolderDisplayMode mode) {
+    switch (mode) {
+      case _TodoFolderDisplayMode.inline:
+        return Icons.view_agenda_outlined;
+      case _TodoFolderDisplayMode.separate:
+        return Icons.folder_copy_outlined;
+      case _TodoFolderDisplayMode.urgentFirst:
+        return Icons.priority_high_rounded;
+      case _TodoFolderDisplayMode.hidden:
+        return Icons.folder_off_outlined;
+    }
+  }
+
+  Future<void> _setFolderDisplayMode(_TodoFolderDisplayMode mode) async {
+    setState(() {
+      _folderDisplayMode = mode;
+      _inlineFolders = mode != _TodoFolderDisplayMode.separate;
+    });
+    await StorageService.setTodoFolderDisplayMode(mode.name);
+  }
+
   Widget _buildTodoList() {
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
@@ -2357,15 +2410,24 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       },
     );
 
-    final Iterable<TodoGroup> activeGroups = widget.todoGroups.where(
-      (g) {
-        if (g.isDeleted) return false;
-        if (_selectedSubTeamUuid != null) {
-          return g.teamUuid == _selectedSubTeamUuid;
-        }
-        return true;
-      },
-    );
+    final bool hideFolders =
+        _folderDisplayMode == _TodoFolderDisplayMode.hidden;
+    final bool separateFolders =
+        _folderDisplayMode == _TodoFolderDisplayMode.separate;
+    final bool urgentFirstFolders =
+        _folderDisplayMode == _TodoFolderDisplayMode.urgentFirst;
+
+    final Iterable<TodoGroup> activeGroups = hideFolders
+        ? const <TodoGroup>[]
+        : widget.todoGroups.where(
+            (g) {
+              if (g.isDeleted) return false;
+              if (_selectedSubTeamUuid != null) {
+                return g.teamUuid == _selectedSubTeamUuid;
+              }
+              return true;
+            },
+          );
 
     if (activeTodos.isEmpty && activeGroups.isEmpty) {
       return EmptyState(text: "暂无待办，去添加一个吧", isLight: widget.isLight);
@@ -2388,7 +2450,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       if (t.isDeleted || _isHistoricalTodo(t)) continue;
 
       final tid = (t.groupId == null || t.groupId!.isEmpty) ? null : t.groupId;
-      if (tid != null) {
+      if (!hideFolders && tid != null) {
         // 检查这个组在当前视角下是否存在
         bool folderExists = widget.todoGroups.any((g) => g.id == tid);
         if (folderExists) {
@@ -2416,6 +2478,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
     // 1. Process Folders
     for (var g in widget.todoGroups) {
+      if (hideFolders) break;
       if (g.isDeleted) continue;
 
       // 🚀 核心修正：视口过滤
@@ -2456,6 +2519,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           group: g,
           groupTodos: gTodos,
           isLight: widget.isLight,
+          onlyShowMostUrgentTodo: urgentFirstFolders,
           teamRoles: _teamRoles,
           onToggle: () {
             setState(() {
@@ -2545,7 +2609,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         }
       }
 
-      if (_inlineFolders) {
+      if (!separateFolders) {
         placeItem(_SortedDisplayItem(
           todo: null,
           group: g,
@@ -2612,7 +2676,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
     final List<Widget> sections = [];
 
-    if (!_inlineFolders && separateGroupWidgets.isNotEmpty) {
+    if (separateFolders && separateGroupWidgets.isNotEmpty) {
       sections.add(
         _buildGroupLabel(
           text: "📂 文件夹",
@@ -2827,7 +2891,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               final t = widget.todos[i];
                               if (_isHistoricalTodo(t) ||
                                   t.isDeleted ||
-                                  t.groupId != null) {
+                                  (!hideFolders && t.groupId != null)) {
                                 continue;
                               }
                               if (t.dueDate == null ||
@@ -3168,6 +3232,38 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                PopupMenuButton<_TodoFolderDisplayMode>(
+                  tooltip: '文件夹展示模式',
+                  initialValue: _folderDisplayMode,
+                  icon: Icon(
+                    _folderDisplayModeIcon(_folderDisplayMode),
+                    size: 20,
+                    color: useDarkUI ? Colors.white70 : Colors.grey,
+                  ),
+                  onSelected: _setFolderDisplayMode,
+                  itemBuilder: (context) => _TodoFolderDisplayMode.values
+                      .map(
+                        (mode) => PopupMenuItem<_TodoFolderDisplayMode>(
+                          value: mode,
+                          child: Row(
+                            children: [
+                              Icon(
+                                _folderDisplayModeIcon(mode),
+                                size: 18,
+                                color: mode == _folderDisplayMode
+                                    ? Theme.of(context).colorScheme.primary
+                                    : null,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(_folderDisplayModeLabel(mode)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(

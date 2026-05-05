@@ -86,6 +86,7 @@ class StorageService {
   static const String KEY_NOTIFY_APP_UPDATES_ENABLED =
       "notify_app_updates_enabled";
   static const String KEY_TODO_FOLDERS_INLINE = "todo_folders_inline";
+  static const String KEY_TODO_FOLDER_DISPLAY_MODE = "todo_folder_display_mode";
   static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
       "notify_special_todo_enabled";
   static const String KEY_NOTIFY_POMODORO_ENABLED = "notify_pomodoro_enabled";
@@ -3901,6 +3902,21 @@ class StorageService {
   static Future<void> setTodoFoldersInline(bool inline) async {
     final prefs = await StorageService.prefs;
     await prefs.setBool(KEY_TODO_FOLDERS_INLINE, inline);
+  }
+
+  static Future<String> getTodoFolderDisplayMode() async {
+    final prefs = await StorageService.prefs;
+    final mode = prefs.getString(KEY_TODO_FOLDER_DISPLAY_MODE);
+    if (mode != null && mode.isNotEmpty) return mode;
+    return (prefs.getBool(KEY_TODO_FOLDERS_INLINE) ?? true)
+        ? 'inline'
+        : 'separate';
+  }
+
+  static Future<void> setTodoFolderDisplayMode(String mode) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_TODO_FOLDER_DISPLAY_MODE, mode);
+    await prefs.setBool(KEY_TODO_FOLDERS_INLINE, mode != 'separate');
   }
 
   static Future<void> saveLastCourseImportUrl(String url) async {
