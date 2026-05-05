@@ -27,6 +27,7 @@ class PomodoroControlService {
     List<String> tagUuids = const [],
     int currentCycle = 1,
     int? durationMinutes,
+    String? planBlockId,
     String? deviceId,
     bool notify = true,
     bool updateFloat = true,
@@ -52,6 +53,27 @@ class PomodoroControlService {
       }
     }
 
+    // 🚀 核心联动：自动查找当前时间段内匹配的任务规划块
+    String? activePlanBlockId = planBlockId;
+    if (activePlanBlockId == null && boundTodo != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString(StorageService.KEY_CURRENT_USER);
+      if (username != null) {
+        final nowDt = DateTime.fromMillisecondsSinceEpoch(now);
+        final blocks = await StorageService.getPlanBlocksByDay(username, nowDt);
+        final activeBlock = blocks.where((b) => !b.isDeleted).firstWhere(
+              (b) =>
+                  b.todoId == boundTodo.id &&
+                  now >= b.startTime &&
+                  now <= b.endTime,
+              orElse: () => TodoPlanBlock(todoId: '', startTime: 0, endTime: 0),
+            );
+        if (activeBlock.todoId.isNotEmpty) {
+          activePlanBlockId = activeBlock.uuid;
+        }
+      }
+    }
+
     final state = PomodoroRunState(
       phase: PomodoroPhase.focusing,
       sessionUuid: sessionUuid,
@@ -70,6 +92,7 @@ class PomodoroControlService {
       pausedAtMs: 0,
       accumulatedMs: 0,
       pauseStartMs: 0,
+      planBlockId: activePlanBlockId,
     );
 
     PomodoroSyncService.instance.setLocalFocusing(true);
@@ -187,6 +210,7 @@ class PomodoroControlService {
       actualDuration: actualSeconds,
       status: status,
       deviceId: deviceId,
+      planBlockId: state.planBlockId,
     ));
 
     if (markTodoComplete && state.todoUuid?.isNotEmpty == true) {
