@@ -7,6 +7,7 @@ enum AiTodoActionType {
   bulkRescheduleTodo,
   categorizeTodo,
   planTodos,
+  createPlanBlock,
   splitTodo,
   mergeTodos,
   createTimeLog,
@@ -101,6 +102,8 @@ class AiTodoAction {
   bool get isPomodoroAction =>
       type == AiTodoActionType.startPomodoro ||
       type == AiTodoActionType.stopPomodoro;
+
+  bool get isPlanBlockAction => type == AiTodoActionType.createPlanBlock;
 
   bool get isCountdownAction =>
       type == AiTodoActionType.createCountdown ||
@@ -232,6 +235,10 @@ class AiTodoAction {
         return AiTodoActionType.categorizeTodo;
       case 'plan_todos':
         return AiTodoActionType.planTodos;
+      case 'create_plan_block':
+      case 'create_todo_plan_block':
+      case 'schedule_todo_block':
+        return AiTodoActionType.createPlanBlock;
       case 'split_todo':
         return AiTodoActionType.splitTodo;
       case 'merge_todos':

@@ -5,7 +5,8 @@ import '../models/ai_todo_action.dart';
 class AiActionParser {
   static const String _actionTypes = 'create_todo|update_todo|complete_todo|'
       'delete_todo|reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
-      'categorize_todo|plan_todos|split_todo|merge_todos|'
+      'categorize_todo|plan_todos|create_plan_block|'
+      'create_todo_plan_block|schedule_todo_block|split_todo|merge_todos|'
       'create_time_log|update_time_log|delete_time_log|'
       'start_pomodoro|stop_pomodoro|'
       'create_countdown|update_countdown|complete_countdown|delete_countdown|'
@@ -137,6 +138,20 @@ class AiActionParser {
         return _listFromOrSelf(actionData, actionData['todos']).map((todo) {
           return AiTodoAction.fromJson({
             ...todo,
+            'action': actionData['action'],
+          });
+        }).toList();
+      case 'create_plan_block':
+      case 'create_todo_plan_block':
+      case 'schedule_todo_block':
+        return _listFromOrSelf(
+          actionData,
+          actionData['blocks'] ?? actionData['plans'],
+        ).map((block) {
+          return AiTodoAction.fromJson({
+            ...block,
+            'todoId': block['todoId'] ?? block['todo_id'] ?? block['todoUuid'],
+            'title': block['title'] ?? block['titleSnapshot'],
             'action': actionData['action'],
           });
         }).toList();
@@ -338,6 +353,9 @@ class AiActionParser {
     if (data['todos'] is List) {
       return {...data, 'action': 'plan_todos'};
     }
+    if (data['blocks'] is List || data['plans'] is List) {
+      return {...data, 'action': 'create_plan_block'};
+    }
     if (data['countdowns'] is List) {
       return {...data, 'action': 'create_countdown'};
     }
@@ -414,7 +432,7 @@ class AiActionParser {
       final hasKnownAction =
           RegExp('"action"\\s*:\\s*"(?:$_actionTypes)"').hasMatch(candidate);
       final hasLegacyContainer = RegExp(
-              '"(?:todos|countdowns|logs|groups|categories|folders|tags)"\\s*:')
+              '"(?:todos|blocks|plans|countdowns|logs|groups|categories|folders|tags)"\\s*:')
           .hasMatch(candidate);
       if (!hasKnownAction && !hasLegacyContainer) {
         continue;

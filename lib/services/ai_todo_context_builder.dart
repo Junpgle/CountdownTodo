@@ -12,6 +12,7 @@ class AiTodoContextBuilder {
     required List<TodoGroup> todoGroups,
     List<CountdownItem> countdowns = const [],
     List<PomodoroTag> pomodoroTags = const [],
+    List<TodoPlanBlock> planBlocks = const [],
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -35,6 +36,9 @@ ${_formatCountdowns(countdowns)}
 
 【用户当前番茄标签】
 ${_formatPomodoroTags(pomodoroTags)}
+
+【用户当前待办规划】
+${_formatPlanBlocks(planBlocks, todos)}
 
 【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
@@ -61,7 +65,8 @@ JSON操作块必须且只能使用以下协议：
 支持的动作：
 
 - create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
-- plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，用于制定计划
+- plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，用于生成新的计划待办
+- create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说“规划今天/明天/本周时间”“安排到几点到几点”时优先使用这个动作
 - update_todo: {"action":"update_todo","updates":[{"todoId":"ID","title":"新标题","startTime":"...","dueDate":"...","groupId":"...","reminderMinutes":5}]}
 - complete_todo: {"action":"complete_todo","updates":[{"todoId":"ID"}]}
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"ID"}]}
@@ -86,7 +91,7 @@ JSON操作块必须且只能使用以下协议：
 - update_pomodoro_tag: {"action":"update_pomodoro_tag","updates":[{"tagId":"ID","name":"新名称","color":"#3B82F6"}]}
 - delete_pomodoro_tag: {"action":"delete_pomodoro_tag","updates":[{"tagId":"ID"}]}
 
-可组合多种操作：[ACTION_START][{"action":"create_todo","todos":[...]},{"action":"start_pomodoro","title":"专注内容","durationMinutes":25}][ACTION_END]
+可组合多种操作：[ACTION_START][{"action":"create_plan_block","blocks":[...]},{"action":"start_pomodoro","title":"专注内容","durationMinutes":25}][ACTION_END]
 
 【后续建议】
 每次回复末尾附3-4个简短建议（≤15字），格式：[SUGGEST_START]["建议1","建议2","建议3"][SUGGEST_END]
@@ -105,6 +110,8 @@ JSON操作块必须且只能使用以下协议：
     required List<CourseItem> courses,
     required List<TimeLogItem> timeLogs,
     List<PomodoroRecord> pomodoroRecords = const [],
+    List<TodoPlanBlock> planBlocks = const [],
+    List<Map<String, dynamic>> todos = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
     DateTime? now,
@@ -116,7 +123,9 @@ JSON操作块必须且只能使用以下协议：
       sections.add(_formatCourses(courses, userMessage, nowValue));
     }
     if (_matchesAny(userMessage, _timeLogKeywords) &&
-        (timeLogs.isNotEmpty || pomodoroRecords.isNotEmpty)) {
+        (timeLogs.isNotEmpty ||
+            pomodoroRecords.isNotEmpty ||
+            planBlocks.isNotEmpty)) {
       sections.add(
         _formatFocusRecords(
           timeLogs,
@@ -125,6 +134,9 @@ JSON操作块必须且只能使用以下协议：
           nowValue,
         ),
       );
+      if (planBlocks.isNotEmpty) {
+        sections.add(_formatPlanBlocks(planBlocks, todos));
+      }
     }
     if (_matchesAny(userMessage, _conflictKeywords) && conflicts.isNotEmpty) {
       sections.add(_formatConflicts(conflicts));
@@ -251,6 +263,31 @@ JSON操作块必须且只能使用以下协议：
     return active
         .map((t) => '- [ID: ${t.uuid}] 名称: ${t.name} | 颜色: ${t.color}')
         .join('\n');
+  }
+
+  static String _formatPlanBlocks(
+    List<TodoPlanBlock> blocks,
+    List<Map<String, dynamic>> todos,
+  ) {
+    final active = blocks.where((b) => !b.isDeleted).toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    if (active.isEmpty) return '暂无规划';
+
+    String todoTitle(String id) {
+      final match = todos.where((t) => t['id']?.toString() == id).toList();
+      if (match.isEmpty) return id;
+      final title = match.first['title']?.toString();
+      return title == null || title.isEmpty ? id : title;
+    }
+
+    return active.take(60).map((b) {
+      final start = DateFormat('yyyy-MM-dd HH:mm')
+          .format(DateTime.fromMillisecondsSinceEpoch(b.startTime));
+      final end = DateFormat('yyyy-MM-dd HH:mm')
+          .format(DateTime.fromMillisecondsSinceEpoch(b.endTime));
+      final actualMinutes = b.actualFocusSeconds ~/ 60;
+      return '- [ID: ${b.id}] 待办ID: ${b.todoId} | 标题: ${b.titleSnapshot ?? todoTitle(b.todoId)} | 时间: $start-$end | 计划: ${b.plannedMinutes}分钟 | 实际专注: $actualMinutes分钟 | 状态: ${b.status.name} | 提醒: 提前${b.reminderMinutes}分钟';
+    }).join('\n');
   }
 
   static String _formatCourses(

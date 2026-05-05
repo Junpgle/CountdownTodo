@@ -15,6 +15,7 @@ class AiTodoActionExecutionResult {
     this.updatedTodoGroups = const [],
     this.newPomodoroTags = const [],
     this.updatedPomodoroTags = const [],
+    this.newPlanBlocks = const [],
   });
 
   final List<TodoItem> newTodos;
@@ -28,6 +29,7 @@ class AiTodoActionExecutionResult {
   final List<TodoGroup> updatedTodoGroups;
   final List<PomodoroTag> newPomodoroTags;
   final List<PomodoroTag> updatedPomodoroTags;
+  final List<TodoPlanBlock> newPlanBlocks;
 
   bool get hasChanges =>
       newTodos.isNotEmpty ||
@@ -40,7 +42,8 @@ class AiTodoActionExecutionResult {
       newTodoGroups.isNotEmpty ||
       updatedTodoGroups.isNotEmpty ||
       newPomodoroTags.isNotEmpty ||
-      updatedPomodoroTags.isNotEmpty;
+      updatedPomodoroTags.isNotEmpty ||
+      newPlanBlocks.isNotEmpty;
 }
 
 class AiTodoActionExecutor {
@@ -65,6 +68,7 @@ class AiTodoActionExecutor {
     final updatedTodoGroups = <TodoGroup>[];
     final newPomodoroTags = <PomodoroTag>[];
     final updatedPomodoroTags = <PomodoroTag>[];
+    final newPlanBlocks = <TodoPlanBlock>[];
     final selectedActions = actions.where(
       (action) => action.isSelected && !action.isAdded && !action.isIgnored,
     );
@@ -87,6 +91,15 @@ class AiTodoActionExecutor {
       if (action.isPomodoroAction) {
         pomodoroActions.add(action);
         action.isAdded = true;
+        continue;
+      }
+
+      if (action.isPlanBlockAction) {
+        final block = _buildPlanBlock(action, existingTodos);
+        if (block != null) {
+          newPlanBlocks.add(block);
+          action.isAdded = true;
+        }
         continue;
       }
 
@@ -159,7 +172,46 @@ class AiTodoActionExecutor {
       updatedTodoGroups: updatedTodoGroups,
       newPomodoroTags: newPomodoroTags,
       updatedPomodoroTags: updatedPomodoroTags,
+      newPlanBlocks: newPlanBlocks,
     );
+  }
+
+  static TodoPlanBlock? _buildPlanBlock(
+    AiTodoAction action,
+    List<Map<String, dynamic>> existingTodos,
+  ) {
+    final todoId = action.todoId;
+    if (todoId == null || todoId.isEmpty || action.startTime == null) {
+      return null;
+    }
+
+    final start = DateTime.tryParse(action.startTime!);
+    final end = action.dueDate != null
+        ? DateTime.tryParse(action.dueDate!)
+        : (start != null && action.durationMinutes != null
+            ? start.add(Duration(minutes: action.durationMinutes!))
+            : null);
+    if (start == null || end == null || !end.isAfter(start)) return null;
+
+    final match = existingTodos
+        .where((todo) => todo['id']?.toString() == todoId)
+        .toList();
+    final title = action.title?.trim().isNotEmpty == true
+        ? action.title!.trim()
+        : (match.isNotEmpty ? match.first['title']?.toString() : null);
+    final plannedMinutes =
+        action.durationMinutes ?? end.difference(start).inMinutes;
+
+    return TodoPlanBlock(
+      todoId: todoId,
+      titleSnapshot: title,
+      startTime: start.millisecondsSinceEpoch,
+      endTime: end.millisecondsSinceEpoch,
+      plannedMinutes: plannedMinutes,
+      source: TodoPlanSource.ai,
+      remark: action.remark,
+      reminderMinutes: action.reminderMinutes ?? 5,
+    )..markAsChanged();
   }
 
   static TodoGroup? _buildTodoGroup(

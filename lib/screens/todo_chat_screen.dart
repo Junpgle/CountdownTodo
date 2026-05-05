@@ -79,6 +79,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   bool _smartContext = true;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
+  List<TodoPlanBlock> _planBlocks = [];
 
   // 🚀 宽屏适配相关
   bool _sidebarVisible = true;
@@ -113,6 +114,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     _loadChatConfig();
     _loadDeepThinking();
     _loadCategoryDefaults();
+    _loadPlanBlocks();
   }
 
   Future<void> _loadCategoryDefaults() async {
@@ -123,6 +125,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _categoryReminderDefaults = defaults;
       });
     }
+  }
+
+  Future<void> _loadPlanBlocks() async {
+    final blocks = await StorageService.getPlanBlocks(widget.username);
+    if (!mounted) return;
+    setState(() {
+      _planBlocks = blocks;
+    });
   }
 
   @override
@@ -278,6 +288,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       todoGroups: widget.todoGroups,
       countdowns: widget.countdowns,
       pomodoroTags: widget.pomodoroTags,
+      planBlocks: _planBlocks,
     );
   }
 
@@ -348,6 +359,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       courses: widget.courses,
       timeLogs: widget.timeLogs,
       pomodoroRecords: widget.pomodoroRecords,
+      planBlocks: _planBlocks,
+      todos: widget.todos,
       conflicts: widget.conflicts,
       teams: widget.teams,
       now: DateTime.now(),
@@ -830,9 +843,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           onPressed: _isWide
               ? () => setState(() => _sidebarVisible = !_sidebarVisible)
               : _showHistorySidebar,
-          tooltip: _isWide
-              ? (_sidebarVisible ? '隐藏侧边栏' : '显示侧边栏')
-              : '历史对话',
+          tooltip: _isWide ? (_sidebarVisible ? '隐藏侧边栏' : '显示侧边栏') : '历史对话',
         ),
         IconButton(
           icon: const Icon(Icons.add_comment_rounded, size: 22),
@@ -2339,6 +2350,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         color = Colors.teal;
         label = '规划';
         break;
+      case AiTodoActionType.createPlanBlock:
+        color = Colors.teal;
+        label = '时间块';
+        break;
       case AiTodoActionType.splitTodo:
         color = Colors.indigo;
         label = '拆分';
@@ -2601,18 +2616,24 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       action.type != AiTodoActionType.deletePomodoroTag;
 
   bool _usesRemark(AiTodoAction action) =>
-      action.isTodoAction || action.isTimeLogAction;
+      action.isTodoAction || action.isTimeLogAction || action.isPlanBlockAction;
 
   bool _usesStartTime(AiTodoAction action) =>
-      action.isTodoAction || action.isTimeLogAction;
+      action.isTodoAction || action.isTimeLogAction || action.isPlanBlockAction;
 
   bool _usesDueTime(AiTodoAction action) =>
-      action.isTodoAction || action.isTimeLogAction || action.isCountdownAction;
+      action.isTodoAction ||
+      action.isTimeLogAction ||
+      action.isCountdownAction ||
+      action.isPlanBlockAction;
 
   bool _usesDuration(AiTodoAction action) =>
-      action.isTimeLogAction || action.type == AiTodoActionType.startPomodoro;
+      action.isTimeLogAction ||
+      action.isPlanBlockAction ||
+      action.type == AiTodoActionType.startPomodoro;
 
-  bool _usesReminder(AiTodoAction action) => action.isTodoAction;
+  bool _usesReminder(AiTodoAction action) =>
+      action.isTodoAction || action.isPlanBlockAction;
 
   bool _usesColor(AiTodoAction action) => action.isPomodoroTagAction;
 
@@ -2665,6 +2686,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         return '从 [${_getTodoCurrentFolderName(action.todoId)}] 移动';
       case AiTodoActionType.planTodos:
         return '生成计划待办';
+      case AiTodoActionType.createPlanBlock:
+        return '安排到具体时间块';
       case AiTodoActionType.splitTodo:
         return action.sourceTodoIds.isEmpty
             ? '拆分为子任务'
@@ -2704,6 +2727,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.deletePomodoroTag:
         return '删除番茄标签';
       case AiTodoActionType.createTodo:
+      case AiTodoActionType.createPlanBlock:
       case AiTodoActionType.unknown:
         return '';
     }
@@ -2849,6 +2873,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.bulkRescheduleTodo:
       case AiTodoActionType.categorizeTodo:
       case AiTodoActionType.planTodos:
+      case AiTodoActionType.createPlanBlock:
       case AiTodoActionType.unknown:
       case AiTodoActionType.createTimeLog:
       case AiTodoActionType.updateTimeLog:
@@ -2956,6 +2981,18 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         await PomodoroService.saveTags(merged);
       }
 
+      if (result.newPlanBlocks.isNotEmpty) {
+        await StorageService.savePlanBlocks(
+          widget.username,
+          result.newPlanBlocks,
+          sync: true,
+        );
+        _planBlocks = [
+          ..._planBlocks,
+          ...result.newPlanBlocks,
+        ];
+      }
+
       for (final action in result.pomodoroActions) {
         await _executePomodoroAction(action);
       }
@@ -2967,7 +3004,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
+                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 规划: ${result.newPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
       );
     }
   }
@@ -3023,6 +3060,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.bulkRescheduleTodo:
       case AiTodoActionType.categorizeTodo:
       case AiTodoActionType.planTodos:
+      case AiTodoActionType.createPlanBlock:
       case AiTodoActionType.splitTodo:
       case AiTodoActionType.mergeTodos:
       case AiTodoActionType.createTimeLog:
@@ -3117,7 +3155,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     if (msg.smartContext.trim().isNotEmpty) {
       sections.add('[SMART_CONTEXT]\n${msg.smartContext.trim()}');
     } else {
-      sections.add('[SMART_CONTEXT]\n本次回复未触发关键词注入额外上下文（课程/专注记录/冲突/团队）。\n注意：系统提示词中始终包含待办、分组、倒计时、番茄标签等基础上下文，因此模型仍可回答相关问题。');
+      sections.add(
+          '[SMART_CONTEXT]\n本次回复未触发关键词注入额外上下文（课程/专注记录/冲突/团队）。\n注意：系统提示词中始终包含待办、分组、倒计时、番茄标签等基础上下文，因此模型仍可回答相关问题。');
     }
 
     return sections.join('\n\n');
