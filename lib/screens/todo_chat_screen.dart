@@ -818,23 +818,26 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         ],
       ),
       actions: [
-        if (_isWide)
-          IconButton(
-            icon: Icon(_sidebarVisible
-                ? Icons.keyboard_double_arrow_left_rounded
-                : Icons.keyboard_double_arrow_right_rounded),
-            onPressed: () => setState(() => _sidebarVisible = !_sidebarVisible),
-            tooltip: _sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
+        IconButton(
+          icon: Icon(
+            _isWide
+                ? (_sidebarVisible
+                    ? Icons.keyboard_double_arrow_left_rounded
+                    : Icons.keyboard_double_arrow_right_rounded)
+                : Icons.history_rounded,
+            size: 22,
           ),
+          onPressed: _isWide
+              ? () => setState(() => _sidebarVisible = !_sidebarVisible)
+              : _showHistorySidebar,
+          tooltip: _isWide
+              ? (_sidebarVisible ? '隐藏侧边栏' : '显示侧边栏')
+              : '历史对话',
+        ),
         IconButton(
           icon: const Icon(Icons.add_comment_rounded, size: 22),
           onPressed: _newSession,
           tooltip: '新建对话',
-        ),
-        IconButton(
-          icon: const Icon(Icons.history_rounded, size: 22),
-          onPressed: _isWide ? null : _showHistorySidebar,
-          tooltip: '历史对话',
         ),
         IconButton(
           icon: const Icon(Icons.tune_rounded, size: 22),
