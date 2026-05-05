@@ -53,10 +53,12 @@ import '../widgets/countdown_section_widget.dart';
 import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
+import '../widgets/plan_block_today_section.dart';
 import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
 import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
 import 'pomodoro_screen.dart';
+import 'todo_plan_screen.dart';
 // 🚀 引入
 // 🚀 引入
 import '../widgets/global_search_overlay.dart';
@@ -107,7 +109,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  List<String> _leftSections = ['courses', 'todos', 'math'];
+  List<String> _leftSections = ['courses', 'todos', 'planBlocks', 'math'];
   List<String> _rightSections = [
     'countdowns',
     'screenTime',
@@ -119,6 +121,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     'courses': true,
     'countdowns': true,
     'todos': true,
+    'planBlocks': true,
     'screenTime': true,
     'math': true,
     'pomodoro': true,
@@ -253,6 +256,12 @@ class _HomeDashboardState extends State<HomeDashboard>
             final text = call.arguments as String?;
             if (text != null && mounted) {
               _showOriginalText(text);
+            }
+            break;
+          case "openPlanBlock":
+            debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
+            if (mounted) {
+              _handleOpenPlanBlock(call.arguments);
             }
             break;
           // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
@@ -580,6 +589,24 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
+  /// 处理规划块通知点击，导航到规划页面
+  void _handleOpenPlanBlock(dynamic arguments) {
+    // notifId 33001-33999，减去 33001 得到 plan block 在调度列表中的 index
+    int? notifId;
+    if (arguments is Map) {
+      notifId = arguments['notifId'] as int?;
+    }
+    debugPrint("📅 导航到规划页面, notifId=$notifId");
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TodoPlanScreen(
+          username: widget.username,
+          initialDate: DateTime.now(),
+        ),
+      ),
+    );
+  }
+
   /// 打开待确认待办页面
   Future<void> _openPendingTodoConfirm() async {
     if (_pendingTodoConfirm == null) return;
@@ -592,7 +619,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     final List<Map<String, dynamic>> typedResults =
         results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
-    final confirmedResults = await _navigateToTodoConfirm(typedResults, imagePath, null);
+    final confirmedResults =
+        await _navigateToTodoConfirm(typedResults, imagePath, null);
 
     // 只有用户实际确认了待办才清除，直接返回则保留
     if (confirmedResults != null && (confirmedResults as List).isNotEmpty) {
@@ -1630,7 +1658,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 专注页: 最近专注(pomodoro), 屏幕时间(screenTime), 测验(math)
 
     // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
-    _leftSections = ['banners', 'countdowns', 'todos'];
+    _leftSections = ['banners', 'countdowns', 'todos', 'planBlocks'];
     _rightSections = ['courses', 'timeline', 'pomodoro', 'screenTime', 'math'];
 
     // 忽略之前的可见性设置，全部强制显示
@@ -1638,6 +1666,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       'courses': true,
       'countdowns': true,
       'todos': true,
+      'planBlocks': true,
       'screenTime': true,
       'math': true,
       'pomodoro': true,
@@ -3368,11 +3397,39 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       ),
                                     );
 
+                                    Widget planBlockSection = RepaintBoundary(
+                                      child: ValueListenableBuilder<int>(
+                                        valueListenable:
+                                            _timelineRefreshTriggerNotifier,
+                                        builder: (context, trigger, _) {
+                                          return PlanBlockTodaySection(
+                                            username: widget.username,
+                                            isLight: isLight,
+                                            refreshTrigger: trigger,
+                                            onTap: () async {
+                                              await Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      TodoPlanScreen(
+                                                          username:
+                                                              widget.username),
+                                                ),
+                                              );
+                                              _timelineRefreshTriggerNotifier
+                                                  .value++;
+                                              _loadAllData();
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    );
+
                                     Map<String, Widget> sectionsMap = {
                                       'banners': _buildUniversalBanner(isLight),
                                       'courses': courseSection,
                                       'countdowns': countdownSection,
                                       'todos': todoSection,
+                                      'planBlocks': planBlockSection,
                                       'screenTime': screenTimeSection,
                                       'math': mathSection,
                                       'pomodoro': pomodoroSection,
@@ -3391,7 +3448,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         'banners',
                                         'countdowns',
                                         'courses',
-                                        'todos'
+                                        'todos',
+                                        'planBlocks'
                                       ];
                                       if (hasNoCourse) {
                                         if (_noCourseBehavior == 'hide') {
