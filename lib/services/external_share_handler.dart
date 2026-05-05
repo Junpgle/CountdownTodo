@@ -173,6 +173,12 @@ class ExternalShareHandler {
           await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
 
+          // 保存待确认数据（通知点击或被中断后可在首页恢复）
+          await StorageService.savePendingTodoConfirm(
+            imagePath: filePath,
+            results: results,
+          );
+
           // 显示成功通知
           await NotificationService.showTodoRecognizeSuccess(
             todoCount: results.length,

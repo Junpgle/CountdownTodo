@@ -287,7 +287,16 @@ class _HomeDashboardState extends State<HomeDashboard>
           _loadAllData();
         },
         onTodoRecognized: (results, imagePath) {
-          // 图片识别到待办，显示确认页面
+          // 图片识别到待办，先设置待确认状态（确保首页卡片可见）
+          if (results.isNotEmpty) {
+            setState(() {
+              _pendingTodoConfirm = {
+                'imagePath': imagePath,
+                'results': results,
+              };
+            });
+          }
+          // 再导航到确认页面
           _navigateToTodoConfirm(results, imagePath, null);
         },
       );
@@ -362,12 +371,12 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   /// 导航到待办确认页面
-  void _navigateToTodoConfirm(List<Map<String, dynamic>> results,
+  Future<dynamic> _navigateToTodoConfirm(List<Map<String, dynamic>> results,
       String? imagePath, String? originalText,
-      [String? teamUuid, String? teamName]) {
-    if (!mounted || results.isEmpty) return;
+      [String? teamUuid, String? teamName]) async {
+    if (!mounted || results.isEmpty) return null;
 
-    Navigator.push(
+    return Navigator.push(
       context,
       PageTransitions.slideHorizontal(TodoConfirmScreen(
         llmResults: results,
@@ -378,6 +387,18 @@ class _HomeDashboardState extends State<HomeDashboard>
         onConfirm: (confirmedResults) {
           // 用户确认后，直接批量添加待办
           _batchAddTodos(confirmedResults, teamUuid, teamName);
+          // 清除待确认数据（如果有）
+          if (_pendingTodoConfirm != null) {
+            setState(() => _pendingTodoConfirm = null);
+            ExternalShareHandler.clearPendingTodoConfirm();
+          }
+        },
+        onSkip: () {
+          // 用户跳过全部待办，清除待确认数据
+          if (_pendingTodoConfirm != null) {
+            setState(() => _pendingTodoConfirm = null);
+            ExternalShareHandler.clearPendingTodoConfirm();
+          }
         },
       )),
     );
@@ -560,7 +581,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   /// 打开待确认待办页面
-  void _openPendingTodoConfirm() {
+  Future<void> _openPendingTodoConfirm() async {
     if (_pendingTodoConfirm == null) return;
 
     final imagePath = _pendingTodoConfirm!['imagePath'] as String?;
@@ -571,13 +592,15 @@ class _HomeDashboardState extends State<HomeDashboard>
     final List<Map<String, dynamic>> typedResults =
         results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
-    _navigateToTodoConfirm(typedResults, imagePath, null);
+    final confirmedResults = await _navigateToTodoConfirm(typedResults, imagePath, null);
 
-    // 导航后清除待确认数据和入口
-    setState(() {
-      _pendingTodoConfirm = null;
-    });
-    ExternalShareHandler.clearPendingTodoConfirm();
+    // 只有用户实际确认了待办才清除，直接返回则保留
+    if (confirmedResults != null && (confirmedResults as List).isNotEmpty) {
+      setState(() {
+        _pendingTodoConfirm = null;
+      });
+      ExternalShareHandler.clearPendingTodoConfirm();
+    }
   }
 
   Future<void> _initCrossDevicePomodoro() async {
@@ -1650,6 +1673,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 稍微延迟，让首页先完成渲染
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
+    // 🚀 有待确认待办时不劫持导航，优先让用户处理识别结果
+    if (_pendingTodoConfirm != null) return;
     final saved = await PomodoroService.loadRunState();
     if (saved == null) return;
     if (saved.phase != PomodoroPhase.focusing &&
@@ -3080,8 +3105,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                   ),
 
                 // 待确认待办入口卡片（从图片识别来）
-                if (_selectedTabIndex != 1 || isTablet)
-                  _buildPendingTodoConfirmCard(isLight),
+                _buildPendingTodoConfirmCard(isLight),
 
                 Expanded(
                   child: ValueListenableBuilder<bool>(
