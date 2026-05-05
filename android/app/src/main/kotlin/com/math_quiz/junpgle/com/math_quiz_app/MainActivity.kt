@@ -112,6 +112,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingTodoConfirm = false
     // 保存待处理的图片查看路径（在methodChannel初始化前）
     private var pendingAnalysisImagePath: String? = null
+    // 保存待处理的规划块通知 ID（在methodChannel初始化前）
+    private var pendingPlanBlockNotifId: Int? = null
     private val pendingCalendarPermissionResults = mutableListOf<MethodChannel.Result>()
     // 手环通信插件，全局可访问
     private var bandPlugin: BandCommunicationPlugin? = null
@@ -164,6 +166,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleAnalysisImageFromIntent(intent)
         handleOriginalTextFromIntent(intent)
 
+        // 处理从通知栏传来的规划块提醒
+        handlePlanBlockFromIntent(intent)
+
         // 处理 App Shortcuts 导航
         handleShortcutFromIntent(intent)
 
@@ -201,6 +206,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleTodoConfirmFromIntent(intent)
         handleAnalysisImageFromIntent(intent)
         handleOriginalTextFromIntent(intent)
+        handlePlanBlockFromIntent(intent)
         handleShortcutFromIntent(intent)
     }
 
@@ -218,6 +224,24 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             // methodChannel还未初始化，保存待处理状态
             pendingAnalysisImagePath = path
             Log.d(TAG, "📸 Saved pending analysis image path")
+        }
+    }
+
+    private fun handlePlanBlockFromIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("open_plan_block", false) != true) return
+        val notifId = intent.getIntExtra("plan_block_notif_id", -1)
+        if (notifId < 0) return
+        Log.d(TAG, "📅 handlePlanBlockFromIntent: notifId=$notifId")
+        // 清除 extra，防止重复处理
+        intent.removeExtra("open_plan_block")
+        intent.removeExtra("plan_block_notif_id")
+
+        if (methodChannel != null) {
+            methodChannel?.invokeMethod("openPlanBlock", mapOf("notifId" to notifId))
+            Log.d(TAG, "📅 Invoked openPlanBlock to Flutter with notifId: $notifId")
+        } else {
+            pendingPlanBlockNotifId = notifId
+            Log.d(TAG, "📅 Saved pending plan block notifId: $notifId")
         }
     }
 
@@ -628,6 +652,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.d(TAG, "📸 Processing pending analysis image: $path")
             methodChannel?.invokeMethod("viewAnalysisImage", path)
             pendingAnalysisImagePath = null
+        }
+
+        // 处理待处理的规划块通知
+        pendingPlanBlockNotifId?.let { notifId ->
+            Log.d(TAG, "📅 Processing pending plan block notifId: $notifId")
+            methodChannel?.invokeMethod("openPlanBlock", mapOf("notifId" to notifId))
+            pendingPlanBlockNotifId = null
         }
 
         // 处理待处理的 Shortcut 导航

@@ -194,6 +194,11 @@ class ReminderService : Service() {
             if (!analysisImagePath.isNullOrBlank()) {
                 putExtra("analysis_image_path", analysisImagePath)
             }
+            // 📅 规划块提醒 (notifId 33001-33999)：携带导航信息
+            if (notifId in 33001..33999) {
+                putExtra("open_plan_block", true)
+                putExtra("plan_block_notif_id", notifId)
+            }
         }
         val pi = PendingIntent.getActivity(
             this, notifId, intent,
