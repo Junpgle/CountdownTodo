@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../models.dart';
+import 'ai_water_border.dart';
 
 class TodoGroupWidget extends StatefulWidget {
   final TodoGroup group;
@@ -708,7 +709,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             widget.onTodoTap(todo);
           },
           borderRadius: BorderRadius.circular(12),
-          child: Container(
+          child: AiGeneratedTodoWaterBorder(
+            enabled: isAiGeneratedTodo(todo),
+            isLight: widget.isLight,
+            child: Container(
             margin: const EdgeInsets.symmetric(vertical: 4.0),
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
@@ -989,6 +993,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ),
