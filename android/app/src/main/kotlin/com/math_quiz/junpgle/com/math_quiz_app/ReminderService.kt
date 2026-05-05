@@ -220,7 +220,7 @@ class ReminderService : Service() {
                 viewImageIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            builder.addAction(0, "查看图片", viewImagePi)
+            builder.addAction(R.drawable.ic_notification, "查看图片", viewImagePi)
         }
 
         val notification = builder.build()

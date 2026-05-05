@@ -1330,7 +1330,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             title = "🕒 $todoTitle",
             text = if (todoRemark.isNotEmpty()) todoRemark else "即将开始 · $timeStr",
             alertNotificationId = ALERT_TODO_ID,
-            iconResId = R.drawable.calendar_clock
+            iconResId = R.drawable.calendar_clock,
+            imagePath = imagePath,
+            originalText = args["originalText"] as? String
         )
     }
 
@@ -1613,7 +1615,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         title: String,
         text: String,
         alertNotificationId: Int,
-        iconResId: Int = R.drawable.ic_notification
+        iconResId: Int = R.drawable.ic_notification,
+        imagePath: String? = null,
+        originalText: String? = null
     ) {
         val prefs = getSharedPreferences("alert_keys", MODE_PRIVATE)
         val lastKey = prefs.getString("last_alerted_key_$alertNotificationId", "")
@@ -1623,19 +1627,54 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (!imagePath.isNullOrEmpty()) {
+                putExtra("analysis_image_path", imagePath)
+            }
+            if (!originalText.isNullOrEmpty()) {
+                putExtra("original_analysis_text", originalText)
+            }
         }
         val pendingIntent = PendingIntent.getActivity(
             this, alertNotificationId, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
             .setSmallIcon(iconResId)
             .setContentTitle(title)
             .setContentText(text)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
-            .build()
+
+        if (!imagePath.isNullOrEmpty() && File(imagePath).exists()) {
+            val viewImageIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("analysis_image_path", imagePath)
+            }
+            val viewImagePi = PendingIntent.getActivity(
+                this,
+                alertNotificationId + 100000,
+                viewImageIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(R.drawable.ic_notification, "查看图片", viewImagePi)
+        }
+
+        if (!originalText.isNullOrEmpty()) {
+            val viewTextIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("original_analysis_text", originalText)
+            }
+            val viewTextPi = PendingIntent.getActivity(
+                this,
+                alertNotificationId + 200000,
+                viewTextIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(R.drawable.ic_notification, "查看原文", viewTextPi)
+        }
+
+        val notification = builder.build()
         try {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.notify(alertNotificationId, notification)

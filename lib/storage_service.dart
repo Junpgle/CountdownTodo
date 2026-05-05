@@ -858,7 +858,9 @@ class StorageService {
           'is_all_day',
           'reminder_minutes',
           'has_conflict',
-          'conflict_data'
+          'conflict_data',
+          'image_path',
+          'original_text',
         ]);
       }
 
@@ -906,6 +908,8 @@ class StorageService {
               'reminder_minutes': item.reminderMinutes ?? -1,
               'is_all_day': item.isAllDay ? 1 : 0,
               'has_conflict': item.hasConflict ? 1 : 0,
+              'image_path': item.imagePath,
+              'original_text': item.originalText,
               'conflict_data': item.serverVersionData != null
                   ? jsonEncode(item.serverVersionData)
                   : null,
@@ -1351,6 +1355,8 @@ class StorageService {
           'recurrence_end_date':
               item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
           'reminder_minutes': item.reminderMinutes ?? -1,
+          'image_path': item.imagePath,
+          'original_text': item.originalText,
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
 
@@ -1645,6 +1651,8 @@ class StorageService {
                             m['reminder_minutes'].toString() != '-1')
                         ? int.tryParse(m['reminder_minutes'].toString())
                         : null,
+                    imagePath: m['image_path']?.toString(),
+                    originalText: m['original_text']?.toString(),
                     isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
                     hasConflict:
                         m['has_conflict'] == 1 || m['has_conflict'] == true,
@@ -1744,6 +1752,8 @@ class StorageService {
                       m['reminder_minutes'].toString() != '-1')
                   ? int.tryParse(m['reminder_minutes'].toString())
                   : null,
+              imagePath: m['image_path']?.toString(),
+              originalText: m['original_text']?.toString(),
               isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
               hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
               serverVersionData: m['conflict_data'] != null
