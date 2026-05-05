@@ -3117,7 +3117,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     if (msg.smartContext.trim().isNotEmpty) {
       sections.add('[SMART_CONTEXT]\n${msg.smartContext.trim()}');
     } else {
-      sections.add('[SMART_CONTEXT]\n本次回复没有注入智能上下文。');
+      sections.add('[SMART_CONTEXT]\n本次回复未触发关键词注入额外上下文（课程/专注记录/冲突/团队）。\n注意：系统提示词中始终包含待办、分组、倒计时、番茄标签等基础上下文，因此模型仍可回答相关问题。');
     }
 
     return sections.join('\n\n');
