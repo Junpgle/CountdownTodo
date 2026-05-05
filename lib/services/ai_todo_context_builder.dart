@@ -42,10 +42,26 @@ ${_formatPomodoroTags(pomodoroTags)}
 【待办管理功能 - 重要规则】
 当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办，或新增/修改/删除专注记录，或开始/停止番茄钟，或新增/修改/完成/删除倒计时，或新增/改名/改色/删除番茄标签时，必须在回复末尾附加JSON操作块。
 操作已有待办必须使用待办ID；操作已有专注记录必须使用专注记录ID；操作已有倒计时必须使用倒计时ID；操作已有番茄标签必须使用标签ID。不确定时先追问。
-JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
+JSON操作块必须且只能使用以下协议：
+1. 必须用 [ACTION_START] 和 [ACTION_END] 包裹。
+2. [ACTION_START] 内必须是合法 JSON 数组；即使只有一个操作，也必须放进数组。
+3. 每个操作对象必须包含 "action" 字段。
+4. 禁止使用 Markdown 代码块，例如 ```json。
+5. 禁止使用 [PLAN_TODOS]、[CREATE_TODO]、[UPDATE_TODO] 等任何旧标记。
+6. 禁止只输出 {"todos":[...]}、{"updates":[...]} 等缺少 "action" 字段的对象。
+7. 如果同时输出操作块和建议块，顺序必须是：正文 -> [ACTION_START]...[ACTION_END] -> [SUGGEST_START]...[SUGGEST_END]。
+
+唯一合法示例：
+[ACTION_START]
+[
+  {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
+]
+[ACTION_END]
+
+支持的动作：
 
 - create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
-- plan_todos: 同create_todo格式，用于制定计划
+- plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，用于制定计划
 - update_todo: {"action":"update_todo","updates":[{"todoId":"ID","title":"新标题","startTime":"...","dueDate":"...","groupId":"...","reminderMinutes":5}]}
 - complete_todo: {"action":"complete_todo","updates":[{"todoId":"ID"}]}
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"ID"}]}
@@ -70,7 +86,7 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
 - update_pomodoro_tag: {"action":"update_pomodoro_tag","updates":[{"tagId":"ID","name":"新名称","color":"#3B82F6"}]}
 - delete_pomodoro_tag: {"action":"delete_pomodoro_tag","updates":[{"tagId":"ID"}]}
 
-可组合多种操作：[ACTION_START][{操作1},{操作2}][ACTION_END]
+可组合多种操作：[ACTION_START][{"action":"create_todo","todos":[...]},{"action":"start_pomodoro","title":"专注内容","durationMinutes":25}][ACTION_END]
 
 【后续建议】
 每次回复末尾附3-4个简短建议（≤15字），格式：[SUGGEST_START]["建议1","建议2","建议3"][SUGGEST_END]
