@@ -7,6 +7,7 @@ class ChatMessage {
   final String id;
   final ChatRole role;
   final String content;
+  final String rawContent;
   final String reasoningContent;
   final DateTime timestamp;
   final List<AiTodoAction>? todoActions;
@@ -15,6 +16,7 @@ class ChatMessage {
     String? id,
     required this.role,
     required this.content,
+    this.rawContent = '',
     this.reasoningContent = '',
     DateTime? timestamp,
     this.todoActions,
@@ -25,6 +27,7 @@ class ChatMessage {
         'id': id,
         'role': role.name,
         'content': content,
+        'rawContent': rawContent,
         'reasoningContent': reasoningContent,
         'timestamp': timestamp.millisecondsSinceEpoch,
         'todoActions': todoActions?.map((e) => e.toJson()).toList(),
@@ -35,6 +38,7 @@ class ChatMessage {
       id: json['id'] as String? ?? const Uuid().v4(),
       role: json['role'] == 'assistant' ? ChatRole.assistant : ChatRole.user,
       content: json['content'] as String,
+      rawContent: json['rawContent'] as String? ?? '',
       reasoningContent: json['reasoningContent'] as String? ?? '',
       timestamp: DateTime.fromMillisecondsSinceEpoch(
         json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
