@@ -253,6 +253,7 @@ class StorageService {
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
   static Timer? _refreshDebouncer;
   static Timer? _syncDebouncer;
+  static String? _queuedSyncUsername;
   static int _lastSyncRequestAt = 0;
   static const Duration _minSyncInterval = Duration(milliseconds: 3400);
 
@@ -266,6 +267,9 @@ class StorageService {
 
   static void requestSync(String username) {
     if (username.isEmpty) return;
+    _queuedSyncUsername = username;
+    if (_syncDebouncer != null) return;
+
     final now = DateTime.now().millisecondsSinceEpoch;
     final elapsed = now - _lastSyncRequestAt;
     final delayMs = _isSyncing
@@ -273,8 +277,21 @@ class StorageService {
         : (_minSyncInterval.inMilliseconds - elapsed)
             .clamp(0, _minSyncInterval.inMilliseconds);
 
+    _scheduleQueuedSync(Duration(milliseconds: delayMs));
+  }
+
+  static void _scheduleQueuedSync(Duration delay) {
     _syncDebouncer?.cancel();
-    _syncDebouncer = Timer(Duration(milliseconds: delayMs), () {
+    _syncDebouncer = Timer(delay, () {
+      _syncDebouncer = null;
+      if (_isSyncing) {
+        _scheduleQueuedSync(_minSyncInterval);
+        return;
+      }
+
+      final username = _queuedSyncUsername;
+      _queuedSyncUsername = null;
+      if (username == null || username.isEmpty) return;
       unawaited(syncData(username));
     });
   }
