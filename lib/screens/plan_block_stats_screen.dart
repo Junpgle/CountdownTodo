@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../services/pomodoro_service.dart';
 import '../storage_service.dart';
 
 class PlanBlockStatsScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
   late DateTime _current;
   List<TodoPlanBlock> _allBlocks = [];
   List<TodoItem> _todos = [];
+  List<PomodoroRecord> _pomodoroRecords = [];
   bool _loading = true;
 
   @override
@@ -96,12 +98,19 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     final results = await Future.wait([
       StorageService.getPlanBlocks(widget.username),
       StorageService.getTodos(widget.username),
+      PomodoroService.getRecordsInRange(r.start, r.end),
     ]);
     if (!mounted) return;
     final allBlocks =
         (results[0] as List<TodoPlanBlock>).where((b) => !b.isDeleted).toList();
     final todos =
         (results[1] as List<TodoItem>).where((t) => !t.isDeleted).toList();
+    final records = (results[2] as List<PomodoroRecord>)
+        .where((record) =>
+            !record.isDeleted &&
+            record.startTime >= r.start.millisecondsSinceEpoch &&
+            record.startTime < r.end.millisecondsSinceEpoch)
+        .toList();
 
     setState(() {
       _allBlocks = allBlocks.where((b) {
@@ -109,6 +118,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
         return !start.isBefore(r.start) && start.isBefore(r.end);
       }).toList();
       _todos = todos;
+      _pomodoroRecords = records;
       _loading = false;
     });
   }
@@ -180,12 +190,12 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
   Widget _buildOverviewCard(ThemeData theme) {
     final planned = _allBlocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
     final actual =
-        _allBlocks.fold<int>(0, (s, b) => s + b.actualFocusSeconds ~/ 60);
+        _allBlocks.fold<int>(0, (s, b) => s + _actualMinutesForBlock(b));
     final done = _allBlocks
         .where((b) =>
             b.status == TodoPlanStatus.finished ||
             (b.plannedMinutes > 0 &&
-                b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.8))
+                _actualSecondsForBlock(b) >= b.plannedMinutes * 60 * 0.8))
         .length;
     final missed =
         _allBlocks.where((b) => b.status == TodoPlanStatus.missed).length;
@@ -288,7 +298,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
       }).toList();
       final planned = dayBlocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
       final actual =
-          dayBlocks.fold<int>(0, (s, b) => s + b.actualFocusSeconds ~/ 60);
+          dayBlocks.fold<int>(0, (s, b) => s + _actualMinutesForBlock(b));
       chartData.add(_ChartPoint(
         label: DateFormat(_dimension == 2 ? 'dd' : 'E', 'zh_CN').format(day),
         planned: planned,
@@ -399,7 +409,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
       todoPlannedMap[b.todoId] =
           (todoPlannedMap[b.todoId] ?? 0) + b.plannedMinutes;
       todoActualMap[b.todoId] =
-          (todoActualMap[b.todoId] ?? 0) + b.actualFocusSeconds ~/ 60;
+          (todoActualMap[b.todoId] ?? 0) + _actualMinutesForBlock(b);
     }
     if (todoActualMap.isEmpty) return const SizedBox.shrink();
 
@@ -551,16 +561,43 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     return Colors.redAccent;
   }
 
+  int _actualMinutesForBlock(TodoPlanBlock block) {
+    return _actualSecondsForBlock(block) ~/ 60;
+  }
+
+  int _actualSecondsForBlock(TodoPlanBlock block) {
+    final linkedRecordSeconds = _pomodoroRecords
+        .where((record) => _recordBelongsToBlock(record, block))
+        .fold<int>(0, (sum, record) => sum + record.effectiveDuration);
+    return max(block.actualFocusSeconds, linkedRecordSeconds);
+  }
+
+  bool _recordBelongsToBlock(PomodoroRecord record, TodoPlanBlock block) {
+    if (record.planBlockId == block.uuid ||
+        block.pomodoroRecordIds.contains(record.uuid)) {
+      return true;
+    }
+    if (record.planBlockId?.isNotEmpty == true ||
+        record.todoUuid == null ||
+        record.todoUuid != block.todoId) {
+      return false;
+    }
+    final recordEnd =
+        record.endTime ?? record.startTime + record.effectiveDuration * 1000;
+    return record.startTime < block.endTime && recordEnd > block.startTime;
+  }
+
   Widget _buildAiSuggestionCard(ThemeData theme) {
     if (_allBlocks.isEmpty) return const SizedBox.shrink();
     final missedOrEmpty = _allBlocks
         .where((b) =>
             b.status == TodoPlanStatus.missed ||
-            (b.plannedMinutes > 0 && b.actualFocusSeconds <= 0))
+            (b.plannedMinutes > 0 && _actualSecondsForBlock(b) <= 0))
         .length;
     final lowCompletion = _allBlocks.where((b) {
-      if (b.plannedMinutes <= 0 || b.actualFocusSeconds <= 0) return false;
-      final ratio = b.actualFocusSeconds / (b.plannedMinutes * 60);
+      final actualSeconds = _actualSecondsForBlock(b);
+      if (b.plannedMinutes <= 0 || actualSeconds <= 0) return false;
+      final ratio = actualSeconds / (b.plannedMinutes * 60);
       return ratio < 0.8;
     }).length;
     final totalPlanned =

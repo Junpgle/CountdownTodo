@@ -842,6 +842,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         _stopRemotePomodoroTicker();
         setState(() => _remotePomodoro = null);
 
+        // 远端专注结束/断连后，将本地仍为 focusing 状态的规划块重置
+        _resetStalePlanBlockFocus();
+
         if (Platform.isWindows) {
           await FloatWindowService.update(endMs: 0, isLocal: false);
         }
@@ -1321,9 +1324,9 @@ class _HomeDashboardState extends State<HomeDashboard>
       ));
     }
 
-    // 1.5 规划块 (无本地番茄钟运行时展示，支持一键开始/重新开始)
+    // 1.5 规划块 (无本地/远端番茄钟运行时展示，支持一键开始/重新开始)
     // 仅在开始前 30 分钟内、进行中、或专注中断时提醒
-    if (_localPomodoro == null) {
+    if (_localPomodoro == null && _remotePomodoro == null) {
       final nowMs = now.millisecondsSinceEpoch;
       const lookAheadMs = 30 * 60 * 1000;
       final activeBlock = _planBlocks.where((b) {
@@ -1508,6 +1511,29 @@ class _HomeDashboardState extends State<HomeDashboard>
         status == TodoPlanStatus.reminded ||
         status == TodoPlanStatus.delayed ||
         status == TodoPlanStatus.focusing;
+  }
+
+  /// 远端专注结束/断连后，将 focusing 状态但无对应本地/远端番茄钟的规划块重置为 delayed
+  Future<void> _resetStalePlanBlockFocus() async {
+    final hasLocal = _localPomodoro != null;
+    final hasRemote = _remotePomodoro != null;
+    if (hasLocal || hasRemote) return;
+
+    final changed = <TodoPlanBlock>[];
+    for (final b in _planBlocks) {
+      if (b.isDeleted) continue;
+      if (b.status == TodoPlanStatus.focusing) {
+        b.status = TodoPlanStatus.delayed;
+        b.markAsChanged();
+        changed.add(b);
+      }
+    }
+    if (changed.isNotEmpty) {
+      await StorageService.savePlanBlocks(widget.username, changed);
+      if (mounted) {
+        setState(() {});
+      }
+    }
   }
 
   String _planBlockStartText(int startTimeMs, int nowMs) {
@@ -2587,7 +2613,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool syncCountdowns = true,
     bool syncScreenTime = true,
     bool syncPomodoro = true,
-    bool syncTimeLogs = true, // 🚀 1. 新增同步时间日志的参数
+    bool syncTimeLogs = true,
+    bool syncPlanBlocks = true,
   }) async {
     if (_isSyncing) return;
     setState(() {
@@ -2608,12 +2635,13 @@ class _HomeDashboardState extends State<HomeDashboard>
       bool hasChanges = false;
 
       // 🚀 2. 判断条件加入 syncTimeLogs
-      if (syncTodos || syncCountdowns || syncTimeLogs) {
+      if (syncTodos || syncCountdowns || syncTimeLogs || syncPlanBlocks) {
         final syncResult = await StorageService.syncData(
           widget.username,
           syncTodos: syncTodos,
           syncCountdowns: syncCountdowns,
-          syncTimeLogs: syncTimeLogs, // 🚀 3. 将参数传给底层的增量同步引擎
+          syncTimeLogs: syncTimeLogs,
+          syncPlanBlocks: syncPlanBlocks,
           context: context,
         );
         hasChanges = syncResult['hasChanges'] ?? false;
@@ -2866,7 +2894,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool syncCountdowns = true;
     bool syncScreenTime = true;
     bool syncPomodoro = true;
-    bool syncTimeLogs = true; // 🚀 1. 新增弹窗状态变量
+    bool syncTimeLogs = true;
+    bool syncPlanBlocks = true;
 
     showDialog(
       context: context,
@@ -2907,12 +2936,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                   onChanged: (val) =>
                       setDialogState(() => syncPomodoro = val ?? false),
                 ),
-                // 🚀 2. 新增时间日志的勾选项
                 CheckboxListTile(
                   title: const Text("时间日志 (补录)"),
                   value: syncTimeLogs,
                   onChanged: (val) =>
                       setDialogState(() => syncTimeLogs = val ?? false),
+                ),
+                CheckboxListTile(
+                  title: const Text("今日规划"),
+                  value: syncPlanBlocks,
+                  onChanged: (val) =>
+                      setDialogState(() => syncPlanBlocks = val ?? false),
                 ),
               ],
             ),
@@ -2926,7 +2960,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                       syncCountdowns ||
                       syncScreenTime ||
                       syncPomodoro ||
-                      syncTimeLogs)
+                      syncTimeLogs ||
+                      syncPlanBlocks)
                   ? () {
                       Navigator.pop(ctx);
                       _handleManualSync(
@@ -2935,7 +2970,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                         syncCountdowns: syncCountdowns,
                         syncScreenTime: syncScreenTime,
                         syncPomodoro: syncPomodoro,
-                        syncTimeLogs: syncTimeLogs, // 🚀 4. 传递给执行函数
+                        syncTimeLogs: syncTimeLogs,
+                        syncPlanBlocks: syncPlanBlocks,
                       );
                     }
                   : null,

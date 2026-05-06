@@ -632,7 +632,7 @@ class PomodoroService {
         final username = await SharedPreferences.getInstance()
             .then((p) => p.getString(StorageService.KEY_CURRENT_USER) ?? '');
         if (username.isNotEmpty) {
-          StorageService.syncData(username);
+          StorageService.requestSync(username);
         }
       }
     }
@@ -814,7 +814,7 @@ class PomodoroService {
     if (!isSyncSource) {
       final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
       if (username.isNotEmpty) {
-        StorageService.syncData(username);
+        StorageService.requestSync(username);
       }
     }
   }

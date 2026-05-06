@@ -632,6 +632,11 @@ DateTime? _parseDateField(dynamic val) {
   return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
 }
 
+String? _emptyStringToNull(String? value) {
+  if (value == null || value.isEmpty || value == 'null') return null;
+  return value;
+}
+
 class TimeLogItem {
   String id;
   String title;
@@ -778,6 +783,7 @@ class TodoPlanBlock {
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
+    version++;
     isChangedLocally = true;
     updatedAt = DateTime.now().millisecondsSinceEpoch;
   }
@@ -805,7 +811,13 @@ class TodoPlanBlock {
         'device_id': deviceId,
       };
 
-  Map<String, dynamic> toDbJson() => toJson();
+  Map<String, dynamic> toDbJson() {
+    final data = toJson();
+    // Older local databases created calendar_event_id as TEXT NOT NULL.
+    // Keep the cloud JSON nullable, but use an empty string for SQLite writes.
+    data['calendar_event_id'] = calendarEventId ?? '';
+    return data;
+  }
 
   factory TodoPlanBlock.fromJson(Map<String, dynamic> j) => TodoPlanBlock(
         id: (j['uuid'] ?? j['id'])?.toString(),
@@ -824,8 +836,8 @@ class TodoPlanBlock {
         reminderMinutes: (j['reminder_minutes'] as num?)?.toInt() ?? 5,
         pomodoroMinutes: (j['pomodoro_minutes'] as num?)?.toInt() ?? 25,
         pomodoroRounds: (j['pomodoro_rounds'] as num?)?.toInt() ?? 0,
-        calendarEventId:
-            (j['calendar_event_id'] ?? j['calendarEventId'])?.toString(),
+        calendarEventId: _emptyStringToNull(
+            (j['calendar_event_id'] ?? j['calendarEventId'])?.toString()),
         pomodoroRecordIds: (j['pomodoro_record_ids'] as String?)
                 ?.split(',')
                 .where((s) => s.isNotEmpty)

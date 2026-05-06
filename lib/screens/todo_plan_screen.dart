@@ -36,6 +36,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
   List<PomodoroTag> _tags = [];
+  List<PomodoroRecord> _pomodoroRecords = [];
 
   @override
   void initState() {
@@ -66,11 +67,13 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    final dayEnd = _focusedDate.add(const Duration(days: 1));
     final results = await Future.wait([
       StorageService.getPlanBlocksByDay(widget.username, _focusedDate),
       StorageService.getTodos(widget.username),
       StorageService.getTodoGroups(widget.username),
       PomodoroService.getTags(),
+      PomodoroService.getRecordsInRange(_focusedDate, dayEnd),
     ]);
 
     if (!mounted) return;
@@ -82,6 +85,12 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final todoGroups =
         (results[2] as List<TodoGroup>).where((g) => !g.isDeleted).toList();
     final tags = results[3] as List<PomodoroTag>;
+    final records = (results[4] as List<PomodoroRecord>)
+        .where((record) =>
+            !record.isDeleted &&
+            record.startTime >= _focusedDate.millisecondsSinceEpoch &&
+            record.startTime < dayEnd.millisecondsSinceEpoch)
+        .toList();
 
     // 自动标记过期未完成的规划块为 missed
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -89,7 +98,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     for (final b in blocks) {
       if ((b.status == TodoPlanStatus.planned ||
               b.status == TodoPlanStatus.reminded) &&
-          b.actualFocusSeconds <= 0 &&
+          _actualSecondsForPlanBlock(b, records) <= 0 &&
           b.endTime < now) {
         b.status = TodoPlanStatus.missed;
         b.markAsChanged();
@@ -105,6 +114,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       _todos = todos;
       _todoGroups = todoGroups;
       _tags = tags;
+      _pomodoroRecords = records;
       _isLoading = false;
     });
   }
@@ -182,7 +192,10 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                _PlanDaySummary(blocks: _planBlocks),
+                _PlanDaySummary(
+                  blocks: _planBlocks,
+                  pomodoroRecords: _pomodoroRecords,
+                ),
                 Expanded(
                   child: _PlanGridView(
                     date: _focusedDate,
@@ -190,6 +203,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                     todos: _todos,
                     todoGroups: _todoGroups,
                     tags: _tags,
+                    pomodoroRecords: _pomodoroRecords,
                     username: widget.username,
                     initialTodoId: widget.initialTodoId,
                     onRefresh: _loadData,
@@ -201,28 +215,69 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   }
 }
 
+int _actualMinutesForPlanBlock(
+  TodoPlanBlock block,
+  List<PomodoroRecord> records,
+) {
+  return _actualSecondsForPlanBlock(block, records) ~/ 60;
+}
+
+int _actualSecondsForPlanBlock(
+  TodoPlanBlock block,
+  List<PomodoroRecord> records,
+) {
+  final linkedRecordSeconds = records
+      .where((record) => _pomodoroRecordBelongsToPlanBlock(record, block))
+      .fold<int>(0, (sum, record) => sum + record.effectiveDuration);
+  return max(block.actualFocusSeconds, linkedRecordSeconds);
+}
+
+bool _pomodoroRecordBelongsToPlanBlock(
+  PomodoroRecord record,
+  TodoPlanBlock block,
+) {
+  if (record.isDeleted || block.isDeleted) return false;
+  if (record.planBlockId == block.uuid ||
+      block.pomodoroRecordIds.contains(record.uuid)) {
+    return true;
+  }
+  if (record.planBlockId?.isNotEmpty == true ||
+      record.todoUuid == null ||
+      record.todoUuid != block.todoId) {
+    return false;
+  }
+  final recordEnd =
+      record.endTime ?? record.startTime + record.effectiveDuration * 1000;
+  return record.startTime < block.endTime && recordEnd > block.startTime;
+}
+
 class _PlanDaySummary extends StatelessWidget {
   final List<TodoPlanBlock> blocks;
+  final List<PomodoroRecord> pomodoroRecords;
 
-  const _PlanDaySummary({required this.blocks});
+  const _PlanDaySummary({
+    required this.blocks,
+    required this.pomodoroRecords,
+  });
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final planned = blocks.fold<int>(0, (sum, b) => sum + b.plannedMinutes);
-    final actual =
-        blocks.fold<int>(0, (sum, b) => sum + b.actualFocusSeconds ~/ 60);
+    final actual = blocks.fold<int>(
+        0, (sum, b) => sum + _actualMinutesForPlanBlock(b, pomodoroRecords));
     final done = blocks
         .where((b) =>
             b.status == TodoPlanStatus.finished ||
             (b.plannedMinutes > 0 &&
-                b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.8))
+                _actualSecondsForPlanBlock(b, pomodoroRecords) >=
+                    b.plannedMinutes * 60 * 0.8))
         .length;
     final missed = blocks
         .where((b) =>
             (b.status == TodoPlanStatus.planned ||
                 b.status == TodoPlanStatus.reminded) &&
-            b.actualFocusSeconds <= 0 &&
+            _actualSecondsForPlanBlock(b, pomodoroRecords) <= 0 &&
             b.endTime < now)
         .length;
     final rate = planned <= 0 ? 0 : ((actual / planned) * 100).clamp(0, 999);
@@ -288,6 +343,7 @@ class _PlanGridView extends StatefulWidget {
   final List<TodoItem> todos;
   final List<TodoGroup> todoGroups;
   final List<PomodoroTag> tags;
+  final List<PomodoroRecord> pomodoroRecords;
   final String username;
   final String? initialTodoId;
   final VoidCallback onRefresh;
@@ -298,6 +354,7 @@ class _PlanGridView extends StatefulWidget {
     required this.todos,
     required this.todoGroups,
     required this.tags,
+    required this.pomodoroRecords,
     required this.username,
     this.initialTodoId,
     required this.onRefresh,
@@ -549,6 +606,8 @@ class _PlanGridViewState extends State<_PlanGridView> {
         .cast<TodoItem?>()
         .firstWhere((t) => t?.id == block.todoId, orElse: () => null);
     final color = Theme.of(context).colorScheme.primary;
+    final actualMinutes =
+        _actualMinutesForPlanBlock(block, widget.pomodoroRecords);
     final widgets = <Widget>[];
 
     final endHour = clippedEnd.isAtSameMomentAs(dayEnd) ? 23 : clippedEnd.hour;
@@ -650,6 +709,17 @@ class _PlanGridViewState extends State<_PlanGridView> {
                             fontSize: 8, color: color.withValues(alpha: 0.72)),
                         maxLines: 1,
                       ),
+                    if (segmentW > 92 && actualMinutes > 0) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        '$actualMinutes/${block.plannedMinutes}m',
+                        style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.green.shade700),
+                        maxLines: 1,
+                      ),
+                    ],
                   ],
                 ),
               ),

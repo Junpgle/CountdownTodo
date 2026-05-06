@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
@@ -53,7 +54,8 @@ class PomodoroControlService {
       }
     }
 
-    // 🚀 核心联动：自动查找当前时间段内匹配的任务规划块
+    // 自动查找匹配的任务规划块。
+    // 优先匹配当前时间在范围内的，其次匹配同日同 todo 的最近未来块。
     String? activePlanBlockId = planBlockId;
     if (activePlanBlockId == null && boundTodo != null) {
       final prefs = await SharedPreferences.getInstance();
@@ -61,16 +63,11 @@ class PomodoroControlService {
       if (username != null) {
         final nowDt = DateTime.fromMillisecondsSinceEpoch(now);
         final blocks = await StorageService.getPlanBlocksByDay(username, nowDt);
-        final activeBlock = blocks.where((b) => !b.isDeleted).firstWhere(
-              (b) =>
-                  b.todoId == boundTodo.id &&
-                  now >= b.startTime &&
-                  now <= b.endTime,
-              orElse: () => TodoPlanBlock(todoId: '', startTime: 0, endTime: 0),
-            );
-        if (activeBlock.todoId.isNotEmpty) {
-          activePlanBlockId = activeBlock.uuid;
-        }
+        activePlanBlockId = selectAutoPlanBlockId(
+          blocks: blocks,
+          todoId: boundTodo.id,
+          now: now,
+        );
       }
     }
 
@@ -172,6 +169,41 @@ class PomodoroControlService {
     }
 
     return PomodoroStartResult(state: state, tagNames: tagNames);
+  }
+
+  @visibleForTesting
+  static String? selectAutoPlanBlockId({
+    required List<TodoPlanBlock> blocks,
+    required String todoId,
+    required int now,
+  }) {
+    final eligible = blocks
+        .where(
+          (b) =>
+              !b.isDeleted &&
+              b.todoId == todoId &&
+              b.endTime > now &&
+              b.status != TodoPlanStatus.finished &&
+              b.status != TodoPlanStatus.skipped &&
+              b.status != TodoPlanStatus.cancelled &&
+              b.status != TodoPlanStatus.missed,
+        )
+        .toList();
+
+    final inRange = eligible.where(
+      (b) => now >= b.startTime && now < b.endTime,
+    );
+    if (inRange.isNotEmpty) {
+      return inRange.first.uuid;
+    }
+
+    final upcoming = eligible.where((b) => b.startTime >= now).toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    if (upcoming.isNotEmpty) {
+      return upcoming.first.uuid;
+    }
+
+    return null;
   }
 
   static Future<bool> stopCurrentFocus({

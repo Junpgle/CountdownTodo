@@ -1187,15 +1187,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       return {'completed': 0, 'total': 0, 'progress': 0.0};
     }
 
-    // 计算完成时长和总时长（秒）
+    // 计算实际专注进度（秒）
     int totalSeconds = 0;
     int completedSeconds = 0;
 
     for (var record in associatedRecords) {
-      totalSeconds += record.plannedDuration;
-      if (record.isCompleted) {
-        completedSeconds += record.effectiveDuration;
-      }
+      final int effective =
+          record.effectiveDuration > 0 ? record.effectiveDuration : 0;
+      final int planned =
+          record.plannedDuration > 0 ? record.plannedDuration : effective;
+      final int base = planned > 0 ? planned : 1;
+      totalSeconds += base;
+      completedSeconds += effective.clamp(0, base);
     }
 
     final progress = totalSeconds > 0 ? completedSeconds / totalSeconds : 0.0;
