@@ -109,7 +109,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
 
-  List<String> _leftSections = ['courses', 'todos', 'planBlocks', 'math'];
+  List<String> _leftSections = ['courses', 'todos', 'math'];
   List<String> _rightSections = [
     'countdowns',
     'screenTime',
@@ -1658,7 +1658,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 专注页: 最近专注(pomodoro), 屏幕时间(screenTime), 测验(math)
 
     // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
-    _leftSections = ['banners', 'countdowns', 'todos', 'planBlocks'];
+    _leftSections = ['banners', 'countdowns', 'todos'];
     _rightSections = ['courses', 'timeline', 'pomodoro', 'screenTime', 'math'];
 
     // 忽略之前的可见性设置，全部强制显示
@@ -3152,10 +3152,20 @@ class _HomeDashboardState extends State<HomeDashboard>
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     // ... (rest of section definitions)
-                                    Widget courseSection = CourseSectionWidget(
-                                        dashboardCourseData:
-                                            _dashboardCourseData,
-                                        isLight: isLight);
+                                    Widget courseSection =
+                                        ValueListenableBuilder<int>(
+                                      valueListenable:
+                                          _timelineRefreshTriggerNotifier,
+                                      builder: (context, trigger, _) {
+                                        return CourseSectionWidget(
+                                          dashboardCourseData:
+                                              _dashboardCourseData,
+                                          isLight: isLight,
+                                          username: widget.username,
+                                          refreshTrigger: trigger,
+                                        );
+                                      },
+                                    );
                                     Widget countdownSection =
                                         CountdownSectionWidget(
                                             countdowns: _countdowns,
@@ -3449,7 +3459,6 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         'countdowns',
                                         'courses',
                                         'todos',
-                                        'planBlocks'
                                       ];
                                       if (hasNoCourse) {
                                         if (_noCourseBehavior == 'hide') {

@@ -1,6 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../models.dart';
 import '../screens/course_screens.dart';
+import '../screens/pomodoro_screen.dart';
+import '../services/pomodoro_control_service.dart';
+import '../services/pomodoro_service.dart';
+import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 
 class ShimmerWidget extends StatefulWidget {
@@ -123,13 +130,16 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     final dpr = view.devicePixelRatio;
     final logical = view.physicalSize / dpr;
     final landscape = logical.width > logical.height;
-    return Size.fromHeight(landscape ? 64.0 : 100.0);
+    return Size.fromHeight(landscape ? 64.0 : 112.0);
   }
 }
 
 class _HomeAppBarState extends State<HomeAppBar>
     with SingleTickerProviderStateMixin {
   late final AnimationController _syncRotationController;
+  Timer? _planReminderTimer;
+  TodoPlanBlock? _activePlanReminder;
+  bool _startingPlanFocus = false;
 
   @override
   void initState() {
@@ -138,10 +148,16 @@ class _HomeAppBarState extends State<HomeAppBar>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
+    _loadPlanReminder();
+    _planReminderTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _loadPlanReminder(),
+    );
   }
 
   @override
   void dispose() {
+    _planReminderTimer?.cancel();
     _syncRotationController.dispose();
     super.dispose();
   }
@@ -155,7 +171,131 @@ class _HomeAppBarState extends State<HomeAppBar>
       _syncRotationController.stop();
       _syncRotationController.reset();
     }
+    if (widget.username != oldWidget.username) {
+      _loadPlanReminder();
+    }
   }
+
+  Future<void> _loadPlanReminder() async {
+    try {
+      final blocks = await StorageService.getPlanBlocks(widget.username);
+      final next = _pickActivePlanReminder(blocks, DateTime.now());
+      if (!mounted) return;
+      if (_activePlanReminder?.id == next?.id &&
+          _activePlanReminder?.status == next?.status) {
+        return;
+      }
+      setState(() => _activePlanReminder = next);
+    } catch (_) {
+      if (mounted && _activePlanReminder != null) {
+        setState(() => _activePlanReminder = null);
+      }
+    }
+  }
+
+  TodoPlanBlock? _pickActivePlanReminder(
+    List<TodoPlanBlock> blocks,
+    DateTime now,
+  ) {
+    final nowMs = now.millisecondsSinceEpoch;
+    final candidates = blocks.where((block) {
+      if (block.isDeleted) return false;
+      if (!_isReminderEligibleStatus(block.status)) return false;
+      if (nowMs > block.endTime) return false;
+
+      final advanceMinutes =
+          block.reminderMinutes < 0 ? 0 : block.reminderMinutes;
+      final reminderAt =
+          block.startTime - Duration(minutes: advanceMinutes).inMilliseconds;
+      return nowMs >= reminderAt;
+    }).toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
+  bool _isReminderEligibleStatus(TodoPlanStatus status) {
+    return status == TodoPlanStatus.planned ||
+        status == TodoPlanStatus.reminded ||
+        status == TodoPlanStatus.delayed ||
+        status == TodoPlanStatus.focusing;
+  }
+
+  Future<void> _startPlanFocus(TodoPlanBlock block) async {
+    if (_startingPlanFocus) return;
+    setState(() => _startingPlanFocus = true);
+    try {
+      final running = await PomodoroService.loadRunState();
+      final hasRunningPomodoro = running != null &&
+          running.phase != PomodoroPhase.idle &&
+          running.phase != PomodoroPhase.finished;
+      if (!hasRunningPomodoro) {
+        final todos = await StorageService.getTodos(widget.username);
+        TodoItem? boundTodo;
+        for (final todo in todos) {
+          if (todo.id == block.todoId && !todo.isDeleted) {
+            boundTodo = todo;
+            break;
+          }
+        }
+        boundTodo ??= TodoItem(
+          id: block.todoId,
+          title: block.titleSnapshot?.isNotEmpty == true
+              ? block.titleSnapshot!
+              : '规划任务',
+        );
+
+        final plannedMinutes = block.plannedMinutes > 0
+            ? block.plannedMinutes
+            : ((block.endTime - block.startTime) / 60000).round();
+        block.status = TodoPlanStatus.focusing;
+        block.markAsChanged();
+        await StorageService.savePlanBlocks(widget.username, [block]);
+        final settings = await PomodoroService.getSettings();
+        await PomodoroControlService.startFocus(
+          settings: settings,
+          boundTodo: boundTodo,
+          durationMinutes: plannedMinutes < 1 ? 1 : plannedMinutes,
+          planBlockId: block.uuid,
+        );
+      }
+
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PomodoroScreen(username: widget.username),
+        ),
+      );
+      if (mounted) {
+        setState(() {
+          _activePlanReminder = null;
+          _startingPlanFocus = false;
+        });
+        _loadPlanReminder();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _startingPlanFocus = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('启动规划专注失败: $e')),
+      );
+    }
+  }
+
+  String _planReminderTimeText(TodoPlanBlock block) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
+    final end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
+    if (now < block.startTime) {
+      final minutes = ((block.startTime - now) / 60000).ceil();
+      return minutes <= 1 ? '马上开始' : '$minutes 分钟后开始';
+    }
+    return '进行中 · ${_hm(start)}-${_hm(end)}';
+  }
+
+  static String _hm(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 
   Widget _buildActionButton(BuildContext context,
       {required IconData icon,
@@ -257,14 +397,26 @@ class _HomeAppBarState extends State<HomeAppBar>
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final bool isTablet = MediaQuery.of(context).size.width >= 768;
-    final toolbarH = isLandscape ? 64.0 : 100.0;
+    final toolbarH = isLandscape ? 64.0 : 112.0;
     final titleSize = isLandscape ? 18.0 : 22.0;
     final dateSize = isLandscape ? 12.0 : 13.0;
     final greetingSize = isLandscape ? 11.0 : 12.0;
 
     final bool isMobileGrid = !isTablet && !isLandscape;
+    final activePlan = _activePlanReminder;
 
     // 🚀 定义各个操作按钮，以便在不同布局中复用
+    final planReminderBtn = activePlan == null
+        ? null
+        : _buildActionButton(
+            context,
+            icon: Icons.play_circle_fill_rounded,
+            isLoading: _startingPlanFocus,
+            onPressed: () => _startPlanFocus(activePlan),
+            showAlertDot: true,
+            isSmall: isMobileGrid,
+            margin: isMobileGrid ? EdgeInsets.zero : null,
+          );
     final searchBtn = _buildActionButton(
       context,
       icon: Icons.search_rounded,
@@ -338,10 +490,80 @@ class _HomeAppBarState extends State<HomeAppBar>
                   : Colors.grey,
             ),
           ),
+          if (activePlan != null && !isLandscape) ...[
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: () => _startPlanFocus(activePlan),
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 260),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: widget.isLight
+                      ? Colors.white.withValues(alpha: 0.18)
+                      : Theme.of(context)
+                          .colorScheme
+                          .primaryContainer
+                          .withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: widget.isLight
+                        ? Colors.white.withValues(alpha: 0.35)
+                        : Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _startingPlanFocus
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.8,
+                              color: widget.isLight
+                                  ? Colors.white
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                          )
+                        : Icon(
+                            Icons.play_circle_fill_rounded,
+                            size: 15,
+                            color: widget.isLight
+                                ? Colors.white
+                                : Theme.of(context).colorScheme.primary,
+                          ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '${activePlan.titleSnapshot ?? "规划任务"} · ${_planReminderTimeText(activePlan)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: widget.isLight
+                              ? Colors.white
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
       actions: [
         if (isTablet || isLandscape) ...[
+          if (planReminderBtn != null) planReminderBtn,
           if (widget.showCourseButton)
             _buildActionButton(
               context,
@@ -369,7 +591,7 @@ class _HomeAppBarState extends State<HomeAppBar>
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    teamsBtn, // 团队放在左上角
+                    planReminderBtn ?? teamsBtn, // 有规划提醒时优先显示开始专注
                     const SizedBox(width: 8),
                     settingsBtn, // 设置放在右上角
                   ],
@@ -380,7 +602,7 @@ class _HomeAppBarState extends State<HomeAppBar>
                   children: [
                     searchBtn, // 搜索放在左下角
                     const SizedBox(width: 8),
-                    syncBtn, // 同步放在右下角
+                    planReminderBtn == null ? syncBtn : teamsBtn,
                   ],
                 ),
               ],
