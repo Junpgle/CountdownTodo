@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
@@ -27,6 +28,7 @@ class PomodoroControlService {
     List<String> tagUuids = const [],
     int currentCycle = 1,
     int? durationMinutes,
+    String? planBlockId,
     String? deviceId,
     bool notify = true,
     bool updateFloat = true,
@@ -52,6 +54,23 @@ class PomodoroControlService {
       }
     }
 
+    // 自动查找匹配的任务规划块。
+    // 优先匹配当前时间在范围内的，其次匹配同日同 todo 的最近未来块。
+    String? activePlanBlockId = planBlockId;
+    if (activePlanBlockId == null && boundTodo != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString(StorageService.KEY_CURRENT_USER);
+      if (username != null) {
+        final nowDt = DateTime.fromMillisecondsSinceEpoch(now);
+        final blocks = await StorageService.getPlanBlocksByDay(username, nowDt);
+        activePlanBlockId = selectAutoPlanBlockId(
+          blocks: blocks,
+          todoId: boundTodo.id,
+          now: now,
+        );
+      }
+    }
+
     final state = PomodoroRunState(
       phase: PomodoroPhase.focusing,
       sessionUuid: sessionUuid,
@@ -70,6 +89,7 @@ class PomodoroControlService {
       pausedAtMs: 0,
       accumulatedMs: 0,
       pauseStartMs: 0,
+      planBlockId: activePlanBlockId,
     );
 
     PomodoroSyncService.instance.setLocalFocusing(true);
@@ -151,6 +171,41 @@ class PomodoroControlService {
     return PomodoroStartResult(state: state, tagNames: tagNames);
   }
 
+  @visibleForTesting
+  static String? selectAutoPlanBlockId({
+    required List<TodoPlanBlock> blocks,
+    required String todoId,
+    required int now,
+  }) {
+    final eligible = blocks
+        .where(
+          (b) =>
+              !b.isDeleted &&
+              b.todoId == todoId &&
+              b.endTime > now &&
+              b.status != TodoPlanStatus.finished &&
+              b.status != TodoPlanStatus.skipped &&
+              b.status != TodoPlanStatus.cancelled &&
+              b.status != TodoPlanStatus.missed,
+        )
+        .toList();
+
+    final inRange = eligible.where(
+      (b) => now >= b.startTime && now < b.endTime,
+    );
+    if (inRange.isNotEmpty) {
+      return inRange.first.uuid;
+    }
+
+    final upcoming = eligible.where((b) => b.startTime >= now).toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    if (upcoming.isNotEmpty) {
+      return upcoming.first.uuid;
+    }
+
+    return null;
+  }
+
   static Future<bool> stopCurrentFocus({
     required String username,
     PomodoroRecordStatus status = PomodoroRecordStatus.interrupted,
@@ -187,6 +242,7 @@ class PomodoroControlService {
       actualDuration: actualSeconds,
       status: status,
       deviceId: deviceId,
+      planBlockId: state.planBlockId,
     ));
 
     if (markTodoComplete && state.todoUuid?.isNotEmpty == true) {

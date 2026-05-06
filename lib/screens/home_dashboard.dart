@@ -29,6 +29,7 @@ import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../services/external_share_handler.dart';
 import '../services/pomodoro_service.dart';
+import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
@@ -53,10 +54,12 @@ import '../widgets/countdown_section_widget.dart';
 import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
+import '../widgets/plan_block_today_section.dart';
 import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
 import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
 import 'pomodoro_screen.dart';
+import 'todo_plan_screen.dart';
 // 🚀 引入
 // 🚀 引入
 import '../widgets/global_search_overlay.dart';
@@ -119,6 +122,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     'courses': true,
     'countdowns': true,
     'todos': true,
+    'planBlocks': true,
     'screenTime': true,
     'math': true,
     'pomodoro': true,
@@ -157,6 +161,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
+  List<TodoPlanBlock> _planBlocks = [];
   bool _isDataLoading = false; // 🚀 加载锁，防止并发触发导致的数据库竞争
   bool _pendingReloadRequested = false;
   int _loadGeneration = 0;
@@ -255,6 +260,12 @@ class _HomeDashboardState extends State<HomeDashboard>
               _showOriginalText(text);
             }
             break;
+          case "openPlanBlock":
+            debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
+            if (mounted) {
+              await _handleOpenPlanBlock(call.arguments);
+            }
+            break;
           // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
         }
       });
@@ -287,7 +298,16 @@ class _HomeDashboardState extends State<HomeDashboard>
           _loadAllData();
         },
         onTodoRecognized: (results, imagePath) {
-          // 图片识别到待办，显示确认页面
+          // 图片识别到待办，先设置待确认状态（确保首页卡片可见）
+          if (results.isNotEmpty) {
+            setState(() {
+              _pendingTodoConfirm = {
+                'imagePath': imagePath,
+                'results': results,
+              };
+            });
+          }
+          // 再导航到确认页面
           _navigateToTodoConfirm(results, imagePath, null);
         },
       );
@@ -362,12 +382,12 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   /// 导航到待办确认页面
-  void _navigateToTodoConfirm(List<Map<String, dynamic>> results,
+  Future<dynamic> _navigateToTodoConfirm(List<Map<String, dynamic>> results,
       String? imagePath, String? originalText,
-      [String? teamUuid, String? teamName]) {
-    if (!mounted || results.isEmpty) return;
+      [String? teamUuid, String? teamName]) async {
+    if (!mounted || results.isEmpty) return null;
 
-    Navigator.push(
+    return Navigator.push(
       context,
       PageTransitions.slideHorizontal(TodoConfirmScreen(
         llmResults: results,
@@ -378,6 +398,18 @@ class _HomeDashboardState extends State<HomeDashboard>
         onConfirm: (confirmedResults) {
           // 用户确认后，直接批量添加待办
           _batchAddTodos(confirmedResults, teamUuid, teamName);
+          // 清除待确认数据（如果有）
+          if (_pendingTodoConfirm != null) {
+            setState(() => _pendingTodoConfirm = null);
+            ExternalShareHandler.clearPendingTodoConfirm();
+          }
+        },
+        onSkip: () {
+          // 用户跳过全部待办，清除待确认数据
+          if (_pendingTodoConfirm != null) {
+            setState(() => _pendingTodoConfirm = null);
+            ExternalShareHandler.clearPendingTodoConfirm();
+          }
         },
       )),
     );
@@ -559,8 +591,56 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
+  /// 处理规划块通知点击，导航到规划页面
+  Future<void> _handleOpenPlanBlock(dynamic arguments) async {
+    // notifId 33001-33999，减去 33001 得到 plan block 在调度列表中的 index
+    int? notifId;
+    String? planBlockId;
+    if (arguments is Map) {
+      notifId = arguments['notifId'] as int?;
+      planBlockId =
+          (arguments['planBlockId'] ?? arguments['plan_block_id'])?.toString();
+    }
+    debugPrint("📅 打开规划提醒, notifId=$notifId, planBlockId=$planBlockId");
+    TodoPlanBlock? target;
+    final blocks = await StorageService.getPlanBlocks(widget.username);
+    if (planBlockId != null && planBlockId.isNotEmpty) {
+      for (final block in blocks) {
+        if (block.uuid == planBlockId && !block.isDeleted) {
+          target = block;
+          break;
+        }
+      }
+    }
+    if (target == null && notifId != null) {
+      const baseId = 33001;
+      final idx = notifId - baseId;
+      if (idx >= 0 && idx < blocks.length) target = blocks[idx];
+    }
+    if (target != null) {
+      if (target.status == TodoPlanStatus.planned ||
+          target.status == TodoPlanStatus.reminded) {
+        target.status = TodoPlanStatus.reminded;
+        target.markAsChanged();
+        await StorageService.savePlanBlocks(widget.username, [target],
+            sync: true);
+      }
+      await _startPlanBlockFocus(target);
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TodoPlanScreen(
+          username: widget.username,
+          initialDate: DateTime.now(),
+        ),
+      ),
+    );
+  }
+
   /// 打开待确认待办页面
-  void _openPendingTodoConfirm() {
+  Future<void> _openPendingTodoConfirm() async {
     if (_pendingTodoConfirm == null) return;
 
     final imagePath = _pendingTodoConfirm!['imagePath'] as String?;
@@ -571,13 +651,16 @@ class _HomeDashboardState extends State<HomeDashboard>
     final List<Map<String, dynamic>> typedResults =
         results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
-    _navigateToTodoConfirm(typedResults, imagePath, null);
+    final confirmedResults =
+        await _navigateToTodoConfirm(typedResults, imagePath, null);
 
-    // 导航后清除待确认数据和入口
-    setState(() {
-      _pendingTodoConfirm = null;
-    });
-    ExternalShareHandler.clearPendingTodoConfirm();
+    // 只有用户实际确认了待办才清除，直接返回则保留
+    if (confirmedResults != null && (confirmedResults as List).isNotEmpty) {
+      setState(() {
+        _pendingTodoConfirm = null;
+      });
+      ExternalShareHandler.clearPendingTodoConfirm();
+    }
   }
 
   Future<void> _initCrossDevicePomodoro() async {
@@ -758,6 +841,9 @@ class _HomeDashboardState extends State<HomeDashboard>
       case 'FOCUS_DISCONNECTED':
         _stopRemotePomodoroTicker();
         setState(() => _remotePomodoro = null);
+
+        // 远端专注结束/断连后，将本地仍为 focusing 状态的规划块重置
+        _resetStalePlanBlockFocus();
 
         if (Platform.isWindows) {
           await FloatWindowService.update(endMs: 0, isLocal: false);
@@ -1117,6 +1203,41 @@ class _HomeDashboardState extends State<HomeDashboard>
                 color: isLight ? Colors.white : baseColor,
               ),
             ),
+            if (event.actionLabel != null) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: event.onAction,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: isLight
+                        ? Colors.white.withValues(alpha: 0.25)
+                        : baseColor.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (event.actionIcon != null) ...[
+                        Icon(event.actionIcon,
+                            size: 14,
+                            color: isLight ? Colors.white : baseColor),
+                        const SizedBox(width: 4),
+                      ],
+                      Text(
+                        event.actionLabel!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isLight ? Colors.white : baseColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(width: 4),
             Icon(Icons.chevron_right,
                 color: isLight ? Colors.white70 : baseColor, size: 18),
@@ -1146,6 +1267,12 @@ class _HomeDashboardState extends State<HomeDashboard>
               ? '$m 分钟'
               : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
 
+      // 规划块即将结束时显示停止按钮
+      final hasActivePlanBlock = _planBlocks
+          .any((b) => !b.isDeleted && b.status == TodoPlanStatus.focusing);
+      final bool showStopBtn =
+          hasActivePlanBlock && !isCountUp && rem > 0 && rem <= 1800;
+
       events.add(HomeBannerEvent(
         type: 'pomodoro',
         title: _localPomodoro!.todoTitle ?? '无标题专注',
@@ -1154,6 +1281,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         baseColor: const Color(0xFF4F46E5),
         icon: '🍅',
         priority: 0,
+        actionLabel: showStopBtn ? '关闭' : null,
+        actionIcon: showStopBtn ? Icons.stop_rounded : null,
+        onAction: showStopBtn ? _stopPlanBlockPomodoro : null,
         onTap: () async {
           await PageTransitions.pushFromRect(
             context: context,
@@ -1192,6 +1322,58 @@ class _HomeDashboardState extends State<HomeDashboard>
           sourceKey: _focusBannerKey,
         ),
       ));
+    }
+
+    // 1.5 规划块 (无本地/远端番茄钟运行时展示，支持一键开始/重新开始)
+    // 仅在开始前 30 分钟内、进行中、或专注中断时提醒
+    if (_localPomodoro == null && _remotePomodoro == null) {
+      final nowMs = now.millisecondsSinceEpoch;
+      const lookAheadMs = 30 * 60 * 1000;
+      final activeBlock = _planBlocks.where((b) {
+        if (b.isDeleted) return false;
+        if (!_isPlanBlockStartable(b.status)) return false;
+        if (nowMs > b.endTime) return false;
+        if (b.status == TodoPlanStatus.focusing) return true;
+        return nowMs >= b.startTime - lookAheadMs;
+      }).firstOrNull;
+      if (activeBlock != null) {
+        final title = activeBlock.titleSnapshot?.isNotEmpty == true
+            ? activeBlock.titleSnapshot!
+            : '规划任务';
+        final isInterrupted = activeBlock.status == TodoPlanStatus.focusing;
+        final remainMin = ((activeBlock.endTime - nowMs) / 60000).ceil();
+        final timeText = isInterrupted
+            ? (remainMin > 0 ? '剩 ${remainMin}m' : '已超时')
+            : (nowMs < activeBlock.startTime
+                ? _planBlockStartText(activeBlock.startTime, nowMs)
+                : (remainMin > 0 ? '剩 ${remainMin}m' : '进行中'));
+
+        events.add(HomeBannerEvent(
+          type: 'plan_block',
+          title: title,
+          label: isInterrupted ? '⏱ 专注中断' : '📋 规划待专注',
+          timeInfo: timeText,
+          baseColor:
+              isInterrupted ? Colors.deepOrange : const Color(0xFF7C4DFF),
+          icon: '📋',
+          priority: 1,
+          actionLabel: isInterrupted ? '重新开始' : '开始',
+          actionIcon: Icons.play_arrow_rounded,
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => TodoPlanScreen(
+                  username: widget.username,
+                  initialDate: DateTime.now(),
+                ),
+              ),
+            );
+            _timelineRefreshTriggerNotifier.value++;
+            _loadAllData();
+          },
+          onAction: () => _startPlanBlockFocus(activeBlock),
+        ));
+      }
     }
 
     // 2. 课程
@@ -1322,6 +1504,114 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 排序: 优先级数值越小越靠前
     events.sort((a, b) => a.priority.compareTo(b.priority));
     return events;
+  }
+
+  bool _isPlanBlockStartable(TodoPlanStatus status) {
+    return status == TodoPlanStatus.planned ||
+        status == TodoPlanStatus.reminded ||
+        status == TodoPlanStatus.delayed ||
+        status == TodoPlanStatus.focusing;
+  }
+
+  /// 远端专注结束/断连后，将 focusing 状态但无对应本地/远端番茄钟的规划块重置为 delayed
+  Future<void> _resetStalePlanBlockFocus() async {
+    final hasLocal = _localPomodoro != null;
+    final hasRemote = _remotePomodoro != null;
+    if (hasLocal || hasRemote) return;
+
+    final changed = <TodoPlanBlock>[];
+    for (final b in _planBlocks) {
+      if (b.isDeleted) continue;
+      if (b.status == TodoPlanStatus.focusing) {
+        b.status = TodoPlanStatus.delayed;
+        b.markAsChanged();
+        changed.add(b);
+      }
+    }
+    if (changed.isNotEmpty) {
+      await StorageService.savePlanBlocks(widget.username, changed);
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  String _planBlockStartText(int startTimeMs, int nowMs) {
+    final minutes = ((startTimeMs - nowMs) / 60000).ceil();
+    return minutes <= 1 ? '马上开始' : '$minutes 分钟后开始';
+  }
+
+  Future<void> _startPlanBlockFocus(TodoPlanBlock block) async {
+    try {
+      final todos = await StorageService.getTodos(widget.username);
+      TodoItem? boundTodo;
+      for (final todo in todos) {
+        if (todo.id == block.todoId && !todo.isDeleted) {
+          boundTodo = todo;
+          break;
+        }
+      }
+      boundTodo ??= TodoItem(
+        id: block.todoId,
+        title: block.titleSnapshot?.isNotEmpty == true
+            ? block.titleSnapshot!
+            : '规划任务',
+      );
+
+      final configuredPomodoroMinutes = block.pomodoroRounds > 0
+          ? block.pomodoroMinutes * block.pomodoroRounds
+          : 0;
+      final plannedMinutes = configuredPomodoroMinutes > 0
+          ? configuredPomodoroMinutes
+          : (block.plannedMinutes > 0
+              ? block.plannedMinutes
+              : ((block.endTime - block.startTime) / 60000).round());
+      block.status = TodoPlanStatus.focusing;
+      block.markAsChanged();
+      await StorageService.savePlanBlocks(widget.username, [block]);
+      final settings = await PomodoroService.getSettings();
+      await PomodoroControlService.startFocus(
+        settings: settings,
+        boundTodo: boundTodo,
+        durationMinutes: plannedMinutes < 1 ? 1 : plannedMinutes,
+        planBlockId: block.uuid,
+      );
+
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PomodoroScreen(username: widget.username),
+        ),
+      );
+      if (mounted) {
+        _timelineRefreshTriggerNotifier.value++;
+        _loadAllData();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('启动专注失败: $e')),
+      );
+    }
+  }
+
+  Future<void> _stopPlanBlockPomodoro() async {
+    try {
+      await PomodoroControlService.stopCurrentFocus(
+        username: widget.username,
+        status: PomodoroRecordStatus.interrupted,
+      );
+      if (mounted) {
+        _timelineRefreshTriggerNotifier.value++;
+        _loadAllData();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('停止专注失败: $e')),
+      );
+    }
   }
 
   void _openTodoEditor(TodoItem todo) {
@@ -1615,6 +1905,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       'courses': true,
       'countdowns': true,
       'todos': true,
+      'planBlocks': true,
       'screenTime': true,
       'math': true,
       'pomodoro': true,
@@ -1650,6 +1941,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 稍微延迟，让首页先完成渲染
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
+    // 🚀 有待确认待办时不劫持导航，优先让用户处理识别结果
+    if (_pendingTodoConfirm != null) return;
     final saved = await PomodoroService.loadRunState();
     if (saved == null) return;
     if (saved.phase != PomodoroPhase.focusing &&
@@ -2125,6 +2418,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         _loadDataTask("Math", StorageService.getMathStats(widget.username)),
         _loadDataTask(
             "Courses", CourseService.getDashboardCourses(widget.username)),
+        _loadDataTask(
+            "PlanBlocks", StorageService.getPlanBlocks(widget.username)),
       ]);
 
       final List<TodoItem> allTodos = _safeListResult<TodoItem>(results[0])
@@ -2163,6 +2458,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           (results[3] ?? {}) as Map<String, dynamic>;
       final Map<String, dynamic> courseData = (results[4] ??
           {'title': '课程提醒', 'courses': []}) as Map<String, dynamic>;
+      final List<TodoPlanBlock> allPlanBlocks =
+          _safeListResult<TodoPlanBlock>(results[5]);
 
       if (mounted) {
         // 🚀 Granular Update: Only update notifiers if content actually changed
@@ -2187,6 +2484,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           _dashboardCourseData = courseData;
           _courseDataNotifier.value = courseData;
         }
+        _planBlocks = allPlanBlocks;
 
         _todoUpdateSignalNotifier.value++; // 🚀 触发待办局部更新
         _timelineRefreshTriggerNotifier.value++; // 🚀 触发时间轴与专注卡片局部更新
@@ -2315,7 +2613,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool syncCountdowns = true,
     bool syncScreenTime = true,
     bool syncPomodoro = true,
-    bool syncTimeLogs = true, // 🚀 1. 新增同步时间日志的参数
+    bool syncTimeLogs = true,
+    bool syncPlanBlocks = true,
   }) async {
     if (_isSyncing) return;
     setState(() {
@@ -2336,12 +2635,13 @@ class _HomeDashboardState extends State<HomeDashboard>
       bool hasChanges = false;
 
       // 🚀 2. 判断条件加入 syncTimeLogs
-      if (syncTodos || syncCountdowns || syncTimeLogs) {
+      if (syncTodos || syncCountdowns || syncTimeLogs || syncPlanBlocks) {
         final syncResult = await StorageService.syncData(
           widget.username,
           syncTodos: syncTodos,
           syncCountdowns: syncCountdowns,
-          syncTimeLogs: syncTimeLogs, // 🚀 3. 将参数传给底层的增量同步引擎
+          syncTimeLogs: syncTimeLogs,
+          syncPlanBlocks: syncPlanBlocks,
           context: context,
         );
         hasChanges = syncResult['hasChanges'] ?? false;
@@ -2594,7 +2894,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool syncCountdowns = true;
     bool syncScreenTime = true;
     bool syncPomodoro = true;
-    bool syncTimeLogs = true; // 🚀 1. 新增弹窗状态变量
+    bool syncTimeLogs = true;
+    bool syncPlanBlocks = true;
 
     showDialog(
       context: context,
@@ -2635,12 +2936,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                   onChanged: (val) =>
                       setDialogState(() => syncPomodoro = val ?? false),
                 ),
-                // 🚀 2. 新增时间日志的勾选项
                 CheckboxListTile(
                   title: const Text("时间日志 (补录)"),
                   value: syncTimeLogs,
                   onChanged: (val) =>
                       setDialogState(() => syncTimeLogs = val ?? false),
+                ),
+                CheckboxListTile(
+                  title: const Text("今日规划"),
+                  value: syncPlanBlocks,
+                  onChanged: (val) =>
+                      setDialogState(() => syncPlanBlocks = val ?? false),
                 ),
               ],
             ),
@@ -2654,7 +2960,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                       syncCountdowns ||
                       syncScreenTime ||
                       syncPomodoro ||
-                      syncTimeLogs)
+                      syncTimeLogs ||
+                      syncPlanBlocks)
                   ? () {
                       Navigator.pop(ctx);
                       _handleManualSync(
@@ -2663,7 +2970,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                         syncCountdowns: syncCountdowns,
                         syncScreenTime: syncScreenTime,
                         syncPomodoro: syncPomodoro,
-                        syncTimeLogs: syncTimeLogs, // 🚀 4. 传递给执行函数
+                        syncTimeLogs: syncTimeLogs,
+                        syncPlanBlocks: syncPlanBlocks,
                       );
                     }
                   : null,
@@ -3080,8 +3388,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                   ),
 
                 // 待确认待办入口卡片（从图片识别来）
-                if (_selectedTabIndex != 1 || isTablet)
-                  _buildPendingTodoConfirmCard(isLight),
+                _buildPendingTodoConfirmCard(isLight),
 
                 Expanded(
                   child: ValueListenableBuilder<bool>(
@@ -3099,10 +3406,20 @@ class _HomeDashboardState extends State<HomeDashboard>
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     // ... (rest of section definitions)
-                                    Widget courseSection = CourseSectionWidget(
-                                        dashboardCourseData:
-                                            _dashboardCourseData,
-                                        isLight: isLight);
+                                    Widget courseSection =
+                                        ValueListenableBuilder<int>(
+                                      valueListenable:
+                                          _timelineRefreshTriggerNotifier,
+                                      builder: (context, trigger, _) {
+                                        return CourseSectionWidget(
+                                          dashboardCourseData:
+                                              _dashboardCourseData,
+                                          isLight: isLight,
+                                          username: widget.username,
+                                          refreshTrigger: trigger,
+                                        );
+                                      },
+                                    );
                                     Widget countdownSection =
                                         CountdownSectionWidget(
                                             countdowns: _countdowns,
@@ -3344,11 +3661,39 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       ),
                                     );
 
+                                    Widget planBlockSection = RepaintBoundary(
+                                      child: ValueListenableBuilder<int>(
+                                        valueListenable:
+                                            _timelineRefreshTriggerNotifier,
+                                        builder: (context, trigger, _) {
+                                          return PlanBlockTodaySection(
+                                            username: widget.username,
+                                            isLight: isLight,
+                                            refreshTrigger: trigger,
+                                            onTap: () async {
+                                              await Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      TodoPlanScreen(
+                                                          username:
+                                                              widget.username),
+                                                ),
+                                              );
+                                              _timelineRefreshTriggerNotifier
+                                                  .value++;
+                                              _loadAllData();
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    );
+
                                     Map<String, Widget> sectionsMap = {
                                       'banners': _buildUniversalBanner(isLight),
                                       'courses': courseSection,
                                       'countdowns': countdownSection,
                                       'todos': todoSection,
+                                      'planBlocks': planBlockSection,
                                       'screenTime': screenTimeSection,
                                       'math': mathSection,
                                       'pomodoro': pomodoroSection,
@@ -3367,7 +3712,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         'banners',
                                         'countdowns',
                                         'courses',
-                                        'todos'
+                                        'todos',
                                       ];
                                       if (hasNoCourse) {
                                         if (_noCourseBehavior == 'hide') {
@@ -3879,7 +4224,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
 /// 🚀 首页 Banner 事件模型
 class HomeBannerEvent {
-  final String type; // 'pomodoro', 'course', 'todo', 'special_todo'
+  final String
+      type; // 'pomodoro', 'course', 'todo', 'special_todo', 'plan_block'
   final String title;
   final String? subtitle; // 地点或备注
   final String label; // e.g. "正在进行的课程"
@@ -3889,6 +4235,9 @@ class HomeBannerEvent {
   final VoidCallback onTap;
   final int priority;
   final bool isTeam;
+  final String? actionLabel; // 右侧操作按钮文字
+  final IconData? actionIcon; // 右侧操作按钮图标
+  final VoidCallback? onAction; // 右侧操作按钮回调
 
   HomeBannerEvent({
     required this.type,
@@ -3901,5 +4250,8 @@ class HomeBannerEvent {
     required this.onTap,
     required this.priority,
     this.isTeam = false,
+    this.actionLabel,
+    this.actionIcon,
+    this.onAction,
   });
 }

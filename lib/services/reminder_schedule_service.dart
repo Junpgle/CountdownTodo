@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import 'notification_service.dart';
@@ -19,6 +20,7 @@ class ReminderScheduleService {
   static const int _todoBaseId = 30001;
   static const int _courseBaseId = 31001;
   static const int _specialTodoBaseId = 32001;
+  static const int _planBlockBaseId = 33001;
 
   // 提前多少分钟提醒
   static const int _todoAdvanceMinutes = 5;
@@ -100,6 +102,11 @@ class ReminderScheduleService {
     final now = DateTime.now();
     final limit = now.add(const Duration(days: 7));
     final reminders = <Map<String, dynamic>>[];
+
+    // ── 获取当前用户 ────────────────────────────────────────────────
+    final prefs = await SharedPreferences.getInstance();
+    final username =
+        prefs.getString(StorageService.KEY_CURRENT_USER) ?? 'default';
 
     // ── 待办提醒（普通 + 特殊）──────────────────────────────────────────
     for (int i = 0; i < todos.length && i < 999; i++) {
@@ -195,6 +202,53 @@ class ReminderScheduleService {
       } catch (e) {
         debugPrint('[ReminderSchedule] 课程解析出错: $e');
       }
+    }
+
+    // ── 规划块提醒 ──────────────────────────────────────────────────
+    final planBlocks = await StorageService.getPlanBlocks(username);
+    final remindedBlocks = <TodoPlanBlock>[];
+    for (int i = 0; i < planBlocks.length && i < 999; i++) {
+      final pb = planBlocks[i];
+      if (pb.isDeleted ||
+          pb.status == TodoPlanStatus.finished ||
+          pb.status == TodoPlanStatus.cancelled ||
+          pb.status == TodoPlanStatus.skipped) {
+        continue;
+      }
+
+      final startTime = DateTime.fromMillisecondsSinceEpoch(pb.startTime);
+      final advance = pb.reminderMinutes;
+      if (advance <= 0) {
+        continue;
+      }
+      final triggerAt = startTime.subtract(Duration(minutes: advance));
+
+      if ((pb.status == TodoPlanStatus.planned ||
+              pb.status == TodoPlanStatus.reminded) &&
+          !triggerAt.isAfter(now) &&
+          startTime.isAfter(now) &&
+          pb.status != TodoPlanStatus.reminded) {
+        pb.status = TodoPlanStatus.reminded;
+        pb.markAsChanged();
+        remindedBlocks.add(pb);
+      }
+
+      if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
+        reminders.add({
+          'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+          'title': '📅 计划: ${pb.titleSnapshot ?? "未命名任务"}',
+          'text':
+              '${_hm(startTime)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(pb.endTime))}${pb.remark != null ? " · ${pb.remark}" : ""}',
+          'notifId': _planBlockBaseId + i,
+          'type': 'plan_block',
+          'planBlockId': pb.uuid,
+          'todoId': pb.todoId,
+        });
+      }
+    }
+
+    if (remindedBlocks.isNotEmpty) {
+      await StorageService.savePlanBlocks(username, remindedBlocks);
     }
 
     if (reminders.isEmpty) {

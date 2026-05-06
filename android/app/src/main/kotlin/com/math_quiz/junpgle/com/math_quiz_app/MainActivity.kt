@@ -112,6 +112,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingTodoConfirm = false
     // 保存待处理的图片查看路径（在methodChannel初始化前）
     private var pendingAnalysisImagePath: String? = null
+    // 保存待处理的规划块通知 ID（在methodChannel初始化前）
+    private var pendingPlanBlockNotifId: Int? = null
+    private var pendingPlanBlockId: String? = null
+    private var pendingPlanBlockTodoId: String? = null
     private val pendingCalendarPermissionResults = mutableListOf<MethodChannel.Result>()
     // 手环通信插件，全局可访问
     private var bandPlugin: BandCommunicationPlugin? = null
@@ -164,6 +168,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleAnalysisImageFromIntent(intent)
         handleOriginalTextFromIntent(intent)
 
+        // 处理从通知栏传来的规划块提醒
+        handlePlanBlockFromIntent(intent)
+
         // 处理 App Shortcuts 导航
         handleShortcutFromIntent(intent)
 
@@ -201,6 +208,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleTodoConfirmFromIntent(intent)
         handleAnalysisImageFromIntent(intent)
         handleOriginalTextFromIntent(intent)
+        handlePlanBlockFromIntent(intent)
         handleShortcutFromIntent(intent)
     }
 
@@ -218,6 +226,34 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             // methodChannel还未初始化，保存待处理状态
             pendingAnalysisImagePath = path
             Log.d(TAG, "📸 Saved pending analysis image path")
+        }
+    }
+
+    private fun handlePlanBlockFromIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("open_plan_block", false) != true) return
+        val notifId = intent.getIntExtra("plan_block_notif_id", -1)
+        val planBlockId = intent.getStringExtra("plan_block_id")
+        val todoId = intent.getStringExtra("todo_id")
+        if (notifId < 0) return
+        Log.d(TAG, "📅 handlePlanBlockFromIntent: notifId=$notifId, planBlockId=$planBlockId")
+        // 清除 extra，防止重复处理
+        intent.removeExtra("open_plan_block")
+        intent.removeExtra("plan_block_notif_id")
+        intent.removeExtra("plan_block_id")
+        intent.removeExtra("todo_id")
+
+        val payload = mutableMapOf<String, Any>("notifId" to notifId)
+        if (!planBlockId.isNullOrBlank()) payload["planBlockId"] = planBlockId
+        if (!todoId.isNullOrBlank()) payload["todoId"] = todoId
+
+        if (methodChannel != null) {
+            methodChannel?.invokeMethod("openPlanBlock", payload)
+            Log.d(TAG, "📅 Invoked openPlanBlock to Flutter with payload: $payload")
+        } else {
+            pendingPlanBlockNotifId = notifId
+            pendingPlanBlockId = planBlockId
+            pendingPlanBlockTodoId = todoId
+            Log.d(TAG, "📅 Saved pending plan block payload: $payload")
         }
     }
 
@@ -628,6 +664,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.d(TAG, "📸 Processing pending analysis image: $path")
             methodChannel?.invokeMethod("viewAnalysisImage", path)
             pendingAnalysisImagePath = null
+        }
+
+        // 处理待处理的规划块通知
+        pendingPlanBlockNotifId?.let { notifId ->
+            Log.d(TAG, "📅 Processing pending plan block notifId: $notifId")
+            val payload = mutableMapOf<String, Any>("notifId" to notifId)
+            pendingPlanBlockId?.let { payload["planBlockId"] = it }
+            pendingPlanBlockTodoId?.let { payload["todoId"] = it }
+            methodChannel?.invokeMethod("openPlanBlock", payload)
+            pendingPlanBlockNotifId = null
+            pendingPlanBlockId = null
+            pendingPlanBlockTodoId = null
         }
 
         // 处理待处理的 Shortcut 导航
@@ -1330,7 +1378,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             title = "🕒 $todoTitle",
             text = if (todoRemark.isNotEmpty()) todoRemark else "即将开始 · $timeStr",
             alertNotificationId = ALERT_TODO_ID,
-            iconResId = R.drawable.calendar_clock
+            iconResId = R.drawable.calendar_clock,
+            imagePath = imagePath,
+            originalText = args["originalText"] as? String
         )
     }
 
@@ -1613,7 +1663,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         title: String,
         text: String,
         alertNotificationId: Int,
-        iconResId: Int = R.drawable.ic_notification
+        iconResId: Int = R.drawable.ic_notification,
+        imagePath: String? = null,
+        originalText: String? = null
     ) {
         val prefs = getSharedPreferences("alert_keys", MODE_PRIVATE)
         val lastKey = prefs.getString("last_alerted_key_$alertNotificationId", "")
@@ -1623,19 +1675,54 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (!imagePath.isNullOrEmpty()) {
+                putExtra("analysis_image_path", imagePath)
+            }
+            if (!originalText.isNullOrEmpty()) {
+                putExtra("original_analysis_text", originalText)
+            }
         }
         val pendingIntent = PendingIntent.getActivity(
             this, alertNotificationId, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
             .setSmallIcon(iconResId)
             .setContentTitle(title)
             .setContentText(text)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
-            .build()
+
+        if (!imagePath.isNullOrEmpty() && File(imagePath).exists()) {
+            val viewImageIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("analysis_image_path", imagePath)
+            }
+            val viewImagePi = PendingIntent.getActivity(
+                this,
+                alertNotificationId + 100000,
+                viewImageIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(R.drawable.ic_notification, "查看图片", viewImagePi)
+        }
+
+        if (!originalText.isNullOrEmpty()) {
+            val viewTextIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("original_analysis_text", originalText)
+            }
+            val viewTextPi = PendingIntent.getActivity(
+                this,
+                alertNotificationId + 200000,
+                viewTextIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(R.drawable.ic_notification, "查看原文", viewTextPi)
+        }
+
+        val notification = builder.build()
         try {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.notify(alertNotificationId, notification)

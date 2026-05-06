@@ -6,7 +6,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
 
-enum CalendarSyncEntryType { todo, course, countdown }
+enum CalendarSyncEntryType { todo, course, countdown, planBlock }
 
 class CalendarSyncEntry {
   CalendarSyncEntry({
@@ -37,6 +37,8 @@ class CalendarSyncEntry {
         return '课程';
       case CalendarSyncEntryType.countdown:
         return '倒数日';
+      case CalendarSyncEntryType.planBlock:
+        return '规划';
     }
   }
 
@@ -141,11 +143,13 @@ class CalendarSyncService {
       StorageService.getTodos(username),
       CourseService.getAllCourses(username),
       StorageService.getCountdowns(username),
+      StorageService.getPlanBlocks(username),
     ]);
 
     final todos = results[0] as List<TodoItem>;
     final courses = results[1] as List<CourseItem>;
     final countdowns = results[2] as List<CountdownItem>;
+    final planBlocks = results[3] as List<TodoPlanBlock>;
     final entries = <CalendarSyncEntry>[];
 
     for (final todo in todos) {
@@ -163,6 +167,16 @@ class CalendarSyncService {
     for (final countdown in countdowns) {
       if (countdown.isDeleted || countdown.isCompleted) continue;
       entries.add(_countdownToEntry(countdown));
+    }
+
+    for (final block in planBlocks) {
+      if (block.isDeleted ||
+          block.status == TodoPlanStatus.cancelled ||
+          block.status == TodoPlanStatus.skipped) {
+        continue;
+      }
+      final entry = _planBlockToEntry(block);
+      if (entry != null) entries.add(entry);
     }
 
     entries.sort((a, b) => a.start.compareTo(b.start));
@@ -256,6 +270,29 @@ class CalendarSyncService {
       start: start,
       end: start.add(const Duration(days: 1)),
       allDay: true,
+    );
+  }
+
+  static CalendarSyncEntry? _planBlockToEntry(TodoPlanBlock block) {
+    final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
+    var end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
+    if (!end.isAfter(start)) end = start.add(const Duration(minutes: 25));
+
+    return CalendarSyncEntry(
+      id: block.calendarEventId?.isNotEmpty == true
+          ? block.calendarEventId!
+          : block.uuid,
+      type: CalendarSyncEntryType.planBlock,
+      title: block.titleSnapshot?.isNotEmpty == true
+          ? block.titleSnapshot!
+          : '规划任务',
+      start: start,
+      end: end,
+      allDay: false,
+      description: [
+        '待办规划',
+        if (block.remark?.trim().isNotEmpty == true) block.remark!.trim(),
+      ].join('\n'),
     );
   }
 

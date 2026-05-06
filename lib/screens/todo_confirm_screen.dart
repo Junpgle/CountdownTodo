@@ -67,6 +67,7 @@ class TodoConfirmScreen extends StatefulWidget {
   final String? imagePath;
   final String? originalText;
   final Function(List<Map<String, dynamic>>)? onConfirm;
+  final VoidCallback? onSkip;
 
   final String? initialTeamUuid;
   final String? initialTeamName;
@@ -77,6 +78,7 @@ class TodoConfirmScreen extends StatefulWidget {
     this.imagePath,
     this.originalText,
     this.onConfirm,
+    this.onSkip,
     this.initialTeamUuid,
     this.initialTeamName,
   });
@@ -580,6 +582,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('没有添加任何待办')),
       );
+      widget.onSkip?.call();
       Navigator.pop(context);
       return;
     }
@@ -1030,7 +1033,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     return SizedBox(
       width: double.infinity,
       child: FilledButton.icon(
-        onPressed: () => Navigator.pop(context),
+        onPressed: () {
+          if (_confirmedTodos.isEmpty) widget.onSkip?.call();
+          Navigator.pop(context);
+        },
         icon: const Icon(Icons.check),
         label: const Text('完成'),
         style: FilledButton.styleFrom(

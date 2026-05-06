@@ -497,6 +497,9 @@ class NotificationService {
           'title': r['title'] ?? '',
           'text': r['text'] ?? '',
           'notifId': r['notifId'],
+          if (r['type'] != null) 'type': r['type'],
+          if (r['planBlockId'] != null) 'planBlockId': r['planBlockId'],
+          if (r['todoId'] != null) 'todoId': r['todoId'],
           if (imagePath != null && imagePath.isNotEmpty)
             'analysisImagePath': imagePath,
         };

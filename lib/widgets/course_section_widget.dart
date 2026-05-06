@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models.dart';
 import 'home_sections.dart';
 
 import '../screens/course_screens.dart';
+import '../screens/todo_plan_screen.dart';
+import '../services/course_service.dart';
+import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import 'version_history_sheet.dart';
 
@@ -41,11 +45,15 @@ String _lessonTypeLabel(String? type) {
 class CourseSectionWidget extends StatelessWidget {
   final Map<String, dynamic> dashboardCourseData;
   final bool isLight;
+  final String? username;
+  final int refreshTrigger;
 
   const CourseSectionWidget({
     super.key,
     required this.dashboardCourseData,
     required this.isLight,
+    this.username,
+    this.refreshTrigger = 0,
   });
 
   void _showCourseDetail(
@@ -223,15 +231,28 @@ class CourseSectionWidget extends StatelessWidget {
       debugPrint('解析主页课程数据失败: $e');
     }
 
+    final title = username == null
+        ? dashboardCourseData['title']?.toString() ?? '课程提醒'
+        : '今日日程';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(
-          title: dashboardCourseData['title']?.toString() ?? '课程提醒',
+          title: title,
           icon: Icons.class_outlined,
           isLight: isLight,
         ),
-        if (courses.isEmpty)
+        if (username != null)
+          _TodayScheduleList(
+            username: username!,
+            courses: courses,
+            isLight: isLight,
+            refreshTrigger: refreshTrigger,
+            onCourseTap: (course, cardKey) =>
+                _showCourseDetail(context, course, cardKey),
+          )
+        else if (courses.isEmpty)
           EmptyState(
               text: dashboardCourseData['title'] == '暂无课表'
                   ? "尚未导入课表，点击上方图标开始"
@@ -253,6 +274,320 @@ class CourseSectionWidget extends StatelessWidget {
             },
           ),
       ],
+    );
+  }
+}
+
+enum _TodayScheduleItemType { course, plan }
+
+class _TodayScheduleItem {
+  const _TodayScheduleItem.course(this.course)
+      : block = null,
+        type = _TodayScheduleItemType.course;
+
+  const _TodayScheduleItem.plan(this.block)
+      : course = null,
+        type = _TodayScheduleItemType.plan;
+
+  final _TodayScheduleItemType type;
+  final CourseItem? course;
+  final TodoPlanBlock? block;
+
+  int get startMs {
+    final plan = block;
+    if (plan != null) return plan.startTime;
+    final courseValue = course!;
+    return _courseTimeMs(courseValue, courseValue.startTime);
+  }
+
+  int get endMs {
+    final plan = block;
+    if (plan != null) return plan.endTime;
+    final courseValue = course!;
+    return _courseTimeMs(courseValue, courseValue.endTime);
+  }
+
+  static int _courseTimeMs(CourseItem course, int hhmm) {
+    final date = DateTime.tryParse(course.date);
+    if (date == null) return 0;
+    final hour = hhmm ~/ 100;
+    final minute = hhmm % 100;
+    return DateTime(date.year, date.month, date.day, hour, minute)
+        .millisecondsSinceEpoch;
+  }
+}
+
+class _TodayScheduleList extends StatefulWidget {
+  const _TodayScheduleList({
+    required this.username,
+    required this.courses,
+    required this.isLight,
+    required this.refreshTrigger,
+    required this.onCourseTap,
+  });
+
+  final String username;
+  final List<CourseItem> courses;
+  final bool isLight;
+  final int refreshTrigger;
+  final void Function(CourseItem course, GlobalKey cardKey) onCourseTap;
+
+  @override
+  State<_TodayScheduleList> createState() => _TodayScheduleListState();
+}
+
+class _TodayScheduleListState extends State<_TodayScheduleList> {
+  List<TodoPlanBlock> _blocks = [];
+  List<TodoPlanBlock> _tomorrowBlocks = [];
+  List<CourseItem> _todayCourses = [];
+  List<CourseItem> _tomorrowCourses = [];
+  bool _loading = true;
+  bool _showEnded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBlocks();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TodayScheduleList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.username != widget.username ||
+        oldWidget.refreshTrigger != widget.refreshTrigger) {
+      _loadBlocks();
+    }
+  }
+
+  Future<void> _loadBlocks() async {
+    setState(() => _loading = true);
+    final now = DateTime.now();
+    final results = await Future.wait([
+      StorageService.getPlanBlocksByDay(widget.username, now),
+      StorageService.getPlanBlocksByDay(
+        widget.username,
+        now.add(const Duration(days: 1)),
+      ),
+      CourseService.getAllCourses(widget.username),
+    ]);
+    final blocks = results[0] as List<TodoPlanBlock>;
+    final tomorrowBlocks = results[1] as List<TodoPlanBlock>;
+    final allCourses = results[2] as List<CourseItem>;
+    final today = DateFormat('yyyy-MM-dd').format(now);
+    final tomorrow =
+        DateFormat('yyyy-MM-dd').format(now.add(const Duration(days: 1)));
+
+    final missed = <TodoPlanBlock>[];
+    for (final block in blocks) {
+      if (!block.isDeleted &&
+          block.status == TodoPlanStatus.planned &&
+          block.actualFocusSeconds <= 0 &&
+          block.endTime < now.millisecondsSinceEpoch) {
+        block.status = TodoPlanStatus.missed;
+        block.markAsChanged();
+        missed.add(block);
+      }
+    }
+    if (missed.isNotEmpty) {
+      await StorageService.savePlanBlocks(widget.username, missed);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _blocks = blocks.where((b) => !b.isDeleted).toList();
+      _tomorrowBlocks = tomorrowBlocks.where((b) => !b.isDeleted).toList();
+      _todayCourses = allCourses
+          .where((course) => !course.isDeleted && course.date == today)
+          .toList()
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      _tomorrowCourses = allCourses
+          .where((course) => !course.isDeleted && course.date == tomorrow)
+          .toList()
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final fallbackToday = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final fallbackCourses =
+        widget.courses.where((course) => course.date == fallbackToday).toList();
+    final todayCourses = _todayCourses.isNotEmpty
+        ? _todayCourses
+        : (_loading ? fallbackCourses : <CourseItem>[]);
+    final todayItems = <_TodayScheduleItem>[
+      ...todayCourses.map(_TodayScheduleItem.course),
+      ..._blocks.map(_TodayScheduleItem.plan),
+    ]..sort((a, b) => a.startMs.compareTo(b.startMs));
+    final endedItems = todayItems
+        .where((item) => item.endMs > 0 && item.endMs < nowMs)
+        .toList();
+    final activeItems = todayItems
+        .where((item) => item.endMs <= 0 || item.endMs >= nowMs)
+        .toList();
+    final tomorrowItems = <_TodayScheduleItem>[
+      ..._tomorrowCourses.map(_TodayScheduleItem.course),
+      ..._tomorrowBlocks.map(_TodayScheduleItem.plan),
+    ]..sort((a, b) => a.startMs.compareTo(b.startMs));
+
+    final showingTomorrow = activeItems.isEmpty &&
+        (todayItems.isNotEmpty || tomorrowItems.isNotEmpty);
+    final items = showingTomorrow ? tomorrowItems : activeItems;
+
+    if (_loading && todayItems.isEmpty && tomorrowItems.isEmpty) {
+      return const _TodayScheduleSkeleton();
+    }
+
+    if (items.isEmpty && endedItems.isEmpty) {
+      return EmptyState(
+        text: '今日和明日暂无课程与规划',
+        isLight: widget.isLight,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (endedItems.isNotEmpty && !showingTomorrow) ...[
+          _EndedScheduleSummary(
+            count: endedItems.length,
+            expanded: _showEnded,
+            isLight: widget.isLight,
+            onTap: () => setState(() => _showEnded = !_showEnded),
+          ),
+          if (_showEnded)
+            ...endedItems.map((item) => Opacity(
+                  opacity: 0.58,
+                  child: _buildItemCard(item),
+                )),
+        ],
+        if (showingTomorrow)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              todayItems.isEmpty ? '明日安排' : '今日已全部结束，显示明日安排',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ...items.map(_buildItemCard),
+      ],
+    );
+  }
+
+  Widget _buildItemCard(_TodayScheduleItem item) {
+    final course = item.course;
+    if (course != null) {
+      return _CourseCompactCard(
+        course: course,
+        isLight: widget.isLight,
+        onTap: (cardKey) => widget.onCourseTap(course, cardKey),
+      );
+    }
+    return _PlanCompactCard(
+      block: item.block!,
+      isLight: widget.isLight,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TodoPlanScreen(username: widget.username),
+        ),
+      ),
+    );
+  }
+}
+
+class _EndedScheduleSummary extends StatelessWidget {
+  const _EndedScheduleSummary({
+    required this.count,
+    required this.expanded,
+    required this.isLight,
+    required this.onTap,
+  });
+
+  final int count;
+  final bool expanded;
+  final bool isLight;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: isLight ? 0.78 : 0.48),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: colorScheme.outline.withValues(alpha: 0.10),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  size: 17,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '已结束 $count 项',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                Text(
+                  expanded ? '收起' : '展开',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TodayScheduleSkeleton extends StatelessWidget {
+  const _TodayScheduleSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      children: List.generate(
+        2,
+        (index) => Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          height: 58,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -409,10 +744,12 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
+        color:
+            colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: colorScheme.outline.withValues(alpha: widget.isLight ? 0.06 : 0.12),
+          color: colorScheme.outline
+              .withValues(alpha: widget.isLight ? 0.06 : 0.12),
           width: 1,
         ),
         boxShadow: widget.isLight
@@ -431,7 +768,8 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => widget.onTap(_cardKey),
-          onLongPress: () => VersionHistorySheet.show(context, widget.course.uuid, 'courses', widget.course.courseName),
+          onLongPress: () => VersionHistorySheet.show(
+              context, widget.course.uuid, 'courses', widget.course.courseName),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(
@@ -522,7 +860,8 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                         children: [
                           Icon(Icons.location_on_rounded,
                               size: 11,
-                              color: colorScheme.onSurface.withValues(alpha: 0.4)),
+                              color:
+                                  colorScheme.onSurface.withValues(alpha: 0.4)),
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
@@ -531,7 +870,8 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: colorScheme.onSurface.withValues(alpha: 0.45),
+                                color: colorScheme.onSurface
+                                    .withValues(alpha: 0.45),
                                 height: 1.2,
                               ),
                             ),
@@ -543,13 +883,200 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
                 ),
                 const SizedBox(width: 4),
                 Icon(Icons.chevron_right_rounded,
-                    size: 16, color: colorScheme.onSurface.withValues(alpha: 0.25)),
+                    size: 16,
+                    color: colorScheme.onSurface.withValues(alpha: 0.25)),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+class _PlanCompactCard extends StatelessWidget {
+  const _PlanCompactCard({
+    required this.block,
+    required this.isLight,
+    required this.onTap,
+  });
+
+  final TodoPlanBlock block;
+  final bool isLight;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final start = DateFormat('HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(block.startTime));
+    final end = DateFormat('HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(block.endTime));
+    final statusColor = _statusColor(block.status);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: statusColor.withValues(alpha: isLight ? 0.16 : 0.24),
+          width: 1,
+        ),
+        boxShadow: isLight
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                )
+              ]
+            : [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 36,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                SizedBox(
+                  width: 50,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        start,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: statusColor,
+                          height: 1.2,
+                        ),
+                      ),
+                      Text(
+                        end,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: statusColor.withValues(alpha: 0.58),
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _statusIcon(block.status),
+                            size: 14,
+                            color: statusColor,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              block.titleSnapshot ?? '未命名规划',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600,
+                                color: colorScheme.onSurface,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.event_note_rounded,
+                              size: 11,
+                              color:
+                                  colorScheme.onSurface.withValues(alpha: 0.4)),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              '${block.plannedMinutes} 分钟规划${block.remark?.isNotEmpty == true ? ' · ${block.remark}' : ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurface
+                                    .withValues(alpha: 0.45),
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded,
+                    size: 16,
+                    color: colorScheme.onSurface.withValues(alpha: 0.25)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static IconData _statusIcon(TodoPlanStatus status) {
+    switch (status) {
+      case TodoPlanStatus.finished:
+        return Icons.check_circle_rounded;
+      case TodoPlanStatus.focusing:
+        return Icons.play_circle_fill_rounded;
+      case TodoPlanStatus.missed:
+        return Icons.cancel_rounded;
+      case TodoPlanStatus.skipped:
+        return Icons.skip_next_rounded;
+      case TodoPlanStatus.cancelled:
+        return Icons.remove_circle_outline;
+      default:
+        return Icons.radio_button_unchecked;
+    }
+  }
+
+  static Color _statusColor(TodoPlanStatus status) {
+    switch (status) {
+      case TodoPlanStatus.finished:
+        return Colors.green;
+      case TodoPlanStatus.focusing:
+        return Colors.blue;
+      case TodoPlanStatus.missed:
+        return Colors.redAccent;
+      case TodoPlanStatus.skipped:
+        return Colors.orange;
+      case TodoPlanStatus.cancelled:
+        return Colors.grey;
+      default:
+        return Colors.deepPurple;
+    }
   }
 }
 
@@ -575,7 +1102,8 @@ class _DetailRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: colorScheme.onSurface.withValues(alpha: 0.45)),
+          Icon(icon,
+              size: 16, color: colorScheme.onSurface.withValues(alpha: 0.45)),
           const SizedBox(width: 10),
           Text(
             label,

@@ -29,6 +29,139 @@ class StorageService {
   static String? _lastRecurrenceCheckDate;
   static final Map<String, bool> _recurrenceCheckCache = {};
 
+  // ==========================================
+  // 📅 规划块 (Plan Blocks)
+  // ==========================================
+
+  static Future<void> savePlanBlocks(String username, List<TodoPlanBlock> items,
+      {bool sync = true, bool isSyncSource = false}) async {
+    final Map<String, TodoPlanBlock> dedupeMap = {};
+    for (var item in items) {
+      if (!dedupeMap.containsKey(item.id) ||
+          item.updatedAt > dedupeMap[item.id]!.updatedAt) {
+        dedupeMap[item.id] = item;
+      }
+    }
+
+    final dedupeList = dedupeMap.values.toList();
+    final db = await DatabaseHelper.instance.database;
+
+    // 🚀 批量获取现有数据，用于审计
+    Map<String, Map<String, dynamic>> existingItemsMap = {};
+    if (!isSyncSource && dedupeList.isNotEmpty) {
+      final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
+      final List<Map<String, dynamic>> existing = await db
+          .rawQuery('SELECT * FROM todo_plan_blocks WHERE uuid IN ($uuids)');
+      for (var row in existing) {
+        existingItemsMap[row['uuid']] = row;
+      }
+    }
+
+    final batch = db.batch();
+    for (var item in dedupeList) {
+      bool hasChanged = true;
+      final itemData = item.toDbJson();
+      final oldData = existingItemsMap[item.id];
+      if (oldData != null) {
+        hasChanged = _hasSubstantialChange(oldData, itemData, [
+          'todo_uuid',
+          'title_snapshot',
+          'start_time',
+          'end_time',
+          'planned_minutes',
+          'status',
+          'actual_focus_seconds',
+          'pomodoro_record_ids',
+          'source',
+          'remark',
+          'reminder_minutes',
+          'pomodoro_minutes',
+          'pomodoro_rounds',
+          'calendar_event_id',
+          'is_deleted'
+        ]);
+      }
+
+      if (!isSyncSource && hasChanged) {
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'todo_plan_blocks',
+          'target_uuid': item.id,
+          'data_json': jsonEncode(itemData),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+      }
+
+      if (hasChanged || oldData == null) {
+        batch.insert('todo_plan_blocks', itemData,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+
+    if (dedupeList.isNotEmpty) {
+      await batch.commit(noResult: true);
+    }
+
+    if (sync) requestSync(username);
+    triggerRefresh();
+  }
+
+  static Future<List<TodoPlanBlock>> getPlanBlocks(String username,
+      {bool includeDeleted = false}) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final List<Map<String, dynamic>> maps = await db.query('todo_plan_blocks',
+          where: includeDeleted ? null : 'is_deleted = 0');
+
+      if (maps.isNotEmpty) {
+        if (maps.length > 50) {
+          return await compute(_parsePlanBlockItemsIsolate, maps);
+        }
+        return maps.map((m) => TodoPlanBlock.fromJson(m)).toList();
+      }
+    } catch (e) {
+      debugPrint("⚠️ PlanBlocks SQL 引擎异常: $e");
+    }
+    return [];
+  }
+
+  static List<TodoPlanBlock> _parsePlanBlockItemsIsolate(
+      List<Map<String, dynamic>> maps) {
+    return maps.map((m) => TodoPlanBlock.fromJson(m)).toList();
+  }
+
+  static Future<void> deletePlanBlockGlobally(
+      String username, String idToDelete) async {
+    final blocks = await getPlanBlocks(username, includeDeleted: true);
+    final index = blocks.indexWhere((b) => b.id == idToDelete);
+    if (index != -1) {
+      blocks[index].isDeleted = true;
+      blocks[index].markAsChanged();
+      await savePlanBlocks(username, [blocks[index]], sync: true);
+    }
+  }
+
+  static Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
+      String username, String todoId) async {
+    final all = await getPlanBlocks(username);
+    return all.where((b) => b.todoId == todoId).toList();
+  }
+
+  static Future<List<TodoPlanBlock>> getPlanBlocksByDay(
+      String username, DateTime day) async {
+    final startOfDay =
+        DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
+    final endOfDay = DateTime(day.year, day.month, day.day, 23, 59, 59, 999)
+        .millisecondsSinceEpoch;
+
+    final all = await getPlanBlocks(username);
+    return all
+        .where((b) => b.startTime >= startOfDay && b.startTime <= endOfDay)
+        .toList();
+  }
+
   // --- 常量定义 ---
   static const String KEY_USERS = "users_data";
   static const String KEY_LEADERBOARD = "leaderboard_data";
@@ -86,6 +219,7 @@ class StorageService {
   static const String KEY_NOTIFY_APP_UPDATES_ENABLED =
       "notify_app_updates_enabled";
   static const String KEY_TODO_FOLDERS_INLINE = "todo_folders_inline";
+  static const String KEY_TODO_FOLDER_DISPLAY_MODE = "todo_folder_display_mode";
   static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
       "notify_special_todo_enabled";
   static const String KEY_NOTIFY_POMODORO_ENABLED = "notify_pomodoro_enabled";
@@ -118,12 +252,47 @@ class StorageService {
 
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
   static Timer? _refreshDebouncer;
+  static Timer? _syncDebouncer;
+  static String? _queuedSyncUsername;
+  static int _lastSyncRequestAt = 0;
+  static const Duration _minSyncInterval = Duration(milliseconds: 3400);
 
   /// 🚀 优化：增加 100ms 防抖，防止背景同步或批量更新时产生高频重绘，减少主线程 GC 与帧丢弃
   static void triggerRefresh() {
     _refreshDebouncer?.cancel();
     _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
       dataRefreshNotifier.value++;
+    });
+  }
+
+  static void requestSync(String username) {
+    if (username.isEmpty) return;
+    _queuedSyncUsername = username;
+    if (_syncDebouncer != null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final elapsed = now - _lastSyncRequestAt;
+    final delayMs = _isSyncing
+        ? _minSyncInterval.inMilliseconds
+        : (_minSyncInterval.inMilliseconds - elapsed)
+            .clamp(0, _minSyncInterval.inMilliseconds);
+
+    _scheduleQueuedSync(Duration(milliseconds: delayMs));
+  }
+
+  static void _scheduleQueuedSync(Duration delay) {
+    _syncDebouncer?.cancel();
+    _syncDebouncer = Timer(delay, () {
+      _syncDebouncer = null;
+      if (_isSyncing) {
+        _scheduleQueuedSync(_minSyncInterval);
+        return;
+      }
+
+      final username = _queuedSyncUsername;
+      _queuedSyncUsername = null;
+      if (username == null || username.isEmpty) return;
+      unawaited(syncData(username));
     });
   }
 
@@ -501,7 +670,7 @@ class StorageService {
     });
     if (list.length > 10) list = list.sublist(0, 10);
     await prefs.setString(KEY_LEADERBOARD, jsonEncode(list));
-    syncData(username);
+    requestSync(username);
   }
 
   static Future<List<Map<String, dynamic>>> getLeaderboard() async {
@@ -603,7 +772,7 @@ class StorageService {
       _inflightTodoRequests.clear();
     }
 
-    if (sync) Future.microtask(() => syncData(username));
+    if (sync) requestSync(username);
   }
 
   static Future<void> _clearCountdownPrefsMirror(String username) async {
@@ -858,7 +1027,9 @@ class StorageService {
           'is_all_day',
           'reminder_minutes',
           'has_conflict',
-          'conflict_data'
+          'conflict_data',
+          'image_path',
+          'original_text',
         ]);
       }
 
@@ -906,6 +1077,8 @@ class StorageService {
               'reminder_minutes': item.reminderMinutes ?? -1,
               'is_all_day': item.isAllDay ? 1 : 0,
               'has_conflict': item.hasConflict ? 1 : 0,
+              'image_path': item.imagePath,
+              'original_text': item.originalText,
               'conflict_data': item.serverVersionData != null
                   ? jsonEncode(item.serverVersionData)
                   : null,
@@ -923,7 +1096,7 @@ class StorageService {
       await _refreshTodoScheduleConflicts(username);
     }
 
-    if (sync) Future.microtask(() => syncData(username));
+    if (sync) requestSync(username);
     Future.microtask(() => _syncTodosToBand(dedupeList));
     triggerRefresh();
   }
@@ -1351,6 +1524,8 @@ class StorageService {
           'recurrence_end_date':
               item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
           'reminder_minutes': item.reminderMinutes ?? -1,
+          'image_path': item.imagePath,
+          'original_text': item.originalText,
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
 
@@ -1368,7 +1543,7 @@ class StorageService {
     // 不再维护超大的 SharedPreferences Todo 镜像，避免 Android 插件层 OOM
     await _clearTodoPrefsMirror(username);
 
-    if (sync) Future.microtask(() => syncData(username));
+    if (sync) requestSync(username);
     triggerRefresh(); // 🚀 触发 UI 刷新
   }
 
@@ -1470,7 +1645,7 @@ class StorageService {
 
     await _clearTodoPrefsMirror(username);
     triggerRefresh();
-    Future.microtask(() => syncData(username));
+    requestSync(username);
     return historicalIds.length;
   }
 
@@ -1645,6 +1820,8 @@ class StorageService {
                             m['reminder_minutes'].toString() != '-1')
                         ? int.tryParse(m['reminder_minutes'].toString())
                         : null,
+                    imagePath: m['image_path']?.toString(),
+                    originalText: m['original_text']?.toString(),
                     isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
                     hasConflict:
                         m['has_conflict'] == 1 || m['has_conflict'] == true,
@@ -1744,6 +1921,8 @@ class StorageService {
                       m['reminder_minutes'].toString() != '-1')
                   ? int.tryParse(m['reminder_minutes'].toString())
                   : null,
+              imagePath: m['image_path']?.toString(),
+              originalText: m['original_text']?.toString(),
               isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
               hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
               serverVersionData: m['conflict_data'] != null
@@ -1987,7 +2166,7 @@ class StorageService {
     _inflightTodoRequests.clear();
 
     unawaited(_clearTodoGroupPrefsMirror(username));
-    if (sync) Future.microtask(() => syncData(username));
+    if (sync) requestSync(username);
   }
 
   static Future<void> _clearTodoGroupPrefsMirror(String username) async {
@@ -2157,7 +2336,7 @@ class StorageService {
     await prefs.remove("${KEY_TIME_LOGS}_$username");
     await prefs.remove(KEY_TIME_LOGS);
 
-    if (sync) Future.microtask(() => syncData(username));
+    if (sync) requestSync(username);
   }
 
   static Future<List<TimeLogItem>> getTimeLogs(String username,
@@ -2572,9 +2751,14 @@ class StorageService {
     BuildContext? context,
     bool syncTimeLogs = true,
     bool syncPomodoro = true,
+    bool syncPlanBlocks = true,
   }) async {
     // 1. 状态锁：防止重复进入
-    if (!syncTodos && !syncCountdowns && !syncTimeLogs && !syncPomodoro) {
+    if (!syncTodos &&
+        !syncCountdowns &&
+        !syncTimeLogs &&
+        !syncPomodoro &&
+        !syncPlanBlocks) {
       return {'success': false, 'hasChanges': false};
     }
     if (_isSyncing) {
@@ -2598,6 +2782,7 @@ class StorageService {
       int lastSyncTime = forceFullSync
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
+      _lastSyncRequestAt = DateTime.now().millisecondsSinceEpoch;
 
       // 3. 🛡️ 核心修复：基于 op_logs 识别脏数据，并进行 UUID 去重处理（防止 1000+ 冗余同步）
       final db = await DatabaseHelper.instance.database;
@@ -2605,6 +2790,7 @@ class StorageService {
       List<Map<String, dynamic>> dirtyGroups = [];
       List<Map<String, dynamic>> dirtyCountdowns = [];
       List<Map<String, dynamic>> dirtyTimeLogs = [];
+      List<Map<String, dynamic>> dirtyPlanBlocks = [];
       List<TodoItem> allLocalTodos =
           await getTodos(username, includeDeleted: true);
       List<TodoGroup> allLocalGroups =
@@ -2612,6 +2798,8 @@ class StorageService {
       List<CountdownItem> allLocalCountdowns =
           await getCountdowns(username, includeDeleted: true);
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
+      List<TodoPlanBlock> allLocalPlanBlocks =
+          await getPlanBlocks(username, includeDeleted: true);
       if (!forceFullSync &&
           ((syncCountdowns && allLocalCountdowns.isEmpty) ||
               (syncTimeLogs && allLocalTimeLogs.isEmpty))) {
@@ -2626,6 +2814,7 @@ class StorageService {
       final Map<String, Map<String, dynamic>> dedupTodos = {};
       final Map<String, Map<String, dynamic>> dedupGroups = {};
       final Map<String, Map<String, dynamic>> dedupCountdowns = {};
+      final Map<String, Map<String, dynamic>> dedupPlanBlocks = {};
 
       for (var op in pendingOps) {
         final table = op['target_table'];
@@ -2643,12 +2832,15 @@ class StorageService {
           dedupGroups[uuid] = data;
         } else if (table == 'countdowns') {
           dedupCountdowns[uuid] = data;
+        } else if (table == 'todo_plan_blocks' && syncPlanBlocks) {
+          dedupPlanBlocks[uuid] = data;
         }
       }
 
       dirtyTodos = dedupTodos.values.toList();
       dirtyGroups = dedupGroups.values.toList();
       dirtyCountdowns = dedupCountdowns.values.toList();
+      dirtyPlanBlocks = dedupPlanBlocks.values.toList();
 
       if (forceFullSync && uploadAllLocal) {
         for (final item in allLocalTodos) {
@@ -2671,9 +2863,16 @@ class StorageService {
           data['has_conflict'] = 0;
           dedupCountdowns.putIfAbsent(item.id, () => data);
         }
+        if (syncPlanBlocks) {
+          for (final item in allLocalPlanBlocks) {
+            final data = item.toJson();
+            dedupPlanBlocks.putIfAbsent(item.id, () => data);
+          }
+        }
         dirtyTodos = dedupTodos.values.toList();
         dirtyGroups = dedupGroups.values.toList();
         dirtyCountdowns = dedupCountdowns.values.toList();
+        dirtyPlanBlocks = dedupPlanBlocks.values.toList();
       }
 
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
@@ -2726,6 +2925,7 @@ class StorageService {
           todoGroupsChanges: dirtyGroups,
           countdownsChanges: dirtyCountdowns,
           timeLogsChanges: dirtyTimeLogs,
+          planBlocksChanges: dirtyPlanBlocks,
           screenTime: screenPayload,
           forceFullSync: forceFullSync,
         );
@@ -2733,18 +2933,41 @@ class StorageService {
 
       Map<String, dynamic> response = await sendSyncRequest();
 
-      bool likelyDebounceIgnored = response['success'] == true &&
-          forceFullSync &&
-          (response['new_sync_time'] ?? -1) == lastSyncTime &&
-          (response['server_todos'] as List?)?.isEmpty == true &&
-          (response['server_todo_groups'] as List?)?.isEmpty == true &&
-          (response['server_countdowns'] as List?)?.isEmpty == true &&
-          (response['server_time_logs'] as List?)?.isEmpty == true;
+      bool hasPendingUpload() =>
+          dirtyTodos.isNotEmpty ||
+          dirtyGroups.isNotEmpty ||
+          dirtyCountdowns.isNotEmpty ||
+          dirtyTimeLogs.isNotEmpty ||
+          dirtyPlanBlocks.isNotEmpty ||
+          screenPayload != null;
 
-      if (likelyDebounceIgnored) {
-        debugPrint('⏳ [全量同步] 命中服务端防抖空响应，3.2s 后自动重试一次');
+      bool isDebounceIgnored(Map<String, dynamic> syncResponse) {
+        final remotePayloadEmpty =
+            (syncResponse['server_todos'] as List?)?.isEmpty == true &&
+                (syncResponse['server_todo_groups'] as List?)?.isEmpty ==
+                    true &&
+                (syncResponse['server_countdowns'] as List?)?.isEmpty == true &&
+                (syncResponse['server_time_logs'] as List?)?.isEmpty == true &&
+                (syncResponse['server_pomodoros'] as List?)?.isEmpty == true &&
+                (syncResponse['server_tags'] as List?)?.isEmpty == true &&
+                (syncResponse['server_plan_blocks'] as List?)?.isEmpty == true;
+        final syncTimeUnchanged =
+            (syncResponse['new_sync_time'] ?? -1) == lastSyncTime;
+        return syncResponse['success'] == true &&
+            syncTimeUnchanged &&
+            remotePayloadEmpty &&
+            (syncResponse['status'] == 'ignored' ||
+                forceFullSync ||
+                hasPendingUpload());
+      }
+
+      if (isDebounceIgnored(response)) {
+        debugPrint('⏳ [同步] 命中服务端防抖空响应，3.2s 后自动重试一次');
         await Future.delayed(const Duration(milliseconds: 3200));
         response = await sendSyncRequest();
+        if (isDebounceIgnored(response) && hasPendingUpload()) {
+          throw Exception('同步被服务端防抖延迟，已保留本地待同步记录');
+        }
       }
 
       if (response['success'] == true) {
@@ -2969,6 +3192,37 @@ class StorageService {
         }
       }
 
+      // 合并 TodoPlanBlocks
+      if (syncPlanBlocks) {
+        List<dynamic> serverPlanBlocks = response['server_plan_blocks'] ?? [];
+        final Map<String, int> planBlocksIndexMap = {
+          for (var i = 0; i < allLocalPlanBlocks.length; i++)
+            allLocalPlanBlocks[i].id: i
+        };
+        for (var raw in serverPlanBlocks) {
+          TodoPlanBlock sItem =
+              TodoPlanBlock.fromJson((raw as Map).cast<String, dynamic>());
+          if (ignoredUuids.contains(sItem.id)) {
+            debugPrint('🚫 [合并跳过] 规划块 UUID: ${sItem.id} 已忽略');
+            continue;
+          }
+          if (planBlocksIndexMap.containsKey(sItem.id)) {
+            final idx = planBlocksIndexMap[sItem.id]!;
+            final local = allLocalPlanBlocks[idx];
+            if (sItem.isDeleted ||
+                sItem.version > local.version ||
+                sItem.updatedAt > local.updatedAt) {
+              allLocalPlanBlocks[idx] = sItem;
+              hasChanges = true;
+            }
+          } else if (!sItem.isDeleted) {
+            planBlocksIndexMap[sItem.id] = allLocalPlanBlocks.length;
+            allLocalPlanBlocks.add(sItem);
+            hasChanges = true;
+          }
+        }
+      }
+
       // 🚀 关键：将 conflicts 数组中的冲突也标记到本地数据上。
       // 服务器在标记 has_conflict=1 时可能不会同时更新 updated_at，
       // 导致该条目被 filterWithActualTime 过滤掉，不在 server_todos 中。
@@ -3043,6 +3297,10 @@ class StorageService {
         await saveCountdowns(username, allLocalCountdowns,
             sync: false, isSyncSource: true);
         await saveTimeLogs(username, allLocalTimeLogs, sync: false);
+        if (syncPlanBlocks) {
+          await savePlanBlocks(username, allLocalPlanBlocks,
+              sync: false, isSyncSource: true);
+        }
       }
 
       // 8. 更新同步水位线
@@ -3891,6 +4149,21 @@ class StorageService {
   static Future<void> setTodoFoldersInline(bool inline) async {
     final prefs = await StorageService.prefs;
     await prefs.setBool(KEY_TODO_FOLDERS_INLINE, inline);
+  }
+
+  static Future<String> getTodoFolderDisplayMode() async {
+    final prefs = await StorageService.prefs;
+    final mode = prefs.getString(KEY_TODO_FOLDER_DISPLAY_MODE);
+    if (mode != null && mode.isNotEmpty) return mode;
+    return (prefs.getBool(KEY_TODO_FOLDERS_INLINE) ?? true)
+        ? 'inline'
+        : 'separate';
+  }
+
+  static Future<void> setTodoFolderDisplayMode(String mode) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_TODO_FOLDER_DISPLAY_MODE, mode);
+    await prefs.setBool(KEY_TODO_FOLDERS_INLINE, mode != 'separate');
   }
 
   static Future<void> saveLastCourseImportUrl(String url) async {

@@ -7,6 +7,12 @@ enum AiTodoActionType {
   bulkRescheduleTodo,
   categorizeTodo,
   planTodos,
+  createPlanBlock,
+  updatePlanBlock,
+  deletePlanBlock,
+  reschedulePlanBlocks,
+  skipPlanBlock,
+  startPlanBlockPomodoro,
   splitTodo,
   mergeTodos,
   createTimeLog,
@@ -31,6 +37,7 @@ class AiTodoAction {
   AiTodoAction({
     required this.type,
     this.todoId,
+    this.planBlockId,
     this.title,
     this.remark,
     this.startTime,
@@ -47,6 +54,7 @@ class AiTodoAction {
     this.color,
     this.isSelected = true,
     this.isAdded = false,
+    this.isIgnored = false,
     this.originalText,
     this.sourceTodoIds = const [],
     this.deleteSourceTodos = false,
@@ -55,6 +63,7 @@ class AiTodoAction {
 
   AiTodoActionType type;
   String? todoId;
+  String? planBlockId;
   String? title;
   String? remark;
   String? startTime;
@@ -71,6 +80,7 @@ class AiTodoAction {
   String? color;
   bool isSelected;
   bool isAdded;
+  bool isIgnored;
   String? originalText;
   List<String> sourceTodoIds;
   bool deleteSourceTodos;
@@ -98,7 +108,15 @@ class AiTodoAction {
 
   bool get isPomodoroAction =>
       type == AiTodoActionType.startPomodoro ||
-      type == AiTodoActionType.stopPomodoro;
+      type == AiTodoActionType.stopPomodoro ||
+      type == AiTodoActionType.startPlanBlockPomodoro;
+
+  bool get isPlanBlockAction =>
+      type == AiTodoActionType.createPlanBlock ||
+      type == AiTodoActionType.updatePlanBlock ||
+      type == AiTodoActionType.deletePlanBlock ||
+      type == AiTodoActionType.reschedulePlanBlocks ||
+      type == AiTodoActionType.skipPlanBlock;
 
   bool get isCountdownAction =>
       type == AiTodoActionType.createCountdown ||
@@ -131,7 +149,11 @@ class AiTodoAction {
       type == AiTodoActionType.updateTodoGroup ||
       type == AiTodoActionType.deleteTodoGroup ||
       type == AiTodoActionType.updatePomodoroTag ||
-      type == AiTodoActionType.deletePomodoroTag;
+      type == AiTodoActionType.deletePomodoroTag ||
+      type == AiTodoActionType.updatePlanBlock ||
+      type == AiTodoActionType.deletePlanBlock ||
+      type == AiTodoActionType.reschedulePlanBlocks ||
+      type == AiTodoActionType.skipPlanBlock;
 
   String get legacyType => createsTodo ? 'create' : 'update';
 
@@ -139,6 +161,7 @@ class AiTodoAction {
         'actionType': type.name,
         'type': legacyType,
         'todoId': todoId,
+        'planBlockId': planBlockId,
         'title': title,
         'remark': remark,
         'startTime': startTime,
@@ -155,6 +178,7 @@ class AiTodoAction {
         'color': color,
         'isSelected': isSelected,
         'isAdded': isAdded,
+        'isIgnored': isIgnored,
         'originalText': originalText,
         'sourceTodoIds': sourceTodoIds,
         'deleteSourceTodos': deleteSourceTodos,
@@ -179,7 +203,20 @@ class AiTodoAction {
 
     return AiTodoAction(
       type: parsedType,
-      todoId: (json['todoId'] ?? json['logId'] ?? json['id'])?.toString(),
+      todoId:
+          (json['todoId'] ?? json['todo_id'] ?? json['todoUuid'])?.toString(),
+      planBlockId: (json['planBlockId'] ??
+              json['plan_block_id'] ??
+              json['blockId'] ??
+              json['block_id'] ??
+              (parsedType == AiTodoActionType.updatePlanBlock ||
+                      parsedType == AiTodoActionType.deletePlanBlock ||
+                      parsedType == AiTodoActionType.reschedulePlanBlocks ||
+                      parsedType == AiTodoActionType.skipPlanBlock ||
+                      parsedType == AiTodoActionType.startPlanBlockPomodoro
+                  ? json['id']
+                  : null))
+          ?.toString(),
       title: json['title']?.toString(),
       remark: json['remark']?.toString(),
       startTime: json['startTime']?.toString(),
@@ -196,6 +233,7 @@ class AiTodoAction {
       color: json['color']?.toString(),
       isSelected: json['isSelected'] != false,
       isAdded: json['isAdded'] == true,
+      isIgnored: json['isIgnored'] == true,
       originalText: json['originalText']?.toString(),
       sourceTodoIds: _parseStringList(
         json['sourceTodoIds'] ?? json['sourceTodoId'] ?? json['todoIds'],
@@ -228,6 +266,21 @@ class AiTodoAction {
         return AiTodoActionType.categorizeTodo;
       case 'plan_todos':
         return AiTodoActionType.planTodos;
+      case 'create_plan_block':
+      case 'create_todo_plan_block':
+      case 'schedule_todo_block':
+        return AiTodoActionType.createPlanBlock;
+      case 'update_plan_block':
+        return AiTodoActionType.updatePlanBlock;
+      case 'delete_plan_block':
+        return AiTodoActionType.deletePlanBlock;
+      case 'reschedule_plan_blocks':
+      case 'reschedule_plan_block':
+        return AiTodoActionType.reschedulePlanBlocks;
+      case 'skip_plan_block':
+        return AiTodoActionType.skipPlanBlock;
+      case 'start_plan_block_pomodoro':
+        return AiTodoActionType.startPlanBlockPomodoro;
       case 'split_todo':
         return AiTodoActionType.splitTodo;
       case 'merge_todos':

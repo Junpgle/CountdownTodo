@@ -347,13 +347,24 @@ class TimelineService {
       // 使用 Set 去重
       attendedCourses = courses.map((e) => e.courseName).toSet().toList();
 
-      // 5. 番茄钟 (完成次数)
+      // 5. 番茄钟 (完成次数 - 包括正常完成和基本完成的中断)
       final poms = await db.query(
         'pomodoro_records',
-        where: "is_deleted = 0 AND status = 'completed' AND start_time >= ? AND start_time < ?",
+        where: "is_deleted = 0 AND start_time >= ? AND start_time < ?",
         whereArgs: [startOfDayMs, endOfDayMs],
       );
-      pomodoroCount = poms.length;
+      for (var row in poms) {
+        final status = row['status'] as String?;
+        if (status == 'completed') {
+          pomodoroCount++;
+        } else if (status == 'interrupted') {
+          final actualSecs = row['actual_duration'] as int? ?? 0;
+          final plannedSecs = row['planned_duration'] as int? ?? 0;
+          if (plannedSecs == 0 || actualSecs >= plannedSecs * 0.9) {
+            pomodoroCount++;
+          }
+        }
+      }
 
     } catch (e) {
       debugPrint('❌ getSummaryForDay error: $e');

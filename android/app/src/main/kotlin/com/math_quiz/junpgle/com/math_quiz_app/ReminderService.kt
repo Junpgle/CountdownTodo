@@ -84,8 +84,10 @@ class ReminderService : Service() {
                 val text  = intent.getStringExtra("text")  ?: ""
                 val notifId = intent.getIntExtra("notifId", 20000)
                 val imagePath = intent.getStringExtra("analysis_image_path")
+                val planBlockId = intent.getStringExtra("plan_block_id")
+                val todoId = intent.getStringExtra("todo_id")
                 executor.execute {
-                    postReminderNotification(notifId, title, text, imagePath)
+                    postReminderNotification(notifId, title, text, imagePath, planBlockId, todoId)
                     // 发完通知就结束，不常驻
                     stopSelf(startId)
                     // 顺手重新调度下一个 Alarm（因为 setExactAndAllowWhileIdle 只触发一次）
@@ -132,10 +134,12 @@ class ReminderService : Service() {
                 val text        = item.optString("text", "")
                 val notifId     = item.optInt("notifId", 20000 + i)
                 val imagePath   = item.optString("analysisImagePath", "").takeIf { it.isNotBlank() }
+                val planBlockId = item.optString("planBlockId", "").takeIf { it.isNotBlank() }
+                val todoId      = item.optString("todoId", "").takeIf { it.isNotBlank() }
 
                 if (triggerAtMs <= now) continue   // 过期的跳过
 
-                scheduleOneAlarm(am, triggerAtMs, title, text, notifId, imagePath)
+                scheduleOneAlarm(am, triggerAtMs, title, text, notifId, imagePath, planBlockId, todoId)
             }
         } catch (e: Exception) {
             Log.e(TAG, "rescheduleAll parse error", e)
@@ -148,7 +152,9 @@ class ReminderService : Service() {
         title: String,
         text: String,
         notifId: Int,
-        analysisImagePath: String?
+        analysisImagePath: String?,
+        planBlockId: String?,
+        todoId: String?
     ) {
         val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
             action = ReminderAlarmReceiver.ACTION_FIRE
@@ -158,6 +164,8 @@ class ReminderService : Service() {
             if (!analysisImagePath.isNullOrBlank()) {
                 putExtra("analysis_image_path", analysisImagePath)
             }
+            if (!planBlockId.isNullOrBlank()) putExtra("plan_block_id", planBlockId)
+            if (!todoId.isNullOrBlank()) putExtra("todo_id", todoId)
         }
         val pi = PendingIntent.getBroadcast(
             this,
@@ -186,13 +194,27 @@ class ReminderService : Service() {
     // 发出提醒通知
     // ─────────────────────────────────────────────────────────────
 
-    private fun postReminderNotification(notifId: Int, title: String, text: String, analysisImagePath: String?) {
+    private fun postReminderNotification(
+        notifId: Int,
+        title: String,
+        text: String,
+        analysisImagePath: String?,
+        planBlockId: String?,
+        todoId: String?
+    ) {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
             if (!analysisImagePath.isNullOrBlank()) {
                 putExtra("analysis_image_path", analysisImagePath)
+            }
+            // 📅 规划块提醒 (notifId 33001-33999)：携带导航信息
+            if (notifId in 33001..33999) {
+                putExtra("open_plan_block", true)
+                putExtra("plan_block_notif_id", notifId)
+                if (!planBlockId.isNullOrBlank()) putExtra("plan_block_id", planBlockId)
+                if (!todoId.isNullOrBlank()) putExtra("todo_id", todoId)
             }
         }
         val pi = PendingIntent.getActivity(
@@ -220,7 +242,7 @@ class ReminderService : Service() {
                 viewImageIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            builder.addAction(0, "查看图片", viewImagePi)
+            builder.addAction(R.drawable.ic_notification, "查看图片", viewImagePi)
         }
 
         val notification = builder.build()

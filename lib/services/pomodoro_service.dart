@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:CountDownTodo/services/database_helper.dart';
+import '../models.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
 
@@ -82,6 +83,7 @@ class PomodoroRecord {
   int? actualDuration; // 实际专注时长（秒）
   PomodoroRecordStatus status;
   String? deviceId;
+  String? planBlockId; // 🚀 新增：关联规划块 ID
   bool isDeleted;
   int version;
   int createdAt;
@@ -98,6 +100,7 @@ class PomodoroRecord {
     this.actualDuration,
     this.status = PomodoroRecordStatus.completed,
     this.deviceId,
+    this.planBlockId,
     this.isDeleted = false,
     this.version = 1,
     int? createdAt,
@@ -127,6 +130,7 @@ class PomodoroRecord {
       'actual_duration': actualDuration,
       'status': _statusStr(status),
       'device_id': deviceId,
+      'plan_block_id': planBlockId,
       'is_deleted': isDeleted ? 1 : 0,
       'version': version,
       'created_at': createdAt,
@@ -159,6 +163,7 @@ class PomodoroRecord {
       actualDuration: (j['actual_duration'] as num?)?.toInt(),
       status: _parseStatus(j['status']),
       deviceId: j['device_id']?.toString(),
+      planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
       isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
       version: (j['version'] as num?)?.toInt() ?? 1,
       createdAt: _ms(j['created_at']),
@@ -278,6 +283,7 @@ class PomodoroRunState {
   int pausedAtMs;
   int accumulatedMs;
   int pauseStartMs;
+  String? planBlockId; // 🚀 新增：关联规划块 ID
 
   PomodoroRunState({
     this.phase = PomodoroPhase.idle,
@@ -297,6 +303,7 @@ class PomodoroRunState {
     this.pausedAtMs = 0,
     this.accumulatedMs = 0,
     this.pauseStartMs = 0,
+    this.planBlockId,
   })  : sessionUuid = sessionUuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [];
 
@@ -316,9 +323,10 @@ class PomodoroRunState {
         'mode': mode.index,
         'isCountUp': mode == TimerMode.countUp,
         'isPaused': isPaused,
-        'pausedAtMs': pausedAtMs,
-        'accumulatedMs': accumulatedMs,
-        'pauseStartMs': pauseStartMs,
+        'paused_at_ms': pausedAtMs,
+        'accumulated_ms': accumulatedMs,
+        'pause_start_ms': pauseStartMs,
+        'plan_block_id': planBlockId,
       };
 
   factory PomodoroRunState.fromJson(Map<String, dynamic> j) {
@@ -343,10 +351,17 @@ class PomodoroRunState {
           j['actualFocusedSeconds'] as int? ??
           focusSecs,
       mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
-      isPaused: j['isPaused'] as bool? ?? false,
-      pausedAtMs: j['pausedAtMs'] as int? ?? 0,
-      accumulatedMs: j['accumulatedMs'] as int? ?? 0,
-      pauseStartMs: j['pauseStartMs'] as int? ?? 0,
+      isPaused: j['is_paused'] == 1 ||
+          j['is_paused'] == true ||
+          j['isPaused'] == 1 ||
+          j['isPaused'] == true,
+      pausedAtMs:
+          ((j['paused_at_ms'] ?? j['pausedAtMs']) as num?)?.toInt() ?? 0,
+      accumulatedMs:
+          ((j['accumulated_ms'] ?? j['accumulatedMs']) as num?)?.toInt() ?? 0,
+      pauseStartMs:
+          ((j['pause_start_ms'] ?? j['pauseStartMs']) as num?)?.toInt() ?? 0,
+      planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
     );
   }
 }
@@ -384,7 +399,7 @@ class PomodoroService {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keySettings);
     String? s = prefs.getString(scopedKey);
-    
+
     // 迁移检查
     if (s == null) {
       final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
@@ -450,7 +465,8 @@ class PomodoroService {
     // 1. 优先 SQL
     try {
       final db = await DatabaseHelper.instance.database;
-      final List<Map<String, dynamic>> maps = await db.query('pomodoro_tags', where: 'is_deleted = 0');
+      final List<Map<String, dynamic>> maps =
+          await db.query('pomodoro_tags', where: 'is_deleted = 0');
       if (maps.isNotEmpty) {
         return maps.map((m) => PomodoroTag.fromJson(m)).toList();
       }
@@ -462,7 +478,7 @@ class PomodoroService {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyTags);
     final migrationKey = "tags_migration_done_$scopedKey";
-    
+
     if (!(prefs.getBool(migrationKey) ?? false)) {
       String? s = prefs.getString(scopedKey);
       if (s == null) {
@@ -474,7 +490,8 @@ class PomodoroService {
         debugPrint("🚀 [Tags] 正在执行 Prefs -> SQL 迁移...");
         try {
           final List<dynamic> decoded = jsonDecode(s);
-          final legacyTags = decoded.map((e) => PomodoroTag.fromJson(e)).toList();
+          final legacyTags =
+              decoded.map((e) => PomodoroTag.fromJson(e)).toList();
           if (legacyTags.isNotEmpty) {
             await _saveTagsToSql(legacyTags);
           }
@@ -491,28 +508,33 @@ class PomodoroService {
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
     for (var t in tags) {
-      batch.insert('pomodoro_tags', {
-        'uuid': t.uuid,
-        'name': t.name,
-        'color': t.color,
-        'is_deleted': t.isDeleted ? 1 : 0,
-        'version': t.version,
-        'created_at': t.createdAt,
-        'updated_at': t.updatedAt,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+          'pomodoro_tags',
+          {
+            'uuid': t.uuid,
+            'name': t.name,
+            'color': t.color,
+            'is_deleted': t.isDeleted ? 1 : 0,
+            'version': t.version,
+            'created_at': t.createdAt,
+            'updated_at': t.updatedAt,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
   }
 
   /// 保存标签（自动检测丢失的项并转化为墓碑，防止云端同步时复活）
-  static Future<void> saveTags(List<PomodoroTag> tagsToSave, {bool isSyncSource = false}) async {
+  static Future<void> saveTags(List<PomodoroTag> tagsToSave,
+      {bool isSyncSource = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyTags);
-    
+
     // 1. 获取全量（包含已删除）用于 Tombstone 处理
     final db = await DatabaseHelper.instance.database;
     final List<Map<String, dynamic>> maps = await db.query('pomodoro_tags');
-    final List<PomodoroTag> allLocal = maps.map((m) => PomodoroTag.fromJson(m)).toList();
+    final List<PomodoroTag> allLocal =
+        maps.map((m) => PomodoroTag.fromJson(m)).toList();
 
     // 将本次要保存的活动标签存入 Map
     final Map<String, PomodoroTag> newMap = {
@@ -546,15 +568,18 @@ class PomodoroService {
           'sync_error': ''
         });
       }
-      batch.insert('pomodoro_tags', {
-        'uuid': t.uuid,
-        'name': t.name,
-        'color': t.color,
-        'is_deleted': t.isDeleted ? 1 : 0,
-        'version': t.version,
-        'created_at': t.createdAt,
-        'updated_at': t.updatedAt,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+          'pomodoro_tags',
+          {
+            'uuid': t.uuid,
+            'name': t.name,
+            'color': t.color,
+            'is_deleted': t.isDeleted ? 1 : 0,
+            'version': t.version,
+            'created_at': t.createdAt,
+            'updated_at': t.updatedAt,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
 
@@ -566,15 +591,16 @@ class PomodoroService {
   /// 软删除一个标签（打上 tombstone 标记），以便同步时告诉云端删除
   static Future<void> deleteTag(String uuid) async {
     final db = await DatabaseHelper.instance.database;
-    final List<Map<String, dynamic>> maps = await db.query('pomodoro_tags', where: 'uuid = ?', whereArgs: [uuid]);
-    
+    final List<Map<String, dynamic>> maps =
+        await db.query('pomodoro_tags', where: 'uuid = ?', whereArgs: [uuid]);
+
     if (maps.isNotEmpty) {
       final tag = PomodoroTag.fromJson(maps.first);
       if (!tag.isDeleted) {
         tag.isDeleted = true;
         tag.updatedAt = DateTime.now().millisecondsSinceEpoch;
         tag.version += 1;
-        
+
         final batch = db.batch();
         // 记录 OpLog
         batch.insert('op_logs', {
@@ -587,11 +613,15 @@ class PomodoroService {
           'sync_error': ''
         });
         // 更新 SQL
-        batch.update('pomodoro_tags', {
-          'is_deleted': 1,
-          'updated_at': tag.updatedAt,
-          'version': tag.version
-        }, where: 'uuid = ?', whereArgs: [uuid]);
+        batch.update(
+            'pomodoro_tags',
+            {
+              'is_deleted': 1,
+              'updated_at': tag.updatedAt,
+              'version': tag.version
+            },
+            where: 'uuid = ?',
+            whereArgs: [uuid]);
         await batch.commit(noResult: true);
 
         // 更新 Prefs 备份
@@ -599,10 +629,10 @@ class PomodoroService {
         await saveTags(activeTags, isSyncSource: true);
 
         // 立即触发同步
-        final username = await SharedPreferences.getInstance().then(
-            (p) => p.getString(StorageService.KEY_CURRENT_USER) ?? '');
+        final username = await SharedPreferences.getInstance()
+            .then((p) => p.getString(StorageService.KEY_CURRENT_USER) ?? '');
         if (username.isNotEmpty) {
-          StorageService.syncData(username);
+          StorageService.requestSync(username);
         }
       }
     }
@@ -618,8 +648,7 @@ class PomodoroService {
     if (allTags.isEmpty) return;
     await ApiService.syncPomodoroTags(allTags.map((t) => t.toJson()).toList());
     final lastSyncKey = await _getScopedKey('pomodoro_last_tag_sync');
-    await prefs.setInt(
-        lastSyncKey, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(lastSyncKey, DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<void> syncTagsFromCloud() async {
@@ -656,22 +685,26 @@ class PomodoroService {
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
     for (var r in records) {
-      batch.insert('pomodoro_records', {
-        'uuid': r.uuid,
-        'todo_uuid': r.todoUuid,
-        'todo_title': r.todoTitle,
-        'tag_uuids': jsonEncode(r.tagUuids),
-        'start_time': r.startTime,
-        'end_time': r.endTime,
-        'planned_duration': r.plannedDuration,
-        'actual_duration': r.actualDuration,
-        'status': _statusStr(r.status),
-        'device_id': r.deviceId,
-        'is_deleted': r.isDeleted ? 1 : 0,
-        'version': r.version,
-        'created_at': r.createdAt,
-        'updated_at': r.updatedAt,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+          'pomodoro_records',
+          {
+            'uuid': r.uuid,
+            'todo_uuid': r.todoUuid,
+            'todo_title': r.todoTitle,
+            'tag_uuids': jsonEncode(r.tagUuids),
+            'start_time': r.startTime,
+            'end_time': r.endTime,
+            'planned_duration': r.plannedDuration,
+            'actual_duration': r.actualDuration,
+            'status': _statusStr(r.status),
+            'device_id': r.deviceId,
+            'plan_block_id': r.planBlockId,
+            'is_deleted': r.isDeleted ? 1 : 0,
+            'version': r.version,
+            'created_at': r.createdAt,
+            'updated_at': r.updatedAt,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
   }
@@ -689,11 +722,12 @@ class PomodoroService {
   }
 
   /// 添加一条专注记录，本地保存后立即尝试上传云端
-  static Future<void> addRecord(PomodoroRecord record, {bool isSyncSource = false}) async {
+  static Future<void> addRecord(PomodoroRecord record,
+      {bool isSyncSource = false}) async {
     // 1. 写入 SQLite & OpLog
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
-    
+
     if (!isSyncSource) {
       batch.insert('op_logs', {
         'op_type': 'UPSERT',
@@ -706,23 +740,27 @@ class PomodoroService {
       });
     }
 
-    batch.insert('pomodoro_records', {
-      'uuid': record.uuid,
-      'todo_uuid': record.todoUuid,
-      'todo_title': record.todoTitle,
-      'tag_uuids': jsonEncode(record.tagUuids),
-      'start_time': record.startTime,
-      'end_time': record.endTime,
-      'planned_duration': record.plannedDuration,
-      'actual_duration': record.actualDuration,
-      'status': _statusStr(record.status),
-      'device_id': record.deviceId,
-      'is_deleted': record.isDeleted ? 1 : 0,
-      'version': record.version,
-      'created_at': record.createdAt,
-      'updated_at': record.updatedAt,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-    
+    batch.insert(
+        'pomodoro_records',
+        {
+          'uuid': record.uuid,
+          'todo_uuid': record.todoUuid,
+          'todo_title': record.todoTitle,
+          'tag_uuids': jsonEncode(record.tagUuids),
+          'start_time': record.startTime,
+          'end_time': record.endTime,
+          'planned_duration': record.plannedDuration,
+          'actual_duration': record.actualDuration,
+          'status': _statusStr(record.status),
+          'device_id': record.deviceId,
+          'plan_block_id': record.planBlockId,
+          'is_deleted': record.isDeleted ? 1 : 0,
+          'version': record.version,
+          'created_at': record.createdAt,
+          'updated_at': record.updatedAt,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
+
     await batch.commit(noResult: true);
 
     // 2. 清理旧 Prefs 备份，避免 shared_preferences 通过 MethodChannel
@@ -732,13 +770,51 @@ class PomodoroService {
     await prefs.remove(scopedKey);
     await prefs.remove(_keyRecords);
 
-    debugPrint('[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
+    // 🚀 核心联动：如果关联了规划块，自动回写规划块的达成情况
+    if (record.planBlockId != null && record.planBlockId!.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final username =
+          prefs.getString(StorageService.KEY_CURRENT_USER) ?? 'default';
+      try {
+        final blocks =
+            await StorageService.getPlanBlocks(username, includeDeleted: true);
+        final idx = blocks.indexWhere((b) => b.uuid == record.planBlockId);
+        if (idx != -1) {
+          final pb = blocks[idx];
+          // 1. 累计专注时长
+          pb.actualFocusSeconds +=
+              (record.actualDuration ?? record.plannedDuration);
+          // 2. 记录 ID 关联
+          if (!pb.pomodoroRecordIds.contains(record.uuid)) {
+            pb.pomodoroRecordIds.add(record.uuid);
+          }
+          // 3. 状态自动机：如果时长达标（超过计划时长的 80%），标记为已完成
+          if (pb.status == TodoPlanStatus.planned ||
+              pb.status == TodoPlanStatus.focusing) {
+            if (pb.actualFocusSeconds >= pb.plannedMinutes * 60 * 0.8) {
+              pb.status = TodoPlanStatus.finished;
+            } else {
+              pb.status = TodoPlanStatus.planned;
+            }
+          }
+          pb.markAsChanged();
+          // 4. 保存
+          await StorageService.savePlanBlocks(username, [pb]);
+          debugPrint('[PomodoroService] 规划块联动更新成功: ${pb.uuid}');
+        }
+      } catch (e) {
+        debugPrint('[PomodoroService] 规划块联动失败: $e');
+      }
+    }
+
+    debugPrint(
+        '[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
 
     // 3. 立即尝试同步
     if (!isSyncSource) {
       final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
       if (username.isNotEmpty) {
-        StorageService.syncData(username);
+        StorageService.requestSync(username);
       }
     }
   }
@@ -748,12 +824,10 @@ class PomodoroService {
       DateTime from, DateTime to) async {
     try {
       final db = await DatabaseHelper.instance.database;
-      final List<Map<String, dynamic>> maps = await db.query(
-        'pomodoro_records',
-        where: 'is_deleted = 0 AND start_time >= ? AND start_time <= ?',
-        whereArgs: [from.millisecondsSinceEpoch, to.millisecondsSinceEpoch],
-        orderBy: 'start_time DESC'
-      );
+      final List<Map<String, dynamic>> maps = await db.query('pomodoro_records',
+          where: 'is_deleted = 0 AND start_time >= ? AND start_time <= ?',
+          whereArgs: [from.millisecondsSinceEpoch, to.millisecondsSinceEpoch],
+          orderBy: 'start_time DESC');
       if (maps.isNotEmpty) {
         return maps.map((m) => PomodoroRecord.fromJson(m)).toList();
       }
@@ -838,8 +912,10 @@ class PomodoroService {
           .toList();
 
       // 读取本地全量（SQL + 旧 prefs 兜底），避免只写入 prefs 导致 UI 读不到
-      final sqlRows = await db.query('pomodoro_records', orderBy: 'start_time DESC');
-      final sqlRecords = sqlRows.map((m) => PomodoroRecord.fromJson(m)).toList();
+      final sqlRows =
+          await db.query('pomodoro_records', orderBy: 'start_time DESC');
+      final sqlRecords =
+          sqlRows.map((m) => PomodoroRecord.fromJson(m)).toList();
 
       final scopedKey = await _getScopedKey(_keyRecords);
       String? legacyRaw;
@@ -964,8 +1040,9 @@ class PomodoroService {
   /// 读取全量（含已删除）内部方法 —— 包含自动迁移逻辑
   static Future<List<PomodoroRecord>> _getAllRecordsRaw() async {
     final db = await DatabaseHelper.instance.database;
-    final List<Map<String, dynamic>> maps = await db.query('pomodoro_records', orderBy: 'start_time DESC');
-    
+    final List<Map<String, dynamic>> maps =
+        await db.query('pomodoro_records', orderBy: 'start_time DESC');
+
     if (maps.isNotEmpty) {
       unawaited(_clearRecordPrefsMirror());
       return maps.map((m) => PomodoroRecord.fromJson(m)).toList();
@@ -975,7 +1052,7 @@ class PomodoroService {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyRecords);
     final migrationKey = "pomo_migration_done_$scopedKey";
-    
+
     if (!(prefs.getBool(migrationKey) ?? false)) {
       String? s = prefs.getString(scopedKey);
       // 兜底旧全局 Key
@@ -988,7 +1065,8 @@ class PomodoroService {
         debugPrint("🚀 [Pomodoro] 正在执行 Prefs -> SQL 增量迁移...");
         try {
           final List<dynamic> decoded = jsonDecode(s);
-          final legacyRecords = decoded.map((e) => PomodoroRecord.fromJson(e)).toList();
+          final legacyRecords =
+              decoded.map((e) => PomodoroRecord.fromJson(e)).toList();
           if (legacyRecords.isNotEmpty) {
             await _saveRecordsToSql(legacyRecords);
             await prefs.remove(scopedKey);

@@ -42,11 +42,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   List<TimeLogItem> _allTimeLogs = [];
   List<PomodoroRecord> _allPomodoroRecords = [];
   List<PomodoroTag> _pomodoroTags = [];
+  List<TodoPlanBlock> _allPlanBlocks = [];
   Map<int, List<TimeLogItem>> _timeLogsPerDay = {};
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
+  Map<int, List<TodoPlanBlock>> _planBlocksPerDay = {};
   final Set<String> _activeDataViews = {
     'courses',
     'todos',
+    'plans',
     'timeLogs',
     'pomodoros'
   };
@@ -144,6 +147,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       StorageService.getTimeLogs(widget.username),
       PomodoroService.getRecords(),
       PomodoroService.getTags(),
+      StorageService.getPlanBlocks(widget.username),
       StorageService.getSemesterStart(),
     ]);
 
@@ -158,7 +162,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     final List<TimeLogItem> allLogsRaw = results[2] as List<TimeLogItem>;
     _allPomodoroRecords = results[3] as List<PomodoroRecord>;
     _pomodoroTags = results[4] as List<PomodoroTag>;
-    DateTime? semStart = results[5] as DateTime?;
+    DateTime? semStart = results[6] as DateTime?;
 
     // 1. 处理课程相关数据
     if (_allCourses.isNotEmpty) {
@@ -175,6 +179,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _allTimeLogs = allLogsRaw.where((l) => !l.isDeleted).toList();
 
     // 4. 计算学期起始周
+    _allPlanBlocks =
+        (results[5] as List<TodoPlanBlock>).where((p) => !p.isDeleted).toList();
+
     if (semStart != null) {
       _semesterMonday = semStart.subtract(Duration(days: semStart.weekday - 1));
     } else if (_allCourses.isNotEmpty) {
@@ -212,7 +219,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _groupDataForMonthView();
     }
     _updateWeekTodos();
-    _updateWeekTimeLogsAndPomodoros();
+    _updateWeekTimeLogsPomodorosAndPlans();
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -228,6 +235,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   Map<String, List<TodoItem>> _monthCrossDayTodoMap = {};
   Map<String, List<TimeLogItem>> _monthLogMap = {};
   Map<String, List<PomodoroRecord>> _monthPomMap = {};
+  Map<String, List<TodoPlanBlock>> _monthPlanMap = {};
   bool _monthDataPrepared = false;
   static const int _maxExpandedSpanDays = 366;
 
@@ -238,6 +246,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _monthCrossDayTodoMap = {};
     _monthLogMap = {};
     _monthPomMap = {};
+    _monthPlanMap = {};
 
     final df = DateFormat('yyyy-MM-dd');
 
@@ -310,6 +319,21 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         debugLabel: 'pomodoro:${p.uuid}',
         onDay: (cursor) {
           _monthPomMap.putIfAbsent(df.format(cursor), () => []).add(p);
+        },
+      );
+    }
+
+    for (var plan in _allPlanBlocks) {
+      if (plan.startTime <= 0 || plan.endTime <= plan.startTime) continue;
+      final start =
+          DateTime.fromMillisecondsSinceEpoch(plan.startTime).toLocal();
+      final end = DateTime.fromMillisecondsSinceEpoch(plan.endTime).toLocal();
+      _forEachExpandedDay(
+        start: start,
+        end: end,
+        debugLabel: 'plan:${plan.uuid}',
+        onDay: (cursor) {
+          _monthPlanMap.putIfAbsent(df.format(cursor), () => []).add(plan);
         },
       );
     }
@@ -403,9 +427,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
   }
 
-  void _updateWeekTimeLogsAndPomodoros() {
+  void _updateWeekTimeLogsPomodorosAndPlans() {
     _timeLogsPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
     _pomodorosPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
+    _planBlocksPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
 
     if (_semesterMonday == null) return;
 
@@ -431,7 +456,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         int recordEnd = record.endTime ??
             (record.startTime + record.effectiveDuration * 1000);
         if (recordEnd > dayStartMsEpoch && record.startTime < dayEndMsEpoch) {
-          _pomodorosPerDay[i]!.add(record);
+          // 🚀 跳过与计划块关联的番茄钟，避免重复显示
+          if (!_isPomodoroAssociatedWithPlan(record)) {
+            _pomodorosPerDay[i]!.add(record);
+          }
+        }
+      }
+
+      for (var plan in _allPlanBlocks) {
+        if (plan.endTime > dayStartMsEpoch && plan.startTime < dayEndMsEpoch) {
+          _planBlocksPerDay[i]!.add(plan);
         }
       }
     }
@@ -452,7 +486,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     // 🚀 核心优化：直接使用已加载的 _allCourses 进行过滤，不再触发数据库/Isolate 开销
     _weekCourses = _allCourses.where((c) => c.weekIndex == newWeek).toList();
     _updateWeekTodos();
-    _updateWeekTimeLogsAndPomodoros();
+    _updateWeekTimeLogsPomodorosAndPlans();
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -631,6 +665,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       items.addAll(_monthLogMap[dStr] ?? []);
     }
 
+    if (_activeDataViews.contains('plans')) {
+      items.addAll(_monthPlanMap[dStr] ?? []);
+    }
+
     if (_activeDataViews.contains('pomodoros')) {
       items.addAll(_monthPomMap[dStr] ?? []);
     }
@@ -652,6 +690,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   .toLocal();
           return dt.hour * 100 + dt.minute;
         }
+        if (item is TodoPlanBlock) {
+          final dt =
+              DateTime.fromMillisecondsSinceEpoch(item.startTime).toLocal();
+          return dt.hour * 100 + dt.minute;
+        }
         if (item is PomodoroRecord) {
           final dt =
               DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true)
@@ -671,8 +714,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         if (item is CourseItem) return 0;
         if (item is TodoItem) return 1;
         if (item is TimeLogItem) return 2;
-        if (item is PomodoroRecord) return 3;
-        return 4;
+        if (item is TodoPlanBlock) return 3;
+        if (item is PomodoroRecord) return 4;
+        return 5;
       }
 
       return getPriority(a).compareTo(getPriority(b));
@@ -830,6 +874,29 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             style: const TextStyle(fontSize: 15)),
         subtitle: Text(
             '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
+            style: const TextStyle(fontSize: 12)),
+      );
+    } else if (item is TodoPlanBlock) {
+      const color = Colors.deepPurple;
+      final start =
+          DateTime.fromMillisecondsSinceEpoch(item.startTime).toLocal();
+      final end = DateTime.fromMillisecondsSinceEpoch(item.endTime).toLocal();
+      return ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+          child: Icon(
+              item.status == TodoPlanStatus.finished
+                  ? Icons.event_available
+                  : Icons.event_note,
+              color: color,
+              size: 20),
+        ),
+        title: Text(item.titleSnapshot ?? '规划任务',
+            style: const TextStyle(fontSize: 15)),
+        subtitle: Text(
+            '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · 计划 ${item.plannedMinutes} 分钟',
             style: const TextStyle(fontSize: 12)),
       );
     } else if (item is PomodoroRecord) {
@@ -1077,6 +1144,77 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         }),
       ),
     );
+  }
+
+  bool _timeRangesOverlap(
+      int startA, int endAExclusive, int startB, int endBExclusive) {
+    return endAExclusive > startB && startA < endBExclusive;
+  }
+
+  bool _isRecordAssociatedWithPlan(PomodoroRecord record, TodoPlanBlock plan) {
+    if (record.isDeleted || plan.isDeleted) return false;
+
+    if (plan.pomodoroRecordIds.contains(record.uuid)) {
+      return true;
+    }
+
+    if (record.planBlockId != null &&
+        record.planBlockId!.isNotEmpty &&
+        record.planBlockId == plan.id) {
+      return true;
+    }
+
+    if (plan.todoId.isNotEmpty &&
+        record.todoUuid != null &&
+        record.todoUuid!.isNotEmpty &&
+        record.todoUuid == plan.todoId) {
+      final int recordEnd = record.endTime ??
+          (record.startTime + record.effectiveDuration * 1000);
+      return _timeRangesOverlap(
+          record.startTime, recordEnd, plan.startTime, plan.endTime);
+    }
+
+    return false;
+  }
+
+  // --- 辅助方法：计算规划块关联的番茄钟完成情况 ---
+  Map<String, dynamic> _calculatePlanPomodoroProgress(TodoPlanBlock plan) {
+    final associatedRecords = _allPomodoroRecords
+        .where((record) => _isRecordAssociatedWithPlan(record, plan))
+        .toList();
+
+    if (associatedRecords.isEmpty) {
+      return {'completed': 0, 'total': 0, 'progress': 0.0};
+    }
+
+    // 计算实际专注进度（秒）
+    int totalSeconds = 0;
+    int completedSeconds = 0;
+
+    for (var record in associatedRecords) {
+      final int effective =
+          record.effectiveDuration > 0 ? record.effectiveDuration : 0;
+      final int planned =
+          record.plannedDuration > 0 ? record.plannedDuration : effective;
+      final int base = planned > 0 ? planned : 1;
+      totalSeconds += base;
+      completedSeconds += effective.clamp(0, base);
+    }
+
+    final progress = totalSeconds > 0 ? completedSeconds / totalSeconds : 0.0;
+
+    return {
+      'completed': completedSeconds,
+      'total': totalSeconds,
+      'progress': progress.clamp(0.0, 1.0),
+      'recordCount': associatedRecords.length,
+    };
+  }
+
+  // --- 辅助方法：检查番茄钟是否被某个计划块关联 ---
+  bool _isPomodoroAssociatedWithPlan(PomodoroRecord record) {
+    return _allPlanBlocks
+        .any((plan) => _isRecordAssociatedWithPlan(record, plan));
   }
 
   Widget _buildHeader(DateTime? monday) {
@@ -1501,6 +1639,191 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       }
     }
 
+    if (_activeDataViews.contains('plans')) {
+      for (int weekday = 1; weekday <= 7; weekday++) {
+        for (var plan in _planBlocksPerDay[weekday] ?? <TodoPlanBlock>[]) {
+          final start =
+              DateTime.fromMillisecondsSinceEpoch(plan.startTime).toLocal();
+          final end =
+              DateTime.fromMillisecondsSinceEpoch(plan.endTime).toLocal();
+
+          double top = _timeToY(start.hour, start.minute, minuteHeight);
+          double bottom = _timeToY(end.hour, end.minute, minuteHeight);
+          double height = bottom - top;
+          if (height < 18.0) height = 18.0;
+
+          final leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
+          final planColor = plan.status == TodoPlanStatus.finished
+              ? Colors.green.withValues(alpha: 0.58)
+              : Colors.deepPurple.withValues(alpha: 0.58);
+          final title = plan.titleSnapshot ?? '规划任务';
+          final planIndex =
+              _planBlocksPerDay.values.expand((e) => e).toList().indexOf(plan);
+
+          // 计算关联的番茄钟完成进度
+          final pomProgress = _calculatePlanPomodoroProgress(plan);
+          final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
+          final hasAssociatedPomodoro = recordCount > 0;
+
+          children.add(Positioned(
+            top: top,
+            left: leftOffset + 4,
+            width: cellWidth - 8,
+            height: height,
+            child: AnimatedBuilder(
+              animation: _courseExpandAnim,
+              builder: (ctx, child) {
+                final delay = (planIndex * 0.04).clamp(0.0, 0.45);
+                final t = ((_courseExpandAnim.value - delay) / (1.0 - delay))
+                    .clamp(0.0, 1.0);
+                return Transform.scale(
+                  scale: 0.8 + 0.2 * t,
+                  child: Opacity(opacity: t, child: child),
+                );
+              },
+              child: Container(
+                clipBehavior: Clip.hardEdge,
+                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+                decoration: BoxDecoration(
+                  color: planColor,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.35), width: 0.5),
+                ),
+                // 如果有关联的番茄钟，用背景填充表示完成进度
+                child: hasAssociatedPomodoro
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // 背景进度条（从下往上）
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: FractionallySizedBox(
+                              heightFactor:
+                                  ((pomProgress['progress'] as double?) ?? 0.0)
+                                      .clamp(0.0, 1.0),
+                              widthFactor: 1.0,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.25),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // 内容层
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                      plan.status == TodoPlanStatus.finished
+                                          ? Icons.event_available
+                                          : Icons.event_note,
+                                      size: 9,
+                                      color: Colors.white),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.0),
+                                      maxLines: height < 28 ? 1 : 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (height > 24)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${plan.plannedMinutes}min',
+                                      style: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.85),
+                                          fontSize: 7,
+                                          height: 1.0),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    // 显示番茄钟完成情况
+                                    if (height > 32)
+                                      Text(
+                                        '${(((pomProgress['progress'] as double?) ?? 0.0) * 100).toStringAsFixed(0)}%',
+                                        style: TextStyle(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.7),
+                                            fontSize: 6,
+                                            height: 1.0,
+                                            fontWeight: FontWeight.bold),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ],
+                      )
+                    : (height < 18
+                        ? const Icon(Icons.event_note,
+                            size: 8, color: Colors.white)
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                      plan.status == TodoPlanStatus.finished
+                                          ? Icons.event_available
+                                          : Icons.event_note,
+                                      size: 9,
+                                      color: Colors.white),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.0),
+                                      maxLines: height < 28 ? 1 : 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (height > 24)
+                                Text(
+                                  '${plan.plannedMinutes}min',
+                                  style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.85),
+                                      fontSize: 7,
+                                      height: 1.0),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          )),
+              ),
+            ),
+          ));
+        }
+      }
+    }
+
     if (_activeDataViews.contains('pomodoros')) {
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var record in _pomodorosPerDay[weekday]!) {
@@ -1524,7 +1847,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
           Color pomColor = Colors.redAccent.withValues(alpha: 0.6);
           String pomTitle = '专注';
-          if (record.tagUuids.isNotEmpty) {
+
+          // 优先显示任务名，其次显示标签名
+          if (record.todoTitle != null && record.todoTitle!.isNotEmpty) {
+            pomTitle = record.todoTitle!;
+          } else if (record.tagUuids.isNotEmpty) {
             final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
                 (t) => record.tagUuids.contains(t?.uuid),
                 orElse: () => null);
@@ -2121,8 +2448,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   _activeDataViews.clear();
                   _updateWeekTodos();
                 } else if (value == 'selectAll') {
-                  _activeDataViews
-                      .addAll({'courses', 'todos', 'timeLogs', 'pomodoros'});
+                  _activeDataViews.addAll(
+                      {'courses', 'todos', 'plans', 'timeLogs', 'pomodoros'});
                   _updateWeekTodos();
                 } else {
                   if (_activeDataViews.contains(value)) {
@@ -2177,6 +2504,20 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               : Colors.transparent),
                       const SizedBox(width: 8),
                       const Text('时间日志'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'plans',
+                  child: Row(
+                    children: [
+                      Icon(Icons.check,
+                          size: 16,
+                          color: _activeDataViews.contains('plans')
+                              ? Colors.blue
+                              : Colors.transparent),
+                      const SizedBox(width: 8),
+                      const Text('今日规划'),
                     ],
                   ),
                 ),

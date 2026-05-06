@@ -3,6 +3,25 @@ import 'dart:convert';
 import '../models/ai_todo_action.dart';
 
 class AiActionParser {
+  static const String _actionTypes = 'create_todo|update_todo|complete_todo|'
+      'delete_todo|reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
+      'categorize_todo|plan_todos|create_plan_block|update_plan_block|'
+      'delete_plan_block|reschedule_plan_blocks|reschedule_plan_block|'
+      'skip_plan_block|start_plan_block_pomodoro|'
+      'create_todo_plan_block|schedule_todo_block|split_todo|merge_todos|'
+      'create_time_log|update_time_log|delete_time_log|'
+      'start_pomodoro|stop_pomodoro|'
+      'create_countdown|update_countdown|complete_countdown|delete_countdown|'
+      'create_todo_group|update_todo_group|delete_todo_group|'
+      'create_group|update_group|delete_group|'
+      'create_category|update_category|delete_category|'
+      'create_folder|update_folder|delete_folder|'
+      'create_pomodoro_tag|update_pomodoro_tag|delete_pomodoro_tag';
+  static const String _legacyActionMarkers = 'PLAN_TODOS|CREATE_TODO|'
+      'UPDATE_TODO|COMPLETE_TODO|DELETE_TODO|RESCHEDULE_TODO|'
+      'CREATE_TIME_LOG|UPDATE_TIME_LOG|DELETE_TIME_LOG|'
+      'CREATE_COUNTDOWN|UPDATE_COUNTDOWN|DELETE_COUNTDOWN';
+
   static List<AiTodoAction> extractTodoActions(
     String content, {
     required String originalText,
@@ -50,6 +69,18 @@ class AiActionParser {
       }
     }
 
+    if (actions.isEmpty) {
+      final contentWithoutSuggestions = content.replaceAll(
+        RegExp(r'\[SUGGEST_START\].*?\[SUGGEST_END\]', dotAll: true),
+        '',
+      );
+      for (final candidate in _findLooseActionJsonBlocks(
+        contentWithoutSuggestions,
+      )) {
+        parseAndProcess(candidate);
+      }
+    }
+
     for (final action in actions) {
       action.originalText ??= originalText;
     }
@@ -69,26 +100,12 @@ class AiActionParser {
 
     // Only remove well-formed JSON arrays/objects that start with "action" key
     // and contain known action types, to avoid accidentally removing user text.
-    const actionTypes = 'create_todo|update_todo|complete_todo|delete_todo|'
-        'reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
-        'categorize_todo|plan_todos|split_todo|merge_todos|'
-        'create_time_log|update_time_log|delete_time_log|'
-        'start_pomodoro|stop_pomodoro|'
-        'create_countdown|update_countdown|complete_countdown|delete_countdown|'
-        'create_todo_group|update_todo_group|delete_todo_group|'
-        'create_group|update_group|delete_group|'
-        'create_category|update_category|delete_category|'
-        'create_folder|update_folder|delete_folder|'
-        'create_pomodoro_tag|update_pomodoro_tag|delete_pomodoro_tag';
-    final looseActionBlock = RegExp(
-      '\\[\\s*\\{\\s*"action"\\s*:\\s*"(?:$actionTypes)"[\\s\\S]*?\\}\\s*\\]',
-    );
-    cleaned = cleaned.replaceAll(looseActionBlock, '');
-
-    final looseActionObj = RegExp(
-      '\\{\\s*"action"\\s*:\\s*"(?:$actionTypes)"[\\s\\S]*?\\}',
-    );
-    cleaned = cleaned.replaceAll(looseActionObj, '');
+    for (final candidate in _findLooseActionJsonBlocks(cleaned)) {
+      cleaned = cleaned.replaceAll(candidate, '');
+    }
+    cleaned = cleaned
+        .replaceAll(RegExp('\\[(?:$_legacyActionMarkers)\\]'), '')
+        .replaceAll(RegExp(r'```(?:json)?\s*```', dotAll: true), '');
 
     return cleaned.trim();
   }
@@ -116,13 +133,49 @@ class AiActionParser {
     Map<String, dynamic> data,
     Map<String, String> existingTodoTitles,
   ) {
-    switch (data['action']) {
+    final actionData = _withInferredAction(data);
+    switch (actionData['action']) {
       case 'create_todo':
       case 'plan_todos':
-        return _listFrom(data['todos']).map((todo) {
+        return _listFromOrSelf(actionData, actionData['todos']).map((todo) {
           return AiTodoAction.fromJson({
             ...todo,
-            'action': data['action'],
+            'action': actionData['action'],
+          });
+        }).toList();
+      case 'create_plan_block':
+      case 'create_todo_plan_block':
+      case 'schedule_todo_block':
+        return _listFromOrSelf(
+          actionData,
+          actionData['blocks'] ?? actionData['plans'],
+        ).map((block) {
+          return AiTodoAction.fromJson({
+            ...block,
+            'todoId': block['todoId'] ?? block['todo_id'] ?? block['todoUuid'],
+            'title': block['title'] ?? block['titleSnapshot'],
+            'action': actionData['action'],
+          });
+        }).toList();
+      case 'update_plan_block':
+      case 'delete_plan_block':
+      case 'reschedule_plan_blocks':
+      case 'reschedule_plan_block':
+      case 'skip_plan_block':
+      case 'start_plan_block_pomodoro':
+        return _listFromOrSelf(
+          actionData,
+          actionData['blocks'] ?? actionData['updates'],
+        ).map((block) {
+          return AiTodoAction.fromJson({
+            ...block,
+            'planBlockId': block['planBlockId'] ??
+                block['plan_block_id'] ??
+                block['blockId'] ??
+                block['id'],
+            'todoId': block['todoId'] ?? block['todo_id'] ?? block['todoUuid'],
+            'title': block['title'] ?? block['titleSnapshot'],
+            'action': actionData['action'],
           });
         }).toList();
       case 'update_todo':
@@ -132,10 +185,10 @@ class AiActionParser {
       case 'bulk_reschedule':
       case 'bulk_reschedule_todo':
       case 'categorize_todo':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(actionData, actionData['updates']).map((update) {
           final action = AiTodoAction.fromJson({
             ...update,
-            'action': data['action'],
+            'action': actionData['action'],
           });
           if ((action.title == null || action.title!.isEmpty) &&
               action.todoId != null) {
@@ -144,61 +197,65 @@ class AiActionParser {
           return action;
         }).toList();
       case 'split_todo':
-        return _processSplitTodo(data, existingTodoTitles);
+        return _processSplitTodo(actionData, existingTodoTitles);
       case 'merge_todos':
-        return _processMergeTodos(data, existingTodoTitles);
+        return _processMergeTodos(actionData, existingTodoTitles);
       case 'create_time_log':
-        return _listFrom(data['logs']).map((log) {
+        return _listFromOrSelf(actionData, actionData['logs']).map((log) {
           return AiTodoAction.fromJson({
             ...log,
-            'action': data['action'],
+            'action': actionData['action'],
           });
         }).toList();
       case 'update_time_log':
       case 'delete_time_log':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(actionData, actionData['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ?? update['logId'] ?? update['id'],
-            'action': data['action'],
+            'action': actionData['action'],
           });
         }).toList();
       case 'start_pomodoro':
       case 'stop_pomodoro':
         return [
           AiTodoAction.fromJson({
-            ...data,
-            'todoId': data['todoId'],
+            ...actionData,
+            'todoId': actionData['todoId'],
           }),
         ];
       case 'create_countdown':
-        return _listFrom(data['countdowns']).map((countdown) {
+        return _listFromOrSelf(actionData, actionData['countdowns'])
+            .map((countdown) {
           return AiTodoAction.fromJson({
             ...countdown,
-            'action': data['action'],
+            'action': actionData['action'],
           });
         }).toList();
       case 'update_countdown':
       case 'complete_countdown':
       case 'delete_countdown':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(actionData, actionData['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ?? update['countdownId'] ?? update['id'],
-            'action': data['action'],
+            'action': actionData['action'],
           });
         }).toList();
       case 'create_todo_group':
       case 'create_group':
       case 'create_category':
       case 'create_folder':
-        return _listFrom(
-                data['groups'] ?? data['categories'] ?? data['folders'])
+        return _listFromOrSelf(
+                actionData,
+                actionData['groups'] ??
+                    actionData['categories'] ??
+                    actionData['folders'])
             .map((group) {
           return AiTodoAction.fromJson({
             ...group,
             'title': group['title'] ?? group['name'],
-            'action': data['action'],
+            'action': actionData['action'],
           });
         }).toList();
       case 'update_todo_group':
@@ -209,7 +266,7 @@ class AiActionParser {
       case 'delete_group':
       case 'delete_category':
       case 'delete_folder':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(actionData, actionData['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ??
@@ -218,25 +275,25 @@ class AiActionParser {
                 update['folderId'] ??
                 update['id'],
             'title': update['title'] ?? update['name'],
-            'action': data['action'],
+            'action': actionData['action'],
           });
         }).toList();
       case 'create_pomodoro_tag':
-        return _listFrom(data['tags']).map((tag) {
+        return _listFromOrSelf(actionData, actionData['tags']).map((tag) {
           return AiTodoAction.fromJson({
             ...tag,
             'title': tag['title'] ?? tag['name'],
-            'action': data['action'],
+            'action': actionData['action'],
           });
         }).toList();
       case 'update_pomodoro_tag':
       case 'delete_pomodoro_tag':
-        return _listFrom(data['updates']).map((update) {
+        return _listFromOrSelf(actionData, actionData['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
             'todoId': update['todoId'] ?? update['tagId'] ?? update['id'],
             'title': update['title'] ?? update['name'],
-            'action': data['action'],
+            'action': actionData['action'],
           });
         }).toList();
       default:
@@ -314,6 +371,40 @@ class AiActionParser {
         .toList();
   }
 
+  static Map<String, dynamic> _withInferredAction(Map<String, dynamic> data) {
+    if (data['action'] != null) return data;
+    if (data['todos'] is List) {
+      return {...data, 'action': 'plan_todos'};
+    }
+    if (data['blocks'] is List || data['plans'] is List) {
+      return {...data, 'action': 'create_plan_block'};
+    }
+    if (data['countdowns'] is List) {
+      return {...data, 'action': 'create_countdown'};
+    }
+    if (data['logs'] is List) {
+      return {...data, 'action': 'create_time_log'};
+    }
+    if (data['groups'] is List ||
+        data['categories'] is List ||
+        data['folders'] is List) {
+      return {...data, 'action': 'create_todo_group'};
+    }
+    if (data['tags'] is List) {
+      return {...data, 'action': 'create_pomodoro_tag'};
+    }
+    return data;
+  }
+
+  static List<Map<String, dynamic>> _listFromOrSelf(
+    Map<String, dynamic> self,
+    dynamic value,
+  ) {
+    final list = _listFrom(value);
+    if (list.isNotEmpty) return list;
+    return [self];
+  }
+
   static List<String> _stringList(dynamic value) {
     if (value == null) return const [];
     if (value is List) return value.map((e) => e.toString()).toList();
@@ -348,5 +439,67 @@ class AiActionParser {
       closeBraces++;
     }
     return formattedJson;
+  }
+
+  static List<String> _findLooseActionJsonBlocks(String content) {
+    final candidates = <String>[];
+    final seen = <String>{};
+    for (var i = 0; i < content.length; i++) {
+      final char = content[i];
+      if (char != '{' && char != '[') continue;
+
+      final end = _findBalancedJsonEnd(content, i);
+      if (end == -1) continue;
+
+      final candidate = content.substring(i, end + 1).trim();
+      final hasKnownAction =
+          RegExp('"action"\\s*:\\s*"(?:$_actionTypes)"').hasMatch(candidate);
+      final hasLegacyContainer = RegExp(
+              '"(?:todos|blocks|plans|countdowns|logs|groups|categories|folders|tags)"\\s*:')
+          .hasMatch(candidate);
+      if (!hasKnownAction && !hasLegacyContainer) {
+        continue;
+      }
+      if (seen.add(candidate)) {
+        candidates.add(candidate);
+      }
+      i = end;
+    }
+    return candidates;
+  }
+
+  static int _findBalancedJsonEnd(String content, int start) {
+    final stack = <String>[];
+    var inString = false;
+    var escaped = false;
+
+    for (var i = start; i < content.length; i++) {
+      final char = content[i];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char == '\\') {
+          escaped = true;
+        } else if (char == '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char == '"') {
+        inString = true;
+      } else if (char == '{') {
+        stack.add('}');
+      } else if (char == '[') {
+        stack.add(']');
+      } else if (char == '}' || char == ']') {
+        if (stack.isEmpty || stack.last != char) return -1;
+        stack.removeLast();
+        if (stack.isEmpty) return i;
+      }
+    }
+
+    return -1;
   }
 }

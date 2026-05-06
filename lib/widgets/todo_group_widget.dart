@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../models.dart';
+import 'ai_water_border.dart';
 
 class TodoGroupWidget extends StatefulWidget {
   final TodoGroup group;
   final List<TodoItem> groupTodos;
   final bool isLight;
+  final bool onlyShowMostUrgentTodo;
   final Map<String, String> teamRoles;
   final VoidCallback onToggle;
   final Function(TodoItem) onTodoToggle;
@@ -22,6 +24,7 @@ class TodoGroupWidget extends StatefulWidget {
     required this.group,
     required this.groupTodos,
     required this.isLight,
+    this.onlyShowMostUrgentTodo = false,
     required this.teamRoles,
     required this.onToggle,
     required this.onTodoToggle,
@@ -42,6 +45,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
   late AnimationController _progressController;
   bool _hasAnimated = false;
   bool _suppressTodoItemTap = false;
+  bool _showAllTodos = false;
 
   @override
   void initState() {
@@ -120,11 +124,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final group = widget.group;
     final groupTodos = widget.groupTodos;
     final isLight = widget.isLight;
-    final onToggle = widget.onToggle;
-    final onTodoToggle = widget.onTodoToggle;
-    final onTodoDropped = widget.onTodoDropped;
-    final onDelete = widget.onDelete;
-    final onTodoTap = widget.onTodoTap;
+    final isExpanded = group.isExpanded;
     // Sort by deadline
     final sortedTodos = List<TodoItem>.from(groupTodos)
       ..sort((a, b) {
@@ -134,6 +134,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         if (b.dueDate == null) return -1;
         return a.dueDate!.compareTo(b.dueDate!);
       });
+    final foldedTodoCount = widget.onlyShowMostUrgentTodo &&
+            !_showAllTodos &&
+            sortedTodos.length > 1
+        ? sortedTodos.length - 1
+        : 0;
+    final visibleTodos =
+        foldedTodoCount > 0 ? sortedTodos.take(1).toList() : sortedTodos;
 
     final doneCount = groupTodos.where((t) => t.isDone).length;
     final totalCount = groupTodos.length;
@@ -174,7 +181,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             alignment: Alignment.topCenter,
             child: Container(
               decoration: BoxDecoration(
-                color: group.isExpanded
+                color: isExpanded
                     ? (isLight
                         ? Colors.white.withValues(alpha: 0.5)
                         : Colors.grey[900]?.withValues(alpha: 0.5))
@@ -192,8 +199,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                       allDone,
                       isHovering,
                       urgencyColor,
-                      groupFillProgress),
-                  if (widget.group.isExpanded)
+                      groupFillProgress,
+                      isExpanded),
+                  if (isExpanded)
                     Container(
                       padding: const EdgeInsets.only(
                           left: 12, right: 12, bottom: 20, top: 8),
@@ -227,9 +235,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         ],
                       ),
                       child: Column(
-                        children: sortedTodos
-                            .map((todo) => _buildTodoItem(context, todo))
-                            .toList(),
+                        children: [
+                          ...visibleTodos
+                              .map((todo) => _buildTodoItem(context, todo)),
+                          if (widget.onlyShowMostUrgentTodo &&
+                              sortedTodos.length > 1)
+                            _buildFoldedTodosToggle(context, foldedTodoCount),
+                        ],
                       ),
                     ),
                 ],
@@ -251,6 +263,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     bool isHovering,
     Color urgencyColor,
     double groupFillProgress,
+    bool isExpanded,
   ) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -260,7 +273,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     return Column(
       children: [
         // Stack layers for collapsed effect
-        if (totalCount > 1 && !widget.group.isExpanded)
+        if (totalCount > 1 && !isExpanded)
           AnimatedOpacity(
             duration: const Duration(milliseconds: 300),
             opacity: 1.0,
@@ -285,7 +298,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
               color: isHovering
                   ? statusColor.withValues(alpha: 0.08)
                   : (widget.isLight ? Colors.white : Colors.grey[900]),
-              borderRadius: widget.group.isExpanded
+              borderRadius: isExpanded
                   ? const BorderRadius.vertical(top: Radius.circular(20))
                   : BorderRadius.circular(20),
               border: Border.all(
@@ -332,10 +345,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              urgencyColor
-                                  .withValues(alpha: widget.isLight ? 0.32 : 0.18),
-                              urgencyColor
-                                  .withValues(alpha: widget.isLight ? 0.15 : 0.07),
+                              urgencyColor.withValues(
+                                  alpha: widget.isLight ? 0.32 : 0.18),
+                              urgencyColor.withValues(
+                                  alpha: widget.isLight ? 0.15 : 0.07),
                             ],
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
@@ -391,7 +404,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         child: Icon(
                           allDone
                               ? Icons.task_alt_rounded
-                              : (widget.group.isExpanded
+                              : (isExpanded
                                   ? Icons.folder_open_rounded
                                   : Icons.folder_rounded),
                           color: statusColor,
@@ -436,13 +449,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         ),
                       ),
                       if (nearestDeadline != null &&
-                          !widget.group.isExpanded &&
+                          !isExpanded &&
                           !allDone) ...[
                         _buildDeadlineTag(context, nearestDeadline),
                         const SizedBox(width: 8),
                       ],
                       Icon(
-                        widget.group.isExpanded
+                        isExpanded
                             ? Icons.keyboard_arrow_up_rounded
                             : Icons.keyboard_arrow_down_rounded,
                         color: Colors.grey.withValues(alpha: 0.4),
@@ -475,6 +488,46 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                 ? Colors.black.withValues(alpha: 0.08)
                 : Colors.white.withValues(alpha: 0.08),
             width: 1,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFoldedTodosToggle(BuildContext context, int foldedTodoCount) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Material(
+        color:
+            colorScheme.primary.withValues(alpha: widget.isLight ? 0.06 : 0.1),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _showAllTodos = !_showAllTodos),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  _showAllTodos
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.unfold_more_rounded,
+                  size: 16,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _showAllTodos ? '收起其他待办' : '还有 $foldedTodoCount 条已折叠',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -533,9 +586,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     String timeStr = "";
     if (todo.dueDate != null) {
       if (isAllDay) {
-        timeStr = "${DateFormat('MM/dd').format(start)} → ${DateFormat('MM/dd').format(todo.dueDate!)}";
+        timeStr =
+            "${DateFormat('MM/dd').format(start)} → ${DateFormat('MM/dd').format(todo.dueDate!)}";
       } else {
-        timeStr = "${DateFormat('MM/dd HH:mm').format(start)} → ${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}";
+        timeStr =
+            "${DateFormat('MM/dd HH:mm').format(start)} → ${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}";
       }
     } else {
       timeStr = "开始 ${DateFormat('MM/dd HH:mm').format(start)}";
@@ -543,7 +598,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
     final now = DateTime.now();
     final isPast = todo.dueDate != null && todo.dueDate!.isBefore(now);
-    final isFuture = todo.dueDate != null && !isPast && !DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day).isAtSameMomentAs(DateTime(now.year, now.month, now.day));
+    final isFuture = todo.dueDate != null &&
+        !isPast &&
+        !DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day)
+            .isAtSameMomentAs(DateTime(now.year, now.month, now.day));
 
     // ── 徽章计算 (与主列表同步) ──
     String badge = "";
@@ -552,7 +610,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final colorScheme = Theme.of(context).colorScheme;
 
     if (todo.dueDate != null) {
-      final DateTime d = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+      final DateTime d =
+          DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
       final DateTime today = DateTime(now.year, now.month, now.day);
       if (isPast) {
         badge = "已逾期";
@@ -650,7 +709,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             widget.onTodoTap(todo);
           },
           borderRadius: BorderRadius.circular(12),
-          child: Container(
+          child: AiGeneratedTodoWaterBorder(
+            enabled: isAiGeneratedTodo(todo),
+            isLight: widget.isLight,
+            child: Container(
             margin: const EdgeInsets.symmetric(vertical: 4.0),
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
@@ -683,9 +745,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              fillBrush.withValues(alpha: widget.isLight ? 0.2 : 0.1),
-                              fillBrush
-                                  .withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                              fillBrush.withValues(
+                                  alpha: widget.isLight ? 0.2 : 0.1),
+                              fillBrush.withValues(
+                                  alpha: widget.isLight ? 0.1 : 0.05),
                             ],
                           ),
                         ),
@@ -762,14 +825,24 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                 if (badge.isNotEmpty) ...[
                                   const SizedBox(width: 6),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 1.5),
                                     decoration: BoxDecoration(
-                                      color: todo.isDone ? colorScheme.onSurface.withValues(alpha: 0.06) : badgeBg,
+                                      color: todo.isDone
+                                          ? colorScheme.onSurface
+                                              .withValues(alpha: 0.06)
+                                          : badgeBg,
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
                                       badge,
-                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: todo.isDone ? colorScheme.onSurface.withValues(alpha: 0.3) : badgeColor),
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: todo.isDone
+                                              ? colorScheme.onSurface
+                                                  .withValues(alpha: 0.3)
+                                              : badgeColor),
                                     ),
                                   ),
                                 ],
@@ -780,33 +853,46 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                               Row(
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 5, vertical: 1.5),
                                     decoration: BoxDecoration(
-                                      color: colorScheme.primary.withValues(alpha: 0.1),
+                                      color: colorScheme.primary
+                                          .withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: colorScheme.primary.withValues(alpha: 0.2), width: 0.5),
+                                      border: Border.all(
+                                          color: colorScheme.primary
+                                              .withValues(alpha: 0.2),
+                                          width: 0.5),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.groups_rounded, size: 9, color: colorScheme.primary),
+                                        Icon(Icons.groups_rounded,
+                                            size: 9,
+                                            color: colorScheme.primary),
                                         const SizedBox(width: 3),
                                         Text(
                                           "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}",
-                                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                          style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                              color: colorScheme.primary),
                                         ),
                                       ],
                                     ),
                                   ),
                                   if (todo.collabType == 1 &&
-                                      widget.teamRoles[todo.teamUuid] == 'admin' &&
-                                      widget.onShowIndependentTodoStatus != null) ...[
+                                      widget.teamRoles[todo.teamUuid] ==
+                                          'admin' &&
+                                      widget.onShowIndependentTodoStatus !=
+                                          null) ...[
                                     const SizedBox(width: 6),
                                     GestureDetector(
                                       behavior: HitTestBehavior.opaque,
                                       onTap: () {
                                         _suppressTodoItemTap = true;
-                                        widget.onShowIndependentTodoStatus!(todo);
+                                        widget
+                                            .onShowIndependentTodoStatus!(todo);
                                         Future.microtask(() {
                                           _suppressTodoItemTap = false;
                                         });
@@ -815,11 +901,13 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 5, vertical: 1.5),
                                         decoration: BoxDecoration(
-                                          color: Colors.green.withValues(alpha: 0.12),
-                                          borderRadius: BorderRadius.circular(4),
+                                          color: Colors.green
+                                              .withValues(alpha: 0.12),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
                                           border: Border.all(
-                                            color:
-                                                Colors.green.withValues(alpha: 0.35),
+                                            color: Colors.green
+                                                .withValues(alpha: 0.35),
                                             width: 0.5,
                                           ),
                                         ),
@@ -905,6 +993,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ),

@@ -62,6 +62,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   String? _currentOriginalText;
   String? _selectedImagePath;
   bool _isLoading = true; // 🚀 首页加载锁
+  Map<String, dynamic>? _pendingTodoConfirm; // 🚀 待确认的图片识别待办
 
   Map<String, int> _categoryReminderDefaults = {};
   String? _username;
@@ -91,6 +92,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
     });
     _loadTeams();
+    _loadPendingTodoConfirm();
+  }
+
+  Future<void> _loadPendingTodoConfirm() async {
+    final data = await StorageService.getPendingTodoConfirm();
+    if (mounted && data != null) {
+      final results = data['results'] as List<dynamic>?;
+      if (results != null && results.isNotEmpty) {
+        setState(() => _pendingTodoConfirm = data);
+      }
+    }
   }
 
   Future<void> _loadTeams() async {
@@ -958,6 +970,98 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
   }
 
+  // ================= 待确认图片识别待办卡片 =================
+  Widget _buildPendingTodoCard() {
+    final imagePath = _pendingTodoConfirm!['imagePath'] as String?;
+    final results = _pendingTodoConfirm!['results'] as List<dynamic>?;
+    final todoCount = results?.length ?? 0;
+    if (todoCount == 0) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            if (results == null || results.isEmpty) return;
+            final typedResults = results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            setState(() => _pendingTodoConfirm = null);
+            StorageService.clearPendingTodoConfirm();
+            if (widget.onLLMResultsParsed != null) {
+              widget.onLLMResultsParsed!(typedResults, imagePath, null, null, null);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                if (imagePath != null && File(imagePath).existsSync())
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(imagePath),
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(Icons.checklist_rounded,
+                            color: Theme.of(context).colorScheme.primary, size: 24),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.checklist_rounded,
+                        color: Theme.of(context).colorScheme.primary, size: 24),
+                  ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AI识别完成',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '发现 $todoCount 个待办，点击查看',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ================= AI 识别界面 (保持卡片风格) =================
   Widget _buildAIRecognitionTab({Key? key}) {
     return SingleChildScrollView(
@@ -965,6 +1069,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         children: [
+          // 🚀 待确认的图片识别待办入口
+          if (_pendingTodoConfirm != null)
+            _buildPendingTodoCard(),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(

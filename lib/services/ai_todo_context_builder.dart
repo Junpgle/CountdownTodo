@@ -12,6 +12,7 @@ class AiTodoContextBuilder {
     required List<TodoGroup> todoGroups,
     List<CountdownItem> countdowns = const [],
     List<PomodoroTag> pomodoroTags = const [],
+    List<TodoPlanBlock> planBlocks = const [],
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -36,16 +37,37 @@ ${_formatCountdowns(countdowns)}
 【用户当前番茄标签】
 ${_formatPomodoroTags(pomodoroTags)}
 
+【用户当前待办规划】
+${_formatPlanBlocks(planBlocks, todos)}
+
 【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
 【待办管理功能 - 重要规则】
 当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办，或新增/修改/删除专注记录，或开始/停止番茄钟，或新增/修改/完成/删除倒计时，或新增/改名/改色/删除番茄标签时，必须在回复末尾附加JSON操作块。
 操作已有待办必须使用待办ID；操作已有专注记录必须使用专注记录ID；操作已有倒计时必须使用倒计时ID；操作已有番茄标签必须使用标签ID。不确定时先追问。
-JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
+JSON操作块必须且只能使用以下协议：
+1. 必须用 [ACTION_START] 和 [ACTION_END] 包裹。
+2. [ACTION_START] 内必须是合法 JSON 数组；即使只有一个操作，也必须放进数组。
+3. 每个操作对象必须包含 "action" 字段。
+4. 禁止使用 Markdown 代码块，例如 ```json。
+5. 禁止使用 [PLAN_TODOS]、[CREATE_TODO]、[UPDATE_TODO] 等任何旧标记。
+6. 禁止只输出 {"todos":[...]}、{"updates":[...]} 等缺少 "action" 字段的对象。
+7. 如果同时输出操作块和建议块，顺序必须是：正文 -> [ACTION_START]...[ACTION_END] -> [SUGGEST_START]...[SUGGEST_END]。
+
+唯一合法示例：
+[ACTION_START]
+[
+  {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
+]
+[ACTION_END]
+
+支持的动作：
 
 - create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
-- plan_todos: 同create_todo格式，用于制定计划
+- plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，用于生成新的计划待办
+- create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说"规划今天/明天/本周时间""安排到几点到几点"时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
+- update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须使用已有规划块ID(planBlockId/blockId/id)，用于修改、重排、删除、跳过或直接开始某个规划块的番茄钟
 - update_todo: {"action":"update_todo","updates":[{"todoId":"ID","title":"新标题","startTime":"...","dueDate":"...","groupId":"...","reminderMinutes":5}]}
 - complete_todo: {"action":"complete_todo","updates":[{"todoId":"ID"}]}
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"ID"}]}
@@ -70,17 +92,19 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
 - update_pomodoro_tag: {"action":"update_pomodoro_tag","updates":[{"tagId":"ID","name":"新名称","color":"#3B82F6"}]}
 - delete_pomodoro_tag: {"action":"delete_pomodoro_tag","updates":[{"tagId":"ID"}]}
 
-可组合多种操作：[ACTION_START][{操作1},{操作2}][ACTION_END]
+可组合多种操作：[ACTION_START][{"action":"create_plan_block","blocks":[...]},{"action":"start_pomodoro","title":"专注内容","durationMinutes":25}][ACTION_END]
 
 【后续建议】
-每次回复末尾附3-4个简短建议（≤15字），格式：[SUGGEST_START]["建议1","建议2","建议3"][SUGGEST_END]
+每次回复末尾附3-4个简短建议后续问题（≤15字），格式：[SUGGEST_START]["追问1","追问2","追问3"][SUGGEST_END]
 
 【核心规则】
 1. 意图判定：创建(提醒我/记一下)、规划(制定计划)、拆分(大任务拆小)、合并(多个合一)、修改(改标题/备注/时间)、完成(标记已做)、删除(移除)、改期(推迟/提前)、整理(分类/移动到文件夹)、新增/修改/删除待办分类或文件夹、记录专注、修改专注记录、删除专注记录、开始/停止番茄钟、管理倒计时、管理番茄标签
 2. 文件夹归类：只在语义明显关联时分配groupId，不确定时留空，严禁乱分类
 3. 危险操作(删除/完成/合并删源/拆分删源/停止番茄钟/删除专注记录/完成或删除倒计时/删除番茄标签)只在用户明确要求时输出
 4. 禁止对已有分类任务重复categorize_todo
-5. [ACTION_START]/[ACTION_END]标记和[SUGGEST_START]/[SUGGEST_END]标记必须完整''';
+5. [ACTION_START]/[ACTION_END]标记和[SUGGEST_START]/[SUGGEST_END]标记必须完整
+6. 规划完整性：当用户要求规划时间（今天/明天/本周等），文本中提到的每一个时间段如果对应已有待办，都必须在[ACTION_START]中生成create_plan_block，不能只生成部分。如果文本中规划了5个时间段对应5个已有待办，action中必须有5个blocks
+7. 规划避让：如果上下文提供课程表、已有规划或专注记录，生成create_plan_block时必须避开这些已占用时间；不要把待办规划到课程时间内''';
   }
 
   /// 根据用户消息关键词，返回需要注入的上下文片段。无匹配返回 null。
@@ -89,6 +113,8 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     required List<CourseItem> courses,
     required List<TimeLogItem> timeLogs,
     List<PomodoroRecord> pomodoroRecords = const [],
+    List<TodoPlanBlock> planBlocks = const [],
+    List<Map<String, dynamic>> todos = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
     DateTime? now,
@@ -96,11 +122,13 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     final nowValue = now ?? DateTime.now();
     final sections = <String>[];
 
-    if (_matchesAny(userMessage, _courseKeywords) && courses.isNotEmpty) {
+    if (_shouldInjectCourseContext(userMessage) && courses.isNotEmpty) {
       sections.add(_formatCourses(courses, userMessage, nowValue));
     }
     if (_matchesAny(userMessage, _timeLogKeywords) &&
-        (timeLogs.isNotEmpty || pomodoroRecords.isNotEmpty)) {
+        (timeLogs.isNotEmpty ||
+            pomodoroRecords.isNotEmpty ||
+            planBlocks.isNotEmpty)) {
       sections.add(
         _formatFocusRecords(
           timeLogs,
@@ -109,6 +137,9 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
           nowValue,
         ),
       );
+      if (planBlocks.isNotEmpty) {
+        sections.add(_formatPlanBlocks(planBlocks, todos));
+      }
     }
     if (_matchesAny(userMessage, _conflictKeywords) && conflicts.isNotEmpty) {
       sections.add(_formatConflicts(conflicts));
@@ -125,6 +156,12 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     return keywords.any((k) => text.contains(k));
   }
 
+  static bool _shouldInjectCourseContext(String text) {
+    if (_matchesAny(text, _courseKeywords)) return true;
+    return _matchesAny(text, _planningKeywords) &&
+        _matchesAny(text, _planningTimeKeywords);
+  }
+
   static const _courseKeywords = [
     '课',
     '课程',
@@ -138,6 +175,37 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     '排课',
     '选课',
     '调课',
+  ];
+  static const _planningKeywords = [
+    '规划',
+    '安排',
+    '计划',
+    '排一下',
+    '排时间',
+    '待办规划',
+    '今日计划',
+    '日程',
+  ];
+  static const _planningTimeKeywords = [
+    '今天',
+    '今日',
+    '明天',
+    '明日',
+    '后天',
+    '本周',
+    '这周',
+    '下周',
+    '本月',
+    '这个月',
+    '时间',
+    '上午',
+    '下午',
+    '晚上',
+    '早上',
+    '中午',
+    '点',
+    '分钟',
+    '小时',
   ];
   static const _timeLogKeywords = [
     '专注',
@@ -188,6 +256,24 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
         .replaceAll('{todos}', _formatTodos(todos, todoGroups));
   }
 
+  static String buildManualCopyPrompt(List<Map<String, String>> messages) {
+    final buffer = StringBuffer()
+      ..writeln('请按下面的对话内容扮演待办助手，只回复 assistant 的最终内容。')
+      ..writeln(
+          '必须遵守 system 中的所有规则；如果需要创建、修改、规划或删除数据，必须输出可被应用识别的 [ACTION_START] JSON 操作块。')
+      ..writeln('不要解释这些包装文本，不要使用 Markdown 代码块包裹操作 JSON。');
+
+    for (final message in messages) {
+      final role = (message['role'] ?? 'user').toUpperCase();
+      final content = message['content'] ?? '';
+      buffer
+        ..writeln()
+        ..writeln('===== $role =====')
+        ..writeln(content);
+    }
+    return buffer.toString().trim();
+  }
+
   static String _formatTodos(
     List<Map<String, dynamic>> todos,
     List<TodoGroup> todoGroups,
@@ -235,6 +321,31 @@ JSON格式：[ACTION_START]...[ACTION_END]，支持的动作：
     return active
         .map((t) => '- [ID: ${t.uuid}] 名称: ${t.name} | 颜色: ${t.color}')
         .join('\n');
+  }
+
+  static String _formatPlanBlocks(
+    List<TodoPlanBlock> blocks,
+    List<Map<String, dynamic>> todos,
+  ) {
+    final active = blocks.where((b) => !b.isDeleted).toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    if (active.isEmpty) return '暂无规划';
+
+    String todoTitle(String id) {
+      final match = todos.where((t) => t['id']?.toString() == id).toList();
+      if (match.isEmpty) return id;
+      final title = match.first['title']?.toString();
+      return title == null || title.isEmpty ? id : title;
+    }
+
+    return active.take(60).map((b) {
+      final start = DateFormat('yyyy-MM-dd HH:mm')
+          .format(DateTime.fromMillisecondsSinceEpoch(b.startTime));
+      final end = DateFormat('yyyy-MM-dd HH:mm')
+          .format(DateTime.fromMillisecondsSinceEpoch(b.endTime));
+      final actualMinutes = b.actualFocusSeconds ~/ 60;
+      return '- [ID: ${b.id}] 待办ID: ${b.todoId} | 标题: ${b.titleSnapshot ?? todoTitle(b.todoId)} | 时间: $start-$end | 计划: ${b.plannedMinutes}分钟 | 实际专注: $actualMinutes分钟 | 状态: ${b.status.name} | 提醒: 提前${b.reminderMinutes}分钟';
+    }).join('\n');
   }
 
   static String _formatCourses(

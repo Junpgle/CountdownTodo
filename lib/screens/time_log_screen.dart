@@ -4,10 +4,12 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
+import '../services/pomodoro_control_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import 'dart:ui' as ui;
+import 'pomodoro_screen.dart';
 
 part 'time_log_components.dart';
 
@@ -107,6 +109,8 @@ enum _ViewMode { week, day }
 
 enum _DayMode { view, edit }
 
+enum _EntryMode { log, plan }
+
 // ══════════════════════════════════════════════════════════
 // 主屏幕
 // ══════════════════════════════════════════════════════════
@@ -131,6 +135,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<TimeLogItem> _allLogs = [];
   List<PomodoroTag> _tags = [];
   List<PomodoroRecord> _allPomodoros = [];
+  List<TodoItem> _allTodos = [];
+  List<TodoGroup> _allTodoGroups = [];
+  List<TodoPlanBlock> _allPlanBlocks = [];
+  _EntryMode _entryMode = _EntryMode.log;
 
   // 打开编辑面板
   void _editTimeLog(TimeLogItem log) {
@@ -180,6 +188,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       PomodoroService.getTags(),
       StorageService.getTimeLogs(widget.username),
       PomodoroService.getRecords(),
+      StorageService.getTodos(widget.username),
+      StorageService.getPlanBlocks(widget.username),
+      StorageService.getTodoGroups(widget.username),
     ]);
 
     if (!mounted) return;
@@ -189,6 +200,13 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       _allLogs =
           (results[1] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
       _allPomodoros = results[2] as List<PomodoroRecord>;
+      _allTodos =
+          (results[3] as List<TodoItem>).where((t) => !t.isDeleted).toList();
+      _allPlanBlocks = (results[4] as List<TodoPlanBlock>)
+          .where((p) => !p.isDeleted)
+          .toList();
+      _allTodoGroups =
+          (results[5] as List<TodoGroup>).where((g) => !g.isDeleted).toList();
       _isLoading = false;
     });
 
@@ -220,6 +238,16 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   void _deleteLog(String id) async {
     await StorageService.deleteTimeLogGlobally(widget.username, id);
+    _loadData();
+  }
+
+  Future<void> _addPlanBlock(TodoPlanBlock block) async {
+    await StorageService.savePlanBlocks(widget.username, [block]);
+    await _loadData();
+  }
+
+  void _deletePlanBlock(String id) async {
+    await StorageService.deletePlanBlockGlobally(widget.username, id);
     _loadData();
   }
 
@@ -426,16 +454,28 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                         date: _focusedDate,
                         crossDay: _crossDay,
                         logs: _allLogs,
+                        planBlocks: _allPlanBlocks,
                         pomodoros: _allPomodoros,
                         tags: _tags,
+                        todos: _allTodos,
+                        todoGroups: _allTodoGroups,
+                        username: widget.username,
+                        entryMode: _entryMode,
+                        onEntryModeChanged: (mode) =>
+                            setState(() => _entryMode = mode),
                         onBack: _goWeek,
                         onCrossDayChanged: (v) => setState(() => _crossDay = v),
                         onSaveLog: (log) {
                           _addLog(log);
                           setState(() => _dayMode = _DayMode.view);
                         },
+                        onSavePlanBlock: (block) {
+                          _addPlanBlock(block);
+                          setState(() => _dayMode = _DayMode.view);
+                        },
                         onPomodoroTap: _showPomodoroDetail,
-                        onDeleteLog: _deleteLog),
+                        onDeleteLog: _deleteLog,
+                        onDeletePlanBlock: _deletePlanBlock),
       ),
     );
   }
