@@ -456,7 +456,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         int recordEnd = record.endTime ??
             (record.startTime + record.effectiveDuration * 1000);
         if (recordEnd > dayStartMsEpoch && record.startTime < dayEndMsEpoch) {
-          _pomodorosPerDay[i]!.add(record);
+          // 🚀 跳过与计划块关联的番茄钟，避免重复显示
+          if (!_isPomodoroAssociatedWithPlan(record)) {
+            _pomodorosPerDay[i]!.add(record);
+          }
         }
       }
 
@@ -1143,6 +1146,74 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     );
   }
 
+  bool _timeRangesOverlap(
+      int startA, int endAExclusive, int startB, int endBExclusive) {
+    return endAExclusive > startB && startA < endBExclusive;
+  }
+
+  bool _isRecordAssociatedWithPlan(PomodoroRecord record, TodoPlanBlock plan) {
+    if (record.isDeleted || plan.isDeleted) return false;
+
+    if (plan.pomodoroRecordIds.contains(record.uuid)) {
+      return true;
+    }
+
+    if (record.planBlockId != null &&
+        record.planBlockId!.isNotEmpty &&
+        record.planBlockId == plan.id) {
+      return true;
+    }
+
+    if (plan.todoId.isNotEmpty &&
+        record.todoUuid != null &&
+        record.todoUuid!.isNotEmpty &&
+        record.todoUuid == plan.todoId) {
+      final int recordEnd = record.endTime ??
+          (record.startTime + record.effectiveDuration * 1000);
+      return _timeRangesOverlap(
+          record.startTime, recordEnd, plan.startTime, plan.endTime);
+    }
+
+    return false;
+  }
+
+  // --- 辅助方法：计算规划块关联的番茄钟完成情况 ---
+  Map<String, dynamic> _calculatePlanPomodoroProgress(TodoPlanBlock plan) {
+    final associatedRecords = _allPomodoroRecords
+        .where((record) => _isRecordAssociatedWithPlan(record, plan))
+        .toList();
+
+    if (associatedRecords.isEmpty) {
+      return {'completed': 0, 'total': 0, 'progress': 0.0};
+    }
+
+    // 计算完成时长和总时长（秒）
+    int totalSeconds = 0;
+    int completedSeconds = 0;
+
+    for (var record in associatedRecords) {
+      totalSeconds += record.plannedDuration;
+      if (record.isCompleted) {
+        completedSeconds += record.effectiveDuration;
+      }
+    }
+
+    final progress = totalSeconds > 0 ? completedSeconds / totalSeconds : 0.0;
+
+    return {
+      'completed': completedSeconds,
+      'total': totalSeconds,
+      'progress': progress.clamp(0.0, 1.0),
+      'recordCount': associatedRecords.length,
+    };
+  }
+
+  // --- 辅助方法：检查番茄钟是否被某个计划块关联 ---
+  bool _isPomodoroAssociatedWithPlan(PomodoroRecord record) {
+    return _allPlanBlocks
+        .any((plan) => _isRecordAssociatedWithPlan(record, plan));
+  }
+
   Widget _buildHeader(DateTime? monday) {
     DateTime now = DateTime.now();
     String todayStr = DateFormat('yyyy-MM-dd').format(now);
@@ -1586,6 +1657,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final planIndex =
               _planBlocksPerDay.values.expand((e) => e).toList().indexOf(plan);
 
+          // 计算关联的番茄钟完成进度
+          final pomProgress = _calculatePlanPomodoroProgress(plan);
+          final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
+          final hasAssociatedPomodoro = recordCount > 0;
+
           children.add(Positioned(
             top: top,
             left: leftOffset + 4,
@@ -1611,48 +1687,133 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   border: Border.all(
                       color: Colors.white.withValues(alpha: 0.35), width: 0.5),
                 ),
-                child: height < 18
-                    ? const Icon(Icons.event_note, size: 8, color: Colors.white)
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+                // 如果有关联的番茄钟，用背景填充表示完成进度
+                child: hasAssociatedPomodoro
+                    ? Stack(
+                        fit: StackFit.expand,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                  plan.status == TodoPlanStatus.finished
-                                      ? Icons.event_available
-                                      : Icons.event_note,
-                                  size: 9,
-                                  color: Colors.white),
-                              const SizedBox(width: 2),
-                              Expanded(
-                                child: Text(
-                                  title,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.0),
-                                  maxLines: height < 28 ? 1 : 2,
-                                  overflow: TextOverflow.ellipsis,
+                          // 背景进度条（从下往上）
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: FractionallySizedBox(
+                              heightFactor:
+                                  ((pomProgress['progress'] as double?) ?? 0.0)
+                                      .clamp(0.0, 1.0),
+                              widthFactor: 1.0,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.25),
                                 ),
                               ),
+                            ),
+                          ),
+                          // 内容层
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                      plan.status == TodoPlanStatus.finished
+                                          ? Icons.event_available
+                                          : Icons.event_note,
+                                      size: 9,
+                                      color: Colors.white),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.0),
+                                      maxLines: height < 28 ? 1 : 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (height > 24)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${plan.plannedMinutes}min',
+                                      style: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.85),
+                                          fontSize: 7,
+                                          height: 1.0),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    // 显示番茄钟完成情况
+                                    if (height > 32)
+                                      Text(
+                                        '${(((pomProgress['progress'] as double?) ?? 0.0) * 100).toStringAsFixed(0)}%',
+                                        style: TextStyle(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.7),
+                                            fontSize: 6,
+                                            height: 1.0,
+                                            fontWeight: FontWeight.bold),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                  ],
+                                ),
                             ],
                           ),
-                          if (height > 24)
-                            Text(
-                              '${plan.plannedMinutes}min',
-                              style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.85),
-                                  fontSize: 7,
-                                  height: 1.0),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
                         ],
-                      ),
+                      )
+                    : (height < 18
+                        ? const Icon(Icons.event_note,
+                            size: 8, color: Colors.white)
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                      plan.status == TodoPlanStatus.finished
+                                          ? Icons.event_available
+                                          : Icons.event_note,
+                                      size: 9,
+                                      color: Colors.white),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.0),
+                                      maxLines: height < 28 ? 1 : 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (height > 24)
+                                Text(
+                                  '${plan.plannedMinutes}min',
+                                  style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.85),
+                                      fontSize: 7,
+                                      height: 1.0),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          )),
               ),
             ),
           ));
@@ -1683,7 +1844,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
           Color pomColor = Colors.redAccent.withValues(alpha: 0.6);
           String pomTitle = '专注';
-          if (record.tagUuids.isNotEmpty) {
+
+          // 优先显示任务名，其次显示标签名
+          if (record.todoTitle != null && record.todoTitle!.isNotEmpty) {
+            pomTitle = record.todoTitle!;
+          } else if (record.tagUuids.isNotEmpty) {
             final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
                 (t) => record.tagUuids.contains(t?.uuid),
                 orElse: () => null);
